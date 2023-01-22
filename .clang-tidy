@@ -1,0 +1,14 @@
+Checks: "*,
+        -abseil-*,
+        -altera-*,
+        -android-*,
+        -fuchsia-*,
+        -google-*,
+        -llvm*,
+        -zircon-*,
+        -cppcoreguidelines-non-private-member-variables-in-classes,
+        -misc-non-private-member-variables-in-classes,
+"
+WarningsAsErrors: ''
+HeaderFilterRegex: ''
+FormatStyle: none

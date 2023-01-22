@@ -1,0 +1,6 @@
+# IDE directories
+.idea/
+
+# Output directories
+cmake-build-*/
+
