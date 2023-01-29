@@ -18,7 +18,6 @@ IndentWidth: 4
 InsertBraces: true
 LambdaBodyIndentation: OuterScope
 PackConstructorInitializers: Never
-QualifierAlignment: Custom
 ReflowComments: false
 SeparateDefinitionBlocks: Always
 SpaceAfterCStyleCast: true
@@ -26,10 +25,5 @@ SpaceBeforeCpp11BracedList: true
 SpaceInEmptyBlock: true
 Standard: c++20
 TabWidth: 4
-QualifierOrder:
-  - inline
-  - static
-  - constexpr
-  - const
-  - volatile
-  - type
+QualifierAlignment: Custom
+QualifierOrder: ['inline', 'static', 'constexpr', 'const', 'volatile', 'type']
