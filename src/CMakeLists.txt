@@ -7,6 +7,8 @@ file(GLOB_RECURSE ${TARGET_NAME}_SRC_LIST
 
 add_executable(${TARGET_NAME} ${${TARGET_NAME}_SRC_LIST})
 
+target_include_directories(${TARGET_NAME} PRIVATE ${SRC_DIR})
+
 find_package(Vulkan REQUIRED)
 target_link_libraries(${TARGET_NAME} PRIVATE Vulkan::Vulkan glfw glm::glm)
 

@@ -1,4 +1,16 @@
+#include <iostream>
+
+#include "app/App.h"
+
 auto main() -> int
 {
-    return 0;
+    try
+    {
+        return panda::App {}.run();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << e.what() << "\n";
+        return -1;
+    }
 }
