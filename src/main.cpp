@@ -13,4 +13,9 @@ auto main() -> int
         std::cerr << e.what() << "\n";
         return -1;
     }
+    catch (...)
+    {
+        std::cerr << "Unknown exception\n";
+        return -1;
+    }
 }
