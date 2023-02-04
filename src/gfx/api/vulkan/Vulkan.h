@@ -2,24 +2,22 @@
 
 #include <optional>
 
-#include "ValidationLayersHandler.h"
-#include "gfx/api/Api.h"
+#include "gfx/api/RenderingApi.h"
 
-namespace panda::gfx::vk
+namespace panda::gfx::vulkan
 {
 
-class Vulkan : public Api
+class Vulkan : public RenderingApi
 {
 public:
-    Vulkan() = default;
+    Vulkan();
     Vulkan(const Vulkan&) = delete;
     Vulkan(Vulkan&&) = default;
     auto operator=(const Vulkan&) -> Vulkan& = delete;
     auto operator=(Vulkan&&) -> Vulkan& = default;
     ~Vulkan() noexcept override;
 
-    auto init() -> bool override;
-    auto cleanup() -> void override;
+    auto render() -> void override;
 
 private:
     struct QueueFamily
@@ -33,30 +31,27 @@ private:
     }
 
     [[nodiscard]] static auto getRequiredExtensions() -> std::vector<const char*>;
-    [[nodiscard]] static auto getAvailableExtensions() -> std::vector<VkExtensionProperties>;
-    [[nodiscard]] static auto createDebugMessengerCreateInfo() noexcept -> VkDebugUtilsMessengerCreateInfoEXT;
-    [[nodiscard]] static auto isDeviceSuitable(VkPhysicalDevice device) -> bool;
-    [[nodiscard]] static auto findQueueFamily(VkPhysicalDevice device) -> QueueFamily;
-    static auto checkRequiredExtensions(const std::vector<const char*>& requiredExtensions) -> void;
+    [[nodiscard]] static auto createDebugMessengerCreateInfo() noexcept -> vk::DebugUtilsMessengerCreateInfoEXT;
+    [[nodiscard]] static auto isDeviceSuitable(vk::PhysicalDevice device) -> bool;
+    [[nodiscard]] static auto findQueueFamily(vk::PhysicalDevice device) -> QueueFamily;
+    [[nodiscard]] static auto areRequiredExtensionsAvailable(const std::vector<const char*>& requiredExtensions) -> bool;
 
-    [[nodiscard]] auto pickPhysicalDevice() const -> VkPhysicalDevice;
-    auto createLogicalDevice() -> bool;
-    auto destroy() -> void;
-    auto createInstance() -> bool;
-    auto setupDebugMessenger() -> bool;
-    auto enableValidationLayers(VkInstanceCreateInfo& createInfo) -> bool;
-    auto createDebugUtilsMessengerExt(const VkDebugUtilsMessengerCreateInfoEXT& createInfo) -> VkResult;
-    auto destroyDebugMessenger() const -> void;
+    [[nodiscard]] auto pickPhysicalDevice() const -> vk::PhysicalDevice;
+    [[nodiscard]] auto areValidationLayersSupported() const -> bool;
+    [[nodiscard]] auto createLogicalDevice(uint32_t queueFamilyIndex) const-> vk::Device;
+    [[nodiscard]] auto createInstance() -> vk::Instance;
+    auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
 
-    inline static const VkDebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo = createDebugMessengerCreateInfo();
+    inline static const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo =
+        createDebugMessengerCreateInfo();
 
-    VkInstance instance {};
-    VkPhysicalDevice physicalDevice {};
-    VkDevice device {};
-    VkQueue graphicsQueue {};
-    VkDebugUtilsMessengerEXT debugMessenger{};
-    ValidationLayersHandler validationLayersHandler;
-    bool isInitialized = false;
+    vk::Instance instance {};
+    vk::Device device {};
+    vk::PhysicalDevice physicalDevice {};
+
+    vk::Queue graphicsQueue {};
+    vk::DebugUtilsMessengerEXT debugMessenger {};
+    std::vector<const char*> requiredValidationLayers;
 };
 
 }
