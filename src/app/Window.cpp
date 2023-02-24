@@ -16,13 +16,15 @@ Window::Window()
     static constexpr auto width = int {800};
     static constexpr auto height = int {600};
 
-    window = glfwCreateWindow(width, height, TARGET_NAME, nullptr, nullptr);
+    window = glfwCreateWindow(width, height, ENGINE_TARGET_NAME, nullptr, nullptr);
+    log::Info("Window [{}] {}x{} px created", static_cast<void*>(window), width, height);
 }
 
 Window::~Window() noexcept
 {
     glfwDestroyWindow(window);
     glfwTerminate();
+    log::Info("Window [{}] destroyed", static_cast<void*>(window));
 }
 
 auto Window::getHandle() const noexcept -> GLFWwindow*

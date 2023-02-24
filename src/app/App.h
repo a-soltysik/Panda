@@ -15,6 +15,7 @@ public:
 
 private:
     auto mainLoop() -> void;
+    auto initializeLogger() -> void;
 
     std::unique_ptr<Window> window;
     std::unique_ptr<gfx::RenderingApi> api;

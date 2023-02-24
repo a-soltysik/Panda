@@ -3,9 +3,8 @@ project(Panda)
 
 set(CMAKE_CXX_STANDARD 20)
 if (${CMAKE_CXX_COMPILER_ID} STREQUAL GNU)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wshadow -Wpessimizing-move -Wredundant-move -Wpedantic -Werror -ffast-math -Wnoexcept")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto=auto")
     set(CMAKE_CXX_FLAGS_RELWITHDEBINFO  "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O2 -g")
 elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
 else()
@@ -18,11 +17,12 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DPD_DEBUG
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(EXT_DIR ${PROJECT_SOURCE_DIR}/ext)
 
-
+set(FMT_DIR ${EXT_DIR}/fmt)
 set(VULKAN_HPP_DIR ${EXT_DIR}/Vulkan-Hpp)
 set(GLM_DIR ${VULKAN_HPP_DIR}/glm)
 set(GLFW_DIR ${VULKAN_HPP_DIR}/glfw)
 
+add_subdirectory(${FMT_DIR})
 add_subdirectory(${VULKAN_HPP_DIR})
 add_subdirectory(${GLM_DIR})
 add_subdirectory(${GLFW_DIR})

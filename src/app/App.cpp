@@ -1,7 +1,5 @@
 #include "App.h"
 
-#include <iostream>
-
 #include "gfx/api/vulkan/Vulkan.h"
 
 namespace panda
@@ -9,8 +7,10 @@ namespace panda
 
 auto App::run() -> int
 {
+    initializeLogger();
+
     window = std::make_unique<Window>();
-    api = std::make_unique<gfx::vulkan::Vulkan>();
+    api = std::make_unique<gfx::vulkan::Vulkan>(*window);
 
     mainLoop();
     return 0;
@@ -23,6 +23,21 @@ auto App::mainLoop() -> void
         window->processInput();
         api->render();
     }
+}
+
+auto App::initializeLogger() -> void
+{
+    if (PD_DEBUG)
+    {
+        log::Config::instance().console.setLevels(std::array {log::Level::Warning, log::Level::Error});
+        log::Config::instance().console.start();
+    }
+    else
+    {
+        log::Config::instance().file.setLevels(std::array {log::Level::Info, log::Level::Warning, log::Level::Error});
+    }
+
+    log::Config::instance().file.start();
 }
 
 }

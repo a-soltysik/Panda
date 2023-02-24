@@ -10,12 +10,12 @@ auto main() -> int
     }
     catch (const std::exception& e)
     {
-        std::cerr << e.what() << "\n";
+        panda::log::Error(e.what());
         return -1;
     }
     catch (...)
     {
-        std::cerr << "Unknown exception\n";
+        panda::log::Error("Unknown exception");
         return -1;
     }
 }
