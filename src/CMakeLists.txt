@@ -15,9 +15,9 @@ target_link_libraries(${ENGINE_TARGET_NAME} PRIVATE Vulkan::Vulkan glfw glm fmt:
 
 if (${CMAKE_CXX_COMPILER_ID} STREQUAL GNU)
     target_compile_options(${ENGINE_TARGET_NAME} PRIVATE -Wall -Wextra -Wshadow -Wpessimizing-move -Wredundant-move -Wpedantic -Werror -ffast-math -Wnoexcept)
-elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
-else()
-endif()
+elseif (${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
+else ()
+endif ()
 
 target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE ENGINE_TARGET_NAME=\"$<TARGET_PROPERTY:NAME>\")
 target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE PROJECT_NAME=\"${CMAKE_PROJECT_NAME}\")
@@ -29,3 +29,5 @@ target_precompile_headers(${ENGINE_TARGET_NAME}
     <GLFW/glfw3.h>
     "app/Logger.h"
     )
+
+add_subdirectory(shader)

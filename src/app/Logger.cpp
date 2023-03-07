@@ -1,6 +1,7 @@
 #include <fmt/chrono.h>
 
 #include <filesystem>
+#include <future>
 
 namespace panda::log
 {

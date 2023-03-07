@@ -65,7 +65,8 @@ private:
     [[nodiscard]] auto createSwapChain() -> vk::SwapchainKHR;
     [[nodiscard]] auto createImageViews() -> std::vector<vk::ImageView>;
     [[nodiscard]] auto chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) const -> vk::Extent2D;
-    auto createPipeline() -> void;
+    [[nodiscard]] auto createPipeline() -> vk::Pipeline;
+    [[nodiscard]] auto createRenderPass() -> vk::RenderPass;
 
     auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
 
@@ -83,9 +84,12 @@ private:
     vk::DebugUtilsMessengerEXT debugMessenger {};
     vk::SurfaceKHR surface {};
     std::vector<vk::Image> swapChainImages {};
-    std::vector<vk::ImageView> swapChainImageViews{};
-    vk::Format swapChainImageFormat{};
-    vk::Extent2D swapChainExtent{};
+    std::vector<vk::ImageView> swapChainImageViews {};
+    vk::Format swapChainImageFormat {};
+    vk::RenderPass renderPass {};
+    vk::PipelineLayout pipelineLayout {};
+    vk::Pipeline pipeline {};
+    vk::Extent2D swapChainExtent {};
     std::vector<const char*> requiredValidationLayers;
     const Window& window;
 };

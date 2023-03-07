@@ -6,7 +6,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include <iostream>
 #include <numeric>
 
-#include "gfx/Shader.h"
+#include "Shader.h"
 
 namespace panda::gfx::vulkan
 {
@@ -86,10 +86,15 @@ Vulkan::Vulkan(const Window& mainWindow)
     swapChain = createSwapChain();
     swapChainImages = device.getSwapchainImagesKHR(swapChain);
     swapChainImageViews = createImageViews();
+    renderPass = createRenderPass();
+    createPipeline();
 }
 
 Vulkan::~Vulkan() noexcept
 {
+    device.destroyPipeline(pipeline);
+    device.destroyPipelineLayout(pipelineLayout);
+    device.destroyRenderPass(renderPass);
     for (const auto& imageView : swapChainImageViews)
     {
         device.destroy(imageView);
@@ -180,7 +185,7 @@ auto Vulkan::areRequiredExtensionsAvailable(std::span<const char* const> require
 
         if (it == availableExtensions.cend())
         {
-            std::cerr << requiredExtension << " extension is unavailable\n";
+            log::Error("{} extension is unavailable", requiredExtension);
             return false;
         }
     }
@@ -210,6 +215,7 @@ auto Vulkan::pickPhysicalDevice() const -> vk::PhysicalDevice
     {
         return *it;
     }
+    log::Error("None of physical devices is suitable");
     return VK_NULL_HANDLE;
 }
 
@@ -259,6 +265,7 @@ auto Vulkan::areValidationLayersSupported() const -> bool
 
         if (it == availableLayers.cend())
         {
+            log::Error("{} layer is not supported", layerName);
             return false;
         }
     }
@@ -321,6 +328,7 @@ auto Vulkan::checkDeviceExtensionSupport(vk::PhysicalDevice device) -> bool
 
         if (it == availableExtensions.cend())
         {
+            log::Error("{} extension is unavailable", extension);
             return false;
         }
     }
@@ -371,8 +379,6 @@ auto Vulkan::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) co
     auto height = int {};
 
     glfwGetFramebufferSize(window.getHandle(), &width, &height);
-
-    std::cout << capabilities.maxImageExtent.width << "\n";
 
     return {std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
             std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
@@ -439,6 +445,113 @@ auto Vulkan::createImageViews() -> std::vector<vk::ImageView>
     }
 
     return imageViews;
+}
+
+auto Vulkan::createPipeline() -> vk::Pipeline
+{
+    const auto fragmentShader = Shader::createFromFile(device, "shader/triangle.frag.spv").value();
+    const auto vertexShader = Shader::createFromFile(device, "shader/triangle.vert.spv").value();
+
+    const auto vertexShaderStageInfo =
+        vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eVertex, vertexShader.module, "main"};
+
+    const auto fragmentShaderStageInfo =
+        vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eFragment, fragmentShader.module, "main"};
+
+    const auto shaderStages = std::array {vertexShaderStageInfo, fragmentShaderStageInfo};
+    const auto dynamicStates = std::array {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
+    const auto dynamicState = vk::PipelineDynamicStateCreateInfo {{}, dynamicStates};
+
+    const auto vertexInputInfo = vk::PipelineVertexInputStateCreateInfo {};
+    const auto inputAssembly =
+        vk::PipelineInputAssemblyStateCreateInfo {{}, vk::PrimitiveTopology::eTriangleList, VK_FALSE};
+    [[maybe_unused]] const auto viewport = vk::Viewport {0.f,
+                                                         0.f,
+                                                         static_cast<float>(swapChainExtent.width),
+                                                         static_cast<float>(swapChainExtent.height),
+                                                         0.f,
+                                                         1.f};
+
+    [[maybe_unused]] const auto scissor = vk::Rect2D {
+        {0, 0},
+        swapChainExtent
+    };
+    const auto viewportState = vk::PipelineViewportStateCreateInfo {{}, 1, {}, 1, {}};
+    const auto rasterizer = vk::PipelineRasterizationStateCreateInfo {{},
+                                                                      VK_FALSE,
+                                                                      VK_FALSE,
+                                                                      vk::PolygonMode::eFill,
+                                                                      vk::CullModeFlagBits::eBack,
+                                                                      vk::FrontFace::eClockwise,
+                                                                      VK_FALSE,
+                                                                      {},
+                                                                      {},
+                                                                      {},
+                                                                      1.f};
+
+    const auto multisampling = vk::PipelineMultisampleStateCreateInfo {{}, vk::SampleCountFlagBits::e1, VK_FALSE};
+    const auto colorBlendAttachment =
+        vk::PipelineColorBlendAttachmentState {VK_FALSE,
+                                               vk::BlendFactor::eSrcAlpha,
+                                               vk::BlendFactor::eOneMinusSrcAlpha,
+                                               vk::BlendOp::eAdd,
+                                               vk::BlendFactor::eOne,
+                                               vk::BlendFactor::eZero,
+                                               vk::BlendOp::eAdd,
+                                               vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+                                                   vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+
+    const auto colorBlending =
+        vk::PipelineColorBlendStateCreateInfo {{}, VK_FALSE, vk::LogicOp::eCopy, 1, &colorBlendAttachment};
+    const auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo {};
+    pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
+
+    const auto pipelineInfo = vk::GraphicsPipelineCreateInfo {{},
+                                                              shaderStages,
+                                                              &vertexInputInfo,
+                                                              &inputAssembly,
+                                                              {},
+                                                              &viewportState,
+                                                              &rasterizer,
+                                                              &multisampling,
+                                                              {},
+                                                              &colorBlending,
+                                                              &dynamicState,
+                                                              pipelineLayout,
+                                                              renderPass,
+                                                              0};
+
+    const auto result = device.createGraphicsPipeline(nullptr, pipelineInfo);
+
+    device.destroy(fragmentShader.module);
+    device.destroy(vertexShader.module);
+
+    if (result.result == vk::Result::eSuccess)
+    {
+        log::Info("Pipeline created successfully");
+        return result.value;
+    }
+    log::Error("Cannot create pipeline, error: {}",
+               static_cast<std::underlying_type_t<decltype(result.result)>>(result.result));
+    throw std::runtime_error {"Cannot create pipeline"};
+}
+
+auto Vulkan::createRenderPass() -> vk::RenderPass
+{
+    const auto colorAttachment = vk::AttachmentDescription {{},
+                                                            swapChainImageFormat,
+                                                            vk::SampleCountFlagBits::e1,
+                                                            vk::AttachmentLoadOp::eClear,
+                                                            vk::AttachmentStoreOp::eStore,
+                                                            vk::AttachmentLoadOp::eDontCare,
+                                                            vk::AttachmentStoreOp::eDontCare,
+                                                            vk::ImageLayout::eUndefined,
+                                                            vk::ImageLayout::ePresentSrcKHR};
+
+    const auto colorAttachmentRef = vk::AttachmentReference {0, vk::ImageLayout::eColorAttachmentOptimal};
+    const auto subpass = vk::SubpassDescription {{}, vk::PipelineBindPoint::eGraphics, {}, {}, 1, &colorAttachmentRef};
+    const auto renderPassInfo = vk::RenderPassCreateInfo {{}, 1, &colorAttachment, 1, &subpass};
+    return device.createRenderPass(renderPassInfo);
 }
 
 auto Vulkan::QueueFamilies::getUniqueQueueFamilies() const -> std::unordered_set<uint32_t>
