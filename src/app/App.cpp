@@ -20,8 +20,15 @@ auto App::mainLoop() -> void
 {
     while (!window->shouldClose())
     {
-        window->processInput();
-        api->render();
+        if (!window->isMinimized())
+        {
+            api->render();
+            window->processInput();
+        }
+        else [[unlikely]]
+        {
+            window->waitForInput();
+        }
     }
 }
 

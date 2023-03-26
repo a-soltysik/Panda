@@ -13,7 +13,7 @@ namespace panda::gfx::vulkan
 class Vulkan : public RenderingApi
 {
 public:
-    explicit Vulkan(const Window& mainWindow);
+    explicit Vulkan(Window& mainWindow);
     Vulkan(const Vulkan&) = delete;
     Vulkan(Vulkan&&) = default;
     auto operator=(const Vulkan&) -> Vulkan& = delete;
@@ -62,14 +62,22 @@ private:
     [[nodiscard]] auto createLogicalDevice() const -> vk::Device;
     [[nodiscard]] auto createInstance() -> vk::Instance;
     [[nodiscard]] auto createSurface() -> vk::SurfaceKHR;
-    [[nodiscard]] auto createSwapChain() -> vk::SwapchainKHR;
+    [[nodiscard]] auto createSwapchain() -> vk::SwapchainKHR;
     [[nodiscard]] auto createImageViews() -> std::vector<vk::ImageView>;
     [[nodiscard]] auto chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) const -> vk::Extent2D;
     [[nodiscard]] auto createPipeline() -> vk::Pipeline;
     [[nodiscard]] auto createRenderPass() -> vk::RenderPass;
+    [[nodiscard]] auto createFrameBuffers() -> std::vector<vk::Framebuffer>;
+    [[nodiscard]] auto createCommandPool() -> vk::CommandPool;
+    [[nodiscard]] auto createCommandBuffers() -> std::vector<vk::CommandBuffer>;
+    auto recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void;
+    auto createSyncObjects() -> void;
+    auto recreateSwapchain() -> void;
+    auto cleanupSwapchain() -> void;
 
     auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
 
+    static constexpr auto maxFramesInFlight = size_t{2};
     static constexpr auto requiredDeviceExtensions = std::array {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     inline static const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo =
         createDebugMessengerCreateInfo();
@@ -80,17 +88,25 @@ private:
     QueueFamilies queueFamiliesIndices;
     vk::Queue graphicsQueue {};
     vk::Queue presentationQueue {};
-    vk::SwapchainKHR swapChain {};
+    vk::SwapchainKHR swapchain {};
     vk::DebugUtilsMessengerEXT debugMessenger {};
     vk::SurfaceKHR surface {};
-    std::vector<vk::Image> swapChainImages {};
-    std::vector<vk::ImageView> swapChainImageViews {};
+    std::vector<vk::Image> swapChainImages;
+    std::vector<vk::ImageView> swapchainImageViews;
     vk::Format swapChainImageFormat {};
     vk::RenderPass renderPass {};
     vk::PipelineLayout pipelineLayout {};
     vk::Pipeline pipeline {};
+    std::vector<vk::Framebuffer> swapchainFramebuffers;
+    vk::CommandPool commandPool {};
+    std::vector<vk::CommandBuffer> commandBuffers;
     vk::Extent2D swapChainExtent {};
+    std::vector<vk::Semaphore> imageAvailableSemaphores;
+    std::vector<vk::Semaphore> renderFinishedSemaphores;
+    std::vector<vk::Fence> inFlightFences;
     std::vector<const char*> requiredValidationLayers;
+    uint32_t currentFrame = 0;
+    bool frameBufferResized = false;
     const Window& window;
 };
 
