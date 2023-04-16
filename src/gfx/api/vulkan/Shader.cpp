@@ -3,6 +3,8 @@
 #include <fstream>
 #include <unordered_map>
 
+#include "utils/format/api/vulkan/ResultFormatter.h"
+
 namespace panda::gfx
 {
 
@@ -54,16 +56,14 @@ auto Shader::createFromRawData(const vk::Device& device, const std::vector<uint3
     -> std::optional<Shader>
 {
     const auto createInfo = vk::ShaderModuleCreateInfo {{}, buffer};
-    try
+    const auto shaderModuleResult = device.createShaderModule(createInfo);
+    if (shaderModuleResult.result == vk::Result::eSuccess)
     {
-        const auto shaderModule = device.createShaderModule(createInfo);
-        return Shader {device, shaderModule, type};
+        return Shader {device, shaderModuleResult.value, type};
     }
-    catch (const vk::Error& e)
-    {
-        log::Error(e.what());
-        return {};
-    }
+
+    log::Warning("Creating shader module didn't succeed: {}", shaderModuleResult.result);
+    return {};
 }
 
 Shader::Shader(const vk::Device& shaderDevice, const vk::ShaderModule& shaderModule, Type shaderType)

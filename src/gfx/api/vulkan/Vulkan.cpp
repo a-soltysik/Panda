@@ -7,15 +7,18 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include <numeric>
 
 #include "Shader.h"
+#include "utils/Assert.h"
+#include "utils/format/api/vulkan/ResultFormatter.h"
 
 namespace panda::gfx::vulkan
 {
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL
-debugCallback([[maybe_unused]] VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-              [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT messageType,
-              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-              [[maybe_unused]] void* pUserData)
+namespace
+{
+VKAPI_ATTR auto VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                                         [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT messageType,
+                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                                         [[maybe_unused]] void* pUserData) -> VkBool32
 {
     switch (messageSeverity)
     {
@@ -39,6 +42,8 @@ debugCallback([[maybe_unused]] VkDebugUtilsMessageSeverityFlagBitsEXT messageSev
     return VK_FALSE;
 }
 
+}
+
 Vulkan::Vulkan(Window& mainWindow)
     : window {mainWindow}
 {
@@ -51,56 +56,47 @@ Vulkan::Vulkan(Window& mainWindow)
 
     if constexpr (shouldEnableValidationLayers())
     {
-        debugMessenger = instance.createDebugUtilsMessengerEXT(debugMessengerCreateInfo);
+        debugMessenger = expect(instance.createDebugUtilsMessengerEXT(debugMessengerCreateInfo),
+                                vk::Result::eSuccess,
+                                "Unable to create debug messenger");
     }
     surface = createSurface();
-    if (!surface)
-    {
-        throw std::runtime_error {"Unable to create surface"};
-    }
-    else
-    {
-        log::Info("Created surface");
-    }
+    log::Info("Created surface");
 
     physicalDevice = pickPhysicalDevice();
-    if (!physicalDevice)
-    {
-        throw std::runtime_error {"Unable to pick physical device"};
-    }
-    else
-    {
-        log::Info("Picked physical device: {}", physicalDevice.getProperties().deviceName);
-    }
+    log::Info("Picked physical device: {}", physicalDevice.getProperties().deviceName);
 
-    queueFamiliesIndices = findQueueFamilies(physicalDevice, surface);
-    if (!queueFamiliesIndices.hasValues())
-    {
-        throw std::runtime_error {"Not all queue families exist"};
-    }
+    const auto queueFamilies = findQueueFamilies(physicalDevice, surface);
+    expectNot(queueFamilies, std::nullopt, "Can't find queue families");
+    queueFamiliesIndices = *queueFamilies;
     device = createLogicalDevice();
     VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
 
-    graphicsQueue = device.getQueue(queueFamiliesIndices.graphicsFamily.value(), 0);
-    presentationQueue = device.getQueue(queueFamiliesIndices.presentationFamily.value(), 0);
+    graphicsQueue = device.getQueue(queueFamiliesIndices.graphicsFamily, 0);
+    presentationQueue = device.getQueue(queueFamiliesIndices.presentationFamily, 0);
     swapchain = createSwapchain();
-    swapChainImages = device.getSwapchainImagesKHR(swapchain);
+    swapChainImages =
+        expect(device.getSwapchainImagesKHR(swapchain), vk::Result::eSuccess, "Unable to get swapchain images");
     swapchainImageViews = createImageViews();
     renderPass = createRenderPass();
     pipeline = createPipeline();
+    log::Info("Pipeline created successfully");
+
     swapchainFramebuffers = createFrameBuffers();
     commandPool = createCommandPool();
     commandBuffers = createCommandBuffers();
     createSyncObjects();
 
     mainWindow.subscribeForFrameBufferResize([this](auto, auto) noexcept {
+        log::Debug("Received framebuffer resized notif");
         frameBufferResized = true;
     });
 }
 
 Vulkan::~Vulkan() noexcept
 {
-    device.waitIdle();
+    shouldBe(device.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
+
     for (auto i = size_t {}; i < maxFramesInFlight; i++)
     {
         device.destroySemaphore(imageAvailableSemaphores[i]);
@@ -133,24 +129,18 @@ auto Vulkan::createInstance() -> vk::Instance
 
     const auto requiredExtensions = getRequiredExtensions();
 
-    if (!areRequiredExtensionsAvailable(requiredExtensions))
-    {
-        throw std::runtime_error {"There are missing extensions"};
-    }
+    expect(areRequiredExtensionsAvailable(requiredExtensions), true, "There are missing extensions");
 
     auto createInfo =
         vk::InstanceCreateInfo({}, &appInfo, {}, {}, requiredExtensions.size(), requiredExtensions.data());
 
     if constexpr (shouldEnableValidationLayers())
     {
-        if (!enableValidationLayers(createInfo))
-        {
-            std::cerr << "Unable to enable validation Layers\n";
-        }
-
+        shouldBe(enableValidationLayers(createInfo), true, "Unable to enable validation layers");
         createInfo.pNext = &debugMessengerCreateInfo;
     }
-    return vk::createInstance(createInfo);
+
+    return expect(vk::createInstance(createInfo), vk::Result::eSuccess, "Creating instance didn't succeed");
 }
 
 auto Vulkan::enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool
@@ -186,16 +176,21 @@ auto Vulkan::getRequiredExtensions() -> std::vector<const char*>
 auto Vulkan::areRequiredExtensionsAvailable(std::span<const char* const> requiredExtensions) -> bool
 {
     const auto availableExtensions = vk::enumerateInstanceExtensionProperties();
+    if (availableExtensions.result != vk::Result::eSuccess)
+    {
+        log::Error("Can't get available extensions: {}", availableExtensions.result);
+        return false;
+    }
     for (const auto* requiredExtension : requiredExtensions)
     {
         const auto it = std::ranges::find_if(
-            availableExtensions,
+            availableExtensions.value,
             [requiredExtension](const auto& availableExtension) {
                 return std::string_view {requiredExtension} == std::string_view {availableExtension};
             },
             &vk::ExtensionProperties::extensionName);
 
-        if (it == availableExtensions.cend())
+        if (it == availableExtensions.value.cend())
         {
             log::Error("{} extension is unavailable", requiredExtension);
             return false;
@@ -218,66 +213,77 @@ auto Vulkan::createDebugMessengerCreateInfo() noexcept -> vk::DebugUtilsMessenge
 
 auto Vulkan::pickPhysicalDevice() const -> vk::PhysicalDevice
 {
-    const auto devices = instance.enumeratePhysicalDevices();
+    const auto devices =
+        expect(instance.enumeratePhysicalDevices(), vk::Result::eSuccess, "Can't enumerate physical devices");
+
     const auto it = std::ranges::find_if(devices, [this](const auto& currentDevice) {
         return isDeviceSuitable(currentDevice, surface);
     });
 
-    if (it != devices.cend())
-    {
-        return *it;
-    }
-    log::Error("None of physical devices is suitable");
-    return VK_NULL_HANDLE;
+    expectNot(it, devices.cend(), "None of physical devices is suitable");
+    return *it;
 }
 
 auto Vulkan::isDeviceSuitable(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> bool
 {
     const auto queueFamilies = findQueueFamilies(device, surface);
     const auto swapChainSupport = querySwapChainSupport(device, surface);
-    return queueFamilies.hasValues() && checkDeviceExtensionSupport(device) && !swapChainSupport.formats.empty() &&
+    return queueFamilies && checkDeviceExtensionSupport(device) && !swapChainSupport.formats.empty() &&
            !swapChainSupport.presentationModes.empty();
 }
 
-auto Vulkan::findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> QueueFamilies
+auto Vulkan::findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> std::optional<QueueFamilies>
 {
     const auto queueFamilies = device.getQueueFamilyProperties();
     auto queueFamilyIndices = QueueFamilies {};
+
+    auto isGraphicsSet = false;
+    auto isPresentSet = false;
 
     for (auto i = size_t {}; i < queueFamilies.size(); i++)
     {
         if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)
         {
+            log::Info("Graphics queue index: {}", i);
             queueFamilyIndices.graphicsFamily = i;
+            isGraphicsSet = true;
         }
-        if (device.getSurfaceSupportKHR(i, surface) != 0)
+        if (device.getSurfaceSupportKHR(i, surface).value != 0)
         {
+            log::Info("Presentation queue index: {}", i);
             queueFamilyIndices.presentationFamily = i;
+            isPresentSet = true;
         }
-        if (queueFamilyIndices.hasValues())
+        if (isGraphicsSet && isPresentSet)
         {
             return queueFamilyIndices;
         }
     }
-    return queueFamilyIndices;
+
+    return {};
 }
 
 auto Vulkan::areValidationLayersSupported() const -> bool
 {
     const auto availableLayers = vk::enumerateInstanceLayerProperties();
+    if (availableLayers.result != vk::Result::eSuccess)
+    {
+        log::Error("Can't enumerate available layers");
+        return false;
+    }
 
     for (const auto* layerName : requiredValidationLayers)
     {
         const auto it = std::ranges::find_if(
-            availableLayers,
+            availableLayers.value,
             [layerName](const auto& availableLayer) {
                 return std::string_view {layerName} == std::string_view {availableLayer};
             },
             &vk::LayerProperties::layerName);
 
-        if (it == availableLayers.cend())
+        if (it == availableLayers.value.cend())
         {
-            log::Error("{} layer is not supported", layerName);
+            log::Warning("{} layer is not supported", layerName);
             return false;
         }
     }
@@ -299,30 +305,29 @@ auto Vulkan::createLogicalDevice() const -> vk::Device
     }
     const auto physicalDeviceFeatures = vk::PhysicalDeviceFeatures {};
 
+    auto createInfo = vk::DeviceCreateInfo {};
+
     if constexpr (shouldEnableValidationLayers())
     {
-        const auto createInfo = vk::DeviceCreateInfo({},
-                                                     queueCreateInfos,
-                                                     requiredValidationLayers,
-                                                     requiredDeviceExtensions,
-                                                     &physicalDeviceFeatures);
-        return physicalDevice.createDevice(createInfo);
+        createInfo = vk::DeviceCreateInfo({},
+                                          queueCreateInfos,
+                                          requiredValidationLayers,
+                                          requiredDeviceExtensions,
+                                          &physicalDeviceFeatures);
     }
     else
     {
-        const auto createInfo =
-            vk::DeviceCreateInfo({}, queueCreateInfos, {}, requiredDeviceExtensions, &physicalDeviceFeatures);
-        return physicalDevice.createDevice(createInfo);
+        createInfo = vk::DeviceCreateInfo({}, queueCreateInfos, {}, requiredDeviceExtensions, &physicalDeviceFeatures);
     }
+
+    return expect(physicalDevice.createDevice(createInfo), vk::Result::eSuccess, "Can't create physical device");
 }
 
 auto Vulkan::render() -> void
 {
-    if (device.waitForFences(1, &inFlightFences[currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max()) !=
-        vk::Result::eSuccess) [[unlikely]]
-    {
-        log::Warning("Waiting for the fences didn't succeed");
-    }
+    shouldBe(device.waitForFences(1, &inFlightFences[currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max()),
+             vk::Result::eSuccess,
+             "Waiting for the fences didn't succeed");
 
     const auto imageIndex = device.acquireNextImageKHR(swapchain,
                                                        std::numeric_limits<uint64_t>::max(),
@@ -334,10 +339,9 @@ auto Vulkan::render() -> void
         return;
     }
 
-    if (device.resetFences(1, &inFlightFences[currentFrame]) != vk::Result::eSuccess) [[unlikely]]
-    {
-        log::Warning("Resetting the fences didn't succeed");
-    }
+    shouldBe(device.resetFences(1, &inFlightFences[currentFrame]),
+             vk::Result::eSuccess,
+             "Resetting the fences didn't succeed");
 
     commandBuffers[currentFrame].reset();
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex.value);
@@ -351,15 +355,15 @@ auto Vulkan::render() -> void
                                             1,
                                             &renderFinishedSemaphores[currentFrame]};
 
-    if (graphicsQueue.submit(1, &submitInfo, inFlightFences[currentFrame]) != vk::Result::eSuccess)
-    {
-        log::Warning("Submitting the graphics queue didn't succeeded");
-    }
+    shouldBe(graphicsQueue.submit(1, &submitInfo, inFlightFences[currentFrame]),
+             vk::Result::eSuccess,
+             "Submitting the graphics queue didn't succeeded");
 
     const auto presentInfo =
         vk::PresentInfoKHR {1, &renderFinishedSemaphores[currentFrame], 1, &swapchain, &imageIndex.value};
 
     const auto presentationResult = presentationQueue.presentKHR(presentInfo);
+
     if (presentationResult == vk::Result::eErrorOutOfDateKHR || frameBufferResized) [[unlikely]]
     {
         frameBufferResized = false;
@@ -367,7 +371,7 @@ auto Vulkan::render() -> void
     }
     else if (presentationResult != vk::Result::eSuccess) [[unlikely]]
     {
-        log::Warning("Presenting the queue didn't succeeded");
+        log::Warning("Presenting the queue didn't succeeded: {}", presentationResult);
     }
 
     currentFrame = (currentFrame + 1) % maxFramesInFlight;
@@ -377,25 +381,36 @@ auto Vulkan::createSurface() -> vk::SurfaceKHR
 {
     auto* newSurface = VkSurfaceKHR {};
     glfwCreateWindowSurface(static_cast<VkInstance>(instance), window.getHandle(), nullptr, &newSurface);
-    return newSurface;
+
+    return expect(
+        newSurface,
+        [](const auto* result) {
+            return result != nullptr;
+        },
+        "Unable to create surface");
 }
 
 auto Vulkan::checkDeviceExtensionSupport(vk::PhysicalDevice device) -> bool
 {
     const auto availableExtensions = device.enumerateDeviceExtensionProperties();
+    if (availableExtensions.result != vk::Result::eSuccess)
+    {
+        log::Error("Can't enumerate device extensions: {}", availableExtensions.result);
+        return false;
+    }
 
     for (const auto* extension : requiredDeviceExtensions)
     {
         const auto it = std::ranges::find_if(
-            availableExtensions,
+            availableExtensions.value,
             [extension](const auto& availableExtension) {
                 return std::string_view {extension} == std::string_view {availableExtension};
             },
             &vk::ExtensionProperties::extensionName);
 
-        if (it == availableExtensions.cend())
+        if (it == availableExtensions.value.cend())
         {
-            log::Error("{} extension is unavailable", extension);
+            log::Warning("{} extension is unavailable", extension);
             return false;
         }
     }
@@ -404,9 +419,9 @@ auto Vulkan::checkDeviceExtensionSupport(vk::PhysicalDevice device) -> bool
 
 auto Vulkan::querySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> SwapChainSupportDetails
 {
-    return {device.getSurfaceCapabilitiesKHR(surface),
-            device.getSurfaceFormatsKHR(surface),
-            device.getSurfacePresentModesKHR(surface)};
+    return {device.getSurfaceCapabilitiesKHR(surface).value,
+            device.getSurfaceFormatsKHR(surface).value,
+            device.getSurfacePresentModesKHR(surface).value};
 }
 
 auto Vulkan::choosePresentationMode(std::span<const vk::PresentModeKHR> availablePresentationModes) noexcept
@@ -483,7 +498,7 @@ auto Vulkan::createSwapchain() -> vk::SwapchainKHR
     if (queueFamiliesIndices.graphicsFamily != queueFamiliesIndices.presentationFamily)
     {
         const auto indicesArray =
-            std::array {queueFamiliesIndices.graphicsFamily.value(), queueFamiliesIndices.presentationFamily.value()};
+            std::array {queueFamiliesIndices.graphicsFamily, queueFamiliesIndices.presentationFamily};
         createInfo.imageSharingMode = vk::SharingMode::eConcurrent;
         createInfo.queueFamilyIndexCount = indicesArray.size();
         createInfo.pQueueFamilyIndices = indicesArray.data();
@@ -495,7 +510,8 @@ auto Vulkan::createSwapchain() -> vk::SwapchainKHR
 
     swapChainImageFormat = surfaceFormat.format;
     swapChainExtent = extent;
-    return device.createSwapchainKHR(createInfo);
+
+    return expect(device.createSwapchainKHR(createInfo), vk::Result::eSuccess, "Can't create swapchain");
 }
 
 auto Vulkan::createImageViews() -> std::vector<vk::ImageView>
@@ -508,7 +524,9 @@ auto Vulkan::createImageViews() -> std::vector<vk::ImageView>
         const auto subResourceRange = vk::ImageSubresourceRange {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
         const auto createInfo =
             vk::ImageViewCreateInfo {{}, image, vk::ImageViewType::e2D, swapChainImageFormat, {}, subResourceRange};
-        imageViews.push_back(device.createImageView(createInfo));
+
+        imageViews.push_back(
+            expect(device.createImageView(createInfo), vk::Result::eSuccess, "Can't create image view"));
     }
 
     return imageViews;
@@ -516,14 +534,25 @@ auto Vulkan::createImageViews() -> std::vector<vk::ImageView>
 
 auto Vulkan::createPipeline() -> vk::Pipeline
 {
-    const auto fragmentShader = Shader::createFromFile(device, "shader/triangle.frag.spv").value();
-    const auto vertexShader = Shader::createFromFile(device, "shader/triangle.vert.spv").value();
+    const auto fragmentShader = Shader::createFromFile(device, "shader/triangle.frag.spv");
+    const auto vertexShader = Shader::createFromFile(device, "shader/triangle.vert.spv");
+
+    auto shaders = std::vector<vk::ShaderModule> {};
+
+    if (fragmentShader.has_value())
+    {
+        shaders.push_back(fragmentShader->module);
+    }
+    if (vertexShader.has_value())
+    {
+        shaders.push_back(vertexShader->module);
+    }
 
     const auto vertexShaderStageInfo =
-        vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eVertex, vertexShader.module, "main"};
+        vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eVertex, vertexShader->module, "main"};
 
     const auto fragmentShaderStageInfo =
-        vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eFragment, fragmentShader.module, "main"};
+        vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eFragment, fragmentShader->module, "main"};
 
     const auto shaderStages = std::array {vertexShaderStageInfo, fragmentShaderStageInfo};
     const auto dynamicStates = std::array {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
@@ -561,7 +590,8 @@ auto Vulkan::createPipeline() -> vk::Pipeline
     const auto colorBlending =
         vk::PipelineColorBlendStateCreateInfo {{}, VK_FALSE, vk::LogicOp::eCopy, 1, &colorBlendAttachment};
     const auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo {};
-    pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
+    pipelineLayout =
+        expect(device.createPipelineLayout(pipelineLayoutInfo), vk::Result::eSuccess, "Can't create pipeline layout");
 
     const auto pipelineInfo = vk::GraphicsPipelineCreateInfo {{},
                                                               shaderStages,
@@ -580,17 +610,10 @@ auto Vulkan::createPipeline() -> vk::Pipeline
 
     const auto result = device.createGraphicsPipeline(nullptr, pipelineInfo);
 
-    device.destroy(fragmentShader.module);
-    device.destroy(vertexShader.module);
+    device.destroy(fragmentShader->module);
+    device.destroy(vertexShader->module);
 
-    if (result.result == vk::Result::eSuccess)
-    {
-        log::Info("Pipeline created successfully");
-        return result.value;
-    }
-    log::Error("Cannot create pipeline, error: {}",
-               static_cast<std::underlying_type_t<decltype(result.result)>>(result.result));
-    throw std::runtime_error {"Cannot create pipeline"};
+    return expect(result, vk::Result::eSuccess, "Cannot create pipeline");
 }
 
 auto Vulkan::createRenderPass() -> vk::RenderPass
@@ -616,7 +639,7 @@ auto Vulkan::createRenderPass() -> vk::RenderPass
     const auto subpass = vk::SubpassDescription {{}, vk::PipelineBindPoint::eGraphics, {}, {}, 1, &colorAttachmentRef};
     const auto renderPassInfo = vk::RenderPassCreateInfo {{}, 1, &colorAttachment, 1, &subpass, 1, &dependency};
 
-    return device.createRenderPass(renderPassInfo);
+    return expect(device.createRenderPass(renderPassInfo), vk::Result::eSuccess, "Can't create render pass");
 }
 
 auto Vulkan::createFrameBuffers() -> std::vector<vk::Framebuffer>
@@ -627,30 +650,30 @@ auto Vulkan::createFrameBuffers() -> std::vector<vk::Framebuffer>
     {
         const auto frameBufferInfo =
             vk::FramebufferCreateInfo {{}, renderPass, 1, &imageView, swapChainExtent.width, swapChainExtent.height, 1};
-        result.push_back(device.createFramebuffer(frameBufferInfo));
+        result.push_back(
+            expect(device.createFramebuffer(frameBufferInfo), vk::Result::eSuccess, "Can't create framebuffer"));
     }
     return result;
 }
 
 auto Vulkan::createCommandPool() -> vk::CommandPool
 {
-    const auto queueFamilyIndices = findQueueFamilies(physicalDevice, surface);
     const auto commandPoolInfo = vk::CommandPoolCreateInfo {vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-                                                            queueFamilyIndices.graphicsFamily.value()};
-    return device.createCommandPool(commandPoolInfo);
+                                                            queueFamiliesIndices.graphicsFamily};
+    return expect(device.createCommandPool(commandPoolInfo), vk::Result::eSuccess, "Can't create command pool");
 }
 
 auto Vulkan::createCommandBuffers() -> std::vector<vk::CommandBuffer>
 {
     const auto allocationInfo =
         vk::CommandBufferAllocateInfo {commandPool, vk::CommandBufferLevel::ePrimary, maxFramesInFlight};
-    return device.allocateCommandBuffers(allocationInfo);
+    return expect(device.allocateCommandBuffers(allocationInfo), vk::Result::eSuccess, "Can't allocate command buffer");
 }
 
 auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void
 {
     const auto beginInfo = vk::CommandBufferBeginInfo {};
-    commandBuffer.begin(beginInfo);
+    expect(commandBuffer.begin(beginInfo), vk::Result::eSuccess, "Can't begin commandBuffer");
 
     const auto clearColor = vk::ClearValue {
         {0.f, 0.f, 0.f, 1.f}
@@ -683,7 +706,7 @@ auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_
 
     commandBuffer.draw(3, 1, 0, 0);
     commandBuffer.endRenderPass();
-    commandBuffer.end();
+    expect(commandBuffer.end(), vk::Result::eSuccess, "Can't end command buffer");
 }
 
 auto Vulkan::createSyncObjects() -> void
@@ -697,23 +720,25 @@ auto Vulkan::createSyncObjects() -> void
 
     for (auto i = size_t {}; i < maxFramesInFlight; i++)
     {
-        imageAvailableSemaphores.push_back(device.createSemaphore(semaphoreInfo));
-        renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo));
-        inFlightFences.push_back(device.createFence(fenceInfo));
+        imageAvailableSemaphores.push_back(device.createSemaphore(semaphoreInfo).value);
+        renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo).value);
+        inFlightFences.push_back(device.createFence(fenceInfo).value);
     }
 }
 
 auto Vulkan::recreateSwapchain() -> void
 {
-    device.waitIdle();
+    log::Info("Starting to recreate swapchain");
+    shouldBe(device.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
 
     cleanupSwapchain();
     swapchain = createSwapchain();
-    swapChainImages = device.getSwapchainImagesKHR(swapchain);
+    swapChainImages =
+        expect(device.getSwapchainImagesKHR(swapchain), vk::Result::eSuccess, "Can't get swapchain images");
     swapchainImageViews = createImageViews();
     swapchainFramebuffers = createFrameBuffers();
 
-    log::Info("Recreated swapchain");
+    log::Info("Swapchain recreated");
 }
 
 auto Vulkan::cleanupSwapchain() -> void
@@ -731,21 +756,7 @@ auto Vulkan::cleanupSwapchain() -> void
 
 auto Vulkan::QueueFamilies::getUniqueQueueFamilies() const -> std::unordered_set<uint32_t>
 {
-    auto families = std::unordered_set<uint32_t> {};
-    if (graphicsFamily.has_value())
-    {
-        families.insert(graphicsFamily.value());
-    }
-    if (presentationFamily.has_value())
-    {
-        families.insert(presentationFamily.value());
-    }
-    return families;
-}
-
-auto Vulkan::QueueFamilies::hasValues() const noexcept -> bool
-{
-    return graphicsFamily.has_value() && presentationFamily.has_value();
+    return std::unordered_set<uint32_t> {graphicsFamily, presentationFamily};
 }
 
 }

@@ -29,7 +29,7 @@ Window::Window()
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    //glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     static constexpr auto width = int {800};
     static constexpr auto height = int {600};

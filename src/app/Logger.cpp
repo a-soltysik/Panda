@@ -1,12 +1,14 @@
 #include <fmt/chrono.h>
 
 #include <filesystem>
-#include <future>
 
 namespace panda::log
 {
 
-[[nodiscard]] static auto getLevelTag(Level level) -> std::string_view
+namespace
+{
+
+[[nodiscard]] auto getLevelTag(Level level) -> std::string_view
 {
     using namespace std::string_view_literals;
     switch (level)
@@ -22,6 +24,13 @@ namespace panda::log
     default:
         [[unlikely]] return "[???]"sv;
     }
+}
+
+[[nodiscard]] auto getFunctionName(std::string_view function) -> std::string_view
+{
+    return function.substr(0, function.find('('));
+}
+
 }
 
 namespace internal
@@ -77,10 +86,10 @@ auto Config::File::log(Level level, std::string_view message, const std::source_
     if (levels.contains(level))
     {
         const auto time = std::chrono::system_clock::now();
-        buffer.push_back(fmt::format("{:%H:%M:%S} {} {}: {}\n",
+        buffer.push_back(fmt::format("{:%H:%M:%S} {} {}, {}\n",
                                      std::chrono::floor<std::chrono::microseconds>(time),
                                      getLevelTag(level),
-                                     location.function_name(),
+                                     getFunctionName(location.function_name()),
                                      message));
 
         if (buffer.size() >= bufferSize)
@@ -137,7 +146,7 @@ auto Config::File::flush() -> void
 {
     for (const auto& line : buffer)
     {
-        file->print(fmt::runtime(line));
+        file->print("{}", line);
     }
     buffer.clear();
 }

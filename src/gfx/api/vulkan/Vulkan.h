@@ -25,10 +25,9 @@ public:
 private:
     struct QueueFamilies
     {
-        std::optional<uint32_t> graphicsFamily;
-        std::optional<uint32_t> presentationFamily;
+        uint32_t graphicsFamily;
+        uint32_t presentationFamily;
 
-        [[nodiscard]] auto hasValues() const noexcept -> bool;
         [[nodiscard]] auto getUniqueQueueFamilies() const -> std::unordered_set<uint32_t>;
     };
 
@@ -47,7 +46,7 @@ private:
     [[nodiscard]] static auto getRequiredExtensions() -> std::vector<const char*>;
     [[nodiscard]] static auto createDebugMessengerCreateInfo() noexcept -> vk::DebugUtilsMessengerCreateInfoEXT;
     [[nodiscard]] static auto isDeviceSuitable(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> bool;
-    [[nodiscard]] static auto findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> QueueFamilies;
+    [[nodiscard]] static auto findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> std::optional<QueueFamilies>;
     [[nodiscard]] static auto checkDeviceExtensionSupport(vk::PhysicalDevice device) -> bool;
     [[nodiscard]] static auto querySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR surface)
         -> SwapChainSupportDetails;
