@@ -1,6 +1,7 @@
 [submodule "ext/Vulkan-Hpp"]
 	path = ext/Vulkan-Hpp
 	url = git@github.com:KhronosGroup/Vulkan-Hpp.git
+	branch = main
 [submodule "ext/fmt"]
 	path = ext/fmt
 	url = git@github.com:fmtlib/fmt.git
