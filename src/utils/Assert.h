@@ -28,7 +28,7 @@ auto expect(T&& result,
 {
     if (result != expected) [[unlikely]]
     {
-        if constexpr (fmt::has_formatter<decltype(result), fmt::format_context>())
+        if constexpr (fmt::has_formatter<std::decay_t<T>, fmt::format_context>())
         {
             log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result), location);
         }
@@ -49,7 +49,7 @@ template <Result T, typename Exception = std::runtime_error>
 {
     if (result.result != expected) [[unlikely]]
     {
-        if constexpr (fmt::has_formatter<decltype(result.result), fmt::format_context>())
+        if constexpr (fmt::has_formatter<std::decay_t<decltype(result.result)>, fmt::format_context>())
         {
             log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result.result), location);
         }
@@ -84,7 +84,7 @@ auto expectNot(T&& result,
 {
     if (result == expected) [[unlikely]]
     {
-        if constexpr (fmt::has_formatter<decltype(result), fmt::format_context>())
+        if constexpr (fmt::has_formatter<std::decay_t<T>, fmt::format_context>())
         {
             log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result), location);
         }
@@ -106,7 +106,7 @@ template <Result T, typename Exception = std::runtime_error>
 {
     if (result.result == expected) [[unlikely]]
     {
-        if constexpr (fmt::has_formatter<decltype(result.result), fmt::format_context>())
+        if constexpr (fmt::has_formatter<std::decay_t<decltype(result.result)>, fmt::format_context>())
         {
             log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result.result), location);
         }
@@ -141,7 +141,7 @@ auto shouldBe(T&& result,
 {
     if (result != expected) [[unlikely]]
     {
-        if constexpr (fmt::has_formatter<decltype(result), fmt::format_context>())
+        if constexpr (fmt::has_formatter<std::decay_t<T>, fmt::format_context>())
         {
             log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result), location);
         }
@@ -162,7 +162,7 @@ auto shouldNotBe(T&& result,
 {
     if (result == expected) [[unlikely]]
     {
-        if constexpr (fmt::has_formatter<decltype(result), fmt::format_context>())
+        if constexpr (fmt::has_formatter<std::decay_t<T>, fmt::format_context>())
         {
             log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result), location);
         }

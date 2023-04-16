@@ -64,7 +64,7 @@ Vulkan::Vulkan(Window& mainWindow)
     log::Info("Created surface");
 
     physicalDevice = pickPhysicalDevice();
-    log::Info("Picked physical device: {}", physicalDevice.getProperties().deviceName);
+    log::Info("Picked physical device: {}", static_cast<const char*>(physicalDevice.getProperties().deviceName));
 
     const auto queueFamilies = findQueueFamilies(physicalDevice, surface);
     expectNot(queueFamilies, std::nullopt, "Can't find queue families");
