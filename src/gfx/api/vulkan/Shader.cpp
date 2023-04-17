@@ -5,7 +5,7 @@
 
 #include "utils/format/api/vulkan/ResultFormatter.h"
 
-namespace panda::gfx
+namespace panda::gfx::vulkan
 {
 
 auto Shader::createFromFile(const vk::Device& device, const std::filesystem::path& path) -> std::optional<Shader>
@@ -59,17 +59,22 @@ auto Shader::createFromRawData(const vk::Device& device, const std::vector<uint3
     const auto shaderModuleResult = device.createShaderModule(createInfo);
     if (shaderModuleResult.result == vk::Result::eSuccess)
     {
-        return Shader {device, shaderModuleResult.value, type};
+        return std::make_optional<Shader>(shaderModuleResult.value, type, device);
     }
 
     log::Warning("Creating shader module didn't succeed: {}", shaderModuleResult.result);
     return {};
 }
 
-Shader::Shader(const vk::Device& shaderDevice, const vk::ShaderModule& shaderModule, Type shaderType)
+Shader::~Shader() noexcept
+{
+    device.destroy(module);
+}
+
+Shader::Shader(const vk::ShaderModule& shaderModule, Type shaderType, const vk::Device& logicalDevice) noexcept
     : module {shaderModule},
       type {shaderType},
-      device {shaderDevice}
+      device {logicalDevice}
 {
 }
 
