@@ -25,16 +25,18 @@ public:
     };
 
     Device(const vk::Instance& instance,
-           const vk::SurfaceKHR& surface,
+           const vk::SurfaceKHR& currentSurface,
            std::span<const char* const> requiredExtensions);
     Device(const vk::Instance& instance,
-           const vk::SurfaceKHR& surface,
+           const vk::SurfaceKHR& currentSurface,
            std::span<const char* const> requiredExtensions,
            std::span<const char* const> requiredValidationLayers);
 
+    auto querySwapChainSupport() -> SwapChainSupportDetails;
+
     const vk::PhysicalDevice physicalDevice;
     const QueueFamilies queueFamilies;
-    const SwapChainSupportDetails swapChainSupport;
+
     const vk::Device logicalDevice;
 
 private:
@@ -55,6 +57,8 @@ private:
                                     const QueueFamilies& queueFamilies,
                                     std::span<const char* const> requiredExtensions,
                                     std::span<const char* const> requiredValidationLayers) -> vk::Device;
+
+    const vk::SurfaceKHR& surface;
 };
 
 }

@@ -8,22 +8,24 @@
 namespace panda::gfx::vulkan
 {
 
-Device::Device(const vk::Instance& instance, const vk::SurfaceKHR& surface, std::span<const char* const> requiredExtensions)
-    : physicalDevice {pickPhysicalDevice(instance, surface, requiredExtensions)},
-      queueFamilies(findQueueFamilies(physicalDevice, surface).value()),
-      swapChainSupport(querySwapChainSupport(physicalDevice, surface)),
-      logicalDevice {createLogicalDevice(physicalDevice, queueFamilies, requiredExtensions)}
+Device::Device(const vk::Instance& instance,
+               const vk::SurfaceKHR& currentSurface,
+               std::span<const char* const> requiredExtensions)
+    : physicalDevice {pickPhysicalDevice(instance, currentSurface, requiredExtensions)},
+      queueFamilies {findQueueFamilies(physicalDevice, currentSurface).value()},
+      logicalDevice {createLogicalDevice(physicalDevice, queueFamilies, requiredExtensions)},
+      surface {currentSurface}
 {
 }
 
 Device::Device(const vk::Instance& instance,
-               const vk::SurfaceKHR& surface,
+               const vk::SurfaceKHR& currentSurface,
                std::span<const char* const> requiredExtensions,
                std::span<const char* const> requiredValidationLayers)
-    : physicalDevice {pickPhysicalDevice(instance, surface, requiredExtensions)},
-      queueFamilies(findQueueFamilies(physicalDevice, surface).value()),
-      swapChainSupport(querySwapChainSupport(physicalDevice, surface)),
-      logicalDevice {createLogicalDevice(physicalDevice, queueFamilies, requiredExtensions, requiredValidationLayers)}
+    : physicalDevice {pickPhysicalDevice(instance, currentSurface, requiredExtensions)},
+      queueFamilies(findQueueFamilies(physicalDevice, currentSurface).value()),
+      logicalDevice {createLogicalDevice(physicalDevice, queueFamilies, requiredExtensions, requiredValidationLayers)},
+      surface {currentSurface}
 {
 }
 
@@ -90,7 +92,8 @@ auto Device::querySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR sur
             device.getSurfacePresentModesKHR(surface).value};
 }
 
-auto Device::checkDeviceExtensionSupport(vk::PhysicalDevice device, std::span<const char* const> requiredExtensions) -> bool
+auto Device::checkDeviceExtensionSupport(vk::PhysicalDevice device, std::span<const char* const> requiredExtensions)
+    -> bool
 {
     const auto availableExtensions = device.enumerateDeviceExtensionProperties();
     if (availableExtensions.result != vk::Result::eSuccess)
@@ -162,6 +165,11 @@ auto Device::createLogicalDevice(vk::PhysicalDevice device,
                                            &physicalDeviceFeatures);
 
     return expect(device.createDevice(createInfo), vk::Result::eSuccess, "Can't create physical device");
+}
+
+auto Device::querySwapChainSupport() -> SwapChainSupportDetails
+{
+    return querySwapChainSupport(physicalDevice, surface);
 }
 
 auto Device::QueueFamilies::getUniqueQueueFamilies() const -> std::unordered_set<uint32_t>

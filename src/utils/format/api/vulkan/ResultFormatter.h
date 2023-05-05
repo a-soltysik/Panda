@@ -90,6 +90,18 @@ struct fmt::formatter<vk::Result> : formatter<std::string_view>
             return "OperationNotDeferredKHR"sv;
         case vk::Result::eErrorCompressionExhaustedEXT:
             return "ErrorCompressionExhaustedEXT"sv;
+        case vk::Result::eErrorImageUsageNotSupportedKHR:
+            return "ErrorImageUsageNotSupportedKHR"sv;
+        case vk::Result::eErrorVideoPictureLayoutNotSupportedKHR:
+            return "ErrorVideoPictureLayoutNotSupportedKHR"sv;
+        case vk::Result::eErrorVideoProfileOperationNotSupportedKHR:
+            return "ErrorVideoProfileOperationNotSupportedKHR"sv;
+        case vk::Result::eErrorVideoProfileFormatNotSupportedKHR:
+            return "ErrorVideoProfileFormatNotSupportedKHR"sv;
+        case vk::Result::eErrorVideoStdVersionNotSupportedKHR:
+            return "ErrorVideoVersionNotSupportedKHR"sv;
+        case vk::Result::eErrorVideoProfileCodecNotSupportedKHR:
+            return "ErrorVideoProfileCodecNotSupportedKHR"sv;
         }
         return "UnknownResult"sv;
     }

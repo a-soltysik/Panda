@@ -2,6 +2,8 @@
 
 #include <concepts>
 #include <exception>
+#include <source_location>
+#include <string_view>
 #include <utility>
 
 namespace panda
@@ -20,30 +22,41 @@ concept Result = requires {
     typename ResultHelper<T>::Error;
 };
 
-template <typename T, typename Exception = std::runtime_error>
+[[noreturn]] inline auto panic() noexcept
+{
+    std::terminate();
+}
+
+[[noreturn]] inline auto panic(std::string_view message,
+                               std::source_location location = std::source_location::current())
+{
+    log::internal::LogDispatcher::log(log::Level::Error, fmt::format("Terminal error: {}", message), location);
+    panic();
+}
+
+template <typename T>
 auto expect(T&& result,
             const std::convertible_to<T> auto& expected,
-            const char* message,
+            std::string_view message,
             std::source_location location = std::source_location::current()) -> void
 {
     if (result != expected) [[unlikely]]
     {
         if constexpr (fmt::has_formatter<std::decay_t<T>, fmt::format_context>())
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result), location);
+            panic(fmt::format("{}: {}", message, result), location);
         }
         else
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}", message), location);
+            panic(message, location);
         }
-        throw Exception {message};
     }
 }
 
-template <Result T, typename Exception = std::runtime_error>
+template <Result T>
 [[nodiscard]] auto expect(T&& result,
                           const typename ResultHelper<T>::Error& expected,
-                          const char* message,
+                          std::string_view message,
                           std::source_location location = std::source_location::current()) ->
     typename ResultHelper<T>::Ok
 {
@@ -51,56 +64,52 @@ template <Result T, typename Exception = std::runtime_error>
     {
         if constexpr (fmt::has_formatter<std::decay_t<decltype(result.result)>, fmt::format_context>())
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result.result), location);
+            panic(fmt::format("{}: {}", message, result.result), location);
         }
         else
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}", message), location);
+            panic(message, location);
         }
-        throw Exception {message};
     }
     return std::move(result.value);
 }
 
-template <typename T, typename Exception = std::runtime_error>
+template <typename T>
 [[nodiscard]] auto expect(T&& value,
                           std::invocable<T> auto predicate,
-                          const char* message,
+                          std::string_view message,
                           std::source_location location = std::source_location::current()) -> T
 {
     if (!predicate(std::forward<T>(value))) [[unlikely]]
     {
-        log::internal::LogDispatcher::log(log::Level::Error, message, location);
-        throw Exception {message};
+        panic(message, location);
     }
     return std::forward<T>(value);
 }
 
-template <typename T, typename Exception = std::runtime_error>
+template <typename T>
 auto expectNot(T&& result,
                const std::convertible_to<T> auto& expected,
-               const char* message,
+               std::string_view message,
                std::source_location location = std::source_location::current()) -> void
 {
     if (result == expected) [[unlikely]]
     {
         if constexpr (fmt::has_formatter<std::decay_t<T>, fmt::format_context>())
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result), location);
+            panic(fmt::format("{}: {}", message, result), location);
         }
         else
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}", message), location);
+            panic(message, location);
         }
-
-        throw Exception {message};
     }
 }
 
-template <Result T, typename Exception = std::runtime_error>
+template <Result T>
 [[nodiscard]] auto expectNot(T&& result,
                              const typename ResultHelper<T>::Error& expected,
-                             const char* message,
+                             std::string_view message,
                              std::source_location location = std::source_location::current()) ->
     typename ResultHelper<T>::Ok
 {
@@ -108,27 +117,25 @@ template <Result T, typename Exception = std::runtime_error>
     {
         if constexpr (fmt::has_formatter<std::decay_t<decltype(result.result)>, fmt::format_context>())
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result.result), location);
+            panic(fmt::format("{}: {}", message, result.result), location);
         }
         else
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}", message), location);
+            panic(message, location);
         }
-        throw Exception {message};
     }
     return std::move(result.value);
 }
 
-template <typename T, typename Exception = std::runtime_error>
+template <typename T>
 [[nodiscard]] auto expectNot(T&& value,
                              std::invocable<T> auto predicate,
-                             const char* message,
+                             std::string_view message,
                              std::source_location location = std::source_location::current()) -> T
 {
     if (predicate(std::forward<T>(value))) [[unlikely]]
     {
-        log::internal::LogDispatcher::log(log::Level::Error, message, location);
-        throw Exception {message};
+        panic(message, location);
     }
     return std::forward<T>(value);
 }
@@ -136,7 +143,7 @@ template <typename T, typename Exception = std::runtime_error>
 template <typename T>
 auto shouldBe(T&& result,
               const std::convertible_to<T> auto& expected,
-              const char* message,
+              std::string_view message = "-",
               std::source_location location = std::source_location::current()) -> bool
 {
     if (result != expected) [[unlikely]]
@@ -154,10 +161,22 @@ auto shouldBe(T&& result,
     return true;
 }
 
+inline auto shouldBe(bool result,
+                     std::string_view message = "-",
+                     std::source_location location = std::source_location::current()) -> bool
+{
+    if (!result) [[unlikely]]
+    {
+        log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}", message), location);
+        return false;
+    }
+    return true;
+}
+
 template <typename T>
 auto shouldNotBe(T&& result,
                  const std::convertible_to<T> auto& expected,
-                 const char* message,
+                 std::string_view message,
                  std::source_location location = std::source_location::current()) -> bool
 {
     if (result == expected) [[unlikely]]
@@ -173,13 +192,6 @@ auto shouldNotBe(T&& result,
         return false;
     }
     return true;
-}
-
-template <typename Exception = std::runtime_error>
-auto panic(const char* message, std::source_location location = std::source_location::current())
-{
-    log::internal::LogDispatcher::log(log::Level::Error, message, location);
-    throw Exception {message};
 }
 
 }

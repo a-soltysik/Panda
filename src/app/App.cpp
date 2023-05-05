@@ -34,6 +34,10 @@ auto App::mainLoop() -> void
 
 auto App::initializeLogger() -> void
 {
+    std::set_terminate([](){
+        log::Config::instance().file.terminate();
+    });
+
     if (PD_DEBUG)
     {
         log::Config::instance().console.setLevels(std::array {log::Level::Warning, log::Level::Error});

@@ -80,6 +80,7 @@ public:
         auto setLevels(std::span<const Level> newLevels) -> void;
         auto start() -> void;
         auto stop() -> void;
+        auto terminate() -> void;
         auto setBufferSize(size_t size) -> void;
 
     private:

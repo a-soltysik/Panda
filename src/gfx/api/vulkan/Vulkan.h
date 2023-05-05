@@ -4,9 +4,10 @@
 #include <span>
 #include <unordered_set>
 
+#include "Device.h"
+#include "Vertex.h"
 #include "app/Window.h"
 #include "gfx/api/RenderingApi.h"
-#include "Device.h"
 
 namespace panda::gfx::vulkan
 {
@@ -51,8 +52,10 @@ private:
     [[nodiscard]] auto createCommandBuffers() -> std::vector<vk::CommandBuffer>;
     auto recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void;
     auto createSyncObjects() -> void;
+    [[nodiscard]] auto createVertexBuffer() -> vk::Buffer;
     auto recreateSwapchain() -> void;
     auto cleanupSwapchain() -> void;
+    [[nodiscard]] auto findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) -> uint32_t;
 
     auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
 
@@ -83,6 +86,13 @@ private:
     std::vector<vk::Semaphore> renderFinishedSemaphores;
     std::vector<vk::Fence> inFlightFences;
     std::vector<const char*> requiredValidationLayers;
+    vk::Buffer vertexBuffer;
+    vk::DeviceMemory vertexBufferMemory;
+    std::vector<Vertex> vertices = {
+        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    };
     uint32_t currentFrame = 0;
     bool frameBufferResized = false;
     const Window& window;

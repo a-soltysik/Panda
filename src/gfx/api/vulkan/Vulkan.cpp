@@ -7,7 +7,6 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include <numeric>
 
 #include "Shader.h"
-#include "utils/Assert.h"
 #include "utils/format/api/vulkan/ResultFormatter.h"
 
 namespace panda::gfx::vulkan
@@ -87,6 +86,28 @@ Vulkan::Vulkan(Window& mainWindow)
 
     swapchainFramebuffers = createFrameBuffers();
     commandPool = createCommandPool();
+    vertexBuffer = createVertexBuffer();
+
+    const auto memoryRequirements = device->logicalDevice.getBufferMemoryRequirements(vertexBuffer);
+    const auto allocInfo = vk::MemoryAllocateInfo {
+        memoryRequirements.size,
+        findMemoryType(memoryRequirements.memoryTypeBits,
+                       vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)};
+
+    vertexBufferMemory = expect(device->logicalDevice.allocateMemory(allocInfo),
+                                vk::Result::eSuccess,
+                                "Failed to allocate vertex buffer memory");
+    expect(device->logicalDevice.bindBufferMemory(vertexBuffer, vertexBufferMemory, 0),
+           vk::Result::eSuccess,
+           "Failed to bind vertex buffer");
+
+    auto* data =
+        expect(device->logicalDevice.mapMemory(vertexBufferMemory, 0, sizeof(vertices[0]) * vertices.size(), {}),
+               vk::Result::eSuccess,
+               "Failed to map memory of vertex buffer");
+    std::copy(vertices.cbegin(), vertices.cend(), static_cast<decltype(vertices)::value_type*>(data));
+    device->logicalDevice.unmapMemory(vertexBufferMemory);
+
     commandBuffers = createCommandBuffers();
     createSyncObjects();
 
@@ -107,6 +128,8 @@ Vulkan::~Vulkan() noexcept
         device->logicalDevice.destroyFence(inFlightFences[i]);
     }
     cleanupSwapchain();
+    device->logicalDevice.destroyBuffer(vertexBuffer);
+    device->logicalDevice.freeMemory(vertexBufferMemory);
     device->logicalDevice.destroyPipeline(pipeline);
     device->logicalDevice.destroyPipelineLayout(pipelineLayout);
     device->logicalDevice.destroyRenderPass(renderPass);
@@ -250,15 +273,30 @@ auto Vulkan::render() -> void
                                                  std::numeric_limits<uint64_t>::max()),
              vk::Result::eSuccess,
              "Waiting for the fences didn't succeed");
+    shouldBe(device->logicalDevice.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
+
+    if (frameBufferResized)
+    {
+        frameBufferResized = false;
+        recreateSwapchain();
+        return;
+    }
 
     const auto imageIndex = device->logicalDevice.acquireNextImageKHR(swapchain,
                                                                       std::numeric_limits<uint64_t>::max(),
                                                                       imageAvailableSemaphores[currentFrame]);
 
-    if (imageIndex.result == vk::Result::eErrorOutOfDateKHR) [[unlikely]]
+    if (imageIndex.result == vk::Result::eErrorOutOfDateKHR || imageIndex.result == vk::Result::eSuboptimalKHR)
+        [[unlikely]]
     {
+        frameBufferResized = false;
         recreateSwapchain();
+
         return;
+    }
+    else if (imageIndex.result != vk::Result::eSuccess) [[unlikely]]
+    {
+        panic("Failed to acquire swap chain image");
     }
 
     shouldBe(device->logicalDevice.resetFences(1, &inFlightFences[currentFrame]),
@@ -281,12 +319,12 @@ auto Vulkan::render() -> void
              vk::Result::eSuccess,
              "Submitting the graphics queue didn't succeeded");
 
-    const auto presentInfo =
-        vk::PresentInfoKHR {1, &renderFinishedSemaphores[currentFrame], 1, &swapchain, &imageIndex.value};
+    const auto presentInfo = vk::PresentInfoKHR {renderFinishedSemaphores[currentFrame], swapchain, imageIndex.value};
 
     const auto presentationResult = presentationQueue.presentKHR(presentInfo);
 
-    if (presentationResult == vk::Result::eErrorOutOfDateKHR || frameBufferResized) [[unlikely]]
+    if (presentationResult == vk::Result::eErrorOutOfDateKHR || presentationResult == vk::Result::eSuboptimalKHR ||
+        frameBufferResized) [[unlikely]]
     {
         frameBufferResized = false;
         recreateSwapchain();
@@ -356,7 +394,7 @@ auto Vulkan::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) co
 
 auto Vulkan::createSwapchain() -> vk::SwapchainKHR
 {
-    const auto swapChainSupport = device->swapChainSupport;
+    const auto swapChainSupport = device->querySwapChainSupport();
 
     const auto surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
     const auto presentationMode = choosePresentationMode(swapChainSupport.presentationModes);
@@ -446,7 +484,10 @@ auto Vulkan::createPipeline() -> vk::Pipeline
     const auto dynamicStates = std::array {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
     const auto dynamicState = vk::PipelineDynamicStateCreateInfo {{}, dynamicStates};
 
-    const auto vertexInputInfo = vk::PipelineVertexInputStateCreateInfo {};
+    static constexpr auto bindingDescription = Vertex::getBindingDescription();
+    static constexpr auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
+    const auto vertexInputInfo = vk::PipelineVertexInputStateCreateInfo {{}, bindingDescription, attributeDescriptions};
     const auto inputAssembly =
         vk::PipelineInputAssemblyStateCreateInfo {{}, vk::PrimitiveTopology::eTriangleList, VK_FALSE};
 
@@ -580,6 +621,7 @@ auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_
     };
     commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+    commandBuffer.bindVertexBuffers(0, vertexBuffer, {0});
 
     const auto viewport = vk::Viewport {0.f,
                                         0.f,
@@ -597,7 +639,7 @@ auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_
 
     commandBuffer.setScissor(0, 1, &scissor);
 
-    commandBuffer.draw(3, 1, 0, 0);
+    commandBuffer.draw(vertices.size(), 1, 0, 0);
     commandBuffer.endRenderPass();
     expect(commandBuffer.end(), vk::Result::eSuccess, "Can't end command buffer");
 }
@@ -646,6 +688,30 @@ auto Vulkan::cleanupSwapchain() -> void
         device->logicalDevice.destroyImageView(imageView);
     }
     device->logicalDevice.destroySwapchainKHR(swapchain);
+}
+
+auto Vulkan::createVertexBuffer() -> vk::Buffer
+{
+    const auto bufferInfo = vk::BufferCreateInfo {{},
+                                                  sizeof(vertices[0]) * vertices.size(),
+                                                  vk::BufferUsageFlagBits::eVertexBuffer,
+                                                  vk::SharingMode::eExclusive};
+    return expect(device->logicalDevice.createBuffer(bufferInfo), vk::Result::eSuccess, "Can't create vertex buffer");
+}
+
+auto Vulkan::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) -> uint32_t
+{
+    const auto memoryProperties = device->physicalDevice.getMemoryProperties();
+
+    for (auto i = uint32_t {}; i < memoryProperties.memoryTypeCount; i++)
+    {
+        if ((typeFilter & (uint32_t {1} << i)) &&
+            (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
+        {
+            return i;
+        }
+    }
+    panic("Failed to find suitable memory type");
 }
 
 }

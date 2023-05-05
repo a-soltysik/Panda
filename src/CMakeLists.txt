@@ -9,6 +9,7 @@ add_executable(${ENGINE_TARGET_NAME} ${${ENGINE_TARGET_NAME}_SRC_LIST})
 
 target_include_directories(${ENGINE_TARGET_NAME} PRIVATE ${SRC_DIR})
 target_include_directories(${ENGINE_TARGET_NAME} SYSTEM PRIVATE ${FMT_DIR})
+target_include_directories(${ENGINE_TARGET_NAME} SYSTEM PRIVATE ${GLM_DIR})
 
 find_package(Vulkan REQUIRED)
 target_link_libraries(${ENGINE_TARGET_NAME} PRIVATE Vulkan::Vulkan glfw glm fmt::fmt)
@@ -22,12 +23,14 @@ endif ()
 target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE ENGINE_TARGET_NAME=\"$<TARGET_PROPERTY:NAME>\")
 target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE PROJECT_NAME=\"${CMAKE_PROJECT_NAME}\")
 target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_EXCEPTIONS)
+target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE VULKAN_HPP_ASSERT_ON_RESULT=panda::shouldBe)
 
 target_precompile_headers(${ENGINE_TARGET_NAME}
     PRIVATE
+    "app/Logger.h"
+    "utils/Assert.h"
     <vulkan/vulkan.hpp>
     <GLFW/glfw3.h>
-    "app/Logger.h"
     )
 
 add_subdirectory(shader)

@@ -135,6 +135,7 @@ auto Config::File::start() -> void
 auto Config::File::stop() -> void
 {
     isStarted = false;
+    flush();
 }
 
 auto Config::File::setBufferSize(size_t size) -> void
@@ -154,6 +155,11 @@ auto Config::File::flush() -> void
 Config::File::~File()
 {
     flush();
+}
+
+auto Config::File::terminate() -> void {
+    flush();
+    file->close();
 }
 
 }
