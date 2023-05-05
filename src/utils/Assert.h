@@ -6,6 +6,8 @@
 #include <string_view>
 #include <utility>
 
+#include "app/Logger.h"
+
 namespace panda
 {
 
@@ -28,7 +30,7 @@ concept Result = requires {
 }
 
 [[noreturn]] inline auto panic(std::string_view message,
-                               std::source_location location = std::source_location::current())
+                               std::source_location location = std::source_location::current()) noexcept
 {
     log::internal::LogDispatcher::log(log::Level::Error, fmt::format("Terminal error: {}", message), location);
     panic();
@@ -37,8 +39,8 @@ concept Result = requires {
 template <typename T>
 auto expect(T&& result,
             const std::convertible_to<T> auto& expected,
-            std::string_view message,
-            std::source_location location = std::source_location::current()) -> void
+            std::string_view message = "-",
+            std::source_location location = std::source_location::current()) noexcept -> void
 {
     if (result != expected) [[unlikely]]
     {
@@ -56,8 +58,8 @@ auto expect(T&& result,
 template <Result T>
 [[nodiscard]] auto expect(T&& result,
                           const typename ResultHelper<T>::Error& expected,
-                          std::string_view message,
-                          std::source_location location = std::source_location::current()) ->
+                          std::string_view message = "-",
+                          std::source_location location = std::source_location::current()) noexcept ->
     typename ResultHelper<T>::Ok
 {
     if (result.result != expected) [[unlikely]]
@@ -77,8 +79,8 @@ template <Result T>
 template <typename T>
 [[nodiscard]] auto expect(T&& value,
                           std::invocable<T> auto predicate,
-                          std::string_view message,
-                          std::source_location location = std::source_location::current()) -> T
+                          std::string_view message = "-",
+                          std::source_location location = std::source_location::current()) noexcept -> T
 {
     if (!predicate(std::forward<T>(value))) [[unlikely]]
     {
@@ -90,8 +92,8 @@ template <typename T>
 template <typename T>
 auto expectNot(T&& result,
                const std::convertible_to<T> auto& expected,
-               std::string_view message,
-               std::source_location location = std::source_location::current()) -> void
+               std::string_view message = "-",
+               std::source_location location = std::source_location::current()) noexcept -> void
 {
     if (result == expected) [[unlikely]]
     {
@@ -109,8 +111,8 @@ auto expectNot(T&& result,
 template <Result T>
 [[nodiscard]] auto expectNot(T&& result,
                              const typename ResultHelper<T>::Error& expected,
-                             std::string_view message,
-                             std::source_location location = std::source_location::current()) ->
+                             std::string_view message = "-",
+                             std::source_location location = std::source_location::current()) noexcept ->
     typename ResultHelper<T>::Ok
 {
     if (result.result == expected) [[unlikely]]
@@ -130,8 +132,8 @@ template <Result T>
 template <typename T>
 [[nodiscard]] auto expectNot(T&& value,
                              std::invocable<T> auto predicate,
-                             std::string_view message,
-                             std::source_location location = std::source_location::current()) -> T
+                             std::string_view message = "-",
+                             std::source_location location = std::source_location::current()) noexcept -> T
 {
     if (predicate(std::forward<T>(value))) [[unlikely]]
     {
@@ -144,7 +146,7 @@ template <typename T>
 auto shouldBe(T&& result,
               const std::convertible_to<T> auto& expected,
               std::string_view message = "-",
-              std::source_location location = std::source_location::current()) -> bool
+              std::source_location location = std::source_location::current()) noexcept -> bool
 {
     if (result != expected) [[unlikely]]
     {
@@ -163,7 +165,7 @@ auto shouldBe(T&& result,
 
 inline auto shouldBe(bool result,
                      std::string_view message = "-",
-                     std::source_location location = std::source_location::current()) -> bool
+                     std::source_location location = std::source_location::current()) noexcept -> bool
 {
     if (!result) [[unlikely]]
     {
@@ -176,8 +178,8 @@ inline auto shouldBe(bool result,
 template <typename T>
 auto shouldNotBe(T&& result,
                  const std::convertible_to<T> auto& expected,
-                 std::string_view message,
-                 std::source_location location = std::source_location::current()) -> bool
+                 std::string_view message = "-",
+                 std::source_location location = std::source_location::current()) noexcept -> bool
 {
     if (result == expected) [[unlikely]]
     {

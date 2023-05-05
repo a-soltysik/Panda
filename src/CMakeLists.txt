@@ -27,7 +27,6 @@ target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE VULKAN_HPP_ASSERT_ON_RE
 
 target_precompile_headers(${ENGINE_TARGET_NAME}
     PRIVATE
-    "app/Logger.h"
     "utils/Assert.h"
     <vulkan/vulkan.hpp>
     <GLFW/glfw3.h>

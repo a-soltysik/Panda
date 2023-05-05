@@ -22,25 +22,25 @@ enum class Level
 template <typename... Args>
 struct Debug
 {
-    explicit Debug(std::string_view format, Args&&... args, std::source_location location = std::source_location::current());
+    explicit Debug(std::string_view format, Args&&... args, std::source_location location = std::source_location::current()) noexcept;
 };
 
 template <typename... Args>
 struct Info
 {
-    explicit Info(std::string_view format, Args&&... args, std::source_location location = std::source_location::current());
+    explicit Info(std::string_view format, Args&&... args, std::source_location location = std::source_location::current()) noexcept;
 };
 
 template <typename... Args>
 struct Warning
 {
-    explicit Warning(std::string_view format, Args&&... args, std::source_location location = std::source_location::current());
+    explicit Warning(std::string_view format, Args&&... args, std::source_location location = std::source_location::current()) noexcept;
 };
 
 template <typename... Args>
 struct Error
 {
-    explicit Error(std::string_view format, Args&&... args, std::source_location location = std::source_location::current());
+    explicit Error(std::string_view format, Args&&... args, std::source_location location = std::source_location::current()) noexcept;
 };
 
 namespace internal
@@ -110,13 +110,13 @@ namespace internal
 
 struct LogDispatcher
 {
-    static auto log(Level level, std::string_view message, const std::source_location& location) -> void;
+    static auto log(Level level, std::string_view message, const std::source_location& location) noexcept -> void;
 };
 
 }
 
 template <typename... Args>
-Debug<Args...>::Debug(std::string_view format, Args&&... args, std::source_location location)
+Debug<Args...>::Debug(std::string_view format, Args&&... args, std::source_location location) noexcept
 {
     internal::LogDispatcher::log(Level::Debug,
                                  fmt::format(fmt::runtime(format), std::forward<Args>(args)...),
@@ -124,13 +124,13 @@ Debug<Args...>::Debug(std::string_view format, Args&&... args, std::source_locat
 }
 
 template <typename... Args>
-Info<Args...>::Info(std::string_view format, Args&&... args, std::source_location location)
+Info<Args...>::Info(std::string_view format, Args&&... args, std::source_location location) noexcept
 {
     internal::LogDispatcher::log(Level::Info, fmt::format(fmt::runtime(format), std::forward<Args>(args)...), location);
 }
 
 template <typename... Args>
-Warning<Args...>::Warning(std::string_view format, Args&&... args, std::source_location location)
+Warning<Args...>::Warning(std::string_view format, Args&&... args, std::source_location location) noexcept
 {
     internal::LogDispatcher::log(Level::Warning,
                                  fmt::format(fmt::runtime(format), std::forward<Args>(args)...),
@@ -138,7 +138,7 @@ Warning<Args...>::Warning(std::string_view format, Args&&... args, std::source_l
 }
 
 template <typename... Args>
-Error<Args...>::Error(std::string_view format, Args&&... args, std::source_location location)
+Error<Args...>::Error(std::string_view format, Args&&... args, std::source_location location) noexcept
 {
     internal::LogDispatcher::log(Level::Error,
                                  fmt::format(fmt::runtime(format), std::forward<Args>(args)...),

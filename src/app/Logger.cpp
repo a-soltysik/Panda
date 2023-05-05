@@ -36,10 +36,15 @@ namespace
 namespace internal
 {
 
-auto LogDispatcher::log(Level level, std::string_view message, const std::source_location& location) -> void
+auto LogDispatcher::log(Level level, std::string_view message, const std::source_location& location) noexcept -> void
 {
-    Config::instance().console.log(level, message);
-    Config::instance().file.log(level, message, location);
+    try
+    {
+        Config::instance().console.log(level, message);
+        Config::instance().file.log(level, message, location);
+    } catch (...) {
+        log::Warning("Exception thrown during logging");
+    }
 }
 
 }
