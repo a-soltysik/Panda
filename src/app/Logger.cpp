@@ -8,7 +8,7 @@ namespace panda::log
 namespace
 {
 
-[[nodiscard]] auto getLevelTag(Level level) -> std::string_view
+[[nodiscard]] constexpr auto getLevelTag(Level level) -> std::string_view
 {
     using namespace std::string_view_literals;
     switch (level)
@@ -26,9 +26,10 @@ namespace
     }
 }
 
-[[nodiscard]] auto getFunctionName(std::string_view function) -> std::string_view
+[[nodiscard]] constexpr auto getFunctionName(std::string_view function) -> std::string_view
 {
-    return function.substr(0, function.find('('));
+    const auto nameWithReturnType = function.substr(0, function.find('('));
+    return nameWithReturnType.substr(nameWithReturnType.rfind(' ') + 1);
 }
 
 }
@@ -36,8 +37,9 @@ namespace
 namespace internal
 {
 
-auto LogDispatcher::log(Level level, std::string_view message, const std::source_location& location) noexcept -> void
+auto LogDispatcher::log([[maybe_unused]] Level level, [[maybe_unused]] std::string_view message, [[maybe_unused]] const std::source_location& location) noexcept -> void
 {
+#ifndef PD_DISABLE_LOGS
     try
     {
         Config::instance().console.log(level, message);
@@ -45,6 +47,7 @@ auto LogDispatcher::log(Level level, std::string_view message, const std::source
     } catch (...) {
         log::Warning("Exception thrown during logging");
     }
+#endif
 }
 
 }
@@ -91,10 +94,11 @@ auto Config::File::log(Level level, std::string_view message, const std::source_
     if (levels.contains(level))
     {
         const auto time = std::chrono::system_clock::now();
-        buffer.push_back(fmt::format("{:%H:%M:%S} {} {}, {}\n",
+        buffer.push_back(fmt::format("{:%H:%M:%S} {} {}:{}, {}\n",
                                      std::chrono::floor<std::chrono::microseconds>(time),
                                      getLevelTag(level),
                                      getFunctionName(location.function_name()),
+                                     location.line(),
                                      message));
 
         if (buffer.size() >= bufferSize)
