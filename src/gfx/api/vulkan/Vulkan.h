@@ -25,7 +25,6 @@ public:
     auto render() -> void override;
 
 private:
-
     [[nodiscard]] static constexpr auto shouldEnableValidationLayers() noexcept -> bool
     {
         return PD_DEBUG;
@@ -52,21 +51,22 @@ private:
     [[nodiscard]] auto createCommandBuffers() -> std::vector<vk::CommandBuffer>;
     auto recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void;
     auto createSyncObjects() -> void;
-    [[nodiscard]] auto createVertexBuffer() -> vk::Buffer;
     auto recreateSwapchain() -> void;
     auto cleanupSwapchain() -> void;
     [[nodiscard]] auto findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) -> uint32_t;
+    [[nodiscard]] auto createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
+        -> std::pair<vk::Buffer, vk::DeviceMemory>;
+    auto copyBuffer(vk::Buffer src, vk::Buffer dst, vk::DeviceSize size) -> void;
 
     auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
 
-    static constexpr auto maxFramesInFlight = size_t{2};
+    static constexpr auto maxFramesInFlight = size_t {1};
     static constexpr auto requiredDeviceExtensions = std::array {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     inline static const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo =
         createDebugMessengerCreateInfo();
 
     vk::Instance instance {};
     std::unique_ptr<Device> device;
-    vk::PhysicalDevice physicalDevice {};
     vk::Queue graphicsQueue {};
     vk::Queue presentationQueue {};
     vk::SwapchainKHR swapchain {};
@@ -90,7 +90,7 @@ private:
     vk::DeviceMemory vertexBufferMemory;
     std::vector<Vertex> vertices = {
         {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}},
         {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
     };
     uint32_t currentFrame = 0;

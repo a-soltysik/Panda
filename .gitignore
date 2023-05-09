@@ -5,3 +5,5 @@
 # Output directories
 cmake-build-*/
 out/
+
+CMakeSettings.json

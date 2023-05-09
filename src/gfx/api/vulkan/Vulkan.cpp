@@ -70,6 +70,7 @@ Vulkan::Vulkan(Window& mainWindow)
     {
         device = std::make_unique<Device>(instance, surface, requiredDeviceExtensions);
     }
+    log::Info("Chosen GPU: {}", std::string_view{device->physicalDevice.getProperties().deviceName});
 
     VULKAN_HPP_DEFAULT_DISPATCHER.init(device->logicalDevice);
 
@@ -86,27 +87,27 @@ Vulkan::Vulkan(Window& mainWindow)
 
     swapchainFramebuffers = createFrameBuffers();
     commandPool = createCommandPool();
-    vertexBuffer = createVertexBuffer();
 
-    const auto memoryRequirements = device->logicalDevice.getBufferMemoryRequirements(vertexBuffer);
-    const auto allocInfo = vk::MemoryAllocateInfo {
-        memoryRequirements.size,
-        findMemoryType(memoryRequirements.memoryTypeBits,
-                       vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)};
-
-    vertexBufferMemory = expect(device->logicalDevice.allocateMemory(allocInfo),
-                                vk::Result::eSuccess,
-                                "Failed to allocate vertex buffer memory");
-    expect(device->logicalDevice.bindBufferMemory(vertexBuffer, vertexBufferMemory, 0),
-           vk::Result::eSuccess,
-           "Failed to bind vertex buffer");
+    auto [stagingBuffer, stagingBufferMemory] =
+        createBuffer(sizeof(vertices[0]) * vertices.size(),
+                     vk::BufferUsageFlagBits::eTransferSrc,
+                     vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
     auto* data =
-        expect(device->logicalDevice.mapMemory(vertexBufferMemory, 0, sizeof(vertices[0]) * vertices.size(), {}),
+        expect(device->logicalDevice.mapMemory(stagingBufferMemory, 0, sizeof(vertices[0]) * vertices.size(), {}),
                vk::Result::eSuccess,
                "Failed to map memory of vertex buffer");
     std::copy(vertices.cbegin(), vertices.cend(), static_cast<decltype(vertices)::value_type*>(data));
-    device->logicalDevice.unmapMemory(vertexBufferMemory);
+    device->logicalDevice.unmapMemory(stagingBufferMemory);
+
+    std::tie(vertexBuffer, vertexBufferMemory) =
+        createBuffer(sizeof(vertices[0]) * vertices.size(),
+                     vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                     vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    copyBuffer(stagingBuffer, vertexBuffer, sizeof(vertices[0]) * vertices.size());
+    device->logicalDevice.destroyBuffer(stagingBuffer);
+    device->logicalDevice.freeMemory(stagingBufferMemory);
 
     commandBuffers = createCommandBuffers();
     createSyncObjects();
@@ -175,8 +176,7 @@ auto Vulkan::enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool
 
     if (areValidationLayersSupported())
     {
-        createInfo.enabledLayerCount = requiredValidationLayers.size();
-        createInfo.ppEnabledLayerNames = requiredValidationLayers.data();
+        createInfo.setPEnabledLayerNames(requiredValidationLayers);
 
         return true;
     }
@@ -267,15 +267,13 @@ auto Vulkan::areValidationLayersSupported() const -> bool
 
 auto Vulkan::render() -> void
 {
-    shouldBe(device->logicalDevice.waitForFences(1,
-                                                 &inFlightFences[currentFrame],
+    shouldBe(device->logicalDevice.waitForFences(inFlightFences[currentFrame],
                                                  VK_TRUE,
                                                  std::numeric_limits<uint64_t>::max()),
              vk::Result::eSuccess,
              "Waiting for the fences didn't succeed");
-    shouldBe(device->logicalDevice.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
 
-    if (frameBufferResized)
+    if (frameBufferResized) [[unlikely]]
     {
         frameBufferResized = false;
         recreateSwapchain();
@@ -289,7 +287,6 @@ auto Vulkan::render() -> void
     if (imageIndex.result == vk::Result::eErrorOutOfDateKHR || imageIndex.result == vk::Result::eSuboptimalKHR)
         [[unlikely]]
     {
-        frameBufferResized = false;
         recreateSwapchain();
 
         return;
@@ -299,7 +296,7 @@ auto Vulkan::render() -> void
         panic("Failed to acquire swap chain image");
     }
 
-    shouldBe(device->logicalDevice.resetFences(1, &inFlightFences[currentFrame]),
+    shouldBe(device->logicalDevice.resetFences(inFlightFences[currentFrame]),
              vk::Result::eSuccess,
              "Resetting the fences didn't succeed");
 
@@ -307,15 +304,12 @@ auto Vulkan::render() -> void
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex.value);
     static constexpr auto waitStages =
         std::array {vk::PipelineStageFlags {vk::PipelineStageFlagBits::eColorAttachmentOutput}};
-    const auto submitInfo = vk::SubmitInfo {1,
-                                            &imageAvailableSemaphores[currentFrame],
-                                            waitStages.data(),
-                                            1,
-                                            &commandBuffers[currentFrame],
-                                            1,
-                                            &renderFinishedSemaphores[currentFrame]};
+    const auto submitInfo = vk::SubmitInfo {imageAvailableSemaphores[currentFrame],
+                                            waitStages,
+                                            commandBuffers[currentFrame],
+                                            renderFinishedSemaphores[currentFrame]};
 
-    shouldBe(graphicsQueue.submit(1, &submitInfo, inFlightFences[currentFrame]),
+    shouldBe(graphicsQueue.submit(submitInfo, inFlightFences[currentFrame]),
              vk::Result::eSuccess,
              "Submitting the graphics queue didn't succeeded");
 
@@ -323,10 +317,8 @@ auto Vulkan::render() -> void
 
     const auto presentationResult = presentationQueue.presentKHR(presentInfo);
 
-    if (presentationResult == vk::Result::eErrorOutOfDateKHR || presentationResult == vk::Result::eSuboptimalKHR ||
-        frameBufferResized) [[unlikely]]
+    if (presentationResult == vk::Result::eErrorOutOfDateKHR || presentationResult == vk::Result::eSuboptimalKHR) [[unlikely]]
     {
-        frameBufferResized = false;
         recreateSwapchain();
     }
     else if (presentationResult != vk::Result::eSuccess) [[unlikely]]
@@ -383,13 +375,11 @@ auto Vulkan::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) co
     {
         return capabilities.currentExtent;
     }
-    auto width = int {};
-    auto height = int {};
 
-    glfwGetFramebufferSize(window.getHandle(), &width, &height);
+    const auto size = window.getSize();
 
-    return {std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
-            std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
+    return {std::clamp<uint32_t>(size.x, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+            std::clamp<uint32_t>(size.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
 }
 
 auto Vulkan::createSwapchain() -> vk::SwapchainKHR
@@ -517,7 +507,7 @@ auto Vulkan::createPipeline() -> vk::Pipeline
                                                    vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
 
     const auto colorBlending =
-        vk::PipelineColorBlendStateCreateInfo {{}, VK_FALSE, vk::LogicOp::eCopy, 1, &colorBlendAttachment};
+        vk::PipelineColorBlendStateCreateInfo {{}, VK_FALSE, vk::LogicOp::eCopy, colorBlendAttachment};
     const auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo {};
     pipelineLayout = expect(device->logicalDevice.createPipelineLayout(pipelineLayoutInfo),
                             vk::Result::eSuccess,
@@ -563,8 +553,8 @@ auto Vulkan::createRenderPass() -> vk::RenderPass
                                                    vk::AccessFlagBits::eColorAttachmentWrite};
 
     const auto colorAttachmentRef = vk::AttachmentReference {0, vk::ImageLayout::eColorAttachmentOptimal};
-    const auto subpass = vk::SubpassDescription {{}, vk::PipelineBindPoint::eGraphics, {}, {}, 1, &colorAttachmentRef};
-    const auto renderPassInfo = vk::RenderPassCreateInfo {{}, 1, &colorAttachment, 1, &subpass, 1, &dependency};
+    const auto subpass = vk::SubpassDescription {{}, vk::PipelineBindPoint::eGraphics, {}, {}, colorAttachmentRef};
+    const auto renderPassInfo = vk::RenderPassCreateInfo {{}, colorAttachment, subpass, dependency};
 
     return expect(device->logicalDevice.createRenderPass(renderPassInfo),
                   vk::Result::eSuccess,
@@ -578,7 +568,7 @@ auto Vulkan::createFrameBuffers() -> std::vector<vk::Framebuffer>
     for (const auto& imageView : swapchainImageViews)
     {
         const auto frameBufferInfo =
-            vk::FramebufferCreateInfo {{}, renderPass, 1, &imageView, swapChainExtent.width, swapChainExtent.height, 1};
+            vk::FramebufferCreateInfo {{}, renderPass, imageView, swapChainExtent.width, swapChainExtent.height, 1};
         result.push_back(expect(device->logicalDevice.createFramebuffer(frameBufferInfo),
                                 vk::Result::eSuccess,
                                 "Can't create framebuffer"));
@@ -616,8 +606,7 @@ auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_
         renderPass,
         swapchainFramebuffers[imageIndex],
         {{0, 0}, swapChainExtent},
-        1,
-        &clearColor
+        clearColor
     };
     commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
@@ -690,15 +679,6 @@ auto Vulkan::cleanupSwapchain() -> void
     device->logicalDevice.destroySwapchainKHR(swapchain);
 }
 
-auto Vulkan::createVertexBuffer() -> vk::Buffer
-{
-    const auto bufferInfo = vk::BufferCreateInfo {{},
-                                                  sizeof(vertices[0]) * vertices.size(),
-                                                  vk::BufferUsageFlagBits::eVertexBuffer,
-                                                  vk::SharingMode::eExclusive};
-    return expect(device->logicalDevice.createBuffer(bufferInfo), vk::Result::eSuccess, "Can't create vertex buffer");
-}
-
 auto Vulkan::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) -> uint32_t
 {
     const auto memoryProperties = device->physicalDevice.getMemoryProperties();
@@ -712,6 +692,42 @@ auto Vulkan::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags propert
         }
     }
     panic("Failed to find suitable memory type");
+}
+
+auto Vulkan::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
+    -> std::pair<vk::Buffer, vk::DeviceMemory>
+{
+    const auto bufferInfo = vk::BufferCreateInfo {{}, size, usage, vk::SharingMode::eExclusive};
+    const auto buffer =
+        expect(device->logicalDevice.createBuffer(bufferInfo), vk::Result::eSuccess, "Failed to create buffer");
+    const auto memoryRequirements = device->logicalDevice.getBufferMemoryRequirements(buffer);
+    const auto allocInfo =
+        vk::MemoryAllocateInfo {memoryRequirements.size, findMemoryType(memoryRequirements.memoryTypeBits, properties)};
+    const auto memory = expect(device->logicalDevice.allocateMemory(allocInfo),
+                               vk::Result::eSuccess,
+                               "Failed to allocated buffer memeory");
+
+    expect(device->logicalDevice.bindBufferMemory(buffer, memory, 0), vk::Result::eSuccess, "Failed to bind memory buffer");
+
+    return {buffer, memory};
+}
+
+auto Vulkan::copyBuffer(vk::Buffer src, vk::Buffer dst, vk::DeviceSize size) -> void
+{
+    const auto allocInfo = vk::CommandBufferAllocateInfo{commandPool, vk::CommandBufferLevel::ePrimary, 1};
+    const auto commandBuffer = expect(device->logicalDevice.allocateCommandBuffers(allocInfo), vk::Result::eSuccess, "Failed to allocate command buffer");
+
+    const auto beginInfo = vk::CommandBufferBeginInfo{vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
+    expect(commandBuffer.front().begin(beginInfo), vk::Result::eSuccess, "Failed to begin command buffer");
+
+    const auto copyRegion = vk::BufferCopy{{}, {}, size};
+    commandBuffer.front().copyBuffer(src, dst, copyRegion);
+    expect(commandBuffer.front().end(), vk::Result::eSuccess, "Failed to end command buffer");
+
+    const auto submitInfo = vk::SubmitInfo{{}, {}, commandBuffer.front()};
+    expect(graphicsQueue.submit(submitInfo), vk::Result::eSuccess, "Failed to submit command buffer");
+    shouldBe(graphicsQueue.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
+    device->logicalDevice.freeCommandBuffers(commandPool, commandBuffer);
 }
 
 }

@@ -115,6 +115,7 @@ auto Config::File::setLevels(std::span<const Level> newLevels) -> void
 
 auto Config::File::start() -> void
 {
+#ifndef PD_DISABLE_LOGS
     if (file)
     {
         isStarted = true;
@@ -139,6 +140,7 @@ auto Config::File::start() -> void
         isStarted = false;
         Error(e.what());
     }
+#endif
 }
 
 auto Config::File::stop() -> void
@@ -154,11 +156,13 @@ auto Config::File::setBufferSize(size_t size) -> void
 
 auto Config::File::flush() -> void
 {
+#ifndef PD_DISABLE_LOGS
     for (const auto& line : buffer)
     {
         file->print("{}", line);
     }
     buffer.clear();
+#endif
 }
 
 Config::File::~File()
@@ -167,8 +171,10 @@ Config::File::~File()
 }
 
 auto Config::File::terminate() -> void {
+#ifndef PD_DISABLE_LOGS
     flush();
     file->close();
+#endif
 }
 
 }
