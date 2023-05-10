@@ -26,7 +26,7 @@ concept Result = requires {
 
 [[noreturn]] inline auto panic() noexcept
 {
-    std::terminate();
+    std::abort();
 }
 
 [[noreturn]] inline auto panic(std::string_view message,
