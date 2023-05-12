@@ -56,6 +56,8 @@ private:
     [[nodiscard]] auto findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) -> uint32_t;
     [[nodiscard]] auto createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
         -> std::pair<vk::Buffer, vk::DeviceMemory>;
+    [[nodiscard]] auto createVertexBuffer() -> std::pair<vk::Buffer, vk::DeviceMemory>;
+    [[nodiscard]] auto createIndexBuffer() -> std::pair<vk::Buffer, vk::DeviceMemory>;
     auto copyBuffer(vk::Buffer src, vk::Buffer dst, vk::DeviceSize size) -> void;
 
     auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
@@ -88,10 +90,16 @@ private:
     std::vector<const char*> requiredValidationLayers;
     vk::Buffer vertexBuffer;
     vk::DeviceMemory vertexBufferMemory;
-    std::vector<Vertex> vertices = {
-        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f},  {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    vk::Buffer indexBuffer;
+    vk::DeviceMemory indexBufferMemory;
+    const std::vector<Vertex> vertices = {
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+    };
+    const std::vector<uint16_t> indices = {
+        0, 1, 2, 2, 3, 0
     };
     uint32_t currentFrame = 0;
     bool frameBufferResized = false;

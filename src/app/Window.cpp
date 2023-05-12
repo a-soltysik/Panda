@@ -21,21 +21,14 @@ void framebufferResizeCallback(GLFWwindow* window, int width, int height)
     }
 }
 
-Window::Window()
+Window::Window(glm::uvec2 initialSize, const char* name)
 {
-    if (glfwInit() != GLFW_TRUE)
-    {
-        throw std::runtime_error("Can't initialize GLFW");
-    }
+    expect(glfwInit(), GLFW_TRUE, "Failed to initialize GLFW");
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    //glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    static constexpr auto width = int {800};
-    static constexpr auto height = int {600};
-
-    window = glfwCreateWindow(width, height, ENGINE_TARGET_NAME, nullptr, nullptr);
-    log::Info("Window [{}] {}x{} px created", static_cast<void*>(window), width, height);
+    window = glfwCreateWindow(static_cast<int>(initialSize.x), static_cast<int>(initialSize.y), name, nullptr, nullptr);
+    log::Info("Window [{}] {}x{} px created", static_cast<void*>(window), initialSize.x, initialSize.y);
 
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetWindowUserPointer(window, this);
@@ -58,7 +51,7 @@ auto Window::shouldClose() const noexcept -> bool
     return glfwWindowShouldClose(window) == GLFW_TRUE;
 }
 
-auto Window::processInput() const noexcept -> void
+auto Window::processInput() noexcept -> void
 {
     glfwPollEvents();
 }
@@ -86,7 +79,7 @@ auto Window::isMinimized() const noexcept -> bool
     return size.x == 0 || size.y == 0;
 }
 
-auto Window::waitForInput() const noexcept -> void
+auto Window::waitForInput() noexcept -> void
 {
     glfwWaitEvents();
 }

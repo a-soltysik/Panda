@@ -88,26 +88,8 @@ Vulkan::Vulkan(Window& mainWindow)
     swapchainFramebuffers = createFrameBuffers();
     commandPool = createCommandPool();
 
-    auto [stagingBuffer, stagingBufferMemory] =
-        createBuffer(sizeof(vertices[0]) * vertices.size(),
-                     vk::BufferUsageFlagBits::eTransferSrc,
-                     vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-
-    auto* data =
-        expect(device->logicalDevice.mapMemory(stagingBufferMemory, 0, sizeof(vertices[0]) * vertices.size(), {}),
-               vk::Result::eSuccess,
-               "Failed to map memory of vertex buffer");
-    std::copy(vertices.cbegin(), vertices.cend(), static_cast<decltype(vertices)::value_type*>(data));
-    device->logicalDevice.unmapMemory(stagingBufferMemory);
-
-    std::tie(vertexBuffer, vertexBufferMemory) =
-        createBuffer(sizeof(vertices[0]) * vertices.size(),
-                     vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                     vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-    copyBuffer(stagingBuffer, vertexBuffer, sizeof(vertices[0]) * vertices.size());
-    device->logicalDevice.destroyBuffer(stagingBuffer);
-    device->logicalDevice.freeMemory(stagingBufferMemory);
+    std::tie(vertexBuffer, vertexBufferMemory) = createVertexBuffer();
+    std::tie(indexBuffer, indexBufferMemory) = createIndexBuffer();
 
     commandBuffers = createCommandBuffers();
     createSyncObjects();
@@ -129,6 +111,8 @@ Vulkan::~Vulkan() noexcept
         device->logicalDevice.destroyFence(inFlightFences[i]);
     }
     cleanupSwapchain();
+    device->logicalDevice.destroyBuffer(indexBuffer);
+    device->logicalDevice.freeMemory(indexBufferMemory);
     device->logicalDevice.destroyBuffer(vertexBuffer);
     device->logicalDevice.freeMemory(vertexBufferMemory);
     device->logicalDevice.destroyPipeline(pipeline);
@@ -453,24 +437,17 @@ auto Vulkan::createPipeline() -> vk::Pipeline
     const auto fragmentShader = Shader::createFromFile(device->logicalDevice, "shader/triangle.frag.spv");
     const auto vertexShader = Shader::createFromFile(device->logicalDevice, "shader/triangle.vert.spv");
 
-    auto shaders = std::vector<vk::ShaderModule> {};
+    auto shaderStages = std::vector<vk::PipelineShaderStageCreateInfo> {};
 
     if (fragmentShader.has_value())
     {
-        shaders.push_back(fragmentShader->module);
+        shaderStages.emplace_back(vk::PipelineShaderStageCreateFlags {}, vk::ShaderStageFlagBits::eFragment, fragmentShader->module, "main");
     }
     if (vertexShader.has_value())
     {
-        shaders.push_back(vertexShader->module);
+        shaderStages.emplace_back(vk::PipelineShaderStageCreateFlags {}, vk::ShaderStageFlagBits::eVertex, vertexShader->module, "main");
     }
 
-    const auto vertexShaderStageInfo =
-        vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eVertex, vertexShader->module, "main"};
-
-    const auto fragmentShaderStageInfo =
-        vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eFragment, fragmentShader->module, "main"};
-
-    const auto shaderStages = std::array {vertexShaderStageInfo, fragmentShaderStageInfo};
     const auto dynamicStates = std::array {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
     const auto dynamicState = vk::PipelineDynamicStateCreateInfo {{}, dynamicStates};
 
@@ -553,7 +530,7 @@ auto Vulkan::createRenderPass() -> vk::RenderPass
                                                    vk::AccessFlagBits::eColorAttachmentWrite};
 
     const auto colorAttachmentRef = vk::AttachmentReference {0, vk::ImageLayout::eColorAttachmentOptimal};
-    const auto subpass = vk::SubpassDescription {{}, vk::PipelineBindPoint::eGraphics, {}, {}, colorAttachmentRef};
+    const auto subpass = vk::SubpassDescription {{}, vk::PipelineBindPoint::eGraphics, {}, {}, 1, &colorAttachmentRef};
     const auto renderPassInfo = vk::RenderPassCreateInfo {{}, colorAttachment, subpass, dependency};
 
     return expect(device->logicalDevice.createRenderPass(renderPassInfo),
@@ -611,6 +588,7 @@ auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_
     commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
     commandBuffer.bindVertexBuffers(0, vertexBuffer, {0});
+    commandBuffer.bindIndexBuffer(indexBuffer, 0, vk::IndexType::eUint16);
 
     const auto viewport = vk::Viewport {0.f,
                                         0.f,
@@ -628,7 +606,7 @@ auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_
 
     commandBuffer.setScissor(0, 1, &scissor);
 
-    commandBuffer.draw(vertices.size(), 1, 0, 0);
+    commandBuffer.drawIndexed(indices.size(), 1, 0, 0, 0);
     commandBuffer.endRenderPass();
     expect(commandBuffer.end(), vk::Result::eSuccess, "Can't end command buffer");
 }
@@ -728,6 +706,60 @@ auto Vulkan::copyBuffer(vk::Buffer src, vk::Buffer dst, vk::DeviceSize size) -> 
     expect(graphicsQueue.submit(submitInfo), vk::Result::eSuccess, "Failed to submit command buffer");
     shouldBe(graphicsQueue.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
     device->logicalDevice.freeCommandBuffers(commandPool, commandBuffer);
+}
+
+auto Vulkan::createVertexBuffer() -> std::pair<vk::Buffer, vk::DeviceMemory>
+{
+    auto [stagingBuffer, stagingBufferMemory] =
+        createBuffer(sizeof(vertices[0]) * vertices.size(),
+                     vk::BufferUsageFlagBits::eTransferSrc,
+                     vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+    auto* data =
+        expect(device->logicalDevice.mapMemory(stagingBufferMemory, 0, sizeof(vertices[0]) * vertices.size(), {}),
+               vk::Result::eSuccess,
+               "Failed to map memory of vertex buffer");
+    std::copy(vertices.cbegin(), vertices.cend(), static_cast<decltype(vertices)::value_type*>(data));
+    device->logicalDevice.unmapMemory(stagingBufferMemory);
+
+    auto [newVertexBuffer, newVertexBufferMemory] =
+        createBuffer(sizeof(vertices[0]) * vertices.size(),
+                     vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                     vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    copyBuffer(stagingBuffer, newVertexBuffer, sizeof(vertices[0]) * vertices.size());
+
+    device->logicalDevice.destroyBuffer(stagingBuffer);
+    device->logicalDevice.freeMemory(stagingBufferMemory);
+
+    return {newVertexBuffer, newVertexBufferMemory};
+}
+
+auto Vulkan::createIndexBuffer() -> std::pair<vk::Buffer, vk::DeviceMemory>
+{
+    auto [stagingBuffer, stagingBufferMemory] =
+        createBuffer(sizeof(indices[0]) * indices.size(),
+                     vk::BufferUsageFlagBits::eTransferSrc,
+                     vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+    auto* data =
+        expect(device->logicalDevice.mapMemory(stagingBufferMemory, 0, sizeof(indices[0]) * indices.size(), {}),
+               vk::Result::eSuccess,
+               "Failed to map memory of vertex buffer");
+    std::copy(indices.cbegin(), indices.cend(), static_cast<decltype(indices)::value_type*>(data));
+    device->logicalDevice.unmapMemory(stagingBufferMemory);
+
+    auto [newIndexBuffer, newIndexBufferMemory] =
+        createBuffer(sizeof(indices[0]) * indices.size(),
+                     vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                     vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    copyBuffer(stagingBuffer, newIndexBuffer, sizeof(indices[0]) * indices.size());
+
+    device->logicalDevice.destroyBuffer(stagingBuffer);
+    device->logicalDevice.freeMemory(stagingBufferMemory);
+
+    return {newIndexBuffer, newIndexBufferMemory};
 }
 
 }
