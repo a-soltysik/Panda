@@ -26,11 +26,6 @@ target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE VULKAN_HPP_DISPATCH_LOA
 target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE VULKAN_HPP_ASSERT_ON_RESULT=EXPECT)
 target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE VULKAN_HPP_ASSERT=DEBUG_EXPECT)
 
-target_precompile_headers(${ENGINE_TARGET_NAME}
-    PRIVATE
-    "utils/Assert.h"
-    <vulkan/vulkan.hpp>
-    <GLFW/glfw3.h>
-    )
+target_precompile_headers(${ENGINE_TARGET_NAME} PRIVATE "pch.h")
 
 add_subdirectory(shader)

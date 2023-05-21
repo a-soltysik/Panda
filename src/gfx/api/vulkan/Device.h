@@ -26,18 +26,30 @@ public:
 
     Device(const vk::Instance& instance,
            const vk::SurfaceKHR& currentSurface,
-           std::span<const char* const> requiredExtensions);
-    Device(const vk::Instance& instance,
-           const vk::SurfaceKHR& currentSurface,
            std::span<const char* const> requiredExtensions,
-           std::span<const char* const> requiredValidationLayers);
+           std::span<const char* const> requiredValidationLayers = {});
 
-    auto querySwapChainSupport() -> SwapChainSupportDetails;
+    Device(const Device&) = delete;
+    Device(Device&&) = delete;
+    auto operator=(const Device&) -> Device& = delete;
+    auto operator=(Device&&) -> Device& = delete;
+
+    ~Device() noexcept;
+
+    [[nodiscard]] auto querySwapChainSupport() const -> SwapChainSupportDetails;
+    [[nodiscard]] auto findSupportedFormat(std::span<const vk::Format> candidates,
+                                           vk::ImageTiling tiling,
+                                           vk::FormatFeatureFlags features) const noexcept -> std::optional<vk::Format>;
+    [[nodiscard]] auto findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const noexcept
+        -> std::optional<uint32_t>;
 
     const vk::PhysicalDevice physicalDevice;
     const QueueFamilies queueFamilies;
 
     const vk::Device logicalDevice;
+    const vk::Queue graphicsQueue;
+    const vk::Queue presentationQueue;
+    const vk::CommandPool commandPool;
 
 private:
     static auto pickPhysicalDevice(const vk::Instance& instance,
@@ -52,11 +64,8 @@ private:
         -> bool;
     static auto createLogicalDevice(vk::PhysicalDevice device,
                                     const QueueFamilies& queueFamilies,
-                                    std::span<const char* const> requiredExtensions) -> vk::Device;
-    static auto createLogicalDevice(vk::PhysicalDevice device,
-                                    const QueueFamilies& queueFamilies,
                                     std::span<const char* const> requiredExtensions,
-                                    std::span<const char* const> requiredValidationLayers) -> vk::Device;
+                                    std::span<const char* const> requiredValidationLayers = {}) -> vk::Device;
 
     const vk::SurfaceKHR& surface;
 };

@@ -7,7 +7,7 @@ void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
     log::Info("Size of window [{}] changed to {}x{}", static_cast<void*>(window), width, height);
 
-    const auto* instance = static_cast<Window*>(glfwGetWindowUserPointer(window));
+    auto* instance = static_cast<Window*>(glfwGetWindowUserPointer(window));
 
     if (instance == nullptr)
     {
@@ -15,10 +15,7 @@ void framebufferResizeCallback(GLFWwindow* window, int width, int height)
         return;
     }
 
-    for (const auto& action : instance->frameBufferResizeSubscribers)
-    {
-        action(width, height);
-    }
+    instance->frameBufferResizeSender.send(width, height);
 }
 
 Window::Window(glm::uvec2 initialSize, const char* name)
@@ -56,11 +53,6 @@ auto Window::processInput() noexcept -> void
     glfwPollEvents();
 }
 
-auto Window::subscribeForFrameBufferResize(std::function<void(int, int)>&& action) -> void
-{
-    frameBufferResizeSubscribers.push_back(std::move(action));
-}
-
 auto Window::getSize() const noexcept -> glm::uvec2
 {
     auto width = int {};
@@ -82,6 +74,11 @@ auto Window::isMinimized() const noexcept -> bool
 auto Window::waitForInput() noexcept -> void
 {
     glfwWaitEvents();
+}
+
+auto Window::getFrameBufferResizeSignal() const noexcept -> utils::Signal<FrameBufferResize>&
+{
+    return frameBufferResizeSender.getSignal();
 }
 
 }

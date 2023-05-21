@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <exception>
+#include <optional>
 #include <source_location>
 #include <string_view>
 #include <utility>
@@ -151,6 +152,19 @@ template <typename T>
     }
     return std::forward<T>(value);
 }
+
+template <typename T>
+[[nodiscard]] auto expect(std::optional<T>&& value,
+                             std::string_view message,
+                             std::source_location location = std::source_location::current()) noexcept -> T
+{
+    if (!value.has_value()) [[unlikely]]
+    {
+        panic(message, location);
+    }
+    return value.value();
+}
+
 
 template <typename T>
 auto shouldBe(T&& result,

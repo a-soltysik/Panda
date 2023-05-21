@@ -68,6 +68,7 @@ auto Shader::createFromRawData(const vk::Device& device, const std::vector<uint3
 
 Shader::~Shader() noexcept
 {
+    log::Info("Destroying shader module");
     device.destroy(module);
 }
 

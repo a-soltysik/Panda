@@ -37,6 +37,11 @@ public:
                                                 const std::vector<uint32_t>& buffer,
                                                 Type type) -> std::optional<Shader>;
 
+    [[nodiscard]] static constexpr auto getEntryPointName() -> const char*
+    {
+        return "main";
+    }
+
     const vk::ShaderModule module;
     const Type type;
 

@@ -3,12 +3,15 @@
 #include <functional>
 #include <glm/vec2.hpp>
 
+#include "utils/Signal.h"
+
 namespace panda
 {
 
 class Window
 {
 public:
+    using FrameBufferResize = std::function<void(int, int)>;
     Window(glm::uvec2 initialSize, const char* name);
     Window(const Window&) = delete;
     Window(Window&&) = delete;
@@ -22,12 +25,12 @@ public:
     [[nodiscard]] auto getSize() const noexcept -> glm::uvec2;
     static auto processInput() noexcept -> void;
     static auto waitForInput() noexcept -> void;
-    auto subscribeForFrameBufferResize(std::function<void(int, int)>&& action) -> void;
+    auto getFrameBufferResizeSignal() const noexcept -> utils::Signal<FrameBufferResize>&;
 
 private:
     friend auto framebufferResizeCallback(GLFWwindow* window, int width, int height) -> void;
 
-    std::vector<std::function<void(int, int)>> frameBufferResizeSubscribers;
+    const utils::Sender<FrameBufferResize> frameBufferResizeSender;
     GLFWwindow* window = nullptr;
 };
 

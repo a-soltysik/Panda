@@ -10,21 +10,17 @@ namespace panda::gfx::vulkan
 
 Device::Device(const vk::Instance& instance,
                const vk::SurfaceKHR& currentSurface,
-               std::span<const char* const> requiredExtensions)
-    : physicalDevice {pickPhysicalDevice(instance, currentSurface, requiredExtensions)},
-      queueFamilies {findQueueFamilies(physicalDevice, currentSurface).value()},
-      logicalDevice {createLogicalDevice(physicalDevice, queueFamilies, requiredExtensions)},
-      surface {currentSurface}
-{
-}
-
-Device::Device(const vk::Instance& instance,
-               const vk::SurfaceKHR& currentSurface,
                std::span<const char* const> requiredExtensions,
                std::span<const char* const> requiredValidationLayers)
     : physicalDevice {pickPhysicalDevice(instance, currentSurface, requiredExtensions)},
       queueFamilies(findQueueFamilies(physicalDevice, currentSurface).value()),
       logicalDevice {createLogicalDevice(physicalDevice, queueFamilies, requiredExtensions, requiredValidationLayers)},
+      graphicsQueue {logicalDevice.getQueue(queueFamilies.graphicsFamily, 0)},
+      presentationQueue {logicalDevice.getQueue(queueFamilies.presentationFamily, 0)},
+      commandPool {expect(logicalDevice.createCommandPool(
+                              {vk::CommandPoolCreateFlagBits::eResetCommandBuffer, queueFamilies.graphicsFamily}),
+                          vk::Result::eSuccess,
+                          "Can't create command pool")},
       surface {currentSurface}
 {
 }
@@ -122,27 +118,6 @@ auto Device::checkDeviceExtensionSupport(vk::PhysicalDevice device, std::span<co
 
 auto Device::createLogicalDevice(vk::PhysicalDevice device,
                                  const QueueFamilies& queueFamilies,
-                                 std::span<const char* const> requiredExtensions) -> vk::Device
-{
-    const auto uniqueFamilies = queueFamilies.getUniqueQueueFamilies();
-    const auto queuePriority = 1.f;
-
-    auto queueCreateInfos = std::vector<vk::DeviceQueueCreateInfo> {};
-    queueCreateInfos.reserve(uniqueFamilies.size());
-
-    for (const auto queueFamily : queueFamilies.getUniqueQueueFamilies())
-    {
-        queueCreateInfos.emplace_back(vk::DeviceQueueCreateInfo({}, queueFamily, 1, &queuePriority));
-    }
-    const auto physicalDeviceFeatures = vk::PhysicalDeviceFeatures {};
-
-    auto createInfo = vk::DeviceCreateInfo({}, queueCreateInfos, {}, requiredExtensions, &physicalDeviceFeatures);
-
-    return expect(device.createDevice(createInfo), vk::Result::eSuccess, "Can't create physical device");
-}
-
-auto Device::createLogicalDevice(vk::PhysicalDevice device,
-                                 const QueueFamilies& queueFamilies,
                                  std::span<const char* const> requiredExtensions,
                                  std::span<const char* const> requiredValidationLayers) -> vk::Device
 {
@@ -167,9 +142,51 @@ auto Device::createLogicalDevice(vk::PhysicalDevice device,
     return expect(device.createDevice(createInfo), vk::Result::eSuccess, "Can't create physical device");
 }
 
-auto Device::querySwapChainSupport() -> SwapChainSupportDetails
+auto Device::querySwapChainSupport() const -> SwapChainSupportDetails
 {
     return querySwapChainSupport(physicalDevice, surface);
+}
+
+Device::~Device() noexcept
+{
+    log::Info("Destroying device");
+    logicalDevice.destroy(commandPool);
+    logicalDevice.destroy();
+}
+
+auto Device::findSupportedFormat(std::span<const vk::Format> candidates,
+                                 vk::ImageTiling tiling,
+                                 vk::FormatFeatureFlags features) const noexcept -> std::optional<vk::Format>
+{
+    for (const auto format : candidates)
+    {
+        const auto properties = physicalDevice.getFormatProperties(format);
+
+        if (tiling == vk::ImageTiling::eLinear && (properties.linearTilingFeatures & features) == features)
+        {
+            return format;
+        }
+        else if (tiling == vk::ImageTiling::eOptimal && (properties.optimalTilingFeatures & features) == features)
+        {
+            return format;
+        }
+    }
+    return {};
+}
+
+auto Device::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const noexcept -> std::optional<uint32_t>
+{
+    const auto memoryProperties = physicalDevice.getMemoryProperties();
+
+    for (auto i = uint32_t {}; i < memoryProperties.memoryTypeCount; i++)
+    {
+        if ((typeFilter & (uint32_t {1} << i)) &&
+            (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
+        {
+            return i;
+        }
+    }
+    return {};
 }
 
 auto Device::QueueFamilies::getUniqueQueueFamilies() const -> std::unordered_set<uint32_t>
