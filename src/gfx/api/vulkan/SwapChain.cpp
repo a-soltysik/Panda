@@ -25,7 +25,7 @@ SwapChain::SwapChain(const Device& deviceRef,
       renderPass {createRenderPass(swapChainImageFormat, device)},
       swapChainFramebuffers {
           createFrameBuffers(swapChainImageViews, depthImageViews, renderPass, swapChainExtent, device)},
-      frameBufferResizeReceiver { window.getFrameBufferResizeSignal().connect([this](auto, auto) noexcept {
+      frameBufferResizeReceiver { utils::Signals::frameBufferResized.connect([this](auto, auto) noexcept {
           log::Debug("Received framebuffer resized notif");
           frameBufferResized = true;
       })}

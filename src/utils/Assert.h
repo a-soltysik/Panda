@@ -200,6 +200,20 @@ inline auto shouldBe(std::convertible_to<bool> auto&& result,
 }
 
 template <typename T>
+[[nodiscard]] auto shouldBe(T&& value,
+                             std::invocable<T> auto predicate,
+                             std::string_view message,
+                             std::source_location location = std::source_location::current()) noexcept -> bool
+{
+    if (!predicate(std::forward<T>(value))) [[unlikely]]
+    {
+        log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}", message), location);
+        return false;
+    }
+    return true;
+}
+
+template <typename T>
 auto shouldNotBe(T&& result,
                  const std::convertible_to<T> auto& expected,
                  std::string_view message,

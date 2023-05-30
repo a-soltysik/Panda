@@ -77,7 +77,7 @@ private:
     std::vector<vk::Fence> inFlightFences;
     std::vector<vk::Fence*> imagesInFlight;
 
-    utils::Receiver<Window::FrameBufferResize> frameBufferResizeReceiver;
+    utils::Signals::FrameBufferResized::ReceiverT frameBufferResizeReceiver;
     uint32_t currentFrame = 0;
     bool frameBufferResized = false;
 };

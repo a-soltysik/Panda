@@ -6,6 +6,7 @@
 
 #include "Buffer.h"
 #include "Device.h"
+#include "Object.h"
 #include "Pipeline.h"
 #include "SwapChain.h"
 #include "Vertex.h"
@@ -49,8 +50,6 @@ private:
     [[nodiscard]] auto createPipeline() -> std::unique_ptr<Pipeline>;
     [[nodiscard]] auto createCommandBuffers() -> std::vector<vk::CommandBuffer>;
     auto recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void;
-    [[nodiscard]] auto createVertexBuffer() -> std::unique_ptr<Buffer>;
-    [[nodiscard]] auto createIndexBuffer() -> std::unique_ptr<Buffer>;
 
     auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
 
@@ -69,16 +68,7 @@ private:
 
     std::vector<vk::CommandBuffer> commandBuffers;
     std::vector<const char*> requiredValidationLayers;
-    std::unique_ptr<Buffer> vertexBuffer;
-    std::unique_ptr<Buffer> indexBuffer;
-
-    const std::vector<Vertex> vertices = {
-        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}},
-        {{0.5f, 0.5f},   {0.0f, 0.0f, 1.0f}},
-        {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}}
-    };
-    const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
+    std::unique_ptr<Object> rectangle;
 };
 
 }

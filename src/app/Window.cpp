@@ -5,20 +5,14 @@ namespace panda
 
 void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
+    static auto sender = utils::Signals::frameBufferResized.registerSender();
     log::Info("Size of window [{}] changed to {}x{}", static_cast<void*>(window), width, height);
 
-    auto* instance = static_cast<Window*>(glfwGetWindowUserPointer(window));
-
-    if (instance == nullptr)
-    {
-        log::Warning("Instance of the window [{}] doesn't exist", static_cast<void*>(window));
-        return;
-    }
-
-    instance->frameBufferResizeSender.send(width, height);
+    sender(width, height);
 }
 
 Window::Window(glm::uvec2 initialSize, const char* name)
+    : size {initialSize}
 {
     expect(glfwInit(), GLFW_TRUE, "Failed to initialize GLFW");
 
@@ -28,7 +22,10 @@ Window::Window(glm::uvec2 initialSize, const char* name)
     log::Info("Window [{}] {}x{} px created", static_cast<void*>(window), initialSize.x, initialSize.y);
 
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-    glfwSetWindowUserPointer(window, this);
+
+    frameBufferResizedReceiver = utils::Signals::frameBufferResized.connect([this](int x, int y) {
+        size = {x, y};
+    });
 }
 
 Window::~Window() noexcept
@@ -55,30 +52,17 @@ auto Window::processInput() noexcept -> void
 
 auto Window::getSize() const noexcept -> glm::uvec2
 {
-    auto width = int {};
-    auto height = int {};
-    glfwGetFramebufferSize(window, &width, &height);
-
-    return {
-        static_cast<uint32_t>(width),
-        static_cast<uint32_t>(height),
-    };
+    return size;
 }
 
 auto Window::isMinimized() const noexcept -> bool
 {
-    const auto size = getSize();
     return size.x == 0 || size.y == 0;
 }
 
 auto Window::waitForInput() noexcept -> void
 {
     glfwWaitEvents();
-}
-
-auto Window::getFrameBufferResizeSignal() const noexcept -> utils::Signal<FrameBufferResize>&
-{
-    return frameBufferResizeSender.getSignal();
 }
 
 }

@@ -3,7 +3,7 @@
 #include <functional>
 #include <glm/vec2.hpp>
 
-#include "utils/Signal.h"
+#include "utils/Signals.h"
 
 namespace panda
 {
@@ -11,7 +11,6 @@ namespace panda
 class Window
 {
 public:
-    using FrameBufferResize = std::function<void(int, int)>;
     Window(glm::uvec2 initialSize, const char* name);
     Window(const Window&) = delete;
     Window(Window&&) = delete;
@@ -25,13 +24,11 @@ public:
     [[nodiscard]] auto getSize() const noexcept -> glm::uvec2;
     static auto processInput() noexcept -> void;
     static auto waitForInput() noexcept -> void;
-    auto getFrameBufferResizeSignal() const noexcept -> utils::Signal<FrameBufferResize>&;
 
 private:
-    friend auto framebufferResizeCallback(GLFWwindow* window, int width, int height) -> void;
-
-    const utils::Sender<FrameBufferResize> frameBufferResizeSender;
+    utils::Signals::FrameBufferResized::ReceiverT frameBufferResizedReceiver;
     GLFWwindow* window = nullptr;
+    glm::uvec2 size;
 };
 
 }

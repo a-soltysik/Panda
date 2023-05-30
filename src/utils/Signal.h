@@ -1,38 +1,51 @@
 #pragma once
 
+#include <concepts>
 #include <functional>
 #include <memory>
 
 namespace panda::utils
 {
 
-template <typename F>
+template <typename... Args>
 class Sender;
-template <typename F>
+template <typename... Args>
 class Receiver;
 
-template <typename F>
+template <typename... Args>
 class Signal
 {
 public:
-    using Id = size_t;
+    using SenderT = Sender<Args...>;
+    using ReceiverT = Receiver<Args...>;
+    using ChannelT = std::function<void(Args...)>;
 
-    auto connect(F&& connection) -> Receiver<F>;
-    auto disconnect(const Receiver<F>& receiver) -> void;
+    auto registerSender() const -> SenderT;
+    auto connect(ChannelT&& connection) -> ReceiverT;
+    auto disconnect(const ReceiverT& receiver) -> void;
 
 private:
-    friend class Sender<F>;
-    Signal() = default;
+    friend class Sender<Args...>;
 
-    std::unordered_map<Id, F> connections;
-    std::mutex connectionsMutex;
-    Id currentId = 0;
+    template <std::convertible_to<Args>... Params>
+    auto emit(Params&&... params) const -> void
+    {
+        std::lock_guard<std::mutex> lock {connectionsMutex};
+        for (auto& [key, value] : connections)
+        {
+            value(std::forward<Params>(params)...);
+        }
+    }
+
+    std::vector<std::pair<const ReceiverT*, ChannelT>> connections;
+    mutable std::mutex connectionsMutex;
 };
 
-template <typename F>
+template <typename... Args>
 class Receiver
 {
 public:
+    Receiver() = default;
     Receiver(const Receiver&) = delete;
     Receiver(Receiver&&) noexcept = default;
     auto operator=(const Receiver&) -> Receiver& = delete;
@@ -40,64 +53,76 @@ public:
 
     ~Receiver() noexcept
     {
-        signal.get().disconnect(*this);
+        if (!signal) [[unlikely]]
+        {
+            return;
+        }
+        signal->disconnect(*this);
     }
 
-    const Signal<F>::Id id;
-
 private:
-    friend class Signal<F>;
+    friend class Signal<Args...>;
 
-    Receiver(Signal<F>& signalRef, Signal<F>::Id receiverId)
-        : id {receiverId},
-          signal {signalRef}
+    explicit Receiver(Signal<Args...>& signalRef)
+        : signal {&signalRef}
     {
     }
 
-    std::reference_wrapper<Signal<F>> signal;
+    Signal<Args...>* signal;
 };
 
-template <typename F>
+template <typename... Args>
 class Sender
 {
 public:
     Sender() = default;
+
+    explicit Sender(const Signal<Args...>& signalRef)
+        : signal {&signalRef}
+    {
+    }
+
     Sender(const Sender&) = delete;
     Sender(Sender&&) noexcept = default;
     auto operator=(const Sender&) -> Sender& = delete;
     auto operator=(Sender&&) noexcept -> Sender& = default;
-    ~Sender() noexcept = default;
+    ~Sender() = default;
 
-    template <typename... Args>
-    auto send(Args&&... args) const -> void
+    template <std::convertible_to<Args>... Params>
+    auto operator()(Params&&... params) const -> void
     {
-        for (auto& [key, value] : signal.connections)
+        if (signal) [[likely]]
         {
-            value(std::forward<Args>(args)...);
+            signal->emit(std::forward<Params>(params)...);
         }
     }
 
-    [[nodiscard]] auto getSignal() const noexcept -> Signal<F>&
-    {
-        return signal;
-    }
-
 private:
-    mutable Signal<F> signal;
+    const Signal<Args...>* signal;
 };
 
-template <typename F>
-auto Signal<F>::connect(F&& connection) -> Receiver<F>
+template <typename... Args>
+auto Signal<Args...>::registerSender() const -> SenderT
 {
-    std::lock_guard<std::mutex> lock {connectionsMutex};
-    connections[currentId] = connection;
-    return {*this, currentId++};
+    return SenderT {*this};
 }
 
-template <typename F>
-auto Signal<F>::disconnect(const Receiver<F>& receiver) -> void
+template <typename... Args>
+auto Signal<Args...>::connect(ChannelT&& connection) -> ReceiverT
 {
-    connections.erase(receiver.id);
+    std::lock_guard<std::mutex> lock {connectionsMutex};
+    auto receiver = ReceiverT {*this};
+    connections.emplace_back(&receiver, std::move(connection));
+    return receiver;
+}
+
+template <typename... Args>
+auto Signal<Args...>::disconnect(const ReceiverT& receiver) -> void
+{
+    std::lock_guard<std::mutex> lock {connectionsMutex};
+    std::erase_if(connections, [&receiver](const auto& elem) noexcept {
+        return elem.first == &receiver;
+    });
 }
 
 }

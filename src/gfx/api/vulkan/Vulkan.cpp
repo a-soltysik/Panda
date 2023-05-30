@@ -75,14 +75,18 @@ Vulkan::Vulkan(Window& mainWindow)
     pipeline = createPipeline();
     log::Info("Created pipeline successfully");
 
-    vertexBuffer = createVertexBuffer();
-    log::Info("Created vertex buffer successfully");
-    indexBuffer = createIndexBuffer();
-    log::Info("Created index buffer successfully");
-
     commandBuffers = createCommandBuffers();
     log::Info("Created command buffers successfully");
 
+    rectangle = std::make_unique<Object>(*device,
+                                         std::vector<Vertex> {
+                                             {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+                                             {{0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}},
+                                             {{0.5f, 0.5f},   {0.0f, 0.0f, 1.0f}},
+                                             {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}}
+    },
+                                         std::vector<uint16_t> {0, 1, 2, 2, 3, 0});
+    log::Info("Create new object \"rectangle\"");
     log::Info("Vulkan API has been successfully initialized");
 }
 
@@ -335,8 +339,7 @@ auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_
     };
     commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->getHandle());
-    commandBuffer.bindVertexBuffers(0, vertexBuffer->buffer, {0});
-    commandBuffer.bindIndexBuffer(indexBuffer->buffer, 0, vk::IndexType::eUint16);
+    rectangle->bind(commandBuffer);
 
     const auto viewport = vk::Viewport {0.f,
                                         0.f,
@@ -353,47 +356,9 @@ auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_
 
     commandBuffer.setScissor(0, scissor);
 
-    commandBuffer.drawIndexed(indices.size(), 1, 0, 0, 0);
+    rectangle->draw(commandBuffer);
     commandBuffer.endRenderPass();
     expect(commandBuffer.end(), vk::Result::eSuccess, "Can't end command buffer");
-}
-
-auto Vulkan::createVertexBuffer() -> std::unique_ptr<Buffer>
-{
-    const auto stagingBuffer =
-        Buffer {*device,
-                vertices,
-                vk::BufferUsageFlagBits::eTransferSrc,
-                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
-
-    auto newVertexBuffer =
-        std::make_unique<Buffer>(*device,
-                                 stagingBuffer.size,
-                                 vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                                 vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-    Buffer::copy(stagingBuffer, *newVertexBuffer);
-
-    return newVertexBuffer;
-}
-
-auto Vulkan::createIndexBuffer() -> std::unique_ptr<Buffer>
-{
-    const auto stagingBuffer =
-        Buffer {*device,
-                indices,
-                vk::BufferUsageFlagBits::eTransferSrc,
-                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
-
-    auto newIndexBuffer =
-        std::make_unique<Buffer>(*device,
-                                 stagingBuffer.size,
-                                 vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                                 vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-    Buffer::copy(stagingBuffer, *newIndexBuffer);
-
-    return newIndexBuffer;
 }
 
 auto Vulkan::InstanceDeleter::operator()(vk::Instance* instance) const noexcept -> void
