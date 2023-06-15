@@ -3,9 +3,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "Vulkan.h"
 
 #include <algorithm>
-#include <iostream>
 
-#include "Shader.h"
 #include "utils/format/api/vulkan/ResultFormatter.h"
 
 namespace panda::gfx::vulkan
@@ -13,6 +11,7 @@ namespace panda::gfx::vulkan
 
 namespace
 {
+
 VKAPI_ATTR auto VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                                          [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT messageType,
                                          const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -42,7 +41,7 @@ VKAPI_ATTR auto VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT 
 
 }
 
-Vulkan::Vulkan(Window& mainWindow)
+Vulkan::Vulkan(const Window& mainWindow)
     : instance {createInstance()}
 {
     VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
@@ -70,23 +69,28 @@ Vulkan::Vulkan(Window& mainWindow)
 
     VULKAN_HPP_DEFAULT_DISPATCHER.init(device->logicalDevice);
 
-    swapChain = std::make_unique<SwapChain>(*device, surface, mainWindow, maxFramesInFlight);
-    log::Info("Created swap chain successfully");
-    pipeline = createPipeline();
-    log::Info("Created pipeline successfully");
+    renderer = std::make_unique<Renderer>(mainWindow, *device, surface);
 
-    commandBuffers = createCommandBuffers();
-    log::Info("Created command buffers successfully");
-
-    rectangle = std::make_unique<Object>(*device,
-                                         std::vector<Vertex> {
-                                             {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-                                             {{0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}},
-                                             {{0.5f, 0.5f},   {0.0f, 0.0f, 1.0f}},
-                                             {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}}
+    model = std::make_unique<Model>(*device,
+                                    std::vector<Vertex> {
+                                        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+                                        {{0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}},
+                                        {{0.5f, 0.5f},   {0.0f, 0.0f, 1.0f}},
+                                        {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}}
     },
-                                         std::vector<uint16_t> {0, 1, 2, 2, 3, 0});
+                                    std::vector<uint16_t> {0, 1, 2, 2, 3, 0});
+
+    auto object = Object::createObject();
+    object.mesh = model.get();
+    object.color = {0.1f, 0.8f, 0.1f};
+    object.transform.translation.x = 0.2f;
+
+    objects.push_back(std::move(object));
+
     log::Info("Create new object \"rectangle\"");
+
+    renderSystem = std::make_unique<RenderSystem>(*device, renderer->getSwapChainRenderPass());
+
     log::Info("Vulkan API has been successfully initialized");
 }
 
@@ -95,8 +99,6 @@ Vulkan::~Vulkan() noexcept
     log::Info("Starting closing Vulkan API");
 
     shouldBe(device->logicalDevice.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
-
-    device->logicalDevice.destroyPipelineLayout(pipelineLayout);
 
     if constexpr (shouldEnableValidationLayers())
     {
@@ -230,18 +232,17 @@ auto Vulkan::areValidationLayersSupported() const -> bool
     return true;
 }
 
-auto Vulkan::render() -> void
+auto Vulkan::makeFrame() -> void
 {
-    const auto imageIndex = swapChain->acquireNextImage();
-    if (!imageIndex.has_value())
+    const auto commandBuffer = renderer->beginFrame();
+    if (!commandBuffer)
     {
         return;
     }
-
-    commandBuffers[imageIndex.value()].reset();
-    recordCommandBuffer(commandBuffers[imageIndex.value()], imageIndex.value());
-
-    swapChain->submitCommandBuffers(commandBuffers[imageIndex.value()], imageIndex.value());
+    renderer->beginSwapChainRenderPass();
+    renderSystem->render(commandBuffer, objects);
+    renderer->endSwapChainRenderPass();
+    renderer->endFrame();
 }
 
 auto Vulkan::createSurface(const Window& window) -> vk::SurfaceKHR
@@ -255,110 +256,6 @@ auto Vulkan::createSurface(const Window& window) -> vk::SurfaceKHR
             return result != nullptr;
         },
         "Unable to create surface");
-}
-
-auto Vulkan::createPipeline() -> std::unique_ptr<Pipeline>
-{
-    const auto inputAssemblyInfo =
-        vk::PipelineInputAssemblyStateCreateInfo {{}, vk::PrimitiveTopology::eTriangleList, VK_FALSE};
-
-    const auto viewportInfo = vk::PipelineViewportStateCreateInfo {{}, 1, {}, 1, {}};
-    const auto rasterizationInfo = vk::PipelineRasterizationStateCreateInfo {{},
-                                                                             VK_FALSE,
-                                                                             VK_FALSE,
-                                                                             vk::PolygonMode::eFill,
-                                                                             vk::CullModeFlagBits::eBack,
-                                                                             vk::FrontFace::eClockwise,
-                                                                             VK_FALSE,
-                                                                             {},
-                                                                             {},
-                                                                             {},
-                                                                             1.f};
-
-    const auto multisamplingInfo = vk::PipelineMultisampleStateCreateInfo {{}, vk::SampleCountFlagBits::e1, VK_FALSE};
-    const auto colorBlendAttachment =
-        vk::PipelineColorBlendAttachmentState {VK_FALSE,
-                                               vk::BlendFactor::eSrcAlpha,
-                                               vk::BlendFactor::eOneMinusSrcAlpha,
-                                               vk::BlendOp::eAdd,
-                                               vk::BlendFactor::eOne,
-                                               vk::BlendFactor::eZero,
-                                               vk::BlendOp::eAdd,
-                                               vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-                                                   vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
-
-    const auto colorBlendInfo =
-        vk::PipelineColorBlendStateCreateInfo {{}, VK_FALSE, vk::LogicOp::eCopy, colorBlendAttachment};
-    const auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo {};
-    pipelineLayout = expect(device->logicalDevice.createPipelineLayout(pipelineLayoutInfo),
-                            vk::Result::eSuccess,
-                            "Can't create pipeline layout");
-
-    return std::make_unique<Pipeline>(*device,
-                                      PipelineConfig {"shader/triangle.vert.spv",
-                                                      "shader/triangle.frag.spv",
-                                                      inputAssemblyInfo,
-                                                      viewportInfo,
-                                                      rasterizationInfo,
-                                                      multisamplingInfo,
-                                                      colorBlendInfo,
-                                                      {},
-                                                      pipelineLayout,
-                                                      swapChain->getRenderPass(),
-                                                      0});
-}
-
-auto Vulkan::createCommandBuffers() -> std::vector<vk::CommandBuffer>
-{
-    const auto allocationInfo = vk::CommandBufferAllocateInfo {device->commandPool,
-                                                               vk::CommandBufferLevel::ePrimary,
-                                                               static_cast<uint32_t>(swapChain->imagesCount())};
-    return expect(device->logicalDevice.allocateCommandBuffers(allocationInfo),
-                  vk::Result::eSuccess,
-                  "Can't allocate command buffer");
-}
-
-auto Vulkan::recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void
-{
-    const auto beginInfo = vk::CommandBufferBeginInfo {};
-    expect(commandBuffer.begin(beginInfo), vk::Result::eSuccess, "Can't begin commandBuffer");
-
-    const auto clearColor = vk::ClearValue {
-        vk::ClearColorValue {0.f, 0.f, 0.f, 1.f}
-    };
-    const auto depthStencil = vk::ClearValue {
-        vk::ClearDepthStencilValue {1.f, 0}
-    };
-    const auto clearValues = std::array {clearColor, depthStencil};
-    const auto& swapChainExtent = swapChain->getExtent();
-    const auto renderPassBeginInfo = vk::RenderPassBeginInfo {
-        swapChain->getRenderPass(),
-        swapChain->getFrameBuffer(imageIndex),
-        {{0, 0}, swapChainExtent},
-        clearValues
-    };
-    commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
-    commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->getHandle());
-    rectangle->bind(commandBuffer);
-
-    const auto viewport = vk::Viewport {0.f,
-                                        0.f,
-                                        static_cast<float>(swapChain->getExtent().width),
-                                        static_cast<float>(swapChain->getExtent().height),
-                                        0.f,
-                                        1.f};
-    commandBuffer.setViewport(0, viewport);
-
-    const auto scissor = vk::Rect2D {
-        {0, 0},
-        swapChainExtent
-    };
-
-    commandBuffer.setScissor(0, scissor);
-
-    rectangle->draw(commandBuffer);
-    commandBuffer.endRenderPass();
-    expect(commandBuffer.end(), vk::Result::eSuccess, "Can't end command buffer");
 }
 
 auto Vulkan::InstanceDeleter::operator()(vk::Instance* instance) const noexcept -> void

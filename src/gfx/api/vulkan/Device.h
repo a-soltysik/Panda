@@ -29,10 +29,7 @@ public:
            std::span<const char* const> requiredExtensions,
            std::span<const char* const> requiredValidationLayers = {});
 
-    Device(const Device&) = delete;
-    Device(Device&&) = delete;
-    auto operator=(const Device&) -> Device& = delete;
-    auto operator=(Device&&) -> Device& = delete;
+    PD_DELETE_ALL(Device);
 
     ~Device() noexcept;
 

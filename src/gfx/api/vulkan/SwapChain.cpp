@@ -1,31 +1,31 @@
 #include "SwapChain.h"
 
 #include "utils/format/api/vulkan/ResultFormatter.h"
+#include "Vulkan.h"
 
 namespace panda::gfx::vulkan
 {
 
 SwapChain::SwapChain(const Device& deviceRef,
                      const vk::SurfaceKHR& surfaceRef,
-                     const Window& windowRef,
-                     size_t maxFrames)
+                     const Window& windowRef)
     : device {deviceRef},
       window {windowRef},
       surface {surfaceRef},
-      maxFramesInFlight {maxFrames},
       swapChainExtent {chooseSwapExtent(device.querySwapChainSupport().capabilities, window)},
       swapChainImageFormat {chooseSwapSurfaceFormat(device.querySwapChainSupport().formats)},
+      swapChainDepthFormat {findDepthFormat(device)},
       swapChain {createSwapChain(surface, swapChainExtent, device, swapChainImageFormat)},
       swapChainImages {expect(
           device.logicalDevice.getSwapchainImagesKHR(swapChain), vk::Result::eSuccess, "Can't get swapchain images")},
       swapChainImageViews {createImageViews(swapChainImages, swapChainImageFormat, device)},
-      depthImages {createDepthImages(device, swapChainExtent, swapChainImages.size())},
+      depthImages {createDepthImages(device, swapChainExtent, swapChainImages.size(), swapChainDepthFormat)},
       depthImageMemories {createDepthImageMemories(device, depthImages, swapChainImages.size())},
-      depthImageViews {createDepthImageViews(device, depthImages, swapChainImages.size())},
-      renderPass {createRenderPass(swapChainImageFormat, device)},
+      depthImageViews {createDepthImageViews(device, depthImages, swapChainImages.size(), swapChainDepthFormat)},
+      renderPass {createRenderPass(swapChainImageFormat, swapChainDepthFormat, device)},
       swapChainFramebuffers {
           createFrameBuffers(swapChainImageViews, depthImageViews, renderPass, swapChainExtent, device)},
-      frameBufferResizeReceiver { utils::Signals::frameBufferResized.connect([this](auto, auto) noexcept {
+      frameBufferResizeReceiver {utils::Signals::frameBufferResized.connect([this](auto, auto) noexcept {
           log::Debug("Received framebuffer resized notif");
           frameBufferResized = true;
       })}
@@ -118,11 +118,12 @@ auto SwapChain::createImageViews(const std::vector<vk::Image>& swapChainImages,
     return imageViews;
 }
 
-auto SwapChain::createRenderPass(const vk::SurfaceFormatKHR& swapChainImageFormat, const Device& device)
-    -> vk::RenderPass
+auto SwapChain::createRenderPass(const vk::SurfaceFormatKHR& imageFormat,
+                                 const vk::SurfaceFormatKHR& depthFormat,
+                                 const Device& device) -> vk::RenderPass
 {
     const auto depthAttachment = vk::AttachmentDescription {{},
-                                                            findDepthFormat(device),
+                                                            depthFormat.format,
                                                             vk::SampleCountFlagBits::e1,
                                                             vk::AttachmentLoadOp::eClear,
                                                             vk::AttachmentStoreOp::eDontCare,
@@ -134,7 +135,7 @@ auto SwapChain::createRenderPass(const vk::SurfaceFormatKHR& swapChainImageForma
     const auto depthAttachmentRef = vk::AttachmentReference {1, vk::ImageLayout::eDepthStencilAttachmentOptimal};
 
     const auto colorAttachment = vk::AttachmentDescription {{},
-                                                            swapChainImageFormat.format,
+                                                            imageFormat.format,
                                                             vk::SampleCountFlagBits::e1,
                                                             vk::AttachmentLoadOp::eClear,
                                                             vk::AttachmentStoreOp::eStore,
@@ -154,12 +155,13 @@ auto SwapChain::createRenderPass(const vk::SurfaceFormatKHR& swapChainImageForma
                                                  {},
                                                  &depthAttachmentRef};
 
-    const auto dependency = vk::SubpassDependency {VK_SUBPASS_EXTERNAL,
-                                                   0,
-                                                   vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                                                   vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                                                   vk::AccessFlagBits::eNone,
-                                                   vk::AccessFlagBits::eColorAttachmentWrite};
+    const auto dependency = vk::SubpassDependency {
+        VK_SUBPASS_EXTERNAL,
+        0,
+        vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests,
+        vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests,
+        vk::AccessFlagBits::eNone,
+        vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite};
 
     const auto attachments = std::array {colorAttachment, depthAttachment};
 
@@ -198,12 +200,12 @@ auto SwapChain::createSyncObjects() -> void
     const auto semaphoreInfo = vk::SemaphoreCreateInfo {};
     const auto fenceInfo = vk::FenceCreateInfo {vk::FenceCreateFlagBits::eSignaled};
 
-    imageAvailableSemaphores.reserve(maxFramesInFlight);
-    renderFinishedSemaphores.reserve(maxFramesInFlight);
-    inFlightFences.reserve(maxFramesInFlight);
+    imageAvailableSemaphores.reserve(Vulkan::maxFramesInFlight);
+    renderFinishedSemaphores.reserve(Vulkan::maxFramesInFlight);
+    inFlightFences.reserve(Vulkan::maxFramesInFlight);
     imagesInFlight.resize(imagesCount());
 
-    for (auto i = size_t {}; i < maxFramesInFlight; i++)
+    for (auto i = size_t {}; i < Vulkan::maxFramesInFlight; i++)
     {
         imageAvailableSemaphores.push_back(expect(device.logicalDevice.createSemaphore(semaphoreInfo),
                                                   vk::Result::eSuccess,
@@ -224,16 +226,25 @@ auto SwapChain::recreate() -> void
     cleanup();
     const auto swapChainSupport = device.querySwapChainSupport();
     swapChainExtent = chooseSwapExtent(swapChainSupport.capabilities, window);
+
+    const auto oldImageFormat = swapChainImageFormat;
     swapChainImageFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+    shouldBe(oldImageFormat != swapChainImageFormat, "Image format has changed!");
+
+    const auto oldDepthFormat = swapChainDepthFormat;
+    swapChainDepthFormat = findDepthFormat(device);
+    shouldBe(oldDepthFormat != swapChainDepthFormat, "Depth format has changed!");
+
     swapChain = createSwapChain(surface, swapChainExtent, device, swapChainImageFormat);
     swapChainImages = expect(device.logicalDevice.getSwapchainImagesKHR(swapChain),
                              vk::Result::eSuccess,
                              "Can't get swapchain images");
     swapChainImageViews = createImageViews(swapChainImages, swapChainImageFormat, device);
-    depthImages = createDepthImages(device, swapChainExtent, swapChainImages.size());
+    depthImages = createDepthImages(device, swapChainExtent, swapChainImages.size(), swapChainDepthFormat);
     depthImageMemories = createDepthImageMemories(device, depthImages, swapChainImages.size());
-    depthImageViews = createDepthImageViews(device, depthImages, swapChainImages.size());
-    swapChainFramebuffers = createFrameBuffers(swapChainImageViews, depthImageViews, renderPass, swapChainExtent, device);
+    depthImageViews = createDepthImageViews(device, depthImages, swapChainImages.size(), swapChainDepthFormat);
+    swapChainFramebuffers =
+        createFrameBuffers(swapChainImageViews, depthImageViews, renderPass, swapChainExtent, device);
 
     log::Info("Swapchain recreated");
 }
@@ -403,7 +414,7 @@ auto SwapChain::submitCommandBuffers(const vk::CommandBuffer& commandBuffer, uin
         log::Warning("Presenting the queue didn't succeeded: {}", presentationResult);
     }
 
-    currentFrame = (currentFrame + 1) % maxFramesInFlight;
+    currentFrame = (currentFrame + 1) % Vulkan::maxFramesInFlight;
 }
 
 auto SwapChain::imagesCount() const noexcept -> size_t
@@ -411,10 +422,11 @@ auto SwapChain::imagesCount() const noexcept -> size_t
     return swapChainImages.size();
 }
 
-auto SwapChain::createDepthImages(const Device& device, vk::Extent2D swapChainExtent, size_t imagesCount)
-    -> std::vector<vk::Image>
+auto SwapChain::createDepthImages(const Device& device,
+                                  vk::Extent2D swapChainExtent,
+                                  size_t imagesCount,
+                                  const vk::SurfaceFormatKHR& depthFormat) -> std::vector<vk::Image>
 {
-    const auto depthFormat = findDepthFormat(device);
     auto depthImages = std::vector<vk::Image> {};
     depthImages.reserve(imagesCount);
 
@@ -423,7 +435,7 @@ auto SwapChain::createDepthImages(const Device& device, vk::Extent2D swapChainEx
         const auto imageInfo = vk::ImageCreateInfo {
             {},
             vk::ImageType::e2D,
-            depthFormat,
+            depthFormat.format,
             {swapChainExtent.width, swapChainExtent.height, 1},
             1,
             1,
@@ -440,9 +452,9 @@ auto SwapChain::createDepthImages(const Device& device, vk::Extent2D swapChainEx
 
 auto SwapChain::createDepthImageViews(const Device& device,
                                       const std::vector<vk::Image>& depthImages,
-                                      size_t imagesCount) -> std::vector<vk::ImageView>
+                                      size_t imagesCount,
+                                      const vk::SurfaceFormatKHR& depthFormat) -> std::vector<vk::ImageView>
 {
-    const auto depthFormat = findDepthFormat(device);
     auto depthImageViews = std::vector<vk::ImageView> {};
     depthImageViews.reserve(imagesCount);
 
@@ -452,7 +464,7 @@ auto SwapChain::createDepthImageViews(const Device& device,
             {},
             depthImages[i],
             vk::ImageViewType::e2D,
-            depthFormat,
+            depthFormat.format,
             {},
             {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}
         };
@@ -475,7 +487,8 @@ auto SwapChain::createDepthImageMemories(const Device& device,
         const auto memoryRequirements = device.logicalDevice.getImageMemoryRequirements(depthImages[i]);
         const auto allocInfo = vk::MemoryAllocateInfo {
             memoryRequirements.size,
-            expect(device.findMemoryType(memoryRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal), "Failed to find memory type")};
+            expect(device.findMemoryType(memoryRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal),
+                   "Failed to find memory type")};
         depthImageMemories.push_back(expect(device.logicalDevice.allocateMemory(allocInfo),
                                             vk::Result::eSuccess,
                                             "Failed to allocate depth image memory"));

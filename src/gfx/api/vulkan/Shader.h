@@ -23,10 +23,7 @@ public:
     };
 
     Shader(const vk::ShaderModule& shaderModule, Type shaderType, const vk::Device& logicalDevice) noexcept;
-    Shader(const Shader&) = delete;
-    Shader(Shader&&) = delete;
-    auto operator=(const Shader&) -> Shader& = delete;
-    auto operator=(Shader&&) -> Shader& = delete;
+    PD_DELETE_ALL(Shader);
     ~Shader() noexcept;
 
     [[nodiscard]] static auto createFromFile(const vk::Device& device, const std::filesystem::path& path)

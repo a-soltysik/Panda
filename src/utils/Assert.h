@@ -100,6 +100,16 @@ inline auto expect(std::convertible_to<bool> auto&& result,
     }
 }
 
+inline auto expectNot(std::convertible_to<bool> auto&& result,
+                   std::string_view message,
+                   std::source_location location = std::source_location::current()) noexcept -> void
+{
+    if (result) [[unlikely]]
+    {
+        panic(message, location);
+    }
+}
+
 template <typename T>
 auto expectNot(T&& result,
                const std::convertible_to<T> auto& expected,

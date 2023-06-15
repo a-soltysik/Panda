@@ -60,7 +60,7 @@ auto App::mainLoop() -> void
     {
         if (!window->isMinimized())
         {
-            api->render();
+            api->makeFrame();
             Window::processInput();
         }
         else [[unlikely]]

@@ -1,27 +1,40 @@
 #pragma once
 
-#include "Buffer.h"
-#include "Device.h"
-#include "Vertex.h"
+#include "Model.h"
 
 namespace panda::gfx::vulkan
 {
 
+struct Transform2
+{
+    glm::vec2 translation{};
+    glm::vec2 scale{1.f, 1.f};
+    float rotation{};
+    [[nodiscard]] auto mat2() const -> glm::mat2{
+        const auto scaleMat = glm::mat2{{scale.x, 0.f}, {0.f, scale.y}};
+        const auto rotationMat = glm::mat2{{glm::cos(rotation), glm::sin(rotation)}, {-glm::sin(rotation), glm::cos(rotation)}};
+        return rotationMat * scaleMat;
+    }
+};
+
 class Object
 {
 public:
-    Object(const Device& deviceRef, const std::vector<Vertex>& vertices, const std::vector<uint16_t>& indices);
+    using Id = size_t;
 
-    auto bind(const vk::CommandBuffer& commandBuffer) const -> void;
-    auto draw(const vk::CommandBuffer& commandBuffer) const -> void;
+    [[nodiscard]] static auto createObject() -> Object;
+
+    PD_MOVE_ONLY(Object);
+    ~Object() noexcept = default;
+
+    Model* mesh;
+    Transform2 transform;
+    glm::vec3 color;
+
 private:
-    static auto createVertexBuffer(const Device& device, const std::vector<Vertex>& vertices) -> std::unique_ptr<Buffer>;
-    static auto createIndexBuffer(const Device& device, const std::vector<uint16_t>& indices) -> std::unique_ptr<Buffer>;
+    explicit Object(Id id);
 
-    const Device& device;
-    const std::unique_ptr<Buffer> vertexBuffer;
-    std::unique_ptr<Buffer> indexBuffer;
-    uint32_t indexCount;
+    Id id;
 };
 
 }

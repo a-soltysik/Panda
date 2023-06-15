@@ -13,7 +13,7 @@ public:
     auto operator=(RenderingApi&&) -> RenderingApi& = default;
 
     virtual ~RenderingApi() noexcept = default;
-    virtual auto render() -> void = 0;
+    virtual auto makeFrame() -> void = 0;
 };
 
 }

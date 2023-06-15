@@ -10,13 +10,9 @@ namespace panda::gfx::vulkan
 class SwapChain
 {
 public:
-    SwapChain(const Device& device, const vk::SurfaceKHR& surface, const Window& window, size_t maxFrames);
-    SwapChain(const SwapChain& swapChain) = delete;
-    SwapChain(SwapChain&&) = delete;
-    auto operator=(const SwapChain&) -> SwapChain& = delete;
-    auto operator=(SwapChain&&) -> SwapChain& = delete;
+    SwapChain(const Device& device, const vk::SurfaceKHR& surface, const Window& window);
+    PD_DELETE_ALL(SwapChain);
     ~SwapChain() noexcept;
-
 
     [[nodiscard]] auto getRenderPass() const noexcept -> const vk::RenderPass&;
     [[nodiscard]] auto getFrameBuffer(size_t index) const noexcept -> const vk::Framebuffer&;
@@ -40,16 +36,26 @@ private:
     [[nodiscard]] static auto createImageViews(const std::vector<vk::Image>& swapChainImages,
                                                const vk::SurfaceFormatKHR& swapChainImageFormat,
                                                const Device& device) -> std::vector<vk::ImageView>;
-    [[nodiscard]] static auto createRenderPass(const vk::SurfaceFormatKHR& swapChainImageFormat, const Device& device)
-        -> vk::RenderPass;
+    [[nodiscard]] static auto createRenderPass(const vk::SurfaceFormatKHR& imageFormat,
+                                               const vk::SurfaceFormatKHR& depthFormat,
+                                               const Device& device) -> vk::RenderPass;
     [[nodiscard]] static auto createFrameBuffers(const std::vector<vk::ImageView>& swapChainImageViews,
                                                  const std::vector<vk::ImageView>& depthImageViews,
                                                  const vk::RenderPass& renderPass,
                                                  vk::Extent2D swapChainExtent,
                                                  const Device& device) -> std::vector<vk::Framebuffer>;
-    [[nodiscard]] static auto createDepthImages(const Device& device, vk::Extent2D swapChainExtent, size_t imagesCount) -> std::vector<vk::Image>;
-    [[nodiscard]] static auto createDepthImageViews(const Device& device, const std::vector<vk::Image>& depthImages, size_t imagesCount) -> std::vector<vk::ImageView>;
-    [[nodiscard]] static auto createDepthImageMemories(const Device& device, const std::vector<vk::Image>& depthImages, size_t imagesCount) -> std::vector<vk::DeviceMemory>;
+    [[nodiscard]] static auto createDepthImages(const Device& device,
+                                                vk::Extent2D swapChainExtent,
+                                                size_t imagesCount,
+                                                const vk::SurfaceFormatKHR& depthFormat) -> std::vector<vk::Image>;
+    [[nodiscard]] static auto createDepthImageViews(const Device& device,
+                                                    const std::vector<vk::Image>& depthImages,
+                                                    size_t imagesCount,
+                                                    const vk::SurfaceFormatKHR& depthFormat)
+        -> std::vector<vk::ImageView>;
+    [[nodiscard]] static auto createDepthImageMemories(const Device& device,
+                                                       const std::vector<vk::Image>& depthImages,
+                                                       size_t imagesCount) -> std::vector<vk::DeviceMemory>;
     [[nodiscard]] static auto findDepthFormat(const Device& device) -> vk::Format;
 
     auto createSyncObjects() -> void;
@@ -60,9 +66,9 @@ private:
     const Window& window;
     const vk::SurfaceKHR& surface;
 
-    const size_t maxFramesInFlight;
     vk::Extent2D swapChainExtent;
     vk::SurfaceFormatKHR swapChainImageFormat;
+    vk::SurfaceFormatKHR swapChainDepthFormat;
     vk::SwapchainKHR swapChain;
     std::vector<vk::Image> swapChainImages;
     std::vector<vk::ImageView> swapChainImageViews;

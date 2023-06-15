@@ -12,10 +12,7 @@ class Window
 {
 public:
     Window(glm::uvec2 initialSize, const char* name);
-    Window(const Window&) = delete;
-    Window(Window&&) = delete;
-    auto operator=(const Window&) -> Window& = delete;
-    auto operator=(Window&&) -> Window& = delete;
+    PD_DELETE_ALL(Window);
     ~Window() noexcept;
 
     [[nodiscard]] auto getHandle() const noexcept -> GLFWwindow*;

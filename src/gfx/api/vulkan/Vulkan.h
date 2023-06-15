@@ -1,17 +1,17 @@
 #pragma once
 
+#include <app/Window.h>
+#include <gfx/api/RenderingApi.h>
+
 #include <optional>
 #include <span>
 #include <unordered_set>
 
-#include "Buffer.h"
 #include "Device.h"
+#include "Model.h"
 #include "Object.h"
-#include "Pipeline.h"
-#include "SwapChain.h"
-#include "Vertex.h"
-#include "app/Window.h"
-#include "gfx/api/RenderingApi.h"
+#include "RenderSystem.h"
+#include "Renderer.h"
 
 namespace panda::gfx::vulkan
 {
@@ -19,14 +19,13 @@ namespace panda::gfx::vulkan
 class Vulkan : public RenderingApi
 {
 public:
-    explicit Vulkan(Window& mainWindow);
-    Vulkan(const Vulkan&) = delete;
-    Vulkan(Vulkan&&) = default;
-    auto operator=(const Vulkan&) -> Vulkan& = delete;
-    auto operator=(Vulkan&&) -> Vulkan& = delete;
+    explicit Vulkan(const Window& mainWindow);
+    PD_DELETE_ALL(Vulkan);
     ~Vulkan() noexcept override;
 
-    auto render() -> void override;
+    static constexpr auto maxFramesInFlight = size_t {2};
+
+    auto makeFrame() -> void override;
 
 private:
     struct InstanceDeleter
@@ -47,28 +46,23 @@ private:
     [[nodiscard]] auto areValidationLayersSupported() const -> bool;
     [[nodiscard]] auto createInstance() -> std::unique_ptr<vk::Instance, InstanceDeleter>;
     [[nodiscard]] auto createSurface(const Window& window) -> vk::SurfaceKHR;
-    [[nodiscard]] auto createPipeline() -> std::unique_ptr<Pipeline>;
-    [[nodiscard]] auto createCommandBuffers() -> std::vector<vk::CommandBuffer>;
-    auto recordCommandBuffer(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void;
 
     auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
 
-    static constexpr auto maxFramesInFlight = size_t {2};
     static constexpr auto requiredDeviceExtensions = std::array {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     inline static const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo =
         createDebugMessengerCreateInfo();
 
     std::unique_ptr<vk::Instance, InstanceDeleter> instance;
     std::unique_ptr<Device> device;
-    std::unique_ptr<SwapChain> swapChain;
-    std::unique_ptr<Pipeline> pipeline;
+    std::unique_ptr<Renderer> renderer;
+    std::unique_ptr<RenderSystem> renderSystem;
     vk::DebugUtilsMessengerEXT debugMessenger {};
     vk::SurfaceKHR surface {};
-    vk::PipelineLayout pipelineLayout {};
 
-    std::vector<vk::CommandBuffer> commandBuffers;
     std::vector<const char*> requiredValidationLayers;
-    std::unique_ptr<Object> rectangle;
+    std::unique_ptr<Model> model;
+    std::vector<Object> objects;
 };
 
 }

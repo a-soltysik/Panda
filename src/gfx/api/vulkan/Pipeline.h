@@ -28,10 +28,7 @@ class Pipeline
 {
 public:
     Pipeline(const Device& device, const PipelineConfig& config);
-    Pipeline(const Pipeline&) = delete;
-    Pipeline(Pipeline&&) = delete;
-    auto operator=(const Pipeline&) -> Pipeline& = delete;
-    auto operator=(Pipeline&&) -> Pipeline& = delete;
+    PD_DELETE_ALL(Pipeline);
     ~Pipeline() noexcept;
 
     [[nodiscard]] auto getHandle() const noexcept -> const vk::Pipeline&;

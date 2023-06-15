@@ -23,10 +23,7 @@ public:
         map(std::forward<T>(data));
     }
 
-    Buffer(const Buffer&) = delete;
-    Buffer(Buffer&&) = delete;
-    auto operator=(const Buffer&) = delete;
-    auto operator=(Buffer&&) = delete;
+    PD_DELETE_ALL(Buffer);
     ~Buffer() noexcept;
 
     template <std::ranges::range T>
