@@ -123,7 +123,7 @@ auto Vulkan::createInstance() -> std::unique_ptr<vk::Instance, InstanceDeleter>
     expect(areRequiredExtensionsAvailable(requiredExtensions), true, "There are missing extensions");
 
     auto createInfo =
-        vk::InstanceCreateInfo({}, &appInfo, {}, {}, requiredExtensions.size(), requiredExtensions.data());
+        vk::InstanceCreateInfo({}, &appInfo, {}, {}, static_cast<uint32_t>(requiredExtensions.size()), requiredExtensions.data());
 
     if constexpr (shouldEnableValidationLayers())
     {

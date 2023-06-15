@@ -58,7 +58,7 @@ auto Device::findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface
     auto isGraphicsSet = false;
     auto isPresentSet = false;
 
-    for (auto i = size_t {}; i < queueFamilies.size(); i++)
+    for (auto i = uint32_t {}; i < static_cast<uint32_t>(queueFamilies.size()); i++)
     {
         if (queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics)
         {

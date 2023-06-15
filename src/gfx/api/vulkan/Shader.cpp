@@ -44,7 +44,8 @@ auto Shader::createFromFile(const vk::Device& device, const std::filesystem::pat
     }
 
     const auto fileSize = fin.tellg();
-    auto buffer = std::vector<uint32_t>(fileSize / sizeof(uint32_t));
+    const auto bufferSize = static_cast<size_t>(fileSize) / sizeof(uint32_t);
+    auto buffer = std::vector<uint32_t>(bufferSize);
 
     fin.seekg(0);
     fin.read(reinterpret_cast<char*>(buffer.data()), fileSize);

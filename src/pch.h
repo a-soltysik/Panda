@@ -1,12 +1,12 @@
 #pragma once
 
-#define PD_MOVE_ONLY(className)                               \
+#define PD_MOVE_ONLY(className)                            \
     className(const className&) = delete;                  \
     className(className&&) = default;                      \
     auto operator=(const className&)->className& = delete; \
     auto operator=(className&&)->className& = default
 
-#define PD_COPY_ONLY(className)                                \
+#define PD_COPY_ONLY(className)                             \
     className(const className&) = default;                  \
     className(className&&) = delete;                        \
     auto operator=(const className&)->className& = default; \
@@ -18,7 +18,7 @@
     auto operator=(const className&)->className& = default; \
     auto operator=(className&&)->className& = default
 
-#define PD_DELETE_ALL(className)                              \
+#define PD_DELETE_ALL(className)                           \
     className(const className&) = delete;                  \
     className(className&&) = delete;                       \
     auto operator=(const className&)->className& = delete; \

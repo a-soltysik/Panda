@@ -19,8 +19,8 @@ set(EXT_DIR ${PROJECT_SOURCE_DIR}/ext)
 
 set(FMT_DIR ${EXT_DIR}/fmt)
 set(VULKAN_HPP_DIR ${EXT_DIR}/Vulkan-Hpp)
-set(GLM_DIR ${VULKAN_HPP_DIR}/glm)
-set(GLFW_DIR ${VULKAN_HPP_DIR}/glfw)
+set(GLM_DIR ${EXT_DIR}/glm)
+set(GLFW_DIR ${EXT_DIR}/glfw)
 
 add_subdirectory(${FMT_DIR})
 add_subdirectory(${VULKAN_HPP_DIR})
