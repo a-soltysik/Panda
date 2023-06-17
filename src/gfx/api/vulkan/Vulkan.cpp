@@ -112,9 +112,9 @@ auto Vulkan::createInstance() -> std::unique_ptr<vk::Instance, InstanceDeleter>
     const auto vkGetInstanceProcAddr = dynamicLoader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
-    const auto appInfo = vk::ApplicationInfo(PROJECT_NAME,
+    const auto appInfo = vk::ApplicationInfo(PD_PROJECT_NAME,
                                              VK_API_VERSION_1_0,
-                                             ENGINE_TARGET_NAME,
+                                             PD_TARGET_NAME,
                                              VK_API_VERSION_1_0,
                                              VK_API_VERSION_1_3);
 

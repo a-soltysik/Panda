@@ -47,7 +47,7 @@ auto App::run() -> int
     initializeLogger();
     registerSignalHandlers();
 
-    window = std::make_unique<Window>(glm::uvec2 {800, 600}, ENGINE_TARGET_NAME);
+    window = std::make_unique<Window>(glm::uvec2 {800, 600}, PD_TARGET_NAME);
     api = std::make_unique<gfx::vulkan::Vulkan>(*window);
 
     mainLoop();

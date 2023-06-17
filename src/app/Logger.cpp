@@ -66,7 +66,7 @@ auto Config::Console::log(Level level, std::string_view message) -> void
     }
     if (levels.contains(level))
     {
-        fmt::println(stderr, "{} {}", getLevelTag(level), message);
+        fmt::print(stderr, "{} {}\n", getLevelTag(level), message);
     }
 }
 

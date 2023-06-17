@@ -8,3 +8,7 @@ cmake-build-*/
 out/
 
 CMakeSettings.json
+
+# meson
+/subprojects/*
+!/subprojects/*.wrap
