@@ -17,6 +17,7 @@ public:
     [[nodiscard]] auto getRenderPass() const noexcept -> const vk::RenderPass&;
     [[nodiscard]] auto getFrameBuffer(size_t index) const noexcept -> const vk::Framebuffer&;
     [[nodiscard]] auto getExtent() const noexcept -> const vk::Extent2D&;
+    [[nodiscard]] auto getExtentAspectRatio() const noexcept -> float;
     [[nodiscard]] auto acquireNextImage() -> std::optional<uint32_t>;
     [[nodiscard]] auto imagesCount() const noexcept -> size_t;
     auto submitCommandBuffers(const vk::CommandBuffer& commandBuffers, uint32_t imageIndex) -> void;

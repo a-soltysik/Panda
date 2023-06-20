@@ -1,14 +1,12 @@
 #include "SwapChain.h"
 
-#include "utils/format/api/vulkan/ResultFormatter.h"
 #include "Vulkan.h"
+#include "utils/format/api/vulkan/ResultFormatter.h"
 
 namespace panda::gfx::vulkan
 {
 
-SwapChain::SwapChain(const Device& deviceRef,
-                     const vk::SurfaceKHR& surfaceRef,
-                     const Window& windowRef)
+SwapChain::SwapChain(const Device& deviceRef, const vk::SurfaceKHR& surfaceRef, const Window& windowRef)
     : device {deviceRef},
       window {windowRef},
       surface {surfaceRef},
@@ -497,6 +495,11 @@ auto SwapChain::createDepthImageMemories(const Device& device,
                "Failed to bind depth image memory");
     }
     return depthImageMemories;
+}
+
+auto SwapChain::getExtentAspectRatio() const noexcept -> float
+{
+    return static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height);
 }
 
 }

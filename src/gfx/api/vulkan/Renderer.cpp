@@ -121,4 +121,9 @@ auto Renderer::getFrameIndex() const noexcept -> uint32_t
     return currentFrameIndex;
 }
 
+auto Renderer::getAspectRatio() const noexcept -> float
+{
+    return swapChain->getExtentAspectRatio();
+}
+
 }

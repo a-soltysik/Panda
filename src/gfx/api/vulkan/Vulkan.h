@@ -12,6 +12,7 @@
 #include "Object.h"
 #include "RenderSystem.h"
 #include "Renderer.h"
+#include "gfx/Camera.h"
 
 namespace panda::gfx::vulkan
 {
@@ -63,6 +64,7 @@ private:
     std::vector<const char*> requiredValidationLayers;
     std::unique_ptr<Model> model;
     std::vector<Object> objects;
+    Camera camera;
 };
 
 }

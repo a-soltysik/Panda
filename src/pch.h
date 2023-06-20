@@ -24,6 +24,9 @@
     auto operator=(const className&)->className& = delete; \
     auto operator=(className&&)->className& = delete
 
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+
 #include "utils/Assert.h"
 #include <vulkan/vulkan.hpp>
 #include <GLFW/glfw3.h>

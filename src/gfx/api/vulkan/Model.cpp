@@ -3,7 +3,7 @@
 namespace panda::gfx::vulkan
 {
 
-Model::Model(const Device& deviceRef, const std::vector<Vertex>& vertices, const std::vector<uint16_t>& indices)
+Model::Model(const Device& deviceRef, std::span<const Vertex> vertices, std::span<const uint16_t> indices)
     : device {deviceRef},
       vertexBuffer {createVertexBuffer(device, vertices)},
       indexBuffer {createIndexBuffer(device, indices)},
@@ -11,7 +11,7 @@ Model::Model(const Device& deviceRef, const std::vector<Vertex>& vertices, const
 {
 }
 
-auto Model::createVertexBuffer(const Device& device, const std::vector<Vertex>& vertices) -> std::unique_ptr<Buffer>
+auto Model::createVertexBuffer(const Device& device, std::span<const Vertex> vertices) -> std::unique_ptr<Buffer>
 {
     if (!shouldBe(
             vertices.size(),
@@ -49,7 +49,7 @@ auto Model::draw(const vk::CommandBuffer& commandBuffer) const -> void {
     commandBuffer.drawIndexed(indexCount, 1, 0, 0, 0);
 }
 
-auto Model::createIndexBuffer(const Device& device, const std::vector<uint16_t>& indices) -> std::unique_ptr<Buffer>
+auto Model::createIndexBuffer(const Device& device, const std::span<const uint16_t> indices) -> std::unique_ptr<Buffer>
 {
     if (!shouldBe(
             indices.size(),

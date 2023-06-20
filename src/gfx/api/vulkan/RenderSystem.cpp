@@ -10,9 +10,8 @@ namespace
 
 struct PushConstantData
 {
-    glm::mat2 transform;
-    glm::vec2 offset;
-    alignas(16) glm::vec3 color;
+    glm::mat4 transform{1.f};
+    alignas(16) glm::vec3 color{};
 };
 
 }
@@ -24,7 +23,7 @@ RenderSystem::RenderSystem(const Device& deviceRef, vk::RenderPass renderPass)
 {
 }
 
-RenderSystem::~RenderSystem()
+RenderSystem::~RenderSystem() noexcept
 {
     device.logicalDevice.destroyPipelineLayout(pipelineLayout);
 }
@@ -41,7 +40,7 @@ auto RenderSystem::createPipeline(const Device& device, vk::RenderPass renderPas
                                                                              VK_FALSE,
                                                                              vk::PolygonMode::eFill,
                                                                              vk::CullModeFlagBits::eBack,
-                                                                             vk::FrontFace::eClockwise,
+                                                                             vk::FrontFace::eCounterClockwise,
                                                                              VK_FALSE,
                                                                              {},
                                                                              {},
@@ -90,14 +89,17 @@ auto RenderSystem::createPipelineLayout(const Device& device) -> vk::PipelineLay
                   "Can't create pipeline layout");
 }
 
-auto RenderSystem::render(vk::CommandBuffer commandBuffer, std::vector<Object>& objects) const -> void
+auto RenderSystem::render(vk::CommandBuffer commandBuffer, std::vector<Object>& objects, const Camera& camera) const
+    -> void
 {
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->getHandle());
 
     for (auto& object : objects)
     {
-        object.transform.rotation = glm::mod(object.transform.rotation + 0.01f, glm::two_pi<float>());
-        const auto push = PushConstantData {object.transform.mat2(), object.transform.translation, object.color};
+        object.transform.rotation.y = glm::mod(object.transform.rotation.y + 0.001f, glm::two_pi<float>());
+        object.transform.rotation.x = glm::mod(object.transform.rotation.x + 0.0005f, glm::two_pi<float>());
+        object.transform.rotation.z = glm::mod(object.transform.rotation.z + 0.0002f, glm::two_pi<float>());
+        const auto push = PushConstantData {camera.getProjection() * object.transform.mat4(), object.color};
 
         commandBuffer.pushConstants(pipelineLayout,
                                     vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,

@@ -7,7 +7,7 @@ namespace panda::gfx::vulkan
 
 struct Vertex
 {
-    glm::vec2 position;
+    glm::vec3 position;
     glm::vec3 color;
 
     static constexpr auto getBindingDescription() -> vk::VertexInputBindingDescription
@@ -18,7 +18,7 @@ struct Vertex
     static constexpr auto getAttributeDescriptions() -> std::array<vk::VertexInputAttributeDescription, 2>
     {
         return {
-            vk::VertexInputAttributeDescription {0, 0, vk::Format::eR32G32Sfloat,    offsetof(Vertex, position)},
+            vk::VertexInputAttributeDescription {0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, position)},
             vk::VertexInputAttributeDescription {1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)   }
         };
     }

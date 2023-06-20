@@ -21,6 +21,7 @@ public:
     auto beginSwapChainRenderPass() const -> void;
     auto endSwapChainRenderPass() const -> void;
 
+    [[nodiscard]] auto getAspectRatio() const noexcept -> float;
     [[nodiscard]] auto isFrameInProgress() const noexcept -> bool;
     [[nodiscard]] auto getCurrentCommandBuffer() const noexcept -> const vk::CommandBuffer&;
     [[nodiscard]] auto getSwapChainRenderPass() const noexcept -> const vk::RenderPass&;

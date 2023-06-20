@@ -39,6 +39,55 @@ VKAPI_ATTR auto VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT 
     return VK_FALSE;
 }
 
+std::unique_ptr<Model> createCubeModel(Device& device)
+{
+    std::vector<Vertex> vertices {
+
+  // bottom face (white)
+        {{-1.f, 1.f, -1.f}, {.9f, .9f, .9f}},
+        {{-1.f, 1.f, 1.f},  {.9f, .9f, .9f}},
+        {{1.f, 1.f, 1.f},   {.9f, .9f, .9f}},
+        {{1.f, 1.f, -1.f},  {.9f, .9f, .9f}},
+
+ // top face (yellow)
+        {{-1.f, -1.f, -1.f}, {.8f, .8f, .1f}},
+        {{1.f, -1.f, -1.f},  {.8f, .8f, .1f}},
+        {{1.f, -1.f, 1.f},   {.8f, .8f, .1f}},
+        {{-1.f, -1.f, 1.f},  {.8f, .8f, .1f}},
+
+ // left face (orange)
+        {{-1.f, -1.f, -1.f}, {.9f, .6f, .1f}},
+        {{-1.f, -1.f, 1.f},  {.9f, .6f, .1f}},
+        {{-1.f, 1.f, 1.f},   {.9f, .6f, .1f}},
+        {{-1.f, 1.f, -1.f},  {.9f, .6f, .1f}},
+
+ // right face (red)
+        {{1.f, 1.f, -1.f},  {.8f, .1f, .1f}},
+        {{1.f, 1.f, 1.f},   {.8f, .1f, .1f}},
+        {{1.f, -1.f, 1.f},  {.8f, .1f, .1f}},
+        {{1.f, -1.f, -1.f}, {.8f, .1f, .1f}},
+
+ // front face (blue)
+        {{-1.f, 1.f, 1.f},  {.1f, .1f, .8f}},
+        {{1.f, 1.f, 1.f},    {.1f, .1f, .8f}},
+        {{-1.f, -1.f, 1.f},   {.1f, .1f, .8f}},
+        {{1.f, -1.f, 1.f},    {.1f, .1f, .8f}},
+
+ // back face (green)
+        {{-1.f, -1.f, -1.f}, {.1f, .8f, .1f}},
+        {{1.f, 1.f, -1.f},   {.1f, .8f, .1f}},
+        {{1.f, -1.f, -1.f},  {.1f, .8f, .1f}},
+        {{-1.f, 1.f, -1.f},  {.1f, .8f, .1f}},
+    };
+
+    return std::make_unique<Model>(device, vertices, std::array<uint16_t, 36> {0,  1,  2,  0, 2,  3,
+                                                                               4,  5,  6, 4,  6,  7,
+                                                                               8,  9,  10, 10, 11, 8,
+                                                                               12, 13, 14, 14, 15, 12,
+                                                                               16, 18, 17, 18, 19, 17,
+                                                                               20,21, 22, 20, 23, 21});
+}
+
 }
 
 Vulkan::Vulkan(const Window& mainWindow)
@@ -71,19 +120,13 @@ Vulkan::Vulkan(const Window& mainWindow)
 
     renderer = std::make_unique<Renderer>(mainWindow, *device, surface);
 
-    model = std::make_unique<Model>(*device,
-                                    std::vector<Vertex> {
-                                        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-                                        {{0.5f, -0.5f},  {0.0f, 1.0f, 0.0f}},
-                                        {{0.5f, 0.5f},   {0.0f, 0.0f, 1.0f}},
-                                        {{-0.5f, 0.5f},  {1.0f, 1.0f, 1.0f}}
-    },
-                                    std::vector<uint16_t> {0, 1, 2, 2, 3, 0});
+    model = createCubeModel(*device);
 
     auto object = Object::createObject();
     object.mesh = model.get();
-    object.color = {0.1f, 0.8f, 0.1f};
-    object.transform.translation.x = 0.2f;
+    object.transform.rotation = {};
+    object.transform.translation = {0.f, 0.f, 2.5f};
+    object.transform.scale = {0.25f, 0.25f, 0.25f};
 
     objects.push_back(std::move(object));
 
@@ -122,8 +165,12 @@ auto Vulkan::createInstance() -> std::unique_ptr<vk::Instance, InstanceDeleter>
 
     expect(areRequiredExtensionsAvailable(requiredExtensions), true, "There are missing extensions");
 
-    auto createInfo =
-        vk::InstanceCreateInfo({}, &appInfo, {}, {}, static_cast<uint32_t>(requiredExtensions.size()), requiredExtensions.data());
+    auto createInfo = vk::InstanceCreateInfo({},
+                                             &appInfo,
+                                             {},
+                                             {},
+                                             static_cast<uint32_t>(requiredExtensions.size()),
+                                             requiredExtensions.data());
 
     if constexpr (shouldEnableValidationLayers())
     {
@@ -234,13 +281,15 @@ auto Vulkan::areValidationLayersSupported() const -> bool
 
 auto Vulkan::makeFrame() -> void
 {
+    camera.setPerspectiveProjection(glm::radians(50.f), renderer->getAspectRatio(), 0.1f, 10.f);
+
     const auto commandBuffer = renderer->beginFrame();
     if (!commandBuffer)
     {
         return;
     }
     renderer->beginSwapChainRenderPass();
-    renderSystem->render(commandBuffer, objects);
+    renderSystem->render(commandBuffer, objects, camera);
     renderer->endSwapChainRenderPass();
     renderer->endFrame();
 }

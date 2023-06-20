@@ -2,6 +2,7 @@
 
 #include "Object.h"
 #include "Pipeline.h"
+#include "gfx/Camera.h"
 
 namespace panda::gfx::vulkan
 {
@@ -13,7 +14,7 @@ public:
     PD_DELETE_ALL(RenderSystem);
     ~RenderSystem() noexcept;
 
-    auto render(vk::CommandBuffer commandBuffer, std::vector<Object>& objects) const -> void;
+    auto render(vk::CommandBuffer commandBuffer, std::vector<Object>& objects, const Camera& camera) const -> void;
 private:
     static auto createPipelineLayout(const Device& device) -> vk::PipelineLayout;
     static auto createPipeline(const Device& device, vk::RenderPass renderPass, vk::PipelineLayout pipelineLayout) -> std::unique_ptr<Pipeline>;
