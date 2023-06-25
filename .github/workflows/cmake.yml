@@ -60,7 +60,7 @@ jobs:
         run: sudo apt install xorg-dev
       - name: Configure CMake
         run: >-
-          sudo apt update
+          sudo apt update;
           sudo apt install clang-12 clang++-12;
           sudo apt install cppcheck;
           sudo apt install clang-tidy;
