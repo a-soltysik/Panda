@@ -27,11 +27,6 @@ jobs:
       - name: Build
         run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
   build-linux:
-    strategy:
-      matrix:
-        compiler:
-          - g++
-          - clang-12
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -48,8 +43,8 @@ jobs:
         run: >-
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-          -DCMAKE_CXX_COMPILER=${{matrix.compiler}}
-          -DCMAKE_C_COMPILER=${{matrix.compiler}}
+          -DCMAKE_CXX_COMPILER=${{gcc}}
+          -DCMAKE_C_COMPILER=${{gcc}}
       - name: Build
         run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
   static-analysis:
@@ -67,12 +62,14 @@ jobs:
         run: sudo apt install xorg-dev
       - name: Configure CMake
         run: >-
+          sudo apt update
+          sudo apt install clang-12 clang++-12
           sudo apt install cppcheck;
           sudo apt install clang-tidy;
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-          -DCMAKE_CXX_COMPILER=${{clang-12}}
-          -DCMAKE_C_COMPILER=${clang-12}}
+          -DCMAKE_CXX_COMPILER=clang++-12
+          -DCMAKE_C_COMPILER=clang-12
           -DPD_ENABLE_CPPCHECK=ON
           -DPD_ENABLE_CLANG_TIDY=ON
           -DPD_WARNINGS_AS_ERRORS=ON
