@@ -31,7 +31,7 @@ jobs:
       matrix:
         compiler:
           - g++
-          - clang++
+          - clang-12
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -46,7 +46,6 @@ jobs:
         run: sudo apt install xorg-dev
       - name: Configure CMake
         run: >-
-          cmake -E env LDFLAGS="-lstdc++";
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
           -DCMAKE_CXX_COMPILER=${{matrix.compiler}}
@@ -72,8 +71,8 @@ jobs:
           sudo apt install clang-tidy;
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-          -DCMAKE_CXX_COMPILER=${{clang++}}
-          -DCMAKE_C_COMPILER=${clang++}}
+          -DCMAKE_CXX_COMPILER=${{clang-12}}
+          -DCMAKE_C_COMPILER=${clang-12}}
           -DPD_ENABLE_CPPCHECK=ON
           -DPD_ENABLE_CLANG_TIDY=ON
           -DPD_WARNINGS_AS_ERRORS=ON
