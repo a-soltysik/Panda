@@ -56,18 +56,24 @@ jobs:
         with:
           version: latest
           cache: true
+      - name: Install Clang-16
+        run: |
+          wget https://github.com/llvm/llvm-project/releases/download/llvmorg-16.0.0/clang+llvm-16.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
+          tar xf clang*
+          cd clang*
+          sudo cp -R * /usr/local/
       - name: Install X11
         run: sudo apt install xorg-dev
+      - name: Install tools
+        run : |
+          sudo apt install cppcheck
+          sudo apt install clang-tidy
       - name: Configure CMake
         run: >-
-          sudo apt update;
-          sudo apt install clang-12;
-          sudo apt install cppcheck;
-          sudo apt install clang-tidy;
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-          -DCMAKE_CXX_COMPILER=clang++-12
-          -DCMAKE_C_COMPILER=clang-12
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_COMPILER=clang
           -DPD_ENABLE_CPPCHECK=ON
           -DPD_ENABLE_CLANG_TIDY=ON
           -DPD_WARNINGS_AS_ERRORS=ON
