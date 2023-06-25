@@ -10,12 +10,6 @@ env:
   BUILD_TYPE: Release
 jobs:
   build-windows:
-    strategy:
-      matrix:
-        compiler:
-          - gcc
-          - clang
-          - msvc
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v3
@@ -27,9 +21,6 @@ jobs:
           version: latest
           cache: true
       - name: Configure CMake
-        env:
-          CMAKE_C_COMPILER: '${{matrix.compiler}}'
-          CMAKE_CXX_COMPILER: '${{matrix.compiler}}'
         run: >-
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
@@ -54,13 +45,11 @@ jobs:
       - name: Install X11
         run: sudo apt install xorg-dev
       - name: Configure CMake
-        env:
-          CMAKE_C_COMPILER: '${{matrix.compiler}}'
-          CMAKE_CXX_COMPILER: '${{matrix.compiler}}'
         run: >-
-          echo "${{matrix.compiler}}";
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+          -DCMAKE_CXX_COMPILER=${{matrix.compiler}}
+          -DCMAKE_C_COMPILER=${{matrix.compiler}}
           
       - name: Build
         run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
