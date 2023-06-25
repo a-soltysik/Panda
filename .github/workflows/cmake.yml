@@ -1,37 +1,87 @@
 name: CMake
-
-on:
+'on':
   push:
-    branches: [ "*" ]
+    branches:
+      - '*'
   pull_request:
-    branches: [ "*" ]
-
+    branches:
+      - '*'
 env:
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
-
-
 jobs:
-  buildn:
+  build-windows:
     strategy:
       matrix:
-        compiler: [gcc, clang, msvc]
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{matrix.os}}
+        compiler:
+          - gcc
+          - clang
+          - msvc
+    runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - name: Install Vulkan SDK
-      uses: humbletim/install-vulkan-sdk@v1.1.1
-      with:
-        version: latest
-        cache: true
-    - name: Configure CMake
-      env:
-        CMAKE_C_COMPILER: ${{matrix.compiler}}
-        CMAKE_CXX_COMPILER: ${{matrix.compiler}}
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.1.1
+        with:
+          version: latest
+          cache: true
+      - name: Configure CMake
+        env:
+          CMAKE_C_COMPILER: '${{matrix.compiler}}'
+          CMAKE_CXX_COMPILER: '${{matrix.compiler}}'
+        run: >-
+          cmake -B ${{github.workspace}}/build
+          -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+      - name: Build
+        run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
+  build-linux:
+    strategy:
+      matrix:
+        compiler:
+          - gcc
+          - clang
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.1.1
+        with:
+          version: latest
+          cache: true
+      - name: Configure CMake
+        env:
+          CMAKE_C_COMPILER: '${{matrix.compiler}}'
+          CMAKE_CXX_COMPILER: '${{matrix.compiler}}'
+        run: >-
+          cmake -B ${{github.workspace}}/build
+          -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+      - name: Build
+        run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
+  build-macos:
+    strategy:
+      matrix:
+        compiler:
+          - gcc
+          - clang
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.1.1
+        with:
+          version: latest
+          cache: true
+      - name: Configure CMake
+        env:
+          CMAKE_C_COMPILER: '${{matrix.compiler}}'
+          CMAKE_CXX_COMPILER: '${{matrix.compiler}}'
+        run: >-
+          cmake -B ${{github.workspace}}/build
+          -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+      - name: Build
+        run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
