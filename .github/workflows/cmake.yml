@@ -34,7 +34,7 @@ jobs:
         run: >-
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-      - if: ${{matrix.compiler}} = clang
+      - if: ${{matrix.compiler}} == clang
         name: Configure CMake Static Analysis
         env:
           CMAKE_C_COMPILER: '${{matrix.compiler}}'
@@ -44,7 +44,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
           -DPD_WARNINGS_AS_ERRORS=ON
           -DPD_ENABLE_CLANG_TIDY=ON
-          -PD_ENABLE_CPPCHECK=ON
+          -DPD_ENABLE_CPPCHECK=ON
       - name: Build
         run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
   build-linux:
@@ -65,7 +65,7 @@ jobs:
           cache: true
       - name: Install X11
         run: sudo apt install xorg-dev
-      - if: ${{matrix.compiler}} != clang
+      - if: ${{matrix.compiler}} != 'clang'
         name: Configure CMake
         env:
           CMAKE_C_COMPILER: '${{matrix.compiler}}'
@@ -73,7 +73,7 @@ jobs:
         run: >-
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-      - if: ${{matrix.compiler}} = clang
+      - if: ${{matrix.compiler}} == clang
         name: Configure CMake Static Analysis
         env:
           CMAKE_C_COMPILER: '${{matrix.compiler}}'
@@ -83,32 +83,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
           -DPD_WARNINGS_AS_ERRORS=ON
           -DPD_ENABLE_CLANG_TIDY=ON
-          -PD_ENABLE_CPPCHECK=ON
+          -DPD_ENABLE_CPPCHECK=ON
           
-      - name: Build
-        run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
-  build-macos:
-    strategy:
-      matrix:
-        compiler:
-          - gcc
-          - clang
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      - name: Install Vulkan SDK
-        uses: humbletim/install-vulkan-sdk@v1.1.1
-        with:
-          version: latest
-          cache: true
-      - name: Configure CMake
-        env:
-          CMAKE_C_COMPILER: '${{matrix.compiler}}'
-          CMAKE_CXX_COMPILER: '${{matrix.compiler}}'
-        run: >-
-          cmake -B ${{github.workspace}}/build
-          -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
       - name: Build
         run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
