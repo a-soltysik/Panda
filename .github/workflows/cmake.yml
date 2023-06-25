@@ -46,6 +46,7 @@ jobs:
         run: sudo apt install xorg-dev
       - name: Configure CMake
         run: >-
+          cmake -E env LDFLAGS="-lstdc++";
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
           -DCMAKE_CXX_COMPILER=${{matrix.compiler}}
@@ -69,6 +70,7 @@ jobs:
         run: >-
           sudo apt install cppcheck;
           sudo apt install clang-tidy;
+          cmake -E env LDFLAGS="-lstdc++";
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
           -DCMAKE_CXX_COMPILER=${clang}
