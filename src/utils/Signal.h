@@ -31,7 +31,7 @@ private:
     auto emit(Params&&... params) const -> void
     {
         std::lock_guard<std::mutex> lock {connectionsMutex};
-        for (auto& [key, value] : connections)
+        for ([[maybe_unused]] auto& [key, value] : connections)
         {
             value(std::forward<Params>(params)...);
         }
