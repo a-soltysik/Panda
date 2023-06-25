@@ -11,7 +11,7 @@ namespace panda
 class Window
 {
 public:
-    Window(glm::uvec2 initialSize, const char* name);
+    Window(glm::uvec2 size, const char* name);
     PD_DELETE_ALL(Window);
     ~Window() noexcept;
 
@@ -23,11 +23,11 @@ public:
     static auto waitForInput() noexcept -> void;
 
 private:
-    [[nodiscard]] static auto createWindow(glm::uvec2 initialSize, const char* name) -> GLFWwindow*;
+    [[nodiscard]] static auto createWindow(glm::uvec2 size, const char* name) -> GLFWwindow*;
 
-    utils::Signals::FrameBufferResized::ReceiverT frameBufferResizedReceiver{};
-    GLFWwindow* window;
-    glm::uvec2 size;
+    utils::Signals::FrameBufferResized::ReceiverT _frameBufferResizedReceiver {};
+    GLFWwindow* _window;
+    glm::uvec2 _size;
 };
 
 }

@@ -18,8 +18,8 @@ private:
     static auto registerSignalHandlers() -> void;
     auto mainLoop() -> void;
 
-    std::unique_ptr<Window> window;
-    std::unique_ptr<gfx::RenderingApi> api;
+    std::unique_ptr<Window> _window;
+    std::unique_ptr<gfx::RenderingApi> _api;
 };
 
 }

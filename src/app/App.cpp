@@ -45,8 +45,8 @@ auto App::run() -> int
     initializeLogger();
     registerSignalHandlers();
 
-    window = std::make_unique<Window>(glm::uvec2 {800, 600}, config::targetName.data());
-    api = std::make_unique<gfx::vulkan::Vulkan>(*window);
+    _window = std::make_unique<Window>(glm::uvec2 {800, 600}, config::targetName.data());
+    _api = std::make_unique<gfx::vulkan::Vulkan>(*_window);
 
     mainLoop();
     return 0;
@@ -54,11 +54,11 @@ auto App::run() -> int
 
 auto App::mainLoop() -> void
 {
-    while (!window->shouldClose()) [[likely]]
+    while (!_window->shouldClose()) [[likely]]
     {
-        if (!window->isMinimized())
+        if (!_window->isMinimized())
         {
-            api->makeFrame();
+            _api->makeFrame();
             Window::processInput();
         }
         else [[unlikely]]

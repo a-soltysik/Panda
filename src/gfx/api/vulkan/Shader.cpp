@@ -12,12 +12,12 @@ auto Shader::createFromFile(const vk::Device& device, const std::filesystem::pat
 {
     using namespace std::string_view_literals;
     static const std::unordered_map<std::string_view, Type> extensions = {
-        {".vert"sv,                 Type::Vertex},
-        {".tesc"sv,    Type::TessellationControl},
+        {".vert"sv, Type::Vertex                },
+        {".tesc"sv, Type::TessellationControl   },
         {".tese"sv, Type::TessellationEvaluation},
-        {".geom"sv,               Type::Geometry},
-        {".frag"sv,               Type::Fragment},
-        {".comp"sv,                Type::Compute}
+        {".geom"sv, Type::Geometry              },
+        {".frag"sv, Type::Fragment              },
+        {".comp"sv, Type::Compute               }
     };
 
     const auto pathStr = path.string();
@@ -70,13 +70,13 @@ auto Shader::createFromRawData(const vk::Device& device, const std::vector<uint3
 Shader::~Shader() noexcept
 {
     log::Info("Destroying shader module");
-    device.destroy(module);
+    _device.destroy(module);
 }
 
-Shader::Shader(const vk::ShaderModule& shaderModule, Type shaderType, const vk::Device& logicalDevice) noexcept
+Shader::Shader(const vk::ShaderModule& shaderModule, Type shaderType, const vk::Device& device) noexcept
     : module {shaderModule},
       type {shaderType},
-      device {logicalDevice}
+      _device {device}
 {
 }
 

@@ -88,49 +88,49 @@ auto createCubeModel(Device& device) -> std::unique_ptr<Model>
 
 }
 
-Vulkan::Vulkan(const Window& mainWindow)
-    : instance {createInstance()}
+Vulkan::Vulkan(const Window& window)
+    : _instance {createInstance()}
 {
-    VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(*_instance);
 
     if constexpr (shouldEnableValidationLayers())
     {
-        debugMessenger = expect(instance->createDebugUtilsMessengerEXT(debugMessengerCreateInfo),
-                                vk::Result::eSuccess,
-                                "Unable to create debug messenger");
+        _debugMessenger = expect(_instance->createDebugUtilsMessengerEXT(debugMessengerCreateInfo),
+                                 vk::Result::eSuccess,
+                                 "Unable to create debug messenger");
         log::Info("Debug messenger is created");
     }
-    surface = createSurface(mainWindow);
+    _surface = createSurface(window);
     log::Info("Created surface successfully");
 
     if constexpr (shouldEnableValidationLayers())
     {
-        device = std::make_unique<Device>(*instance, surface, requiredDeviceExtensions, requiredValidationLayers);
+        _device = std::make_unique<Device>(*_instance, _surface, requiredDeviceExtensions, _requiredValidationLayers);
     }
     else
     {
-        device = std::make_unique<Device>(*instance, surface, requiredDeviceExtensions);
+        _device = std::make_unique<Device>(*_instance, _surface, requiredDeviceExtensions);
     }
     log::Info("Created device successfully");
-    log::Info("Chosen GPU: {}", std::string_view {device->physicalDevice.getProperties().deviceName});
+    log::Info("Chosen GPU: {}", std::string_view {_device->physicalDevice.getProperties().deviceName});
 
-    VULKAN_HPP_DEFAULT_DISPATCHER.init(device->logicalDevice);
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(_device->logicalDevice);
 
-    renderer = std::make_unique<Renderer>(mainWindow, *device, surface);
+    _renderer = std::make_unique<Renderer>(window, *_device, _surface);
 
-    model = createCubeModel(*device);
+    _model = createCubeModel(*_device);
 
     auto object = Object::createObject();
-    object.mesh = model.get();
+    object.mesh = _model.get();
     object.transform.rotation = {};
     object.transform.translation = {0.f, 0.f, 2.5f};
     object.transform.scale = {0.25f, 0.25f, 0.25f};
 
-    objects.push_back(std::move(object));
+    _objects.push_back(std::move(object));
 
     log::Info("Create new object \"rectangle\"");
 
-    renderSystem = std::make_unique<RenderSystem>(*device, renderer->getSwapChainRenderPass());
+    _renderSystem = std::make_unique<RenderSystem>(*_device, _renderer->getSwapChainRenderPass());
 
     log::Info("Vulkan API has been successfully initialized");
 }
@@ -139,11 +139,11 @@ Vulkan::~Vulkan() noexcept
 {
     log::Info("Starting closing Vulkan API");
 
-    shouldBe(device->logicalDevice.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
+    shouldBe(_device->logicalDevice.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
 
     if constexpr (shouldEnableValidationLayers())
     {
-        instance->destroyDebugUtilsMessengerEXT(debugMessenger);
+        _instance->destroyDebugUtilsMessengerEXT(_debugMessenger);
     }
 }
 
@@ -179,16 +179,16 @@ auto Vulkan::createInstance() -> std::unique_ptr<vk::Instance, InstanceDeleter>
     return std::unique_ptr<vk::Instance, InstanceDeleter> {
         new vk::Instance {
             expect(vk::createInstance(createInfo), vk::Result::eSuccess, "Creating instance didn't succeed")},
-        InstanceDeleter {surface}};
+        InstanceDeleter {_surface}};
 }
 
 auto Vulkan::enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool
 {
-    requiredValidationLayers.push_back("VK_LAYER_KHRONOS_validation");
+    _requiredValidationLayers.push_back("VK_LAYER_KHRONOS_validation");
 
     if (areValidationLayersSupported())
     {
-        createInfo.setPEnabledLayerNames(requiredValidationLayers);
+        createInfo.setPEnabledLayerNames(_requiredValidationLayers);
 
         return true;
     }
@@ -263,7 +263,7 @@ auto Vulkan::areValidationLayersSupported() const -> bool
         return false;
     }
 
-    for (const auto* layerName : requiredValidationLayers)
+    for (const auto* layerName : _requiredValidationLayers)
     {
         const auto it = std::ranges::find_if(
             availableLayers.value,
@@ -284,23 +284,23 @@ auto Vulkan::areValidationLayersSupported() const -> bool
 
 auto Vulkan::makeFrame() -> void
 {
-    camera.setPerspectiveProjection(glm::radians(50.f), renderer->getAspectRatio(), 0.1f, 10.f);
+    _camera.setPerspectiveProjection(glm::radians(50.f), _renderer->getAspectRatio(), 0.1f, 10.f);
 
-    const auto commandBuffer = renderer->beginFrame();
+    const auto commandBuffer = _renderer->beginFrame();
     if (!commandBuffer)
     {
         return;
     }
-    renderer->beginSwapChainRenderPass();
-    renderSystem->render(commandBuffer, objects, camera);
-    renderer->endSwapChainRenderPass();
-    renderer->endFrame();
+    _renderer->beginSwapChainRenderPass();
+    _renderSystem->render(commandBuffer, _objects, _camera);
+    _renderer->endSwapChainRenderPass();
+    _renderer->endFrame();
 }
 
 auto Vulkan::createSurface(const Window& window) -> vk::SurfaceKHR
 {
     auto* newSurface = VkSurfaceKHR {};
-    glfwCreateWindowSurface(static_cast<VkInstance>(*instance), window.getHandle(), nullptr, &newSurface);
+    glfwCreateWindowSurface(static_cast<VkInstance>(*_instance), window.getHandle(), nullptr, &newSurface);
 
     return expect(
         newSurface,
@@ -310,10 +310,10 @@ auto Vulkan::createSurface(const Window& window) -> vk::SurfaceKHR
         "Unable to create surface");
 }
 
-auto Vulkan::InstanceDeleter::operator()(vk::Instance* toDelete) const noexcept -> void
+auto Vulkan::InstanceDeleter::operator()(vk::Instance* instance) const noexcept -> void
 {
     log::Info("Destroying instance");
-    toDelete->destroy(surface);
-    toDelete->destroy();
+    instance->destroy(surface);
+    instance->destroy();
 }
 }

@@ -4,8 +4,8 @@ namespace panda::gfx::vulkan
 {
 auto Buffer::copy(const Buffer& src, const Buffer& dst) -> void
 {
-    const auto allocInfo = vk::CommandBufferAllocateInfo {src.device.commandPool, vk::CommandBufferLevel::ePrimary, 1};
-    const auto tmpCommandBuffers = expect(src.device.logicalDevice.allocateCommandBuffers(allocInfo),
+    const auto allocInfo = vk::CommandBufferAllocateInfo {src._device.commandPool, vk::CommandBufferLevel::ePrimary, 1};
+    const auto tmpCommandBuffers = expect(src._device.logicalDevice.allocateCommandBuffers(allocInfo),
                                           vk::Result::eSuccess,
                                           "Failed to allocate command buffer");
 
@@ -17,9 +17,9 @@ auto Buffer::copy(const Buffer& src, const Buffer& dst) -> void
     expect(tmpCommandBuffers.front().end(), vk::Result::eSuccess, "Failed to end command buffer");
 
     const auto submitInfo = vk::SubmitInfo {{}, {}, tmpCommandBuffers.front()};
-    expect(src.device.graphicsQueue.submit(submitInfo), vk::Result::eSuccess, "Failed to submit command buffer");
-    shouldBe(src.device.graphicsQueue.waitIdle(), vk::Result::eSuccess, "Failed to wait idle");
-    src.device.logicalDevice.freeCommandBuffers(src.device.commandPool, tmpCommandBuffers);
+    expect(src._device.graphicsQueue.submit(submitInfo), vk::Result::eSuccess, "Failed to submit command buffer");
+    shouldBe(src._device.graphicsQueue.waitIdle(), vk::Result::eSuccess, "Failed to wait idle");
+    src._device.logicalDevice.freeCommandBuffers(src._device.commandPool, tmpCommandBuffers);
 
     log::Info("Copied buffer [{}] to buffer [{}]", static_cast<void*>(src.buffer), static_cast<void*>(dst.buffer));
 }
@@ -31,9 +31,9 @@ Buffer::Buffer(const Device& deviceRef,
     : size {bufferSize},
       buffer {createBuffer(deviceRef, size, usage)},
       memory {allocateMemory(deviceRef, buffer, properties)},
-      device {deviceRef}
+      _device {deviceRef}
 {
-    expect(device.logicalDevice.bindBufferMemory(buffer, memory, 0),
+    expect(_device.logicalDevice.bindBufferMemory(buffer, memory, 0),
            vk::Result::eSuccess,
            "Failed to bind memory buffer");
     log::Info("Created new buffer [{}] with size: {}", static_cast<void*>(buffer), bufferSize);
@@ -42,8 +42,8 @@ Buffer::Buffer(const Device& deviceRef,
 Buffer::~Buffer() noexcept
 {
     log::Info("Destroying buffer [{}]", static_cast<void*>(buffer));
-    device.logicalDevice.destroy(buffer);
-    device.logicalDevice.freeMemory(memory);
+    _device.logicalDevice.destroy(buffer);
+    _device.logicalDevice.freeMemory(memory);
 }
 
 auto Buffer::createBuffer(const Device& device, vk::DeviceSize size, vk::BufferUsageFlags usage) -> vk::Buffer

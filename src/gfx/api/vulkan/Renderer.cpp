@@ -4,32 +4,30 @@
 
 namespace panda::gfx::vulkan
 {
-Renderer::Renderer(const Window& windowRef,
-                   const Device& deviceRef,
-                   const vk::SurfaceKHR& surface)
-    : window {windowRef},
-      device {deviceRef},
-      swapChain {std::make_unique<SwapChain>(device, surface, window)},
-      commandBuffers {createCommandBuffers()}
+Renderer::Renderer(const Window& window, const Device& device, const vk::SurfaceKHR& surface)
+    : _window {window},
+      _device {device},
+      _swapChain {std::make_unique<SwapChain>(device, surface, window)},
+      _commandBuffers {createCommandBuffers()}
 {
 }
 
 Renderer::~Renderer() noexcept
 {
-    device.logicalDevice.freeCommandBuffers(device.commandPool, commandBuffers);
+    _device.logicalDevice.freeCommandBuffers(_device.commandPool, _commandBuffers);
 }
 
 auto Renderer::beginFrame() -> vk::CommandBuffer
 {
-    expectNot(isFrameStarted, "Can't begin frame when already began");
+    expectNot(_isFrameStarted, "Can't begin frame when already began");
 
-    const auto imageIndex = swapChain->acquireNextImage();
+    const auto imageIndex = _swapChain->acquireNextImage();
     if (!imageIndex.has_value())
     {
         return nullptr;
     }
-    currentImageIndex = imageIndex.value();
-    isFrameStarted = true;
+    _currentImageIndex = imageIndex.value();
+    _isFrameStarted = true;
     const auto commandBuffer = getCurrentCommandBuffer();
     const auto beginInfo = vk::CommandBufferBeginInfo {};
     expect(commandBuffer.begin(beginInfo), vk::Result::eSuccess, "Can't begin commandBuffer");
@@ -38,17 +36,17 @@ auto Renderer::beginFrame() -> vk::CommandBuffer
 
 auto Renderer::endFrame() -> void
 {
-    expect(isFrameStarted, "Can't end frame which isn't began");
+    expect(_isFrameStarted, "Can't end frame which isn't began");
     expect(getCurrentCommandBuffer().end(), vk::Result::eSuccess, "Can't end command buffer");
-    swapChain->submitCommandBuffers(getCurrentCommandBuffer(), currentImageIndex);
+    _swapChain->submitCommandBuffers(getCurrentCommandBuffer(), _currentImageIndex);
 
-    isFrameStarted = false;
-    currentFrameIndex = (currentFrameIndex + 1) % Vulkan::maxFramesInFlight;
+    _isFrameStarted = false;
+    _currentFrameIndex = (_currentFrameIndex + 1) % Vulkan::maxFramesInFlight;
 }
 
 auto Renderer::beginSwapChainRenderPass() const -> void
 {
-    expect(isFrameStarted, "Can't begin render pass when frame is not began");
+    expect(_isFrameStarted, "Can't begin render pass when frame is not began");
     const auto clearColor = vk::ClearValue {
         vk::ClearColorValue {0.f, 0.f, 0.f, 1.f}
     };
@@ -57,9 +55,9 @@ auto Renderer::beginSwapChainRenderPass() const -> void
     };
     const auto clearValues = std::array {clearColor, depthStencil};
     const auto renderPassBeginInfo = vk::RenderPassBeginInfo {
-        swapChain->getRenderPass(),
-        swapChain->getFrameBuffer(currentImageIndex),
-        {{0, 0}, swapChain->getExtent()},
+        _swapChain->getRenderPass(),
+        _swapChain->getFrameBuffer(_currentImageIndex),
+        {{0, 0}, _swapChain->getExtent()},
         clearValues
     };
 
@@ -69,15 +67,15 @@ auto Renderer::beginSwapChainRenderPass() const -> void
 
     const auto viewport = vk::Viewport {0.f,
                                         0.f,
-                                        static_cast<float>(swapChain->getExtent().width),
-                                        static_cast<float>(swapChain->getExtent().height),
+                                        static_cast<float>(_swapChain->getExtent().width),
+                                        static_cast<float>(_swapChain->getExtent().height),
                                         0.f,
                                         1.f};
     commandBuffer.setViewport(0, viewport);
 
     const auto scissor = vk::Rect2D {
         {0, 0},
-        swapChain->getExtent()
+        _swapChain->getExtent()
     };
 
     commandBuffer.setScissor(0, scissor);
@@ -85,45 +83,45 @@ auto Renderer::beginSwapChainRenderPass() const -> void
 
 auto Renderer::endSwapChainRenderPass() const -> void
 {
-    expect(isFrameStarted, "Can't end render pass when frame is not began");
+    expect(_isFrameStarted, "Can't end render pass when frame is not began");
     getCurrentCommandBuffer().endRenderPass();
 }
 
 auto Renderer::isFrameInProgress() const noexcept -> bool
 {
-    return isFrameStarted;
+    return _isFrameStarted;
 }
 
 auto Renderer::getCurrentCommandBuffer() const noexcept -> const vk::CommandBuffer&
 {
-    expect(isFrameStarted, "Can't get command buffer when frame not in progress");
-    return commandBuffers[currentFrameIndex];
+    expect(_isFrameStarted, "Can't get command buffer when frame not in progress");
+    return _commandBuffers[_currentFrameIndex];
 }
 
 auto Renderer::getSwapChainRenderPass() const noexcept -> const vk::RenderPass&
 {
-    return swapChain->getRenderPass();
+    return _swapChain->getRenderPass();
 }
 
 auto Renderer::createCommandBuffers() -> std::vector<vk::CommandBuffer>
 {
-    const auto allocationInfo = vk::CommandBufferAllocateInfo {device.commandPool,
+    const auto allocationInfo = vk::CommandBufferAllocateInfo {_device.commandPool,
                                                                vk::CommandBufferLevel::ePrimary,
-                                                               static_cast<uint32_t>(swapChain->imagesCount())};
-    return expect(device.logicalDevice.allocateCommandBuffers(allocationInfo),
+                                                               static_cast<uint32_t>(_swapChain->imagesCount())};
+    return expect(_device.logicalDevice.allocateCommandBuffers(allocationInfo),
                   vk::Result::eSuccess,
                   "Can't allocate command buffer");
 }
 
 auto Renderer::getFrameIndex() const noexcept -> uint32_t
 {
-    expect(isFrameStarted, "Can't get frame index which is not in progress");
-    return currentFrameIndex;
+    expect(_isFrameStarted, "Can't get frame index which is not in progress");
+    return _currentFrameIndex;
 }
 
 auto Renderer::getAspectRatio() const noexcept -> float
 {
-    return swapChain->getExtentAspectRatio();
+    return _swapChain->getExtentAspectRatio();
 }
 
 }

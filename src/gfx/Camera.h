@@ -14,7 +14,7 @@ public:
     [[nodiscard]] auto getProjection() const noexcept -> const glm::mat4&;
 
 private:
-    glm::mat4 projectionMatrix{1.f};
+    glm::mat4 _projectionMatrix {1.f};
 };
 
 }

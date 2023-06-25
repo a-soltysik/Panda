@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Device.h"
-
 #include <filesystem>
+
+#include "Device.h"
 
 namespace panda::gfx::vulkan
 {
@@ -21,22 +21,22 @@ struct PipelineConfig
     vk::PipelineLayout pipelineLayout;
     vk::RenderPass renderPass;
     uint32_t subpass;
-
 };
 
 class Pipeline
 {
 public:
-    Pipeline(const Device& deviceRef, const PipelineConfig& config);
+    Pipeline(const Device& device, const PipelineConfig& config);
     PD_DELETE_ALL(Pipeline);
     ~Pipeline() noexcept;
 
     [[nodiscard]] auto getHandle() const noexcept -> const vk::Pipeline&;
+
 private:
     [[nodiscard]] static auto createPipeline(const Device& device, const PipelineConfig& config) -> vk::Pipeline;
 
-    vk::Pipeline pipeline;
-    const Device& device;
+    vk::Pipeline _pipeline;
+    const Device& _device;
 };
 
 }

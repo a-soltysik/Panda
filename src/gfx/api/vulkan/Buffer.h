@@ -17,8 +17,8 @@ public:
            vk::MemoryPropertyFlags properties);
 
     template <std::ranges::range T>
-    Buffer(const Device& deviceRef, T&& data, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
-        : Buffer {deviceRef, std::ranges::size(data) * sizeof(std::ranges::range_value_t<T>), usage, properties}
+    Buffer(const Device& device, T&& data, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
+        : Buffer {device, std::ranges::size(data) * sizeof(std::ranges::range_value_t<T>), usage, properties}
     {
         map(std::forward<T>(data));
     }
@@ -31,11 +31,11 @@ public:
     {
         using ValueT = std::ranges::range_value_t<T>;
         auto* mappedMemory =
-            expect(device.logicalDevice.mapMemory(memory, 0, std::ranges::size(data) * sizeof(ValueT), {}),
+            expect(_device.logicalDevice.mapMemory(memory, 0, std::ranges::size(data) * sizeof(ValueT), {}),
                    vk::Result::eSuccess,
                    "Failed to map memory of vertex buffer");
         std::copy(std::ranges::begin(data), std::ranges::end(data), static_cast<ValueT*>(mappedMemory));
-        device.logicalDevice.unmapMemory(memory);
+        _device.logicalDevice.unmapMemory(memory);
     }
 
     const vk::DeviceSize size;
@@ -49,6 +49,6 @@ private:
                                              vk::Buffer buffer,
                                              vk::MemoryPropertyFlags properties) -> vk::DeviceMemory;
 
-    const Device& device;
+    const Device& _device;
 };
 }

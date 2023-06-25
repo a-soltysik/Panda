@@ -6,16 +6,16 @@
 namespace panda::gfx::vulkan
 {
 
-Pipeline::Pipeline(const Device& deviceRef, const PipelineConfig& config)
-    : pipeline {createPipeline(deviceRef, config)},
-      device {deviceRef}
+Pipeline::Pipeline(const Device& device, const PipelineConfig& config)
+    : _pipeline {createPipeline(device, config)},
+      _device {device}
 {
 }
 
 Pipeline::~Pipeline() noexcept
 {
     log::Info("Destroying pipeline");
-    device.logicalDevice.destroy(pipeline);
+    _device.logicalDevice.destroy(_pipeline);
 }
 
 auto Pipeline::createPipeline(const Device& device, const PipelineConfig& config) -> vk::Pipeline
@@ -70,7 +70,7 @@ auto Pipeline::createPipeline(const Device& device, const PipelineConfig& config
 
 auto Pipeline::getHandle() const noexcept -> const vk::Pipeline&
 {
-    return pipeline;
+    return _pipeline;
 }
 
 }

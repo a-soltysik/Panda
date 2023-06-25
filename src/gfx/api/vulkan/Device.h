@@ -25,7 +25,7 @@ public:
     };
 
     Device(const vk::Instance& instance,
-           const vk::SurfaceKHR& currentSurface,
+           const vk::SurfaceKHR& surface,
            std::span<const char* const> requiredExtensions,
            std::span<const char* const> requiredValidationLayers = {});
 
@@ -64,7 +64,7 @@ private:
                                     std::span<const char* const> requiredExtensions,
                                     std::span<const char* const> requiredValidationLayers = {}) -> vk::Device;
 
-    const vk::SurfaceKHR& surface;
+    const vk::SurfaceKHR& _surface;
 };
 
 }

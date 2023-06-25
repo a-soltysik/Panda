@@ -16,45 +16,44 @@ void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 namespace panda
 {
 
-Window::Window(glm::uvec2 initialSize, const char* name)
-    : window {createWindow(initialSize, name)},
-      size {initialSize}
+Window::Window(glm::uvec2 size, const char* name)
+    : _window {createWindow(size, name)},
+      _size {size}
 {
-    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    glfwSetFramebufferSizeCallback(_window, framebufferResizeCallback);
 
-    frameBufferResizedReceiver = utils::Signals::frameBufferResized.connect([this](int x, int y) {
-        size = {x, y};
+    _frameBufferResizedReceiver = utils::Signals::frameBufferResized.connect([this](int x, int y) {
+        _size = {x, y};
     });
 }
 
 Window::~Window() noexcept
 {
-    glfwDestroyWindow(window);
+    glfwDestroyWindow(_window);
     glfwTerminate();
-    log::Info("Window [{}] destroyed", static_cast<void*>(window));
+    log::Info("Window [{}] destroyed", static_cast<void*>(_window));
 }
 
-auto Window::createWindow(glm::uvec2 initialSize, const char* name) -> GLFWwindow*
+auto Window::createWindow(glm::uvec2 size, const char* name) -> GLFWwindow*
 {
     expect(glfwInit(), GLFW_TRUE, "Failed to initialize GLFW");
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    auto* window =
-        glfwCreateWindow(static_cast<int>(initialSize.x), static_cast<int>(initialSize.y), name, nullptr, nullptr);
-    log::Info("Window [{}] {}x{} px created", static_cast<void*>(window), initialSize.x, initialSize.y);
+    auto* window = glfwCreateWindow(static_cast<int>(size.x), static_cast<int>(size.y), name, nullptr, nullptr);
+    log::Info("Window [{}] {}x{} px created", static_cast<void*>(window), size.x, size.y);
 
     return window;
 }
 
 auto Window::getHandle() const noexcept -> GLFWwindow*
 {
-    return window;
+    return _window;
 }
 
 auto Window::shouldClose() const noexcept -> bool
 {
-    return glfwWindowShouldClose(window) == GLFW_TRUE;
+    return glfwWindowShouldClose(_window) == GLFW_TRUE;
 }
 
 auto Window::processInput() noexcept -> void
@@ -64,12 +63,12 @@ auto Window::processInput() noexcept -> void
 
 auto Window::getSize() const noexcept -> glm::uvec2
 {
-    return size;
+    return _size;
 }
 
 auto Window::isMinimized() const noexcept -> bool
 {
-    return size.x == 0 || size.y == 0;
+    return _size.x == 0 || _size.y == 0;
 }
 
 auto Window::waitForInput() noexcept -> void

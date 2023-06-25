@@ -12,7 +12,7 @@ namespace panda::gfx::vulkan
 class Renderer
 {
 public:
-    Renderer(const Window& windowRef, const Device& deviceRef, const vk::SurfaceKHR& surface);
+    Renderer(const Window& window, const Device& device, const vk::SurfaceKHR& surface);
     PD_DELETE_ALL(Renderer);
     ~Renderer() noexcept;
 
@@ -31,16 +31,15 @@ public:
 private:
     [[nodiscard]] auto createCommandBuffers() -> std::vector<vk::CommandBuffer>;
 
-    const Window& window;
-    const Device& device;
-    std::unique_ptr<SwapChain> swapChain;
-    std::vector<vk::CommandBuffer> commandBuffers;
-    std::vector<Object> objects;
+    const Window& _window;
+    const Device& _device;
+    std::unique_ptr<SwapChain> _swapChain;
+    std::vector<vk::CommandBuffer> _commandBuffers;
+    std::vector<Object> _objects;
 
-    uint32_t currentImageIndex = 0;
-    uint32_t currentFrameIndex = 0;
-    bool isFrameStarted = false;
-
+    uint32_t _currentImageIndex = 0;
+    uint32_t _currentFrameIndex = 0;
+    bool _isFrameStarted = false;
 };
 
 }

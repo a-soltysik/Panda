@@ -10,13 +10,13 @@ auto Object::createObject() -> Object
 }
 
 Object::Object(Id newId)
-    : id {newId}
+    : _id {newId}
 {
 }
 
 auto Object::getId() const noexcept -> Id
 {
-    return id;
+    return _id;
 }
 
 }

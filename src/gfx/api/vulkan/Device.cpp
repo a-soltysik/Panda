@@ -9,11 +9,11 @@ namespace panda::gfx::vulkan
 {
 
 Device::Device(const vk::Instance& instance,
-               const vk::SurfaceKHR& currentSurface,
+               const vk::SurfaceKHR& surface,
                std::span<const char* const> requiredExtensions,
                std::span<const char* const> requiredValidationLayers)
-    : physicalDevice {pickPhysicalDevice(instance, currentSurface, requiredExtensions)},
-      queueFamilies {expect(findQueueFamilies(physicalDevice, currentSurface), "Queue families need to exist")},
+    : physicalDevice {pickPhysicalDevice(instance, surface, requiredExtensions)},
+      queueFamilies {expect(findQueueFamilies(physicalDevice, surface), "Queue families need to exist")},
       logicalDevice {createLogicalDevice(physicalDevice, queueFamilies, requiredExtensions, requiredValidationLayers)},
       graphicsQueue {logicalDevice.getQueue(queueFamilies.graphicsFamily, 0)},
       presentationQueue {logicalDevice.getQueue(queueFamilies.presentationFamily, 0)},
@@ -21,7 +21,7 @@ Device::Device(const vk::Instance& instance,
                               {vk::CommandPoolCreateFlagBits::eResetCommandBuffer, queueFamilies.graphicsFamily}),
                           vk::Result::eSuccess,
                           "Can't create command pool")},
-      surface {currentSurface}
+      _surface {surface}
 {
 }
 
@@ -146,7 +146,7 @@ auto Device::createLogicalDevice(vk::PhysicalDevice device,
 
 auto Device::querySwapChainSupport() const -> SwapChainSupportDetails
 {
-    return querySwapChainSupport(physicalDevice, surface);
+    return querySwapChainSupport(physicalDevice, _surface);
 }
 
 Device::~Device() noexcept

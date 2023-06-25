@@ -6,26 +6,26 @@
 namespace panda::gfx::vulkan
 {
 
-SwapChain::SwapChain(const Device& deviceRef, const vk::SurfaceKHR& surfaceRef, const Window& windowRef)
-    : device {deviceRef},
-      window {windowRef},
-      surface {surfaceRef},
-      swapChainExtent {chooseSwapExtent(device.querySwapChainSupport().capabilities, window)},
-      swapChainImageFormat {chooseSwapSurfaceFormat(device.querySwapChainSupport().formats)},
-      swapChainDepthFormat {findDepthFormat(device)},
-      swapChain {createSwapChain(surface, swapChainExtent, device, swapChainImageFormat)},
-      swapChainImages {expect(
-          device.logicalDevice.getSwapchainImagesKHR(swapChain), vk::Result::eSuccess, "Can't get swapchain images")},
-      swapChainImageViews {createImageViews(swapChainImages, swapChainImageFormat, device)},
-      depthImages {createDepthImages(device, swapChainExtent, swapChainImages.size(), swapChainDepthFormat)},
-      depthImageMemories {createDepthImageMemories(device, depthImages, swapChainImages.size())},
-      depthImageViews {createDepthImageViews(device, depthImages, swapChainImages.size(), swapChainDepthFormat)},
-      renderPass {createRenderPass(swapChainImageFormat, swapChainDepthFormat, device)},
-      swapChainFramebuffers {
-          createFrameBuffers(swapChainImageViews, depthImageViews, renderPass, swapChainExtent, device)},
-      frameBufferResizeReceiver {utils::Signals::frameBufferResized.connect([this](auto, auto) noexcept {
+SwapChain::SwapChain(const Device& device, const vk::SurfaceKHR& surface, const Window& window)
+    : _device {device},
+      _window {window},
+      _surface {surface},
+      _swapChainExtent {chooseSwapExtent(_device.querySwapChainSupport().capabilities, _window)},
+      _swapChainImageFormat {chooseSwapSurfaceFormat(_device.querySwapChainSupport().formats)},
+      _swapChainDepthFormat {findDepthFormat(_device)},
+      _swapChain {createSwapChain(_surface, _swapChainExtent, _device, _swapChainImageFormat)},
+      _swapChainImages {expect(
+          _device.logicalDevice.getSwapchainImagesKHR(_swapChain), vk::Result::eSuccess, "Can't get swapchain images")},
+      _swapChainImageViews {createImageViews(_swapChainImages, _swapChainImageFormat, _device)},
+      _depthImages {createDepthImages(_device, _swapChainExtent, _swapChainImages.size(), _swapChainDepthFormat)},
+      _depthImageMemories {createDepthImageMemories(_device, _depthImages, _swapChainImages.size())},
+      _depthImageViews {createDepthImageViews(_device, _depthImages, _swapChainImages.size(), _swapChainDepthFormat)},
+      _renderPass {createRenderPass(_swapChainImageFormat, _swapChainDepthFormat, _device)},
+      _swapChainFrameBuffers {
+          createFrameBuffers(_swapChainImageViews, _depthImageViews, _renderPass, _swapChainExtent, _device)},
+      _frameBufferResizeReceiver {utils::Signals::frameBufferResized.connect([this](auto, auto) noexcept {
           log::Debug("Received framebuffer resized notif");
-          frameBufferResized = true;
+          _frameBufferResized = true;
       })}
 {
     createSyncObjects();
@@ -35,18 +35,18 @@ SwapChain::~SwapChain() noexcept
 {
     cleanup();
 
-    device.logicalDevice.destroy(renderPass);
-    for (const auto semaphore : renderFinishedSemaphores)
+    _device.logicalDevice.destroy(_renderPass);
+    for (const auto semaphore : _renderFinishedSemaphores)
     {
-        device.logicalDevice.destroy(semaphore);
+        _device.logicalDevice.destroy(semaphore);
     }
-    for (const auto semaphore : imageAvailableSemaphores)
+    for (const auto semaphore : _imageAvailableSemaphores)
     {
-        device.logicalDevice.destroy(semaphore);
+        _device.logicalDevice.destroy(semaphore);
     }
-    for (const auto fence : inFlightFences)
+    for (const auto fence : _inFlightFences)
     {
-        device.logicalDevice.destroy(fence);
+        _device.logicalDevice.destroy(fence);
     }
 }
 
@@ -198,78 +198,78 @@ auto SwapChain::createSyncObjects() -> void
     const auto semaphoreInfo = vk::SemaphoreCreateInfo {};
     const auto fenceInfo = vk::FenceCreateInfo {vk::FenceCreateFlagBits::eSignaled};
 
-    imageAvailableSemaphores.reserve(Vulkan::maxFramesInFlight);
-    renderFinishedSemaphores.reserve(Vulkan::maxFramesInFlight);
-    inFlightFences.reserve(Vulkan::maxFramesInFlight);
-    imagesInFlight.resize(imagesCount());
+    _imageAvailableSemaphores.reserve(Vulkan::maxFramesInFlight);
+    _renderFinishedSemaphores.reserve(Vulkan::maxFramesInFlight);
+    _inFlightFences.reserve(Vulkan::maxFramesInFlight);
+    _imagesInFlight.resize(imagesCount());
 
     for (auto i = size_t {}; i < Vulkan::maxFramesInFlight; i++)
     {
-        imageAvailableSemaphores.push_back(expect(device.logicalDevice.createSemaphore(semaphoreInfo),
+        _imageAvailableSemaphores.push_back(expect(_device.logicalDevice.createSemaphore(semaphoreInfo),
                                                   vk::Result::eSuccess,
                                                   "Failed to createSemaphore"));
-        renderFinishedSemaphores.push_back(expect(device.logicalDevice.createSemaphore(semaphoreInfo),
+        _renderFinishedSemaphores.push_back(expect(_device.logicalDevice.createSemaphore(semaphoreInfo),
                                                   vk::Result::eSuccess,
                                                   "Failed to createSemaphore"));
-        inFlightFences.push_back(
-            expect(device.logicalDevice.createFence(fenceInfo), vk::Result::eSuccess, "Failed to create fence"));
+        _inFlightFences.push_back(
+            expect(_device.logicalDevice.createFence(fenceInfo), vk::Result::eSuccess, "Failed to create fence"));
     }
 }
 
 auto SwapChain::recreate() -> void
 {
     log::Info("Starting to recreate swapchain");
-    shouldBe(device.logicalDevice.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
+    shouldBe(_device.logicalDevice.waitIdle(), vk::Result::eSuccess, "Wait idle didn't succeed");
 
     cleanup();
-    const auto swapChainSupport = device.querySwapChainSupport();
-    swapChainExtent = chooseSwapExtent(swapChainSupport.capabilities, window);
+    const auto swapChainSupport = _device.querySwapChainSupport();
+    _swapChainExtent = chooseSwapExtent(swapChainSupport.capabilities, _window);
 
-    const auto oldImageFormat = swapChainImageFormat;
-    swapChainImageFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
-    shouldBe(oldImageFormat != swapChainImageFormat, "Image format has changed!");
+    const auto oldImageFormat = _swapChainImageFormat;
+    _swapChainImageFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+    shouldBe(oldImageFormat != _swapChainImageFormat, "Image format has changed!");
 
-    const auto oldDepthFormat = swapChainDepthFormat;
-    swapChainDepthFormat = findDepthFormat(device);
-    shouldBe(oldDepthFormat != swapChainDepthFormat, "Depth format has changed!");
+    const auto oldDepthFormat = _swapChainDepthFormat;
+    _swapChainDepthFormat = findDepthFormat(_device);
+    shouldBe(oldDepthFormat != _swapChainDepthFormat, "Depth format has changed!");
 
-    swapChain = createSwapChain(surface, swapChainExtent, device, swapChainImageFormat);
-    swapChainImages = expect(device.logicalDevice.getSwapchainImagesKHR(swapChain),
+    _swapChain = createSwapChain(_surface, _swapChainExtent, _device, _swapChainImageFormat);
+    _swapChainImages = expect(_device.logicalDevice.getSwapchainImagesKHR(_swapChain),
                              vk::Result::eSuccess,
                              "Can't get swapchain images");
-    swapChainImageViews = createImageViews(swapChainImages, swapChainImageFormat, device);
-    depthImages = createDepthImages(device, swapChainExtent, swapChainImages.size(), swapChainDepthFormat);
-    depthImageMemories = createDepthImageMemories(device, depthImages, swapChainImages.size());
-    depthImageViews = createDepthImageViews(device, depthImages, swapChainImages.size(), swapChainDepthFormat);
-    swapChainFramebuffers =
-        createFrameBuffers(swapChainImageViews, depthImageViews, renderPass, swapChainExtent, device);
+    _swapChainImageViews = createImageViews(_swapChainImages, _swapChainImageFormat, _device);
+    _depthImages = createDepthImages(_device, _swapChainExtent, _swapChainImages.size(), _swapChainDepthFormat);
+    _depthImageMemories = createDepthImageMemories(_device, _depthImages, _swapChainImages.size());
+    _depthImageViews = createDepthImageViews(_device, _depthImages, _swapChainImages.size(), _swapChainDepthFormat);
+    _swapChainFrameBuffers =
+        createFrameBuffers(_swapChainImageViews, _depthImageViews, _renderPass, _swapChainExtent, _device);
 
     log::Info("Swapchain recreated");
 }
 
 auto SwapChain::cleanup() -> void
 {
-    for (const auto framebuffer : swapChainFramebuffers)
+    for (const auto framebuffer : _swapChainFrameBuffers)
     {
-        device.logicalDevice.destroy(framebuffer);
+        _device.logicalDevice.destroy(framebuffer);
     }
-    for (const auto imageView : swapChainImageViews)
+    for (const auto imageView : _swapChainImageViews)
     {
-        device.logicalDevice.destroy(imageView);
+        _device.logicalDevice.destroy(imageView);
     }
-    for (const auto image : depthImages)
+    for (const auto image : _depthImages)
     {
-        device.logicalDevice.destroy(image);
+        _device.logicalDevice.destroy(image);
     }
-    for (const auto imageView : depthImageViews)
+    for (const auto imageView : _depthImageViews)
     {
-        device.logicalDevice.destroy(imageView);
+        _device.logicalDevice.destroy(imageView);
     }
-    for (const auto imageMemory : depthImageMemories)
+    for (const auto imageMemory : _depthImageMemories)
     {
-        device.logicalDevice.free(imageMemory);
+        _device.logicalDevice.free(imageMemory);
     }
-    device.logicalDevice.destroy(swapChain);
+    _device.logicalDevice.destroy(_swapChain);
 }
 
 auto SwapChain::createSwapChain(const vk::SurfaceKHR& surface,
@@ -318,17 +318,17 @@ auto SwapChain::createSwapChain(const vk::SurfaceKHR& surface,
 
 auto SwapChain::getRenderPass() const noexcept -> const vk::RenderPass&
 {
-    return renderPass;
+    return _renderPass;
 }
 
 auto SwapChain::getFrameBuffer(size_t index) const noexcept -> const vk::Framebuffer&
 {
-    return swapChainFramebuffers[index];
+    return _swapChainFrameBuffers[index];
 }
 
 auto SwapChain::getExtent() const noexcept -> const vk::Extent2D&
 {
-    return swapChainExtent;
+    return _swapChainExtent;
 }
 
 auto SwapChain::findDepthFormat(const Device& device) -> vk::Format
@@ -342,21 +342,20 @@ auto SwapChain::findDepthFormat(const Device& device) -> vk::Format
 
 auto SwapChain::acquireNextImage() -> std::optional<uint32_t>
 {
-    if (frameBufferResized) [[unlikely]]
+    if (_frameBufferResized) [[unlikely]]
     {
-        frameBufferResized = false;
+        _frameBufferResized = false;
         recreate();
         return {};
     }
 
-    shouldBe(
-        device.logicalDevice.waitForFences(inFlightFences[currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max()),
+    shouldBe(_device.logicalDevice.waitForFences(_inFlightFences[_currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max()),
         vk::Result::eSuccess,
         "Waiting for the fences didn't succeed");
 
-    const auto imageIndex = device.logicalDevice.acquireNextImageKHR(swapChain,
+    const auto imageIndex = _device.logicalDevice.acquireNextImageKHR(_swapChain,
                                                                      std::numeric_limits<uint64_t>::max(),
-                                                                     imageAvailableSemaphores[currentFrame]);
+                                                                      _imageAvailableSemaphores[_currentFrame]);
 
     if (imageIndex.result == vk::Result::eErrorOutOfDateKHR || imageIndex.result == vk::Result::eSuboptimalKHR)
         [[unlikely]]
@@ -374,33 +373,33 @@ auto SwapChain::acquireNextImage() -> std::optional<uint32_t>
 
 auto SwapChain::submitCommandBuffers(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void
 {
-    if (imagesInFlight[imageIndex] != nullptr) [[likely]]
+    if (_imagesInFlight[imageIndex] != nullptr) [[likely]]
     {
-        shouldBe(device.logicalDevice.waitForFences(*imagesInFlight[imageIndex],
+        shouldBe(_device.logicalDevice.waitForFences(*_imagesInFlight[imageIndex],
                                                     VK_TRUE,
                                                     std::numeric_limits<uint64_t>::max()),
                  vk::Result::eSuccess,
-                 "Failed to wait for imagesInFlight fence");
+                 "Failed to wait for _imagesInFlight fence");
     }
-    imagesInFlight[imageIndex] = &inFlightFences[currentFrame];
+    _imagesInFlight[imageIndex] = &_inFlightFences[_currentFrame];
 
     static constexpr auto waitStages =
         std::array {vk::PipelineStageFlags {vk::PipelineStageFlagBits::eColorAttachmentOutput}};
-    const auto submitInfo = vk::SubmitInfo {imageAvailableSemaphores[currentFrame],
+    const auto submitInfo = vk::SubmitInfo {_imageAvailableSemaphores[_currentFrame],
                                             waitStages,
                                             commandBuffer,
-                                            renderFinishedSemaphores[currentFrame]};
+                                            _renderFinishedSemaphores[_currentFrame]};
 
-    shouldBe(device.logicalDevice.resetFences(inFlightFences[currentFrame]),
+    shouldBe(_device.logicalDevice.resetFences(_inFlightFences[_currentFrame]),
              vk::Result::eSuccess,
              "Failed to Reset inFlight fence");
-    shouldBe(device.graphicsQueue.submit(submitInfo, inFlightFences[currentFrame]),
+    shouldBe(_device.graphicsQueue.submit(submitInfo, _inFlightFences[_currentFrame]),
              vk::Result::eSuccess,
              "Submitting the graphics queue didn't succeeded");
 
-    const auto presentInfo = vk::PresentInfoKHR {renderFinishedSemaphores[currentFrame], swapChain, imageIndex};
+    const auto presentInfo = vk::PresentInfoKHR {_renderFinishedSemaphores[_currentFrame], _swapChain, imageIndex};
 
-    const auto presentationResult = device.presentationQueue.presentKHR(presentInfo);
+    const auto presentationResult = _device.presentationQueue.presentKHR(presentInfo);
 
     if (presentationResult == vk::Result::eErrorOutOfDateKHR || presentationResult == vk::Result::eSuboptimalKHR)
         [[unlikely]]
@@ -412,12 +411,12 @@ auto SwapChain::submitCommandBuffers(const vk::CommandBuffer& commandBuffer, uin
         log::Warning("Presenting the queue didn't succeeded: {}", presentationResult);
     }
 
-    currentFrame = (currentFrame + 1) % Vulkan::maxFramesInFlight;
+    _currentFrame = (_currentFrame + 1) % Vulkan::maxFramesInFlight;
 }
 
 auto SwapChain::imagesCount() const noexcept -> size_t
 {
-    return swapChainImages.size();
+    return _swapChainImages.size();
 }
 
 auto SwapChain::createDepthImages(const Device& device,
@@ -499,7 +498,7 @@ auto SwapChain::createDepthImageMemories(const Device& device,
 
 auto SwapChain::getExtentAspectRatio() const noexcept -> float
 {
-    return static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height);
+    return static_cast<float>(_swapChainExtent.width) / static_cast<float>(_swapChainExtent.height);
 }
 
 }

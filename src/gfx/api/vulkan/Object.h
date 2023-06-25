@@ -61,7 +61,7 @@ public:
 private:
     explicit Object(Id newId);
 
-    Id id;
+    Id _id;
 };
 
 }

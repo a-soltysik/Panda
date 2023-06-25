@@ -70,7 +70,6 @@ macro(PD_setup_options)
             PD_ENABLE_CLANG_TIDY
             PD_ENABLE_CPPCHECK
             PD_ENABLE_COVERAGE
-            PD_ENABLE_PCH
             PD_ENABLE_CACHE)
     endif ()
 endmacro()

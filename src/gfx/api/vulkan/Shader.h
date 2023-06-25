@@ -22,7 +22,7 @@ public:
         Compute
     };
 
-    Shader(const vk::ShaderModule& shaderModule, Type shaderType, const vk::Device& logicalDevice) noexcept;
+    Shader(const vk::ShaderModule& shaderModule, Type shaderType, const vk::Device& device) noexcept;
     PD_DELETE_ALL(Shader);
     ~Shader() noexcept;
 
@@ -43,7 +43,7 @@ public:
     const Type type;
 
 private:
-    const vk::Device& device;
+    const vk::Device& _device;
 };
 
 }

@@ -21,7 +21,7 @@ namespace panda::gfx::vulkan
 class Vulkan : public RenderingApi
 {
 public:
-    explicit Vulkan(const Window& mainWindow);
+    explicit Vulkan(const Window& window);
     PD_DELETE_ALL(Vulkan);
     ~Vulkan() noexcept override;
 
@@ -32,7 +32,7 @@ public:
 private:
     struct InstanceDeleter
     {
-        auto operator()(vk::Instance* toDelete) const noexcept -> void;
+        auto operator()(vk::Instance* instance) const noexcept -> void;
         const vk::SurfaceKHR& surface;
     };
 
@@ -55,17 +55,17 @@ private:
     inline static const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo =
         createDebugMessengerCreateInfo();
 
-    vk::SurfaceKHR surface {};
-    std::vector<const char*> requiredValidationLayers;
-    std::unique_ptr<vk::Instance, InstanceDeleter> instance;
-    std::unique_ptr<Device> device;
-    std::unique_ptr<Renderer> renderer;
-    std::unique_ptr<RenderSystem> renderSystem;
-    vk::DebugUtilsMessengerEXT debugMessenger {};
+    vk::SurfaceKHR _surface {};
+    std::vector<const char*> _requiredValidationLayers;
+    std::unique_ptr<vk::Instance, InstanceDeleter> _instance;
+    std::unique_ptr<Device> _device;
+    std::unique_ptr<Renderer> _renderer;
+    std::unique_ptr<RenderSystem> _renderSystem;
+    vk::DebugUtilsMessengerEXT _debugMessenger {};
 
-    std::unique_ptr<Model> model;
-    std::vector<Object> objects;
-    Camera camera;
+    std::unique_ptr<Model> _model;
+    std::vector<Object> _objects;
+    Camera _camera;
 };
 
 }

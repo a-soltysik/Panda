@@ -10,7 +10,7 @@ namespace panda::gfx::vulkan
 class SwapChain
 {
 public:
-    SwapChain(const Device& deviceRef, const vk::SurfaceKHR& surfaceRef, const Window& windowRef);
+    SwapChain(const Device& device, const vk::SurfaceKHR& surface, const Window& window);
     PD_DELETE_ALL(SwapChain);
     ~SwapChain() noexcept;
 
@@ -63,30 +63,30 @@ private:
     auto cleanup() -> void;
     auto recreate() -> void;
 
-    const Device& device;
-    const Window& window;
-    const vk::SurfaceKHR& surface;
+    const Device& _device;
+    const Window& _window;
+    const vk::SurfaceKHR& _surface;
 
-    vk::Extent2D swapChainExtent;
-    vk::SurfaceFormatKHR swapChainImageFormat;
-    vk::SurfaceFormatKHR swapChainDepthFormat;
-    vk::SwapchainKHR swapChain;
-    std::vector<vk::Image> swapChainImages;
-    std::vector<vk::ImageView> swapChainImageViews;
-    std::vector<vk::Image> depthImages;
-    std::vector<vk::DeviceMemory> depthImageMemories;
-    std::vector<vk::ImageView> depthImageViews;
+    vk::Extent2D _swapChainExtent;
+    vk::SurfaceFormatKHR _swapChainImageFormat;
+    vk::SurfaceFormatKHR _swapChainDepthFormat;
+    vk::SwapchainKHR _swapChain;
+    std::vector<vk::Image> _swapChainImages;
+    std::vector<vk::ImageView> _swapChainImageViews;
+    std::vector<vk::Image> _depthImages;
+    std::vector<vk::DeviceMemory> _depthImageMemories;
+    std::vector<vk::ImageView> _depthImageViews;
 
-    vk::RenderPass renderPass {};
-    std::vector<vk::Framebuffer> swapChainFramebuffers;
-    std::vector<vk::Semaphore> imageAvailableSemaphores;
-    std::vector<vk::Semaphore> renderFinishedSemaphores;
-    std::vector<vk::Fence> inFlightFences;
-    std::vector<vk::Fence*> imagesInFlight;
+    vk::RenderPass _renderPass {};
+    std::vector<vk::Framebuffer> _swapChainFrameBuffers;
+    std::vector<vk::Semaphore> _imageAvailableSemaphores;
+    std::vector<vk::Semaphore> _renderFinishedSemaphores;
+    std::vector<vk::Fence> _inFlightFences;
+    std::vector<vk::Fence*> _imagesInFlight;
 
-    utils::Signals::FrameBufferResized::ReceiverT frameBufferResizeReceiver;
-    uint32_t currentFrame = 0;
-    bool frameBufferResized = false;
+    utils::Signals::FrameBufferResized::ReceiverT _frameBufferResizeReceiver;
+    uint32_t _currentFrame = 0;
+    bool _frameBufferResized = false;
 };
 
 }

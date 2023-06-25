@@ -10,22 +10,22 @@ namespace
 
 struct PushConstantData
 {
-    glm::mat4 transform{1.f};
-    alignas(16) glm::vec3 color{};
+    glm::mat4 transform {1.f};
+    alignas(16) glm::vec3 color {};
 };
 
 }
 
-RenderSystem::RenderSystem(const Device& deviceRef, vk::RenderPass renderPass)
-    : device {deviceRef},
-      pipelineLayout {createPipelineLayout(device)},
-      pipeline {createPipeline(device, renderPass, pipelineLayout)}
+RenderSystem::RenderSystem(const Device& device, vk::RenderPass renderPass)
+    : _device {device},
+      _pipelineLayout {createPipelineLayout(_device)},
+      _pipeline {createPipeline(_device, renderPass, _pipelineLayout)}
 {
 }
 
 RenderSystem::~RenderSystem() noexcept
 {
-    device.logicalDevice.destroyPipelineLayout(pipelineLayout);
+    _device.logicalDevice.destroyPipelineLayout(_pipelineLayout);
 }
 
 auto RenderSystem::createPipeline(const Device& device, vk::RenderPass renderPass, vk::PipelineLayout pipelineLayout)
@@ -92,7 +92,7 @@ auto RenderSystem::createPipelineLayout(const Device& device) -> vk::PipelineLay
 auto RenderSystem::render(vk::CommandBuffer commandBuffer, std::vector<Object>& objects, const Camera& camera) const
     -> void
 {
-    commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->getHandle());
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline->getHandle());
 
     for (auto& object : objects)
     {
@@ -101,7 +101,7 @@ auto RenderSystem::render(vk::CommandBuffer commandBuffer, std::vector<Object>& 
         object.transform.rotation.z = glm::mod(object.transform.rotation.z + 0.0002f, glm::two_pi<float>());
         const auto push = PushConstantData {camera.getProjection() * object.transform.mat4(), object.color};
 
-        commandBuffer.pushConstants(pipelineLayout,
+        commandBuffer.pushConstants(_pipelineLayout,
                                     vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
                                     0,
                                     sizeof(PushConstantData),

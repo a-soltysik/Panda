@@ -22,25 +22,33 @@ enum class Level
 template <typename... Args>
 struct Debug
 {
-    explicit Debug(std::string_view format, Args&&... args, std::source_location location = std::source_location::current()) noexcept;
+    explicit Debug(std::string_view format,
+                   Args&&... args,
+                   std::source_location location = std::source_location::current()) noexcept;
 };
 
 template <typename... Args>
 struct Info
 {
-    explicit Info(std::string_view format, Args&&... args, std::source_location location = std::source_location::current()) noexcept;
+    explicit Info(std::string_view format,
+                  Args&&... args,
+                  std::source_location location = std::source_location::current()) noexcept;
 };
 
 template <typename... Args>
 struct Warning
 {
-    explicit Warning(std::string_view format, Args&&... args, std::source_location location = std::source_location::current()) noexcept;
+    explicit Warning(std::string_view format,
+                     Args&&... args,
+                     std::source_location location = std::source_location::current()) noexcept;
 };
 
 template <typename... Args>
 struct Error
 {
-    explicit Error(std::string_view format, Args&&... args, std::source_location location = std::source_location::current()) noexcept;
+    explicit Error(std::string_view format,
+                   Args&&... args,
+                   std::source_location location = std::source_location::current()) noexcept;
 };
 
 namespace internal
@@ -89,11 +97,11 @@ public:
         auto log(Level level, std::string_view message, const std::source_location& location) -> void;
         auto flush() -> void;
 
-        std::set<Level> levels = {Level::Debug, Level::Info, Level::Warning, Level::Error};
-        std::vector<std::string> buffer;
-        std::unique_ptr<fmt::ostream> file;
-        size_t bufferSize = 100;
-        bool isStarted = false;
+        std::set<Level> _levels = {Level::Debug, Level::Info, Level::Warning, Level::Error};
+        std::vector<std::string> _buffer;
+        std::unique_ptr<fmt::ostream> _file;
+        size_t _bufferSize = 100;
+        bool _isStarted = false;
     };
 
     static auto instance() -> Config&;

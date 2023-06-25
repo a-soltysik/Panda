@@ -37,15 +37,18 @@ namespace
 namespace internal
 {
 
-auto LogDispatcher::log([[maybe_unused]] Level level, [[maybe_unused]] std::string_view message, [[maybe_unused]] const std::source_location& location) noexcept -> void
+auto LogDispatcher::log([[maybe_unused]] Level level,
+                        [[maybe_unused]] std::string_view message,
+                        [[maybe_unused]] const std::source_location& location) noexcept -> void
 {
 #ifndef PD_DISABLE_LOGS
     try
     {
         Config::instance().console.log(level, message);
         Config::instance().file.log(level, message, location);
-    } catch (...) {
-
+    }
+    catch (...)
+    {
     }
 #endif
 }
@@ -87,21 +90,21 @@ auto Config::Console::stop() -> void
 
 auto Config::File::log(Level level, std::string_view message, const std::source_location& location) -> void
 {
-    if (!isStarted)
+    if (!_isStarted)
     {
         return;
     }
-    if (levels.contains(level))
+    if (_levels.contains(level))
     {
         const auto time = std::chrono::system_clock::now();
-        buffer.push_back(fmt::format("{:%H:%M:%S} {} {}:{}, {}\n",
-                                     std::chrono::floor<std::chrono::microseconds>(time),
-                                     getLevelTag(level),
-                                     getFunctionName(location.function_name()),
-                                     location.line(),
-                                     message));
+        _buffer.push_back(fmt::format("{:%H:%M:%S} {} {}:{}, {}\n",
+                                      std::chrono::floor<std::chrono::microseconds>(time),
+                                      getLevelTag(level),
+                                      getFunctionName(location.function_name()),
+                                      location.line(),
+                                      message));
 
-        if (buffer.size() >= bufferSize)
+        if (_buffer.size() >= _bufferSize)
         {
             flush();
         }
@@ -110,15 +113,15 @@ auto Config::File::log(Level level, std::string_view message, const std::source_
 
 auto Config::File::setLevels(std::span<const Level> newLevels) -> void
 {
-    levels = {newLevels.begin(), newLevels.end()};
+    _levels = {newLevels.begin(), newLevels.end()};
 }
 
 auto Config::File::start() -> void
 {
 #ifndef PD_DISABLE_LOGS
-    if (file)
+    if (_file)
     {
-        isStarted = true;
+        _isStarted = true;
         return;
     }
 
@@ -130,14 +133,14 @@ auto Config::File::start() -> void
         std::filesystem::create_directory(logsDir);
         const auto filename =
             fmt::format("{}/{:%F_%H_%M_%S.pdlog}", logsDir, std::chrono::floor<std::chrono::seconds>(time));
-        file = std::make_unique<fmt::ostream>(fmt::output_file(filename));
-        isStarted = true;
+        _file = std::make_unique<fmt::ostream>(fmt::output_file(filename));
+        _isStarted = true;
 
         Info("File logger started");
     }
     catch (const std::system_error& e)
     {
-        isStarted = false;
+        _isStarted = false;
         Error(e.what());
     }
 #endif
@@ -145,23 +148,23 @@ auto Config::File::start() -> void
 
 auto Config::File::stop() -> void
 {
-    isStarted = false;
+    _isStarted = false;
     flush();
 }
 
 auto Config::File::setBufferSize(size_t size) -> void
 {
-    bufferSize = size;
+    _bufferSize = size;
 }
 
 auto Config::File::flush() -> void
 {
 #ifndef PD_DISABLE_LOGS
-    for (const auto& line : buffer)
+    for (const auto& line : _buffer)
     {
-        file->print("{}", line);
+        _file->print("{}", line);
     }
-    buffer.clear();
+    _buffer.clear();
 #endif
 }
 
@@ -170,10 +173,11 @@ Config::File::~File()
     flush();
 }
 
-auto Config::File::terminate() -> void {
+auto Config::File::terminate() -> void
+{
 #ifndef PD_DISABLE_LOGS
     flush();
-    file->close();
+    _file->close();
 #endif
 }
 
