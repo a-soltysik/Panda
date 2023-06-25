@@ -1,7 +1,5 @@
 #include "App.h"
 
-#include <Windows.h>
-
 #include <csignal>
 
 #include "gfx/api/vulkan/Vulkan.h"

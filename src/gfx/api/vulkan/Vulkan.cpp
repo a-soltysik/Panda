@@ -39,7 +39,7 @@ VKAPI_ATTR auto VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT 
     return VK_FALSE;
 }
 
-std::unique_ptr<Model> createCubeModel(Device& device)
+auto createCubeModel(Device& device) -> std::unique_ptr<Model>
 {
     std::vector<Vertex> vertices {
 
@@ -89,8 +89,7 @@ std::unique_ptr<Model> createCubeModel(Device& device)
 }
 
 Vulkan::Vulkan(const Window& mainWindow)
-    : requiredValidationLayers {},
-      instance {createInstance()}
+    : instance {createInstance()}
 {
     VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
 
@@ -201,7 +200,7 @@ auto Vulkan::getRequiredExtensions() -> std::vector<const char*>
     auto glfwExtensionsCount = uint32_t {};
     const auto* glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
 
-    if (!glfwExtensions)
+    if (glfwExtensions == nullptr)
     {
         return {};
     }

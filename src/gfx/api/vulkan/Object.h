@@ -52,12 +52,14 @@ public:
     PD_MOVE_ONLY(Object);
     ~Object() noexcept = default;
 
-    Model* mesh;
+    [[nodiscard]] auto getId() const noexcept -> Id;
+
     Transform transform;
-    glm::vec3 color;
+    glm::vec3 color {};
+    Model* mesh {};
 
 private:
-    explicit Object(Id id);
+    explicit Object(Id newId);
 
     Id id;
 };

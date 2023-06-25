@@ -32,7 +32,7 @@ public:
 private:
     struct InstanceDeleter
     {
-        auto operator()(vk::Instance* instance) const noexcept -> void;
+        auto operator()(vk::Instance* toDelete) const noexcept -> void;
         const vk::SurfaceKHR& surface;
     };
 
@@ -55,13 +55,13 @@ private:
     inline static const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo =
         createDebugMessengerCreateInfo();
 
+    vk::SurfaceKHR surface {};
     std::vector<const char*> requiredValidationLayers;
     std::unique_ptr<vk::Instance, InstanceDeleter> instance;
     std::unique_ptr<Device> device;
     std::unique_ptr<Renderer> renderer;
     std::unique_ptr<RenderSystem> renderSystem;
     vk::DebugUtilsMessengerEXT debugMessenger {};
-    vk::SurfaceKHR surface {};
 
     std::unique_ptr<Model> model;
     std::vector<Object> objects;

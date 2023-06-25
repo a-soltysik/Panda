@@ -99,7 +99,7 @@ macro(PD_global_options)
     endif ()
 endmacro()
 
-macro(PD_local_options)
+macro(PD_local_options EXT_DIR)
     if (PROJECT_IS_TOP_LEVEL)
         include(cmake/StandardSettings.cmake)
     endif ()
@@ -143,7 +143,7 @@ macro(PD_local_options)
     endif ()
 
     if (PD_ENABLE_CPPCHECK)
-        PD_enable_cppcheck(${PD_WARNINGS_AS_ERRORS} "" # override cppcheck options
+        PD_enable_cppcheck(${PD_WARNINGS_AS_ERRORS} "" ${EXT_DIR}# override cppcheck options
             )
     endif ()
 

@@ -7,9 +7,16 @@ Checks: "*,
         -llvm*,
         -zircon-*,
         -cppcoreguidelines-non-private-member-variables-in-classes,
+        -cppcoreguidelines-pro-type-union-access,
+        -cppcoreguidelines-avoid-magic-numbers,
+        -cppcoreguidelines-pro-type-reinterpret-cast,
+        -cppcoreguidelines-pro-bounds-pointer-arithmetic,
         -misc-non-private-member-variables-in-classes,
         -readability-identifier-length,
         -readability-uppercase-literal-suffix,
+        -readability-magic-numbers,
+        -bugprone-easily-swappable-parameters,
+        -hicpp-uppercase-literal-suffix,
 "
 WarningsAsErrors: ''
 HeaderFilterRegex: ''

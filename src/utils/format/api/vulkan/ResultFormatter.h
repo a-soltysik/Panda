@@ -102,7 +102,8 @@ struct fmt::formatter<vk::Result> : formatter<std::string_view>
             return "ErrorVideoVersionNotSupportedKHR"sv;
         case vk::Result::eErrorVideoProfileCodecNotSupportedKHR:
             return "ErrorVideoProfileCodecNotSupportedKHR"sv;
+        default:
+            return "UnknownResult"sv;
         }
-        return "UnknownResult"sv;
     }
 };

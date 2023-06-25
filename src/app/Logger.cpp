@@ -45,7 +45,7 @@ auto LogDispatcher::log([[maybe_unused]] Level level, [[maybe_unused]] std::stri
         Config::instance().console.log(level, message);
         Config::instance().file.log(level, message, location);
     } catch (...) {
-        log::Warning("Exception thrown during logging");
+
     }
 #endif
 }

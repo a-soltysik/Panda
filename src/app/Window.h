@@ -23,8 +23,10 @@ public:
     static auto waitForInput() noexcept -> void;
 
 private:
-    utils::Signals::FrameBufferResized::ReceiverT frameBufferResizedReceiver;
-    GLFWwindow* window = nullptr;
+    [[nodiscard]] static auto createWindow(glm::uvec2 initialSize, const char* name) -> GLFWwindow*;
+
+    utils::Signals::FrameBufferResized::ReceiverT frameBufferResizedReceiver{};
+    GLFWwindow* window;
     glm::uvec2 size;
 };
 

@@ -10,7 +10,7 @@ namespace panda::gfx::vulkan
 class SwapChain
 {
 public:
-    SwapChain(const Device& device, const vk::SurfaceKHR& surface, const Window& window);
+    SwapChain(const Device& deviceRef, const vk::SurfaceKHR& surfaceRef, const Window& windowRef);
     PD_DELETE_ALL(SwapChain);
     ~SwapChain() noexcept;
 
@@ -20,7 +20,7 @@ public:
     [[nodiscard]] auto getExtentAspectRatio() const noexcept -> float;
     [[nodiscard]] auto acquireNextImage() -> std::optional<uint32_t>;
     [[nodiscard]] auto imagesCount() const noexcept -> size_t;
-    auto submitCommandBuffers(const vk::CommandBuffer& commandBuffers, uint32_t imageIndex) -> void;
+    auto submitCommandBuffers(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void;
 
 private:
     [[nodiscard]] static auto createSwapChain(const vk::SurfaceKHR& surface,

@@ -1,26 +1,25 @@
 #include "Window.h"
 
-namespace panda
+namespace
 {
 
 void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
-    static auto sender = utils::Signals::frameBufferResized.registerSender();
-    log::Info("Size of window [{}] changed to {}x{}", static_cast<void*>(window), width, height);
+    static auto sender = panda::utils::Signals::frameBufferResized.registerSender();
+    panda::log::Info("Size of window [{}] changed to {}x{}", static_cast<void*>(window), width, height);
 
     sender(width, height);
 }
 
-Window::Window(glm::uvec2 initialSize, const char* name)
-    : size {initialSize}
+}
+
+namespace panda
 {
-    expect(glfwInit(), GLFW_TRUE, "Failed to initialize GLFW");
 
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-    window = glfwCreateWindow(static_cast<int>(initialSize.x), static_cast<int>(initialSize.y), name, nullptr, nullptr);
-    log::Info("Window [{}] {}x{} px created", static_cast<void*>(window), initialSize.x, initialSize.y);
-
+Window::Window(glm::uvec2 initialSize, const char* name)
+    : window {createWindow(initialSize, name)},
+      size {initialSize}
+{
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
     frameBufferResizedReceiver = utils::Signals::frameBufferResized.connect([this](int x, int y) {
@@ -33,6 +32,19 @@ Window::~Window() noexcept
     glfwDestroyWindow(window);
     glfwTerminate();
     log::Info("Window [{}] destroyed", static_cast<void*>(window));
+}
+
+auto Window::createWindow(glm::uvec2 initialSize, const char* name) -> GLFWwindow*
+{
+    expect(glfwInit(), GLFW_TRUE, "Failed to initialize GLFW");
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+    auto* window =
+        glfwCreateWindow(static_cast<int>(initialSize.x), static_cast<int>(initialSize.y), name, nullptr, nullptr);
+    log::Info("Window [{}] {}x{} px created", static_cast<void*>(window), initialSize.x, initialSize.y);
+
+    return window;
 }
 
 auto Window::getHandle() const noexcept -> GLFWwindow*

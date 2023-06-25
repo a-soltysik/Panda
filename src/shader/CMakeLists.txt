@@ -2,12 +2,6 @@ set(SHADER_SRC_DIR ${SRC_DIR}/shader)
 
 set(SHADER_TARGET_NAME ${ENGINE_TARGET_NAME}.Shader)
 
-if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
-    set(GLSL_COMPILER "$ENV{VULKAN_SDK}/Bin/glslc.exe")
-else ()
-    set(GLSL_COMPILER "$ENV{VULKAN_SDK}/Bin32/glslc.exe")
-endif ()
-
 file(GLOB_RECURSE ${SHADER_TARGET_NAME}_SRC_LIST
     ${SHADER_SRC_DIR}/*.vert
     ${SHADER_SRC_DIR}/*.tesc
@@ -24,7 +18,7 @@ foreach (GLSL_FILE ${${SHADER_TARGET_NAME}_SRC_LIST})
     add_custom_command(
         OUTPUT ${SPIRV}
         COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
-        COMMAND ${GLSL_COMPILER} ${GLSL_FILE} -o ${SPIRV}
+        COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${GLSL_FILE} -o ${SPIRV}
         DEPENDS ${GLSL_FILE}
     )
     list(APPEND SPIRV_BINARY_FILES ${SPIRV})

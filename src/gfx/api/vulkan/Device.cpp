@@ -13,7 +13,7 @@ Device::Device(const vk::Instance& instance,
                std::span<const char* const> requiredExtensions,
                std::span<const char* const> requiredValidationLayers)
     : physicalDevice {pickPhysicalDevice(instance, currentSurface, requiredExtensions)},
-      queueFamilies(findQueueFamilies(physicalDevice, currentSurface).value()),
+      queueFamilies {expect(findQueueFamilies(physicalDevice, currentSurface), "Queue families need to exist")},
       logicalDevice {createLogicalDevice(physicalDevice, queueFamilies, requiredExtensions, requiredValidationLayers)},
       graphicsQueue {logicalDevice.getQueue(queueFamilies.graphicsFamily, 0)},
       presentationQueue {logicalDevice.getQueue(queueFamilies.presentationFamily, 0)},
@@ -127,10 +127,12 @@ auto Device::createLogicalDevice(vk::PhysicalDevice device,
     auto queueCreateInfos = std::vector<vk::DeviceQueueCreateInfo> {};
     queueCreateInfos.reserve(uniqueFamilies.size());
 
-    for (const auto queueFamily : queueFamilies.getUniqueQueueFamilies())
-    {
-        queueCreateInfos.emplace_back(vk::DeviceQueueCreateInfo({}, queueFamily, 1, &queuePriority));
-    }
+    std::ranges::transform(queueFamilies.getUniqueQueueFamilies(),
+                           std::back_inserter(queueCreateInfos),
+                           [&queuePriority](const auto queueFamily) {
+                               return vk::DeviceQueueCreateInfo {{}, queueFamily, 1, &queuePriority};
+                           });
+
     const auto physicalDeviceFeatures = vk::PhysicalDeviceFeatures {};
 
     auto createInfo = vk::DeviceCreateInfo({},
@@ -166,7 +168,7 @@ auto Device::findSupportedFormat(std::span<const vk::Format> candidates,
         {
             return format;
         }
-        else if (tiling == vk::ImageTiling::eOptimal && (properties.optimalTilingFeatures & features) == features)
+        if (tiling == vk::ImageTiling::eOptimal && (properties.optimalTilingFeatures & features) == features)
         {
             return format;
         }
@@ -174,13 +176,14 @@ auto Device::findSupportedFormat(std::span<const vk::Format> candidates,
     return {};
 }
 
-auto Device::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const noexcept -> std::optional<uint32_t>
+auto Device::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const noexcept
+    -> std::optional<uint32_t>
 {
     const auto memoryProperties = physicalDevice.getMemoryProperties();
 
     for (auto i = uint32_t {}; i < memoryProperties.memoryTypeCount; i++)
     {
-        if ((typeFilter & (uint32_t {1} << i)) &&
+        if (((typeFilter & (uint32_t {1} << i)) != 0) &&
             (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
         {
             return i;

@@ -27,7 +27,7 @@ struct PipelineConfig
 class Pipeline
 {
 public:
-    Pipeline(const Device& device, const PipelineConfig& config);
+    Pipeline(const Device& deviceRef, const PipelineConfig& config);
     PD_DELETE_ALL(Pipeline);
     ~Pipeline() noexcept;
 

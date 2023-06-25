@@ -14,9 +14,9 @@ public:
     auto run() -> int;
 
 private:
+    static auto initializeLogger() -> void;
+    static auto registerSignalHandlers() -> void;
     auto mainLoop() -> void;
-    auto initializeLogger() -> void;
-    auto registerSignalHandlers() -> void;
 
     std::unique_ptr<Window> window;
     std::unique_ptr<gfx::RenderingApi> api;

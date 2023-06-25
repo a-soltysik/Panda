@@ -8,13 +8,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(Panda)
 
+set(CONFIG_DIR src/config)
+set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
+set(EXT_DIR ${PROJECT_SOURCE_DIR}/ext)
+
 include(cmake/PreventInSourceBuilds.cmake)
 include(Options.cmake)
 
 PD_setup_options()
 
 PD_global_options()
-PD_local_options()
+PD_local_options(${EXT_DIR})
 
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 target_compile_features(PD_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
@@ -26,10 +30,6 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DPD_DEBUG=1 -DPD_RELEASE=0"
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DPD_DEBUG=0 -DPD_RELEASE=1")
 set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DPD_DEBUG=0 -DPD_RELEASE=1")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DPD_DEBUG=1 -DPD_RELEASE=1")
-
-set(CONFIG_DIR src/config)
-set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
-set(EXT_DIR ${PROJECT_SOURCE_DIR}/ext)
 
 set(FMT_DIR ${EXT_DIR}/fmt)
 set(VULKAN_HPP_DIR ${EXT_DIR}/Vulkan-Hpp)

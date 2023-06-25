@@ -374,7 +374,7 @@ auto SwapChain::acquireNextImage() -> std::optional<uint32_t>
 
 auto SwapChain::submitCommandBuffers(const vk::CommandBuffer& commandBuffer, uint32_t imageIndex) -> void
 {
-    if (imagesInFlight[imageIndex]) [[likely]]
+    if (imagesInFlight[imageIndex] != nullptr) [[likely]]
     {
         shouldBe(device.logicalDevice.waitForFences(*imagesInFlight[imageIndex],
                                                     VK_TRUE,

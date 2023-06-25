@@ -14,4 +14,9 @@ Object::Object(Id newId)
 {
 }
 
+auto Object::getId() const noexcept -> Id
+{
+    return id;
+}
+
 }

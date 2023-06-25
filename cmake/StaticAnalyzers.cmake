@@ -1,4 +1,4 @@
-macro(PD_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS)
+macro(PD_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS EXT_DIR)
     find_program(CPPCHECK cppcheck)
     if(CPPCHECK)
 
@@ -11,6 +11,7 @@ macro(PD_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS)
         if("${CPPCHECK_OPTIONS}" STREQUAL "")
             # Enable all warnings that are actionable by the user of this toolset
             # style should enable the other 3, but we'll be explicit just in case
+            message("${CMAKE_CURRENT_SOURCE_DIR}")
             set(CMAKE_CXX_CPPCHECK
                 ${CPPCHECK}
                 --template=${CPPCHECK_TEMPLATE}
@@ -26,6 +27,7 @@ macro(PD_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS)
                 # ignores code that cppcheck thinks is invalid C++
                 --suppress=syntaxError
                 --suppress=preprocessorErrorDirective
+                --suppress=*:${EXT_DIR}\*
                 --inconclusive)
         else()
             # if the user provides a CPPCHECK_OPTIONS with a template specified, it will override this template
@@ -50,22 +52,9 @@ macro(PD_enable_clang_tidy target WARNINGS_AS_ERRORS)
 
     find_program(CLANGTIDY clang-tidy)
     if(CLANGTIDY)
-        if(NOT
-            CMAKE_CXX_COMPILER_ID
-            MATCHES
-            ".*Clang")
-
-            get_target_property(TARGET_PCH ${target} INTERFACE_PRECOMPILE_HEADERS)
-
-            if("${TARGET_PCH}" STREQUAL "TARGET_PCH-NOTFOUND")
-                get_target_property(TARGET_PCH ${target} PRECOMPILE_HEADERS)
-            endif()
-
-            if(NOT ("${TARGET_PCH}" STREQUAL "TARGET_PCH-NOTFOUND"))
-                message(
-                    SEND_ERROR
+        if(NOT CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+            message(SEND_ERROR
                     "clang-tidy cannot be enabled with non-clang compiler and PCH, clang-tidy fails to handle gcc's PCH file")
-            endif()
         endif()
 
         # construct the clang-tidy command line
