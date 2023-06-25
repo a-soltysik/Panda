@@ -4,7 +4,9 @@
 .vscode/
 
 # Output directories
+build/
 cmake-build-*/
-out/
+out
 
+# VS specific file
 CMakeSettings.json

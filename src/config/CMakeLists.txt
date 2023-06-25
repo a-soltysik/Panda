@@ -1,0 +1,1 @@
+configure_file("config.h.in" "${CMAKE_BINARY_DIR}/generated/internal/config.h" ESCAPE_QUOTES)

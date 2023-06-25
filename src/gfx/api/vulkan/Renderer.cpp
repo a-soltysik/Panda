@@ -14,7 +14,7 @@ Renderer::Renderer(const Window& windowRef,
 {
 }
 
-Renderer::~Renderer()
+Renderer::~Renderer() noexcept
 {
     device.logicalDevice.freeCommandBuffers(device.commandPool, commandBuffers);
 }

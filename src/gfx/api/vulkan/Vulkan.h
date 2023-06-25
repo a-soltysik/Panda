@@ -13,6 +13,7 @@
 #include "RenderSystem.h"
 #include "Renderer.h"
 #include "gfx/Camera.h"
+#include "internal/config.h"
 
 namespace panda::gfx::vulkan
 {
@@ -37,7 +38,7 @@ private:
 
     [[nodiscard]] static constexpr auto shouldEnableValidationLayers() noexcept -> bool
     {
-        return PD_DEBUG;
+        return config::isDebug;
     }
 
     [[nodiscard]] static auto getRequiredExtensions() -> std::vector<const char*>;
@@ -54,6 +55,7 @@ private:
     inline static const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo =
         createDebugMessengerCreateInfo();
 
+    std::vector<const char*> requiredValidationLayers;
     std::unique_ptr<vk::Instance, InstanceDeleter> instance;
     std::unique_ptr<Device> device;
     std::unique_ptr<Renderer> renderer;
@@ -61,7 +63,6 @@ private:
     vk::DebugUtilsMessengerEXT debugMessenger {};
     vk::SurfaceKHR surface {};
 
-    std::vector<const char*> requiredValidationLayers;
     std::unique_ptr<Model> model;
     std::vector<Object> objects;
     Camera camera;

@@ -41,7 +41,7 @@ template <typename T>
 auto expect(T&& result,
             const std::convertible_to<T> auto& expected,
             std::string_view message,
-            std::source_location location = std::source_location::current()) noexcept -> void
+            std::source_location location = std::source_location::current()) noexcept -> T
 {
     if (result != expected) [[unlikely]]
     {
@@ -54,14 +54,14 @@ auto expect(T&& result,
             panic(message, location);
         }
     }
+    return result;
 }
 
 template <Result T>
-[[nodiscard]] auto expect(T&& result,
-                          const typename ResultHelper<T>::Error& expected,
-                          std::string_view message,
-                          std::source_location location = std::source_location::current()) noexcept ->
-    typename ResultHelper<T>::Ok
+auto expect(T&& result,
+            const typename ResultHelper<T>::Error& expected,
+            std::string_view message,
+            std::source_location location = std::source_location::current()) noexcept -> typename ResultHelper<T>::Ok
 {
     if (result.result != expected) [[unlikely]]
     {
@@ -74,47 +74,50 @@ template <Result T>
             panic(message, location);
         }
     }
-    return std::move(result.value);
+    return result.value;
 }
 
 template <typename T>
-[[nodiscard]] auto expect(T&& value,
-                          std::invocable<T> auto predicate,
-                          std::string_view message,
-                          std::source_location location = std::source_location::current()) noexcept -> T
+auto expect(T&& value,
+            std::invocable<T> auto predicate,
+            std::string_view message,
+            std::source_location location = std::source_location::current()) noexcept -> T
 {
     if (!predicate(std::forward<T>(value))) [[unlikely]]
     {
         panic(message, location);
     }
-    return std::forward<T>(value);
+    return value;
 }
 
 inline auto expect(std::convertible_to<bool> auto&& result,
                    std::string_view message,
-                   std::source_location location = std::source_location::current()) noexcept -> void
+                   std::source_location location = std::source_location::current()) noexcept
 {
     if (!result) [[unlikely]]
     {
         panic(message, location);
     }
+
+    return result;
 }
 
 inline auto expectNot(std::convertible_to<bool> auto&& result,
-                   std::string_view message,
-                   std::source_location location = std::source_location::current()) noexcept -> void
+                      std::string_view message,
+                      std::source_location location = std::source_location::current()) noexcept
 {
     if (result) [[unlikely]]
     {
         panic(message, location);
     }
+    return result;
 }
 
 template <typename T>
 auto expectNot(T&& result,
                const std::convertible_to<T> auto& expected,
                std::string_view message,
-               std::source_location location = std::source_location::current()) noexcept -> void
+               std::source_location location = std::source_location::current()) noexcept -> T
 {
     if (result == expected) [[unlikely]]
     {
@@ -127,14 +130,14 @@ auto expectNot(T&& result,
             panic(message, location);
         }
     }
+    return result;
 }
 
 template <Result T>
-[[nodiscard]] auto expectNot(T&& result,
-                             const typename ResultHelper<T>::Error& expected,
-                             std::string_view message,
-                             std::source_location location = std::source_location::current()) noexcept ->
-    typename ResultHelper<T>::Ok
+auto expectNot(T&& result,
+               const typename ResultHelper<T>::Error& expected,
+               std::string_view message,
+               std::source_location location = std::source_location::current()) noexcept -> typename ResultHelper<T>::Ok
 {
     if (result.result == expected) [[unlikely]]
     {
@@ -147,26 +150,26 @@ template <Result T>
             panic(message, location);
         }
     }
-    return std::move(result.value);
+    return result.value;
 }
 
 template <typename T>
-[[nodiscard]] auto expectNot(T&& value,
-                             std::invocable<T> auto predicate,
-                             std::string_view message,
-                             std::source_location location = std::source_location::current()) noexcept -> T
+auto expectNot(T&& value,
+               std::invocable<T> auto predicate,
+               std::string_view message,
+               std::source_location location = std::source_location::current()) noexcept -> T
 {
     if (predicate(std::forward<T>(value))) [[unlikely]]
     {
         panic(message, location);
     }
-    return std::forward<T>(value);
+    return value;
 }
 
 template <typename T>
-[[nodiscard]] auto expect(std::optional<T>&& value,
-                             std::string_view message,
-                             std::source_location location = std::source_location::current()) noexcept -> T
+auto expect(std::optional<T>&& value,
+            std::string_view message,
+            std::source_location location = std::source_location::current()) noexcept -> T
 {
     if (!value.has_value()) [[unlikely]]
     {
@@ -174,7 +177,6 @@ template <typename T>
     }
     return value.value();
 }
-
 
 template <typename T>
 auto shouldBe(T&& result,
@@ -211,9 +213,9 @@ inline auto shouldBe(std::convertible_to<bool> auto&& result,
 
 template <typename T>
 [[nodiscard]] auto shouldBe(T&& value,
-                             std::invocable<T> auto predicate,
-                             std::string_view message,
-                             std::source_location location = std::source_location::current()) noexcept -> bool
+                            std::invocable<T> auto predicate,
+                            std::string_view message,
+                            std::source_location location = std::source_location::current()) noexcept -> bool
 {
     if (!predicate(std::forward<T>(value))) [[unlikely]]
     {
@@ -244,12 +246,12 @@ auto shouldNotBe(T&& result,
     return true;
 }
 
-#if PD_RELEASE == 1
+}
+
+#if PD_RELEASE
 #    define DEBUG_EXPECT(condition) ((void) 0);
 #    define EXPECT(condition) panda::shouldBe(condition, #condition);
 #else
 #    define DEBUG_EXPECT(condition) panda::expect(condition, #condition);
 #    define EXPECT(condition) DEBUG_EXPECT(condition);
 #endif
-
-}

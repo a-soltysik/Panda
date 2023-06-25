@@ -44,10 +44,10 @@ std::unique_ptr<Model> createCubeModel(Device& device)
     std::vector<Vertex> vertices {
 
   // bottom face (white)
-        {{-1.f, 1.f, -1.f}, {.9f, .9f, .9f}},
-        {{-1.f, 1.f, 1.f},  {.9f, .9f, .9f}},
-        {{1.f, 1.f, 1.f},   {.9f, .9f, .9f}},
-        {{1.f, 1.f, -1.f},  {.9f, .9f, .9f}},
+        {{-1.f, 1.f, -1.f},  {.9f, .9f, .9f}},
+        {{-1.f, 1.f, 1.f},   {.9f, .9f, .9f}},
+        {{1.f, 1.f, 1.f},    {.9f, .9f, .9f}},
+        {{1.f, 1.f, -1.f},   {.9f, .9f, .9f}},
 
  // top face (yellow)
         {{-1.f, -1.f, -1.f}, {.8f, .8f, .1f}},
@@ -62,16 +62,16 @@ std::unique_ptr<Model> createCubeModel(Device& device)
         {{-1.f, 1.f, -1.f},  {.9f, .6f, .1f}},
 
  // right face (red)
-        {{1.f, 1.f, -1.f},  {.8f, .1f, .1f}},
-        {{1.f, 1.f, 1.f},   {.8f, .1f, .1f}},
-        {{1.f, -1.f, 1.f},  {.8f, .1f, .1f}},
-        {{1.f, -1.f, -1.f}, {.8f, .1f, .1f}},
+        {{1.f, 1.f, -1.f},   {.8f, .1f, .1f}},
+        {{1.f, 1.f, 1.f},    {.8f, .1f, .1f}},
+        {{1.f, -1.f, 1.f},   {.8f, .1f, .1f}},
+        {{1.f, -1.f, -1.f},  {.8f, .1f, .1f}},
 
  // front face (blue)
-        {{-1.f, 1.f, 1.f},  {.1f, .1f, .8f}},
+        {{-1.f, 1.f, 1.f},   {.1f, .1f, .8f}},
         {{1.f, 1.f, 1.f},    {.1f, .1f, .8f}},
-        {{-1.f, -1.f, 1.f},   {.1f, .1f, .8f}},
-        {{1.f, -1.f, 1.f},    {.1f, .1f, .8f}},
+        {{-1.f, -1.f, 1.f},  {.1f, .1f, .8f}},
+        {{1.f, -1.f, 1.f},   {.1f, .1f, .8f}},
 
  // back face (green)
         {{-1.f, -1.f, -1.f}, {.1f, .8f, .1f}},
@@ -80,18 +80,17 @@ std::unique_ptr<Model> createCubeModel(Device& device)
         {{-1.f, 1.f, -1.f},  {.1f, .8f, .1f}},
     };
 
-    return std::make_unique<Model>(device, vertices, std::array<uint16_t, 36> {0,  1,  2,  0, 2,  3,
-                                                                               4,  5,  6, 4,  6,  7,
-                                                                               8,  9,  10, 10, 11, 8,
-                                                                               12, 13, 14, 14, 15, 12,
-                                                                               16, 18, 17, 18, 19, 17,
-                                                                               20,21, 22, 20, 23, 21});
+    return std::make_unique<Model>(device, vertices, std::array<uint16_t, 36> {0,  1,  2,  0,  2,  3,  4,  5,  6,
+                                                                               4,  6,  7,  8,  9,  10, 10, 11, 8,
+                                                                               12, 13, 14, 14, 15, 12, 16, 18, 17,
+                                                                               18, 19, 17, 20, 21, 22, 20, 23, 21});
 }
 
 }
 
 Vulkan::Vulkan(const Window& mainWindow)
-    : instance {createInstance()}
+    : requiredValidationLayers {},
+      instance {createInstance()}
 {
     VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
 
@@ -155,9 +154,9 @@ auto Vulkan::createInstance() -> std::unique_ptr<vk::Instance, InstanceDeleter>
     const auto vkGetInstanceProcAddr = dynamicLoader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
-    const auto appInfo = vk::ApplicationInfo(PROJECT_NAME,
+    const auto appInfo = vk::ApplicationInfo(config::projectName.data(),
                                              VK_API_VERSION_1_0,
-                                             ENGINE_TARGET_NAME,
+                                             config::targetName.data(),
                                              VK_API_VERSION_1_0,
                                              VK_API_VERSION_1_3);
 
@@ -201,6 +200,11 @@ auto Vulkan::getRequiredExtensions() -> std::vector<const char*>
 {
     auto glfwExtensionsCount = uint32_t {};
     const auto* glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
+
+    if (!glfwExtensions)
+    {
+        return {};
+    }
 
     auto extensions = std::vector(glfwExtensions, glfwExtensions + glfwExtensionsCount);
 
@@ -307,10 +311,10 @@ auto Vulkan::createSurface(const Window& window) -> vk::SurfaceKHR
         "Unable to create surface");
 }
 
-auto Vulkan::InstanceDeleter::operator()(vk::Instance* instance) const noexcept -> void
+auto Vulkan::InstanceDeleter::operator()(vk::Instance* toDelete) const noexcept -> void
 {
     log::Info("Destroying instance");
-    instance->destroy(surface);
-    instance->destroy();
+    toDelete->destroy(surface);
+    toDelete->destroy();
 }
 }

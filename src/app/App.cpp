@@ -47,7 +47,7 @@ auto App::run() -> int
     initializeLogger();
     registerSignalHandlers();
 
-    window = std::make_unique<Window>(glm::uvec2 {800, 600}, ENGINE_TARGET_NAME);
+    window = std::make_unique<Window>(glm::uvec2 {800, 600}, config::targetName.data());
     api = std::make_unique<gfx::vulkan::Vulkan>(*window);
 
     mainLoop();
@@ -72,7 +72,7 @@ auto App::mainLoop() -> void
 
 auto App::initializeLogger() -> void
 {
-    if (PD_DEBUG)
+    if constexpr (config::isDebug)
     {
         log::Config::instance().console.setLevels(std::array {log::Level::Warning, log::Level::Error});
         log::Config::instance().console.start();
