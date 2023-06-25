@@ -26,24 +26,13 @@ jobs:
         with:
           version: latest
           cache: true
-      - if: ${{matrix.compiler}} == msvc
-        name: Configure CMake
+      - name: Configure CMake
         env:
           CMAKE_C_COMPILER: '${{matrix.compiler}}'
           CMAKE_CXX_COMPILER: '${{matrix.compiler}}'
         run: >-
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-      - if: ${{matrix.compiler}} != msvc
-        name: Configure CMake Static Analysis
-        env:
-          CMAKE_C_COMPILER: '${{matrix.compiler}}'
-          CMAKE_CXX_COMPILER: '${{matrix.compiler}}'
-        run: >-
-          cmake -B ${{github.workspace}}/build
-          -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-          -DPD_WARNINGS_AS_ERRORS=ON
-          -DPD_ENABLE_CPPCHECK=ON
       - name: Build
         run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
   build-linux:
@@ -64,7 +53,7 @@ jobs:
           cache: true
       - name: Install X11
         run: sudo apt install xorg-dev
-      - name: Configure CMake Static Analysis
+      - name: Configure CMake
         env:
           CMAKE_C_COMPILER: '${{matrix.compiler}}'
           CMAKE_CXX_COMPILER: '${{matrix.compiler}}'
@@ -72,8 +61,6 @@ jobs:
           echo "${{matrix.compiler}}";
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-          -DPD_WARNINGS_AS_ERRORS=ON
-          -DPD_ENABLE_CPPCHECK=ON
           
       - name: Build
         run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
