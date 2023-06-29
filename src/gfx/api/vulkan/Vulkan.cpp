@@ -123,14 +123,17 @@ Vulkan::Vulkan(const Window& window)
     auto object = Object::createObject();
     object.mesh = _model.get();
     object.transform.rotation = {};
-    object.transform.translation = {0.f, 0.f, 2.5f};
+    object.transform.translation = {0.f, -0.5f, 2.5f};
     object.transform.scale = {0.25f, 0.25f, 0.25f};
 
     _objects.push_back(std::move(object));
 
+
     log::Info("Create new object \"rectangle\"");
 
     _renderSystem = std::make_unique<RenderSystem>(*_device, _renderer->getSwapChainRenderPass());
+
+    _camera.setViewDirection(glm::vec3{0.f}, {0.5f, 0.f, 1.f});
 
     log::Info("Vulkan API has been successfully initialized");
 }
