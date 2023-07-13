@@ -37,7 +37,6 @@ macro(PD_setup_options)
         option(PD_ENABLE_SANITIZER_UNDEFINED "Enable undefined sanitizer" OFF)
         option(PD_ENABLE_SANITIZER_THREAD "Enable thread sanitizer" OFF)
         option(PD_ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
-        option(PD_ENABLE_UNITY_BUILD "Enable unity builds" OFF)
         option(PD_ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
         option(PD_ENABLE_CPPCHECK "Enable cpp-check analysis" OFF)
         option(PD_ENABLE_CACHE "Enable ccache" OFF)
@@ -50,7 +49,6 @@ macro(PD_setup_options)
         option(PD_ENABLE_SANITIZER_UNDEFINED "Enable undefined sanitizer" ${SUPPORTS_UBSAN})
         option(PD_ENABLE_SANITIZER_THREAD "Enable thread sanitizer" OFF)
         option(PD_ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
-        option(PD_ENABLE_UNITY_BUILD "Enable unity builds" OFF)
         option(PD_ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
         option(PD_ENABLE_CPPCHECK "Enable cpp-check analysis" OFF)
         option(PD_ENABLE_CACHE "Enable ccache" OFF)
@@ -66,10 +64,8 @@ macro(PD_setup_options)
             PD_ENABLE_SANITIZER_UNDEFINED
             PD_ENABLE_SANITIZER_THREAD
             PD_ENABLE_SANITIZER_MEMORY
-            PD_ENABLE_UNITY_BUILD
             PD_ENABLE_CLANG_TIDY
             PD_ENABLE_CPPCHECK
-            PD_ENABLE_COVERAGE
             PD_ENABLE_CACHE)
     endif ()
 endmacro()
@@ -129,8 +125,6 @@ macro(PD_local_options EXT_DIR)
         ${PD_ENABLE_SANITIZER_THREAD}
         ${PD_ENABLE_SANITIZER_MEMORY})
 
-    set_target_properties(PD_options PROPERTIES UNITY_BUILD ${PD_ENABLE_UNITY_BUILD})
-
     if (PD_ENABLE_CACHE)
         include(cmake/Cache.cmake)
         PD_enable_cache()
@@ -144,11 +138,6 @@ macro(PD_local_options EXT_DIR)
     if (PD_ENABLE_CPPCHECK)
         PD_enable_cppcheck(${PD_WARNINGS_AS_ERRORS} "" ${EXT_DIR}# override cppcheck options
             )
-    endif ()
-
-    if (PD_ENABLE_COVERAGE)
-        include(cmake/Tests.cmake)
-        PD_enable_coverage(PD_options)
     endif ()
 
     if (PD_WARNINGS_AS_ERRORS)

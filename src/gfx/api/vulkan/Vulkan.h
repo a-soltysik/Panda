@@ -27,7 +27,7 @@ public:
 
     static constexpr auto maxFramesInFlight = size_t {2};
 
-    auto makeFrame() -> void override;
+    auto makeFrame(float deltaTime) -> void override;
 
 private:
     struct InstanceDeleter
@@ -66,6 +66,8 @@ private:
     std::unique_ptr<Model> _model;
     std::vector<Object> _objects;
     Camera _camera;
+    Object _cameraObject;
+    const Window& _window;
 };
 
 }

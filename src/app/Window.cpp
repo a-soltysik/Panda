@@ -23,6 +23,7 @@ Window::Window(glm::uvec2 size, const char* name)
     glfwSetFramebufferSizeCallback(_window, framebufferResizeCallback);
 
     _frameBufferResizedReceiver = utils::Signals::frameBufferResized.connect([this](int x, int y) {
+        log::Debug("Received framebuffer resized notif");
         _size = {x, y};
     });
 }

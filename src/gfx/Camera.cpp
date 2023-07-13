@@ -37,6 +37,9 @@ auto Camera::getView() const noexcept -> const glm::mat4&
 
 auto Camera::setViewDirection(glm::vec3 position, glm::vec3 direction, glm::vec3 up) -> void
 {
+    position.y = -position.y;
+    direction.y = -direction.y;
+
     const auto w = glm::vec3 {glm::normalize(direction)};
     const auto u = glm::vec3 {glm::normalize(glm::cross(w, up))};
     const auto v = glm::vec3 {glm::cross(w, u)};
@@ -63,6 +66,8 @@ auto Camera::setViewTarget(glm::vec3 position, glm::vec3 target, glm::vec3 up) -
 
 auto Camera::setViewYXZ(glm::vec3 position, glm::vec3 rotation) -> void
 {
+    position.y = -position.y;
+
     const auto c3 = glm::cos(rotation.z);
     const auto s3 = glm::sin(rotation.z);
     const auto c2 = glm::cos(rotation.x);
