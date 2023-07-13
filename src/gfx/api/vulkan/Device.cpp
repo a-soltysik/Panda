@@ -3,7 +3,7 @@
 #include <ranges>
 
 #include "utils/Assert.h"
-#include "utils/format/api/vulkan/ResultFormatter.h"
+#include "utils/format/gfx/api/vulkan/ResultFormatter.h"
 
 namespace panda::gfx::vulkan
 {

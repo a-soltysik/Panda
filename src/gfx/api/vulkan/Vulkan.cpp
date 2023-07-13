@@ -4,7 +4,10 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 #include <algorithm>
 
-#include "utils/format/api/vulkan/ResultFormatter.h"
+#include "app/inputHandlers/MouseHandler.h"
+#include "app/movementHandlers/MovementHandler.h"
+#include "app/movementHandlers/RotationHandler.h"
+#include "utils/format/gfx/api/vulkan/ResultFormatter.h"
 
 namespace panda::gfx::vulkan
 {
@@ -89,7 +92,9 @@ auto createCubeModel(Device& device) -> std::unique_ptr<Model>
 }
 
 Vulkan::Vulkan(const Window& window)
-    : _instance {createInstance()}
+    : _instance {createInstance()},
+      _cameraObject {Object::createObject()},
+      _window {window}
 {
     VULKAN_HPP_DEFAULT_DISPATCHER.init(*_instance);
 
@@ -123,17 +128,16 @@ Vulkan::Vulkan(const Window& window)
     auto object = Object::createObject();
     object.mesh = _model.get();
     object.transform.rotation = {};
-    object.transform.translation = {0.f, -0.5f, 2.5f};
+    object.transform.translation = {0.f, -0.5f, 0.f};
     object.transform.scale = {0.25f, 0.25f, 0.25f};
 
     _objects.push_back(std::move(object));
-
 
     log::Info("Create new object \"rectangle\"");
 
     _renderSystem = std::make_unique<RenderSystem>(*_device, _renderer->getSwapChainRenderPass());
 
-    _camera.setViewDirection(glm::vec3{0.f}, {0.5f, 0.f, 1.f});
+    _camera.setViewDirection(_cameraObject.transform.translation, _cameraObject.transform.rotation);
 
     log::Info("Vulkan API has been successfully initialized");
 }
@@ -285,9 +289,54 @@ auto Vulkan::areValidationLayersSupported() const -> bool
     return true;
 }
 
-auto Vulkan::makeFrame() -> void
+auto Vulkan::makeFrame(float deltaTime) -> void
 {
-    _camera.setPerspectiveProjection(glm::radians(50.f), _renderer->getAspectRatio(), 0.1f, 10.f);
+    static constexpr auto rotationVelocity = 200.f;
+    static constexpr auto moveVelocity = 2.f;
+
+    _camera.setPerspectiveProjection(glm::radians(50.f), _renderer->getAspectRatio(), 0.1f, 100.f);
+
+    if (app::MouseHandler::instance(_window).getButtonState(GLFW_MOUSE_BUTTON_LEFT) ==
+        app::MouseHandler::ButtonState::Pressed)
+    {
+        _cameraObject.transform.rotation +=
+            glm::vec3 {app::RotationHandler::instance(_window).getRotation() * rotationVelocity * deltaTime, 0.f};
+    }
+
+    _cameraObject.transform.rotation.x =
+        glm::clamp(_cameraObject.transform.rotation.x, -glm::half_pi<float>(), glm::half_pi<float>());
+    _cameraObject.transform.rotation.y = glm::mod(_cameraObject.transform.rotation.y, glm::two_pi<float>());
+
+    const auto rawMovement = app::MovementHandler::instance(_window).getMovement();
+
+    const auto cameraDirection =
+        glm::vec3 {glm::cos(-_cameraObject.transform.rotation.x) * glm::sin(_cameraObject.transform.rotation.y),
+                   glm::sin(-_cameraObject.transform.rotation.x),
+                   glm::cos(-_cameraObject.transform.rotation.x) * glm::cos(_cameraObject.transform.rotation.y)};
+    const auto cameraRight =
+        glm::vec3 {glm::cos(_cameraObject.transform.rotation.y), 0.f, -glm::sin(_cameraObject.transform.rotation.y)};
+
+    auto translation = glm::vec3 {};
+    if (rawMovement.z != 0.f)
+    {
+        translation += cameraDirection * rawMovement.z;
+    }
+    if (rawMovement.x != 0.f)
+    {
+        translation += cameraRight * rawMovement.x;
+    }
+    if (rawMovement.y != 0.f)
+    {
+        translation.y = rawMovement.y;
+    }
+
+    if (glm::dot(translation, translation) > std::numeric_limits<float>::epsilon())
+    {
+        _cameraObject.transform.translation += glm::normalize(translation) * moveVelocity * deltaTime;
+    }
+
+    _camera.setViewYXZ(_cameraObject.transform.translation,
+                       {-_cameraObject.transform.rotation.x, _cameraObject.transform.rotation.y, 0.f});
 
     const auto commandBuffer = _renderer->beginFrame();
     if (!commandBuffer)
@@ -318,5 +367,7 @@ auto Vulkan::InstanceDeleter::operator()(vk::Instance* instance) const noexcept 
     log::Info("Destroying instance");
     instance->destroy(surface);
     instance->destroy();
+
+    delete instance;
 }
 }

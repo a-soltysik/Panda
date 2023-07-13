@@ -3,7 +3,7 @@
 #include <fstream>
 #include <unordered_map>
 
-#include "utils/format/api/vulkan/ResultFormatter.h"
+#include "utils/format/gfx/api/vulkan/ResultFormatter.h"
 
 namespace panda::gfx::vulkan
 {

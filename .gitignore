@@ -4,7 +4,7 @@
 .vscode/
 
 # Output directories
-build/
+build*/
 cmake-build-*/
 out
 

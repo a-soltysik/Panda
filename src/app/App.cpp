@@ -1,8 +1,10 @@
 #include "App.h"
 
 #include <csignal>
+#include <chrono>
 
 #include "gfx/api/vulkan/Vulkan.h"
+#include "inputHandlers/KeyboardHandler.h"
 
 namespace
 {
@@ -45,7 +47,7 @@ auto App::run() -> int
     initializeLogger();
     registerSignalHandlers();
 
-    _window = std::make_unique<Window>(glm::uvec2 {800, 600}, config::targetName.data());
+    _window = std::make_unique<Window>(glm::uvec2 {1280, 720}, config::targetName.data());
     _api = std::make_unique<gfx::vulkan::Vulkan>(*_window);
 
     mainLoop();
@@ -54,12 +56,20 @@ auto App::run() -> int
 
 auto App::mainLoop() -> void
 {
+    auto currentTime = std::chrono::steady_clock::now();
+
     while (!_window->shouldClose()) [[likely]]
     {
         if (!_window->isMinimized())
         {
-            _api->makeFrame();
+            utils::Signals::gameLoopIterationStarted.registerSender()();
             Window::processInput();
+
+            auto newTime = std::chrono::steady_clock::now();
+            const auto deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(newTime - currentTime).count();
+            currentTime = newTime;
+            
+            _api->makeFrame(deltaTime);
         }
         else [[unlikely]]
         {

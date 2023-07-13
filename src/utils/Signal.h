@@ -47,28 +47,39 @@ class Receiver
 public:
     Receiver() = default;
     Receiver(const Receiver&) = delete;
-    Receiver(Receiver&&) noexcept = default;
+
+    Receiver(Receiver&& rhs) noexcept
+        : _signal(rhs._signal)
+    {
+        rhs._signal = nullptr;
+    }
+
     auto operator=(const Receiver&) -> Receiver& = delete;
-    auto operator=(Receiver&&) noexcept -> Receiver& = default;
+    auto operator=(Receiver&& rhs) noexcept -> Receiver&
+    {
+        _signal = rhs._signal;
+        rhs._signal = nullptr;
+        return *this;
+    }
 
     ~Receiver() noexcept
     {
-        if (!signal) [[unlikely]]
+        if (!_signal) [[unlikely]]
         {
             return;
         }
-        signal->disconnect(*this);
+        _signal->disconnect(*this);
     }
 
 private:
     friend class Signal<Args...>;
 
-    explicit Receiver(Signal<Args...>& signalRef)
-        : signal {&signalRef}
+    explicit Receiver(Signal<Args...>& signal)
+        : _signal {&signal}
     {
     }
 
-    Signal<Args...>* signal;
+    Signal<Args...>* _signal;
 };
 
 template <typename... Args>
@@ -102,13 +113,13 @@ private:
 };
 
 template <typename... Args>
-auto Signal<Args...>::registerSender() const -> SenderT
+[[nodiscard]] auto Signal<Args...>::registerSender() const -> SenderT
 {
     return SenderT {*this};
 }
 
 template <typename... Args>
-auto Signal<Args...>::connect(ChannelT&& connection) -> ReceiverT
+[[nodiscard]] auto Signal<Args...>::connect(ChannelT&& connection) -> ReceiverT
 {
     std::lock_guard<std::mutex> lock {connectionsMutex};
     auto receiver = ReceiverT {*this};
