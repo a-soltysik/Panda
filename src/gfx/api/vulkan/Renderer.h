@@ -31,7 +31,6 @@ public:
 private:
     [[nodiscard]] auto createCommandBuffers() -> std::vector<vk::CommandBuffer>;
 
-    const Window& _window;
     const Device& _device;
     std::unique_ptr<SwapChain> _swapChain;
     std::vector<vk::CommandBuffer> _commandBuffers;

@@ -19,7 +19,7 @@ find_package(Vulkan REQUIRED)
 target_link_system_libraries(
     ${ENGINE_TARGET_NAME}
     PRIVATE
-    Vulkan::Vulkan glfw glm fmt)
+    Vulkan::Vulkan glfw glm fmt tinyobjloader)
 
 target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_EXCEPTIONS)
 target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE VULKAN_HPP_ASSERT_ON_RESULT=EXPECT)
@@ -28,3 +28,12 @@ target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE VULKAN_HPP_ASSERT=DEBUG
 target_precompile_headers(${ENGINE_TARGET_NAME} PRIVATE pch.h)
 
 add_subdirectory(shader)
+
+message(STATUS "Configuring resource directory")
+
+set(RESOURCE_PATH ${CMAKE_CURRENT_BINARY_DIR}/res)
+add_custom_command(TARGET ${ENGINE_TARGET_NAME} PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_LIST_DIR}/res ${CMAKE_CURRENT_BINARY_DIR}/res)
+
+target_compile_definitions(${ENGINE_TARGET_NAME} PRIVATE PD_RESOURCE_PATH="${RESOURCE_PATH}")
