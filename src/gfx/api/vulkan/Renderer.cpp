@@ -5,8 +5,7 @@
 namespace panda::gfx::vulkan
 {
 Renderer::Renderer(const Window& window, const Device& device, const vk::SurfaceKHR& surface)
-    : _window {window},
-      _device {device},
+    : _device {device},
       _swapChain {std::make_unique<SwapChain>(device, surface, window)},
       _commandBuffers {createCommandBuffers()}
 {

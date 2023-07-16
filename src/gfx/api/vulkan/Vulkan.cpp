@@ -42,53 +42,6 @@ VKAPI_ATTR auto VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT 
     return VK_FALSE;
 }
 
-auto createCubeModel(Device& device) -> std::unique_ptr<Model>
-{
-    std::vector<Vertex> vertices {
-
-  // bottom face (white)
-        {{-1.f, 1.f, -1.f},  {.9f, .9f, .9f}},
-        {{-1.f, 1.f, 1.f},   {.9f, .9f, .9f}},
-        {{1.f, 1.f, 1.f},    {.9f, .9f, .9f}},
-        {{1.f, 1.f, -1.f},   {.9f, .9f, .9f}},
-
- // top face (yellow)
-        {{-1.f, -1.f, -1.f}, {.8f, .8f, .1f}},
-        {{1.f, -1.f, -1.f},  {.8f, .8f, .1f}},
-        {{1.f, -1.f, 1.f},   {.8f, .8f, .1f}},
-        {{-1.f, -1.f, 1.f},  {.8f, .8f, .1f}},
-
- // left face (orange)
-        {{-1.f, -1.f, -1.f}, {.9f, .6f, .1f}},
-        {{-1.f, -1.f, 1.f},  {.9f, .6f, .1f}},
-        {{-1.f, 1.f, 1.f},   {.9f, .6f, .1f}},
-        {{-1.f, 1.f, -1.f},  {.9f, .6f, .1f}},
-
- // right face (red)
-        {{1.f, 1.f, -1.f},   {.8f, .1f, .1f}},
-        {{1.f, 1.f, 1.f},    {.8f, .1f, .1f}},
-        {{1.f, -1.f, 1.f},   {.8f, .1f, .1f}},
-        {{1.f, -1.f, -1.f},  {.8f, .1f, .1f}},
-
- // front face (blue)
-        {{-1.f, 1.f, 1.f},   {.1f, .1f, .8f}},
-        {{1.f, 1.f, 1.f},    {.1f, .1f, .8f}},
-        {{-1.f, -1.f, 1.f},  {.1f, .1f, .8f}},
-        {{1.f, -1.f, 1.f},   {.1f, .1f, .8f}},
-
- // back face (green)
-        {{-1.f, -1.f, -1.f}, {.1f, .8f, .1f}},
-        {{1.f, 1.f, -1.f},   {.1f, .8f, .1f}},
-        {{1.f, -1.f, -1.f},  {.1f, .8f, .1f}},
-        {{-1.f, 1.f, -1.f},  {.1f, .8f, .1f}},
-    };
-
-    return std::make_unique<Model>(device, vertices, std::array<uint16_t, 36> {0,  1,  2,  0,  2,  3,  4,  5,  6,
-                                                                               4,  6,  7,  8,  9,  10, 10, 11, 8,
-                                                                               12, 13, 14, 14, 15, 12, 16, 18, 17,
-                                                                               18, 19, 17, 20, 21, 22, 20, 23, 21});
-}
-
 }
 
 Vulkan::Vulkan(const Window& window)
@@ -123,13 +76,13 @@ Vulkan::Vulkan(const Window& window)
 
     _renderer = std::make_unique<Renderer>(window, *_device, _surface);
 
-    _model = createCubeModel(*_device);
+    _model = Model::loadObj(*_device, PD_RESOURCE_PATH"/models/colored_cube.obj");
 
     auto object = Object::createObject();
     object.mesh = _model.get();
     object.transform.rotation = {};
     object.transform.translation = {0.f, -0.5f, 0.f};
-    object.transform.scale = {0.25f, 0.25f, 0.25f};
+    object.transform.scale = {1.f, 1.f, 1.f};
 
     _objects.push_back(std::move(object));
 
