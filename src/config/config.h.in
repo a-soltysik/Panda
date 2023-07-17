@@ -5,7 +5,7 @@ namespace panda::config
 
 inline constexpr auto projectName = std::string_view {"@PROJECT_NAME@"};
 inline constexpr auto targetName = std::string_view {"@ENGINE_TARGET_NAME@"};
-inline constexpr auto resourcePath = std::string_view {PD_RESOURCE_PATH};
+inline constexpr auto resourceDir = std::string_view {"@RESOURCE_BIN_DIR@"};
 
 inline constexpr auto isDebug = bool{PD_DEBUG == 1};
 inline constexpr auto isRelease = bool{PD_RELEASE == 1};

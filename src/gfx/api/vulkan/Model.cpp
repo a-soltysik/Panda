@@ -38,22 +38,12 @@ template <typename T>
     return {};
 }
 
-[[nodiscard]] auto getVertexColor(const tinyobj::attrib_t& attribute, int vertexIndex) -> glm::vec3
-{
-    const auto colorIndex = 3 * static_cast<uint32_t>(vertexIndex) + 2;
-    if (colorIndex >= attribute.colors.size())
-    {
-        return {1.f, 1.f, 1.f};
-    }
-    return {attribute.colors[colorIndex - 2], attribute.colors[colorIndex - 1], attribute.colors[colorIndex - 0]};
-}
-
 }
 
 namespace panda::gfx::vulkan
 {
 
-Model::Model(const Device& device, std::span<const Vertex> vertices, std::span<const uint16_t> indices)
+Model::Model(const Device& device, std::span<const Vertex> vertices, std::span<const uint32_t> indices)
     : _device {device},
       _vertexBuffer {createVertexBuffer(_device, vertices)},
       _indexBuffer {createIndexBuffer(_device, indices)},
@@ -95,7 +85,7 @@ auto Model::bind(const vk::CommandBuffer& commandBuffer) const -> void
 
     if (_indexBuffer != nullptr)
     {
-        commandBuffer.bindIndexBuffer(_indexBuffer->buffer, 0, vk::IndexType::eUint16);
+        commandBuffer.bindIndexBuffer(_indexBuffer->buffer, 0, vk::IndexType::eUint32);
     }
 }
 
@@ -111,7 +101,7 @@ auto Model::draw(const vk::CommandBuffer& commandBuffer) const -> void
     }
 }
 
-auto Model::createIndexBuffer(const Device& device, const std::span<const uint16_t> indices) -> std::unique_ptr<Buffer>
+auto Model::createIndexBuffer(const Device& device, const std::span<const uint32_t> indices) -> std::unique_ptr<Buffer>
 {
     if (indices.empty())
     {
@@ -163,20 +153,27 @@ auto Model::loadObj(const Device& device, const std::filesystem::path& path) -> 
     shouldBe(error.empty(), error);
 
     auto vertices = std::vector<Vertex> {};
+    auto indices = std::vector<uint32_t> {};
+    auto uniqueVertices = std::unordered_map<Vertex, uint32_t> {};
 
     for (const auto& shape : shapes)
     {
         for (const auto& index : shape.mesh.indices)
         {
-            // cppcheck-suppress useStlAlgorithm
-            vertices.emplace_back(getVertexAttribute3(attribute, &tinyobj::attrib_t::vertices, index.vertex_index),
-                                  getVertexColor(attribute, index.vertex_index),
-                                  getVertexAttribute3(attribute, &tinyobj::attrib_t::normals, index.normal_index),
-                                  getVertexAttribute2(attribute, &tinyobj::attrib_t::texcoords, index.texcoord_index));
+            const auto vertex = Vertex{getVertexAttribute3(attribute, &tinyobj::attrib_t::vertices, index.vertex_index),
+                                        {1.f, 1.f, 1.f},//getVertexAttribute3(attribute, &tinyobj::attrib_t::colors, index.vertex_index),
+                       getVertexAttribute3(attribute, &tinyobj::attrib_t::normals, index.normal_index),
+                       getVertexAttribute2(attribute, &tinyobj::attrib_t::texcoords, index.texcoord_index)};
+            if (!uniqueVertices.contains(vertex))
+            {
+                uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+                vertices.push_back(vertex);
+            }
+            indices.push_back(uniqueVertices[vertex]);
         }
     }
 
-    return std::make_unique<Model>(device, vertices);
+    return std::make_unique<Model>(device, vertices, indices);
 }
 
 }

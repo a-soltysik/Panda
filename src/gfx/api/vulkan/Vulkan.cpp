@@ -76,7 +76,7 @@ Vulkan::Vulkan(const Window& window)
 
     _renderer = std::make_unique<Renderer>(window, *_device, _surface);
 
-    _model = Model::loadObj(*_device, PD_RESOURCE_PATH"/models/colored_cube.obj");
+    _model = Model::loadObj(*_device, config::resource::models / "cube.obj");
 
     auto object = Object::createObject();
     object.mesh = _model.get();
@@ -245,7 +245,7 @@ auto Vulkan::areValidationLayersSupported() const -> bool
 auto Vulkan::makeFrame(float deltaTime) -> void
 {
     static constexpr auto rotationVelocity = 200.f;
-    static constexpr auto moveVelocity = 2.f;
+    static constexpr auto moveVelocity = 2.5f;
 
     _camera.setPerspectiveProjection(glm::radians(50.f), _renderer->getAspectRatio(), 0.1f, 100.f);
 

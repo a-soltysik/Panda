@@ -11,7 +11,7 @@ namespace
 struct PushConstantData
 {
     glm::mat4 transform {1.f};
-    alignas(16) glm::vec3 color {};
+    alignas(16) glm::mat4 normalMatrix {};
 };
 
 }
@@ -98,10 +98,10 @@ auto RenderSystem::render(vk::CommandBuffer commandBuffer, std::vector<Object>& 
 
     for (auto& object : objects)
     {
-        object.transform.rotation.y = glm::mod(object.transform.rotation.y + 0.001f, glm::two_pi<float>());
-        object.transform.rotation.x = glm::mod(object.transform.rotation.x + 0.0005f, glm::two_pi<float>());
-        object.transform.rotation.z = glm::mod(object.transform.rotation.z + 0.0002f, glm::two_pi<float>());
-        const auto push = PushConstantData {projectionView * object.transform.mat4(), object.color};
+        //object.transform.rotation.y = glm::mod(object.transform.rotation.y + 0.001f, glm::two_pi<float>());
+        //object.transform.rotation.x = glm::mod(object.transform.rotation.x + 0.0005f, glm::two_pi<float>());
+        //object.transform.rotation.z = glm::mod(object.transform.rotation.z + 0.0002f, glm::two_pi<float>());
+        const auto push = PushConstantData {projectionView * object.transform.mat4(), object.transform.normalMatrix()};
 
         commandBuffer.pushConstants(_pipelineLayout,
                                     vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
