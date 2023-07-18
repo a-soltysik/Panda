@@ -160,10 +160,11 @@ auto Model::loadObj(const Device& device, const std::filesystem::path& path) -> 
     {
         for (const auto& index : shape.mesh.indices)
         {
-            const auto vertex = Vertex{getVertexAttribute3(attribute, &tinyobj::attrib_t::vertices, index.vertex_index),
-                                        {1.f, 1.f, 1.f},//getVertexAttribute3(attribute, &tinyobj::attrib_t::colors, index.vertex_index),
-                       getVertexAttribute3(attribute, &tinyobj::attrib_t::normals, index.normal_index),
-                       getVertexAttribute2(attribute, &tinyobj::attrib_t::texcoords, index.texcoord_index)};
+            const auto vertex =
+                Vertex {getVertexAttribute3(attribute, &tinyobj::attrib_t::vertices, index.vertex_index),
+                        getVertexAttribute3(attribute, &tinyobj::attrib_t::colors, index.vertex_index),
+                        getVertexAttribute3(attribute, &tinyobj::attrib_t::normals, index.normal_index),
+                        getVertexAttribute2(attribute, &tinyobj::attrib_t::texcoords, index.texcoord_index)};
             if (!uniqueVertices.contains(vertex))
             {
                 uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());

@@ -3,6 +3,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "Vulkan.h"
 
 #include <algorithm>
+#include <glm/gtx/rotate_vector.hpp>
 
 #include "app/inputHandlers/MouseHandler.h"
 #include "app/movementHandlers/MovementHandler.h"
@@ -76,7 +77,7 @@ Vulkan::Vulkan(const Window& window)
 
     _renderer = std::make_unique<Renderer>(window, *_device, _surface);
 
-    _model = Model::loadObj(*_device, config::resource::models / "cube.obj");
+    _model = Model::loadObj(*_device, config::resource::models / "smooth_vase.obj");
 
     auto object = Object::createObject();
     object.mesh = _model.get();
@@ -88,9 +89,45 @@ Vulkan::Vulkan(const Window& window)
 
     log::Info("Create new object \"rectangle\"");
 
-    _renderSystem = std::make_unique<RenderSystem>(*_device, _renderer->getSwapChainRenderPass());
+    _light = DirectionalLight {
+        {0.f,   -3.f,  -10.f},
+        {1.f,  0.5f,  1.f },
+        {0.08f, 0.08f, 0.1f}
+    };
 
     _camera.setViewDirection(_cameraObject.transform.translation, _cameraObject.transform.rotation);
+
+    _uboBuffers.reserve(maxFramesInFlight);
+
+    for (auto i = uint32_t {}; i < maxFramesInFlight; i++)
+    {
+        _uboBuffers.push_back(std::make_unique<Buffer>(
+            *_device,
+            sizeof(GlobalUbo),
+            1,
+            vk::BufferUsageFlagBits::eUniformBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+            _device->physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment));
+        _uboBuffers.back()->mapWhole();
+    }
+
+    _globalPool = DescriptorPool::Builder(*_device)
+                      .addPoolSize(vk::DescriptorType::eUniformBuffer, maxFramesInFlight)
+                      .build(maxFramesInFlight);
+    _globalSetLayout = DescriptorSetLayout::Builder(*_device)
+                           .addBinding(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex)
+                           .build();
+
+    for (auto i = uint32_t {}; i < maxFramesInFlight; i++)
+    {
+        DescriptorWriter(*_device, *_globalSetLayout, *_globalPool)
+            .writeBuffer(0, _uboBuffers[i]->getDescriptorInfo())
+            .build(_globalDescriptorSets[i]);
+    }
+
+    _renderSystem = std::make_unique<RenderSystem>(*_device,
+                                                   _renderer->getSwapChainRenderPass(),
+                                                   _globalSetLayout->getDescriptorSetLayout());
 
     log::Info("Vulkan API has been successfully initialized");
 }
@@ -296,8 +333,23 @@ auto Vulkan::makeFrame(float deltaTime) -> void
     {
         return;
     }
+    const auto frameIndex = _renderer->getFrameIndex();
+    const auto frameInfo = FrameInfo {.camera = _camera,
+                                      .commandBuffer = commandBuffer,
+                                      .descriptorSet = _globalDescriptorSets[frameIndex],
+                                      .frameIndex = frameIndex,
+                                      .deltaTime = deltaTime};
+
+    _light.direction = glm::rotateY(_light.direction, deltaTime);
+
+    const auto ubo = GlobalUbo {_camera.getProjection() * _camera.getView(),
+                                glm::normalize(_light.direction),
+                                _light.diffuseColor,
+                                _light.ambientColor};
+
+    _uboBuffers[frameIndex]->writeAt(ubo, 0);
     _renderer->beginSwapChainRenderPass();
-    _renderSystem->render(commandBuffer, _objects, _camera);
+    _renderSystem->render(frameInfo, _objects);
     _renderer->endSwapChainRenderPass();
     _renderer->endFrame();
 }
