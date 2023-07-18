@@ -7,16 +7,26 @@
 #include <span>
 #include <unordered_set>
 
+#include "Descriptor.h"
 #include "Device.h"
 #include "Model.h"
 #include "Object.h"
 #include "RenderSystem.h"
 #include "Renderer.h"
 #include "gfx/Camera.h"
+#include "gfx/DirectionalLight.h"
 #include "internal/config.h"
 
 namespace panda::gfx::vulkan
 {
+
+struct GlobalUbo
+{
+    glm::mat4 projectionView {1.f};
+    alignas(16) glm::vec3 lightDirection;
+    alignas(16) glm::vec3 diffuseColor;
+    alignas(16) glm::vec3 ambientColor;
+};
 
 class Vulkan : public RenderingApi
 {
@@ -62,9 +72,14 @@ private:
     std::unique_ptr<Renderer> _renderer;
     std::unique_ptr<RenderSystem> _renderSystem;
     vk::DebugUtilsMessengerEXT _debugMessenger {};
+    std::vector<std::unique_ptr<Buffer>> _uboBuffers;
+    std::unique_ptr<DescriptorPool> _globalPool;
+    std::unique_ptr<DescriptorSetLayout> _globalSetLayout;
+    std::vector<vk::DescriptorSet> _globalDescriptorSets = std::vector<vk::DescriptorSet>(maxFramesInFlight);
 
     std::unique_ptr<Model> _model;
     std::vector<Object> _objects;
+    DirectionalLight _light{};
     Camera _camera;
     Object _cameraObject;
     const Window& _window;
