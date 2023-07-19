@@ -66,7 +66,7 @@ template <typename T, size_t N>
     return internal::roundUpToMultiple(sizeof(T) * N, 16);
 }
 
-static_assert(alignment<uint32_t, 5>() == 32);
+static_assert(alignment<uint32_t, 5>({}) == 32);
 
 template <template <typename, size_t> typename A, typename T, size_t N>
 [[nodiscard]] consteval auto alignment([[maybe_unused]] const std::array<T, N> dummy = {}) -> size_t

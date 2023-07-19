@@ -138,7 +138,7 @@ Vulkan::Vulkan(const Window& window)
                       .addPoolSize(vk::DescriptorType::eUniformBuffer, maxFramesInFlight)
                       .build(maxFramesInFlight);
     _globalSetLayout = DescriptorSetLayout::Builder(*_device)
-                           .addBinding(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex)
+                           .addBinding(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eAllGraphics)
                            .build();
 
     for (auto i = uint32_t {}; i < maxFramesInFlight; i++)
