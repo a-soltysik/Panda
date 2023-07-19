@@ -78,21 +78,44 @@ Vulkan::Vulkan(const Window& window)
     _renderer = std::make_unique<Renderer>(window, *_device, _surface);
 
     _model = Model::loadObj(*_device, config::resource::models / "smooth_vase.obj");
+    _floorModel = Model::loadObj(*_device, config::resource::models / "square.obj");
 
     auto object = Object::createObject();
     object.mesh = _model.get();
     object.transform.rotation = {};
-    object.transform.translation = {0.f, -0.5f, 0.f};
-    object.transform.scale = {1.f, 1.f, 1.f};
+    object.transform.translation = {1.f, 0.f, 0.f};
+    object.transform.scale = {5.f, 5.f, 5.f};
+
+    _objects.push_back(std::move(object));
+
+    object = Object::createObject();
+    object.mesh = _model.get();
+    object.transform.rotation = {};
+    object.transform.translation = {-1.f, 0.f, 0.f};
+    object.transform.scale = {5.f, 5.f, 5.f};
+
+    _objects.push_back(std::move(object));
+
+    object = Object::createObject();
+    object.mesh = _floorModel.get();
+    object.transform.rotation = {};
+    object.transform.translation = {0.f, 0.f, 0.f};
+    object.transform.scale = {10.f, 10.f, 10.f};
 
     _objects.push_back(std::move(object));
 
     log::Info("Create new object \"rectangle\"");
 
-    _light = DirectionalLight {
-        {0.f,   -3.f,  -10.f},
-        {1.f,  0.5f,  1.f },
-        {0.08f, 0.08f, 0.1f}
+    _pointLight = PointLight {
+        {5.f, -2.f, -0.5f},
+        {1.f, 0.5f, 1.f, 1.5f},
+        {1.f, 0.5f, 1.f, 0.05f}
+    };
+
+    _directionalLight = DirectionalLight {
+        {0.f, -2.f, 10.f},
+        {0.5f, 1.f, 1.f, 0.5f},
+        {0.5f, 1.f, 1.f, 0.1f}
     };
 
     _camera.setViewDirection(_cameraObject.transform.translation, _cameraObject.transform.rotation);
@@ -340,12 +363,15 @@ auto Vulkan::makeFrame(float deltaTime) -> void
                                       .frameIndex = frameIndex,
                                       .deltaTime = deltaTime};
 
-    _light.direction = glm::rotateY(_light.direction, deltaTime);
+    _directionalLight.direction = glm::rotateY(_directionalLight.direction, deltaTime);
 
     const auto ubo = GlobalUbo {_camera.getProjection() * _camera.getView(),
-                                glm::normalize(_light.direction),
-                                _light.diffuseColor,
-                                _light.ambientColor};
+                                _directionalLight.direction,
+                                _directionalLight.diffuseColor,
+                                _directionalLight.ambientColor,
+                                _pointLight.position,
+                                _pointLight.diffuseColor,
+                                _pointLight.ambientColor};
 
     _uboBuffers[frameIndex]->writeAt(ubo, 0);
     _renderer->beginSwapChainRenderPass();

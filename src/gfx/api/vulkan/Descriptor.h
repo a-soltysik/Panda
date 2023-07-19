@@ -90,7 +90,7 @@ public:
     [[nodiscard]] auto writeBuffer(uint32_t binding, const vk::DescriptorBufferInfo& bufferInfo) -> DescriptorWriter&;
     [[nodiscard]] auto writeImage(uint32_t binding, const vk::DescriptorImageInfo& imageInfo) -> DescriptorWriter&;
 
-    auto build(vk::DescriptorSet set) -> bool;
+    auto build(vk::DescriptorSet& set) -> bool;
     auto overwrite(vk::DescriptorSet set) -> void;
 
 private:
