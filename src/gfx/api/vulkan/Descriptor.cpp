@@ -156,7 +156,7 @@ auto DescriptorWriter::writeImage(uint32_t binding, const vk::DescriptorImageInf
     return *this;
 }
 
-auto DescriptorWriter::build(vk::DescriptorSet set) -> bool
+auto DescriptorWriter::build(vk::DescriptorSet& set) -> bool
 {
     if (!_pool.allocateDescriptor(_setLayout.getDescriptorSetLayout(), set))
     {
