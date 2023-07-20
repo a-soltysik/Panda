@@ -1,21 +1,22 @@
 #pragma once
 
-#include "FrameInfo.h"
-#include "Object.h"
-#include "Pipeline.h"
 #include "gfx/Camera.h"
+#include "gfx/api/vulkan/Device.h"
+#include "gfx/api/vulkan/FrameInfo.h"
+#include "gfx/api/vulkan/Object.h"
+#include "gfx/api/vulkan/Pipeline.h"
 
 namespace panda::gfx::vulkan
 {
 
-class RenderSystem
+class PointLightSystem
 {
 public:
-    RenderSystem(const Device& device, vk::RenderPass renderPass, vk::DescriptorSetLayout setLayout);
-    PD_DELETE_ALL(RenderSystem);
-    ~RenderSystem() noexcept;
+    PointLightSystem(const Device& device, vk::RenderPass renderPass, vk::DescriptorSetLayout setLayout);
+    PD_DELETE_ALL(PointLightSystem);
+    ~PointLightSystem() noexcept;
 
-    auto render(const FrameInfo& frameInfo, std::vector<Object>& objects) const -> void;
+    auto render(const FrameInfo& frameInfo) const -> void;
 
 private:
     static auto createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout;

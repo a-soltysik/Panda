@@ -2,7 +2,6 @@
 
 #include <concepts>
 #include <cstddef>
-#include <glm/glm.hpp>
 #include <utility>
 
 #include "utils/Concepts.h"

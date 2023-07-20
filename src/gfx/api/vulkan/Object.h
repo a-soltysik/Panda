@@ -1,7 +1,5 @@
 #pragma once
 
-#include <glm/gtc/matrix_transform.hpp>
-
 #include "Model.h"
 
 namespace panda::gfx::vulkan

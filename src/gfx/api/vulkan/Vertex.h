@@ -1,8 +1,5 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include <glm/gtx/hash.hpp>
-
 #include "utils/Utils.h"
 
 namespace panda::gfx::vulkan

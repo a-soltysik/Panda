@@ -12,6 +12,8 @@ struct PipelineConfig
     std::filesystem::path vertexShaderPath;
     std::filesystem::path fragmentShaderPath;
 
+    std::vector<vk::VertexInputBindingDescription> vertexBindingDescriptions;
+    std::vector<vk::VertexInputAttributeDescription> vertexAttributeDescriptions;
     vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
     vk::PipelineViewportStateCreateInfo viewportInfo;
     vk::PipelineRasterizationStateCreateInfo rasterizationInfo;
@@ -20,7 +22,7 @@ struct PipelineConfig
     vk::PipelineDepthStencilStateCreateInfo depthStencilInfo;
     vk::PipelineLayout pipelineLayout;
     vk::RenderPass renderPass;
-    uint32_t subpass;
+    uint32_t subpass = 0;
 };
 
 class Pipeline

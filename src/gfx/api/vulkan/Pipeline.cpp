@@ -43,10 +43,9 @@ auto Pipeline::createPipeline(const Device& device, const PipelineConfig& config
     const auto dynamicStates = std::array {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
     const auto dynamicState = vk::PipelineDynamicStateCreateInfo {{}, dynamicStates};
 
-    static constexpr auto bindingDescription = Vertex::getBindingDescription();
-    static constexpr auto attributeDescriptions = Vertex::getAttributeDescriptions();
-
-    const auto vertexInputInfo = vk::PipelineVertexInputStateCreateInfo {{}, bindingDescription, attributeDescriptions};
+    const auto vertexInputInfo = vk::PipelineVertexInputStateCreateInfo {{},
+                                                                         config.vertexBindingDescriptions,
+                                                                         config.vertexAttributeDescriptions};
 
     const auto pipelineInfo = vk::GraphicsPipelineCreateInfo {{},
                                                               shaderStages,

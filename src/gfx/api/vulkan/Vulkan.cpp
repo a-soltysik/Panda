@@ -3,7 +3,6 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "Vulkan.h"
 
 #include <algorithm>
-#include <glm/gtx/rotate_vector.hpp>
 
 #include "app/inputHandlers/MouseHandler.h"
 #include "app/movementHandlers/MovementHandler.h"
@@ -118,7 +117,8 @@ Vulkan::Vulkan(const Window& window)
         {0.5f, 1.f, 1.f, 0.1f}
     };
 
-    _camera.setViewDirection(_cameraObject.transform.translation, _cameraObject.transform.rotation);
+    _cameraObject.transform.translation = {0.f, 2.f, -8.f};
+    _camera.setViewYXZ(_cameraObject.transform.translation, _cameraObject.transform.rotation);
 
     _uboBuffers.reserve(maxFramesInFlight);
 
@@ -151,6 +151,10 @@ Vulkan::Vulkan(const Window& window)
     _renderSystem = std::make_unique<RenderSystem>(*_device,
                                                    _renderer->getSwapChainRenderPass(),
                                                    _globalSetLayout->getDescriptorSetLayout());
+
+    _pointLightSystem = std::make_unique<PointLightSystem>(*_device,
+                                                           _renderer->getSwapChainRenderPass(),
+                                                           _globalSetLayout->getDescriptorSetLayout());
 
     log::Info("Vulkan API has been successfully initialized");
 }
@@ -365,7 +369,8 @@ auto Vulkan::makeFrame(float deltaTime) -> void
 
     _directionalLight.direction = glm::rotateY(_directionalLight.direction, deltaTime);
 
-    const auto ubo = GlobalUbo {_camera.getProjection() * _camera.getView(),
+    const auto ubo = GlobalUbo {_camera.getProjection(),
+                                _camera.getView(),
                                 _directionalLight.direction,
                                 _directionalLight.diffuseColor,
                                 _directionalLight.ambientColor,
@@ -376,6 +381,7 @@ auto Vulkan::makeFrame(float deltaTime) -> void
     _uboBuffers[frameIndex]->writeAt(ubo, 0);
     _renderer->beginSwapChainRenderPass();
     _renderSystem->render(frameInfo, _objects);
+    _pointLightSystem->render(frameInfo);
     _renderer->endSwapChainRenderPass();
     _renderer->endFrame();
 }
