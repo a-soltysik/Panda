@@ -1,36 +1,21 @@
-#include "RenderSystem.h"
-
-#include <glm/gtc/constants.hpp>
-
-#include "FrameInfo.h"
+#include "PointLightSystem.h"
 
 namespace panda::gfx::vulkan
 {
 
-namespace
-{
-
-struct PushConstantData
-{
-    glm::mat4 modelMatrix;
-    glm::mat4 normalMatrix;
-};
-
-}
-
-RenderSystem::RenderSystem(const Device& device, vk::RenderPass renderPass, vk::DescriptorSetLayout setLayout)
+PointLightSystem::PointLightSystem(const Device& device, vk::RenderPass renderPass, vk::DescriptorSetLayout setLayout)
     : _device {device},
       _pipelineLayout {createPipelineLayout(_device, setLayout)},
       _pipeline {createPipeline(_device, renderPass, _pipelineLayout)}
 {
 }
 
-RenderSystem::~RenderSystem() noexcept
+PointLightSystem::~PointLightSystem() noexcept
 {
     _device.logicalDevice.destroyPipelineLayout(_pipelineLayout);
 }
 
-auto RenderSystem::createPipeline(const Device& device, vk::RenderPass renderPass, vk::PipelineLayout pipelineLayout)
+auto PointLightSystem::createPipeline(const Device& device, vk::RenderPass renderPass, vk::PipelineLayout pipelineLayout)
     -> std::unique_ptr<Pipeline>
 {
     const auto inputAssemblyInfo =
@@ -68,8 +53,10 @@ auto RenderSystem::createPipeline(const Device& device, vk::RenderPass renderPas
         vk::PipelineDepthStencilStateCreateInfo {{}, VK_TRUE, VK_TRUE, vk::CompareOp::eLess, VK_FALSE, VK_FALSE};
 
     return std::make_unique<Pipeline>(device,
-                                      PipelineConfig {"shader/triangle.vert.spv",
-                                                      "shader/triangle.frag.spv",
+                                      PipelineConfig {"shader/pointLight.vert.spv",
+                                                      "shader/pointLight.frag.spv",
+                                                      {},
+                                                      {},
                                                       inputAssemblyInfo,
                                                       viewportInfo,
                                                       rasterizationInfo,
@@ -81,20 +68,15 @@ auto RenderSystem::createPipeline(const Device& device, vk::RenderPass renderPas
                                                       0});
 }
 
-auto RenderSystem::createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout
+auto PointLightSystem::createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout
 {
-    const auto pushConstantData =
-        vk::PushConstantRange {vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-                               0,
-                               sizeof(PushConstantData)};
-
-    const auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo {{}, setLayout, pushConstantData};
+    const auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo {{}, setLayout, {}};
     return expect(device.logicalDevice.createPipelineLayout(pipelineLayoutInfo),
                   vk::Result::eSuccess,
                   "Can't create pipeline layout");
 }
 
-auto RenderSystem::render(const FrameInfo& frameInfo, std::vector<Object>& objects) const -> void
+auto PointLightSystem::render(const FrameInfo& frameInfo) const -> void
 {
     frameInfo.commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline->getHandle());
     frameInfo.commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
@@ -103,21 +85,7 @@ auto RenderSystem::render(const FrameInfo& frameInfo, std::vector<Object>& objec
                                                frameInfo.descriptorSet,
                                                {});
 
-    for (auto& object : objects)
-    {
-        //object.transform.rotation.y = glm::mod(object.transform.rotation.y + 0.001f, glm::two_pi<float>());
-        //object.transform.rotation.x = glm::mod(object.transform.rotation.x + 0.0005f, glm::two_pi<float>());
-        //object.transform.rotation.z = glm::mod(object.transform.rotation.z + 0.0002f, glm::two_pi<float>());
-        const auto push = PushConstantData {object.transform.mat4(), object.transform.normalMatrix()};
-
-        frameInfo.commandBuffer.pushConstants(_pipelineLayout,
-                                              vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-                                              0,
-                                              sizeof(PushConstantData),
-                                              &push);
-        object.mesh->bind(frameInfo.commandBuffer);
-        object.mesh->draw(frameInfo.commandBuffer);
-    }
+    frameInfo.commandBuffer.draw(60, 1, 0, 0);
 }
 
 }

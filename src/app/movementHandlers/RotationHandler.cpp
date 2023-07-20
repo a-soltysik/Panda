@@ -1,7 +1,5 @@
 #include "RotationHandler.h"
 
-#include <glm/ext/scalar_constants.hpp>
-
 #include "app/inputHandlers/MouseHandler.h"
 
 namespace panda::app

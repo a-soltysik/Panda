@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <glm/vec2.hpp>
 
 #include "utils/Signals.h"
 

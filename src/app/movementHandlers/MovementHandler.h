@@ -1,7 +1,5 @@
 #pragma once
 
-#include <glm/vec3.hpp>
-
 #include "app/Window.h"
 
 namespace panda::app

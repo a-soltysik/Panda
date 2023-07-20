@@ -1,7 +1,5 @@
 #include "MovementHandler.h"
 
-#include <glm/common.hpp>
-
 #include "app/inputHandlers/KeyboardHandler.h"
 
 namespace panda::app

@@ -12,10 +12,11 @@
 #include "Device.h"
 #include "Model.h"
 #include "Object.h"
-#include "RenderSystem.h"
 #include "Renderer.h"
 #include "gfx/Camera.h"
 #include "gfx/Light.h"
+#include "systems/RenderSystem.h"
+#include "systems/PointLightSystem.h"
 #include "internal/config.h"
 
 namespace panda::gfx::vulkan
@@ -23,7 +24,8 @@ namespace panda::gfx::vulkan
 
 struct GlobalUbo
 {
-    PD_ALIGN(glm::mat4) projectionView {1.f};
+    PD_ALIGN(glm::mat4) projection {1.f};
+    PD_ALIGN(glm::mat4) view {1.f};
 
     PD_ALIGN(glm::vec3) dDirection;
     PD_ALIGN(glm::vec4) dDiffuseColor;
@@ -77,6 +79,7 @@ private:
     std::unique_ptr<Device> _device;
     std::unique_ptr<Renderer> _renderer;
     std::unique_ptr<RenderSystem> _renderSystem;
+    std::unique_ptr<PointLightSystem> _pointLightSystem;
     vk::DebugUtilsMessengerEXT _debugMessenger {};
     std::vector<std::unique_ptr<Buffer>> _uboBuffers;
     std::unique_ptr<DescriptorPool> _globalPool;
