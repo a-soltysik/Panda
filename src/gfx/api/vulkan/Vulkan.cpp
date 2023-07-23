@@ -4,6 +4,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 #include <algorithm>
 
+#include "UboLight.h"
 #include "app/inputHandlers/MouseHandler.h"
 #include "app/movementHandlers/MovementHandler.h"
 #include "app/movementHandlers/RotationHandler.h"
@@ -105,17 +106,32 @@ Vulkan::Vulkan(const Window& window)
 
     log::Info("Create new object \"rectangle\"");
 
-    _pointLight = PointLight {
-        {5.f, -2.f, -0.5f},
-        {1.f, 0.5f, 1.f, 1.5f},
-        {1.f, 0.5f, 1.f, 0.05f}
-    };
+    _lights.emplace_back(PointLight {
+        {2.f, -2.f, -1.5f},
+        {1.f, 0.5f, 1.f  },
+        1.5f,
+        0.1f
+    });
 
-    _directionalLight = DirectionalLight {
+    _lights.emplace_back(PointLight {
+        {0.f, -2.f, 0.f},
+        {1.f, 0.5f, 0.f},
+        2.f,
+        0.2f
+    });
+
+    _lights.emplace_back(PointLight {
+        {-2.f, -2.f, -1.5f},
+        {0.5f, 0.8f, 1.f  },
+        1.5f,
+        0.1f
+    });
+
+    _lights.emplace_back(DirectionalLight {
         {0.f, -2.f, 10.f},
-        {0.5f, 1.f, 1.f, 0.5f},
-        {0.5f, 1.f, 1.f, 0.1f}
-    };
+        {1.f, .8f,  .8f },
+        0.8f,
+    });
 
     _cameraObject.transform.translation = {0.f, 2.f, -8.f};
     _camera.setViewYXZ(_cameraObject.transform.translation, _cameraObject.transform.rotation);
@@ -367,21 +383,32 @@ auto Vulkan::makeFrame(float deltaTime) -> void
                                       .frameIndex = frameIndex,
                                       .deltaTime = deltaTime};
 
-    _directionalLight.direction = glm::rotateY(_directionalLight.direction, deltaTime);
+    auto it = std::ranges::find_if(_lights, [](const auto& light) {
+        return std::get_if<DirectionalLight>(&light) != nullptr;
+    });
 
-    const auto ubo = GlobalUbo {_camera.getProjection(),
-                                _camera.getView(),
-                                _directionalLight.direction,
-                                _directionalLight.diffuseColor,
-                                _directionalLight.ambientColor,
-                                _pointLight.position,
-                                _pointLight.diffuseColor,
-                                _pointLight.ambientColor};
+    if (it != _lights.end())
+    {
+        auto& directionalLight = std::get<DirectionalLight>(*it);
+        directionalLight.direction = glm::rotateY(directionalLight.direction, deltaTime);
+    }
 
+    auto ubo = GlobalUbo {
+        _camera.getProjection(),
+        _camera.getView(),
+        {0.1f, 0.1f, 0.1f, 1.f},
+        {},
+        {},
+        {},
+        {}
+    };
+
+    _pointLightSystem->update(_lights, ubo);
     _uboBuffers[frameIndex]->writeAt(ubo, 0);
     _renderer->beginSwapChainRenderPass();
     _renderSystem->render(frameInfo, _objects);
-    _pointLightSystem->render(frameInfo);
+
+    _pointLightSystem->render(frameInfo, _lights);
     _renderer->endSwapChainRenderPass();
     _renderer->endFrame();
 }

@@ -1,5 +1,18 @@
 #include "PointLightSystem.h"
 
+namespace
+{
+
+struct LightPushConstants
+{
+    glm::vec4 position;
+    glm::vec4 color;
+    float radius;
+    bool isPointLight;
+};
+
+}
+
 namespace panda::gfx::vulkan
 {
 
@@ -15,8 +28,9 @@ PointLightSystem::~PointLightSystem() noexcept
     _device.logicalDevice.destroyPipelineLayout(_pipelineLayout);
 }
 
-auto PointLightSystem::createPipeline(const Device& device, vk::RenderPass renderPass, vk::PipelineLayout pipelineLayout)
-    -> std::unique_ptr<Pipeline>
+auto PointLightSystem::createPipeline(const Device& device,
+                                      vk::RenderPass renderPass,
+                                      vk::PipelineLayout pipelineLayout) -> std::unique_ptr<Pipeline>
 {
     const auto inputAssemblyInfo =
         vk::PipelineInputAssemblyStateCreateInfo {{}, vk::PrimitiveTopology::eTriangleList, VK_FALSE};
@@ -68,15 +82,21 @@ auto PointLightSystem::createPipeline(const Device& device, vk::RenderPass rende
                                                       0});
 }
 
-auto PointLightSystem::createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout
+auto PointLightSystem::createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout)
+    -> vk::PipelineLayout
 {
-    const auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo {{}, setLayout, {}};
+    const auto pushConstantData =
+        vk::PushConstantRange {vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+                               0,
+                               sizeof(LightPushConstants)};
+
+    const auto pipelineLayoutInfo = vk::PipelineLayoutCreateInfo {{}, setLayout, pushConstantData};
     return expect(device.logicalDevice.createPipelineLayout(pipelineLayoutInfo),
                   vk::Result::eSuccess,
                   "Can't create pipeline layout");
 }
 
-auto PointLightSystem::render(const FrameInfo& frameInfo) const -> void
+auto PointLightSystem::render(const FrameInfo& frameInfo, std::span<const Light> lights) const -> void
 {
     frameInfo.commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline->getHandle());
     frameInfo.commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
@@ -85,7 +105,52 @@ auto PointLightSystem::render(const FrameInfo& frameInfo) const -> void
                                                frameInfo.descriptorSet,
                                                {});
 
-    frameInfo.commandBuffer.draw(60, 1, 0, 0);
+    for (const auto& light : lights)
+    {
+        std::visit(utils::overload {[this, &frameInfo](const DirectionalLight&) {
+                                        const auto pushConstant = LightPushConstants {{}, {}, {}, false};
+                                        frameInfo.commandBuffer.pushConstants<LightPushConstants>(
+                                            _pipelineLayout,
+                                            vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+                                            0,
+                                            pushConstant);
+                                    },
+                                    [this, &frameInfo](const PointLight& pointLight) {
+                                        const auto pushConstant = LightPushConstants {
+                                            {pointLight.position, 1.f                 },
+                                            {pointLight.color,    pointLight.intensity},
+                                            pointLight.radius,
+                                            true
+                                        };
+                                        frameInfo.commandBuffer.pushConstants<LightPushConstants>(
+                                            _pipelineLayout,
+                                            vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+                                            0,
+                                            pushConstant);
+                                    }},
+                   light);
+        frameInfo.commandBuffer.draw(6, 1, 0, 0);
+    }
 }
 
+auto PointLightSystem::update(std::span<const Light> lights, GlobalUbo& ubo) -> void
+{
+    auto directionalLightIndex = uint32_t {};
+    auto pointLightIndex = uint32_t {};
+
+    for (const auto& light : lights)
+    {
+        std::visit(utils::overload {[&directionalLightIndex, &ubo](const DirectionalLight& directionalLight) {
+                                        ubo.directionalLights[directionalLightIndex++] =
+                                            fromDirectionalLight(directionalLight);
+                                    },
+                                    [&pointLightIndex, &ubo](const PointLight& pointLight) {
+                                        ubo.pointLights[pointLightIndex++] = fromPointLight(pointLight);
+                                    }},
+                   light);
+    }
+
+    ubo.activeDirectionalLights = directionalLightIndex;
+    ubo.activePointLights = pointLightIndex;
+}
 }

@@ -17,3 +17,6 @@
 [submodule "ext/tinyobjloader"]
 	path = ext/tinyobjloader
 	url = git@github.com:tinyobjloader/tinyobjloader.git
+[submodule "ext/boost"]
+	path = ext/boost
+	url = git@github.com:boostorg/boost.git
