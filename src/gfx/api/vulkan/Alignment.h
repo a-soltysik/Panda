@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "utils/Concepts.h"
+#include "utils/Utils.h"
 
 namespace panda::gfx::vulkan
 {
@@ -12,23 +13,19 @@ namespace panda::gfx::vulkan
 namespace internal
 {
 
+template <typename T>
+concept UboStruct = requires {
+    {
+        T {}.alignment()
+    } -> std::convertible_to<size_t>;
+    typename utils::ConstexprChecker<T {}.alignment()>;
+};
+
 template <typename T, size_t N>
 using ArrayOf = T[N];
 
-[[nodiscard]] consteval auto roundUpToMultiple(size_t number, size_t base) -> size_t
-{
-    auto multiplier = size_t {1};
-    while (number > multiplier * base)
-    {
-        multiplier++;
-    }
-    return multiplier * base;
-}
-
-static_assert(roundUpToMultiple(1, 1) == 1);
-static_assert(roundUpToMultiple(1, 2) == 2);
-static_assert(roundUpToMultiple(5, 16) == 16);
-static_assert(roundUpToMultiple(20, 16) == 32);
+template <typename T>
+concept ScalarOrVec = utils::Scalar<T> || utils::Vec<T>;
 
 }
 
@@ -36,8 +33,14 @@ template <typename T>
 requires(!std::is_default_constructible_v<T> || !std::is_standard_layout_v<T>)
 consteval auto alignment(T = {}) -> size_t;
 
+template <internal::UboStruct T>
+consteval auto alignment(T = {}) noexcept -> size_t
+{
+    return T {}.alignment();
+};
+
 template <utils::Scalar T>
-[[nodiscard]] consteval auto alignment([[maybe_unused]] T dummy = {}) -> size_t
+[[nodiscard]] consteval auto alignment([[maybe_unused]] T = {}) noexcept -> size_t
 {
     return sizeof(T);
 }
@@ -46,7 +49,7 @@ static_assert(alignment<uint32_t>() == 4);
 
 template <template <glm::length_t, typename, glm::qualifier> typename V, glm::length_t L, typename T, glm::qualifier Q>
 requires utils::Vec<V<L, T, Q>>
-[[nodiscard]] consteval auto alignment([[maybe_unused]] V<L, T, Q> dummy = {}) -> size_t
+[[nodiscard]] consteval auto alignment([[maybe_unused]] V<L, T, Q> = {}) noexcept -> size_t
 {
     if constexpr (L == 2)
     {
@@ -59,21 +62,33 @@ static_assert(alignment(glm::vec2 {}) == 8);
 static_assert(alignment(glm::vec3 {}) == 16);
 static_assert(alignment(glm::vec4 {}) == 16);
 
-template <typename T, size_t N>
-[[nodiscard]] consteval auto alignment([[maybe_unused]] const internal::ArrayOf<T, N> dummy = {}) -> size_t
+template <internal::ScalarOrVec T, size_t N>
+[[nodiscard]] consteval auto alignment([[maybe_unused]] const internal::ArrayOf<T, N> = {}) noexcept -> size_t
 {
-    return internal::roundUpToMultiple(sizeof(T) * N, 16);
+    return std::max(sizeof(T), alignment(glm::vec4 {}));
 }
 
-static_assert(alignment<uint32_t, 5>({}) == 32);
+static_assert(alignment<uint32_t, 5>({}) == 16);
 
-template <template <typename, size_t> typename A, typename T, size_t N>
-[[nodiscard]] consteval auto alignment([[maybe_unused]] const std::array<T, N> dummy = {}) -> size_t
+template <internal::UboStruct T, size_t N>
+[[nodiscard]] consteval auto alignment([[maybe_unused]] const internal::ArrayOf<T, N> = {}) noexcept -> size_t
 {
-    return internal::roundUpToMultiple(sizeof(T) * N, 16);
+    return T {}.alignment();
 }
 
-static_assert(alignment<std::array, uint32_t, 5>() == 32);
+template <internal::ScalarOrVec T, size_t N>
+[[nodiscard]] consteval auto alignment([[maybe_unused]] const std::array<T, N> = {}) noexcept -> size_t
+{
+    return std::max(sizeof(T), alignment(glm::vec4 {}));
+}
+
+static_assert(alignment(std::array<uint32_t, 5> {}) == 16);
+
+template <internal::UboStruct T, size_t N>
+[[nodiscard]] consteval auto alignment([[maybe_unused]] const std::array<T, N> = {}) noexcept -> size_t
+{
+    return T {}.alignment();
+}
 
 template <template <glm::length_t, glm::length_t, typename, glm::qualifier> typename M,
           glm::length_t C,
@@ -81,13 +96,32 @@ template <template <glm::length_t, glm::length_t, typename, glm::qualifier> type
           typename T,
           glm::qualifier Q>
 requires utils::Mat<M<C, R, T, Q>>
-[[nodiscard]] consteval auto alignment([[maybe_unused]] M<C, R, T, Q> dummy = {}) -> size_t
+[[nodiscard]] consteval auto alignment([[maybe_unused]] M<C, R, T, Q> = {}) noexcept -> size_t
 {
-    return internal::roundUpToMultiple(alignment(glm::vec<R, T, Q>{}) * C, 16);
+    return alignment(std::array<glm::vec<R, T, Q>, static_cast<size_t>(C)> {});
 }
 
-static_assert(alignment(glm::mat4{}) == 64);
+static_assert(alignment(glm::mat4 {}) == 16);
+
+template <typename T, typename U>
+consteval auto maxAlignment(T a, U b) noexcept -> size_t
+{
+    return std::max(alignment(a), alignment(b));
+}
+
+template <typename T, typename U, typename... Args>
+consteval auto maxAlignment(T a, U b, Args... args) noexcept -> size_t
+{
+    return maxAlignment(maxAlignment(a, b), args...);
+}
 
 }
 
 #define PD_ALIGN(arg) alignas(alignment(arg {})) arg
+
+#define PD_MAKE_ALIGNED(...)                            \
+    consteval auto alignment() const noexcept -> size_t \
+    {                                                   \
+        return maxAlignment(__VA_ARGS__, glm::vec4 {}); \
+    }
+

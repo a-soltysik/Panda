@@ -22,20 +22,6 @@
 namespace panda::gfx::vulkan
 {
 
-struct GlobalUbo
-{
-    PD_ALIGN(glm::mat4) projection {1.f};
-    PD_ALIGN(glm::mat4) view {1.f};
-
-    PD_ALIGN(glm::vec3) dDirection;
-    PD_ALIGN(glm::vec4) dDiffuseColor;
-    PD_ALIGN(glm::vec4) dAmbientColor;
-
-    PD_ALIGN(glm::vec3) pPosition;
-    PD_ALIGN(glm::vec4) pDiffuseColor;
-    PD_ALIGN(glm::vec4) pAmbientColor;
-};
-
 class Vulkan : public RenderingApi
 {
 public:
@@ -89,8 +75,7 @@ private:
     std::unique_ptr<Model> _model;
     std::unique_ptr<Model> _floorModel;
     std::vector<Object> _objects;
-    DirectionalLight _directionalLight{};
-    PointLight _pointLight{};
+    std::vector<Light> _lights{};
     Camera _camera;
     Object _cameraObject;
     const Window& _window;
