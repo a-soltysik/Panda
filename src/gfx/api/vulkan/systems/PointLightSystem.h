@@ -16,7 +16,8 @@ public:
     PD_DELETE_ALL(PointLightSystem);
     ~PointLightSystem() noexcept;
 
-    auto render(const FrameInfo& frameInfo) const -> void;
+    static auto update(std::span<const Light> lights, GlobalUbo& ubo) -> void;
+    auto render(const FrameInfo& frameInfo, std::span<const Light> lights) const -> void;
 
 private:
     static auto createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout;

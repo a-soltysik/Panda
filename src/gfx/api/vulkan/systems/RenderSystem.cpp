@@ -105,11 +105,11 @@ auto RenderSystem::render(const FrameInfo& frameInfo, std::vector<Object>& objec
     {
         const auto push = PushConstantData {object.transform.mat4(), object.transform.normalMatrix()};
 
-        frameInfo.commandBuffer.pushConstants(_pipelineLayout,
-                                              vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-                                              0,
-                                              sizeof(PushConstantData),
-                                              &push);
+        frameInfo.commandBuffer.pushConstants<PushConstantData>(
+            _pipelineLayout,
+            vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+            0,
+            push);
         object.mesh->bind(frameInfo.commandBuffer);
         object.mesh->draw(frameInfo.commandBuffer);
     }

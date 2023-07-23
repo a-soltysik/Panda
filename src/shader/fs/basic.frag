@@ -6,17 +6,28 @@ layout (location = 2) in vec3 fragNormalWorld;
 
 layout(location = 0) out vec4 outColor;
 
-layout (set = 0, binding = 0) uniform GlobalUbo {
+struct DirectionalLight
+{
+    vec4 direction;
+    vec4 color;
+};
+
+struct PointLight
+{
+    vec4 position;
+    vec4 color;
+};
+
+layout (set = 0, binding = 0) uniform GlobalUbo
+{
     mat4 projection;
     mat4 view;
 
-    vec3 dDirection;
-    vec4 dDiffuse;
-    vec4 dAmbient;
-
-    vec3 pPosition;
-    vec4 pDiffuse;
-    vec4 pAmbient;
+    vec4 ambientColor;
+    PointLight pointLights[6];
+    DirectionalLight directionalLights[6];
+    uint activePointLights;
+    uint activeDirectionalLights;
 } ubo;
 
 
@@ -26,20 +37,25 @@ layout (push_constant) uniform Push {
 } push;
 
 void main() {
-    float dLightIntensity = max(dot(fragNormalWorld, normalize(ubo.dDirection)), 0.0);
-    vec3 dDiffuseLight = ubo.dDiffuse.xyz * ubo.dDiffuse.w * dLightIntensity;
-    vec3 dAmbientLight = ubo.dAmbient.xyz * ubo.dAmbient.w;
-    vec3 dLightColor = dDiffuseLight + dAmbientLight;
+    vec3 lightSum = ubo.ambientColor.xyz * ubo.ambientColor.w;
+    vec3 surfaceNormal = normalize(fragNormalWorld);
 
+    for (uint i = 0; i < ubo.activeDirectionalLights; i++)
+    {
+        DirectionalLight light = ubo.directionalLights[i];
+        float intensity = max(dot(fragNormalWorld, normalize(light.direction.xyz)), 0.0);
+        lightSum += light.color.xyz * light.color.w * intensity;
+    }
 
-    vec3 pDirectionToLight = ubo.pPosition - fragWorldPosition;
-    float attenuation = 1.0 / dot(pDirectionToLight, pDirectionToLight);
+    for (uint i = 0; i < ubo.activePointLights; i++)
+    {
+        PointLight light = ubo.pointLights[i];
+        vec3 direction = light.position.xyz - fragWorldPosition;
+        float attenuation = 1.0 / dot(direction, direction);
+        float incidence = max(dot(surfaceNormal, normalize(direction)), 0.0);
 
-    vec3 pDiffuseLight = ubo.pDiffuse.xyz * ubo.pDiffuse.w * attenuation;
-    vec3 pAmbientLight = ubo.pAmbient.xyz * ubo.pAmbient.w;
-    pDiffuseLight = pDiffuseLight * max(dot(normalize(fragNormalWorld), normalize(pDirectionToLight)), 0.0);
-    vec3 pLightColor = pDiffuseLight + pAmbientLight;
+        lightSum += light.color.xyz * light.color.w * attenuation * incidence;
+    }
 
-
-    outColor = vec4((dLightColor + pLightColor) * fragColor, 1.0);
+    outColor = vec4(lightSum * fragColor, 1.0);
 }
