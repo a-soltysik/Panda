@@ -11,12 +11,6 @@
 [submodule "ext/glm"]
 	path = ext/glm
 	url = git@github.com:g-truc/glm.git
-[submodule "ext/tinyobjectloader"]
-	path = ext/tinyobjloader/
-	url = https://github.com/tinyobjloader/tinyobjloader
 [submodule "ext/tinyobjloader"]
 	path = ext/tinyobjloader
 	url = git@github.com:tinyobjloader/tinyobjloader.git
-[submodule "ext/boost"]
-	path = ext/boost
-	url = git@github.com:boostorg/boost.git
