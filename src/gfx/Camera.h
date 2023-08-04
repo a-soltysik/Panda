@@ -14,10 +14,12 @@ public:
 
     [[nodiscard]] auto getProjection() const noexcept -> const glm::mat4&;
     [[nodiscard]] auto getView() const noexcept -> const glm::mat4&;
+    [[nodiscard]] auto getInverseView() const noexcept -> const glm::mat4&;
 
 private:
     glm::mat4 _projectionMatrix {1.f};
     glm::mat4 _viewMatrix {1.f};
+    glm::mat4 _inverseViewMatrix {1.f};
 };
 
 }
