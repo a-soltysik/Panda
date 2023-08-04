@@ -26,6 +26,7 @@ struct GlobalUbo
 
     PD_ALIGN(glm::mat4) projection {1.f};
     PD_ALIGN(glm::mat4) view {1.f};
+    PD_ALIGN(glm::mat4) inverseView {1.f};
 
     PD_ALIGN(glm::vec4) ambientColor;
     PD_ALIGN(LightArray<UboPointLight>) pointLights;

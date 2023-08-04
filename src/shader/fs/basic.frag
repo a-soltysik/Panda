@@ -22,6 +22,7 @@ layout (set = 0, binding = 0) uniform GlobalUbo
 {
     mat4 projection;
     mat4 view;
+    mat4 inverseView;
 
     vec4 ambientColor;
     PointLight pointLights[6];
@@ -39,6 +40,9 @@ layout (push_constant) uniform Push {
 void main() {
     vec3 lightSum = ubo.ambientColor.xyz * ubo.ambientColor.w;
     vec3 surfaceNormal = normalize(fragNormalWorld);
+    vec3 specular = vec3(0.0);
+    vec3 cameraWorldPosition = ubo.inverseView[3].xyz;
+    vec3 viewDirection = normalize(cameraWorldPosition - fragWorldPosition);
 
     for (uint i = 0; i < ubo.activeDirectionalLights; i++)
     {
@@ -52,10 +56,16 @@ void main() {
         PointLight light = ubo.pointLights[i];
         vec3 direction = light.position.xyz - fragWorldPosition;
         float attenuation = 1.0 / dot(direction, direction);
-        float incidence = max(dot(surfaceNormal, normalize(direction)), 0.0);
+        direction = normalize(direction);
+        float incidence = max(dot(surfaceNormal, direction), 0.0);
 
         lightSum += light.color.xyz * light.color.w * attenuation * incidence;
+        vec3 halfAngle = normalize(direction + viewDirection);
+        float blinnTerm = dot(surfaceNormal, halfAngle);
+        blinnTerm = clamp(blinnTerm, 0.0, 1.0);
+        blinnTerm = pow(blinnTerm, 128.0);
+        specular += light.color.xyz * light.color.w * attenuation * blinnTerm;
     }
 
-    outColor = vec4(lightSum * fragColor, 1.0);
+    outColor = vec4((lightSum + specular) * fragColor, 1.0);
 }

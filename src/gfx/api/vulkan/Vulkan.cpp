@@ -396,6 +396,7 @@ auto Vulkan::makeFrame(float deltaTime) -> void
     auto ubo = GlobalUbo {
         _camera.getProjection(),
         _camera.getView(),
+        _camera.getInverseView(),
         {0.1f, 0.1f, 0.1f, 1.f},
         {},
         {},
