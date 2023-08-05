@@ -38,7 +38,9 @@ jobs:
           version: latest
           cache: true
       - name: Install X11
-        run: sudo apt install xorg-dev
+        run: |
+          sudo apt update
+          sudo apt install xorg-dev
       - name: Configure CMake
         run: >-
           cmake -B ${{github.workspace}}/build
