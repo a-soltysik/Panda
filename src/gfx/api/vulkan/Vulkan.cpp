@@ -245,7 +245,9 @@ auto Vulkan::getRequiredExtensions() -> std::vector<const char*>
         return {};
     }
 
-    auto extensions = std::vector(glfwExtensions, glfwExtensions + glfwExtensionsCount);
+    const auto extensionsSpan = std::span(glfwExtensions, glfwExtensionsCount);
+
+    auto extensions = std::vector(extensionsSpan.begin(), extensionsSpan.end());
 
     if constexpr (shouldEnableValidationLayers())
     {
