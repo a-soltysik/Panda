@@ -47,7 +47,9 @@ auto App::run() -> int
     initializeLogger();
     registerSignalHandlers();
 
-    _window = std::make_unique<Window>(glm::uvec2 {1280, 720}, config::targetName.data());
+    static constexpr uint32_t defaultWidth = 1280;
+    static constexpr uint32_t defaultHeight = 720;
+    _window = std::make_unique<Window>(glm::uvec2 {defaultWidth, defaultHeight}, config::targetName.data());
     _api = std::make_unique<gfx::vulkan::Vulkan>(*_window);
 
     mainLoop();

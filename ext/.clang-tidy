@@ -2,4 +2,5 @@
 
 Checks: '-*,misc-definitions-in-headers'
 CheckOptions:
-  - { key: HeaderFileExtensions, value: "x" }
+  - key: misc-definitions-in-headers
+    value: "x"
