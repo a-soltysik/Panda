@@ -18,6 +18,7 @@ macro(PD_supports_sanitizers)
 endmacro()
 
 macro(PD_setup_options)
+    option(PD_BUILD_APP "Build app" ON)
     option(PD_ENABLE_HARDENING "Enable hardening" OFF)
     cmake_dependent_option(
         PD_ENABLE_GLOBAL_HARDENING
@@ -28,7 +29,7 @@ macro(PD_setup_options)
 
     PD_supports_sanitizers()
 
-    if (NOT PROJECT_IS_TOP_LEVEL OR PD_PACKAGING_MAINTAINER_MODE)
+    if (NOT PROJECT_IS_TOP_LEVEL)
         option(PD_ENABLE_IPO "Enable IPO/LTO" OFF)
         option(PD_WARNINGS_AS_ERRORS "Treat Warnings As Errors" OFF)
         option(PD_ENABLE_USER_LINKER "Enable user-selected linker" OFF)
@@ -40,6 +41,7 @@ macro(PD_setup_options)
         option(PD_ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
         option(PD_ENABLE_CPPCHECK "Enable cpp-check analysis" OFF)
         option(PD_ENABLE_CACHE "Enable ccache" OFF)
+        option(PD_ENABLE_PCH "Enable precompiled headers" OFF)
     else ()
         option(PD_ENABLE_IPO "Enable IPO/LTO" OFF)
         option(PD_WARNINGS_AS_ERRORS "Treat Warnings As Errors" OFF)
@@ -52,6 +54,7 @@ macro(PD_setup_options)
         option(PD_ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
         option(PD_ENABLE_CPPCHECK "Enable cpp-check analysis" OFF)
         option(PD_ENABLE_CACHE "Enable ccache" OFF)
+        option(PD_ENABLE_PCH "Enable precompiled headers" OFF)
     endif ()
 
     if (NOT PROJECT_IS_TOP_LEVEL)
@@ -66,7 +69,8 @@ macro(PD_setup_options)
             PD_ENABLE_SANITIZER_MEMORY
             PD_ENABLE_CLANG_TIDY
             PD_ENABLE_CPPCHECK
-            PD_ENABLE_CACHE)
+            PD_ENABLE_CACHE
+            PD_ENABLE_PCH)
     endif ()
 endmacro()
 
