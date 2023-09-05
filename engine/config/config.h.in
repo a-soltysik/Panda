@@ -1,0 +1,16 @@
+#pragma once
+
+#include <filesystem>
+
+namespace panda::config
+{
+
+inline constexpr auto projectName = std::string_view {"@PROJECT_NAME@"};
+inline constexpr auto engineName = std::string_view {"@ENGINE_TARGET_NAME@"};
+
+inline constexpr auto isDebug = bool{PD_DEBUG == 1};
+inline constexpr auto isRelease = bool{PD_RELEASE == 1};
+
+inline const auto shaderPath = std::filesystem::path{"../shader"};
+
+}

@@ -9,7 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 project(Panda)
 
 set(CONFIG_DIR src/config)
-set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
+set(ENGINE_DIR ${PROJECT_SOURCE_DIR}/engine)
+set(APP_DIR ${PROJECT_SOURCE_DIR}/app)
 set(EXT_DIR ${PROJECT_SOURCE_DIR}/ext)
 
 include(cmake/PreventInSourceBuilds.cmake)
@@ -41,9 +42,12 @@ add_subdirectory(${FMT_DIR})
 add_subdirectory(${TINYOBJLOADER_DIR})
 add_subdirectory(${VULKAN_HPP_DIR})
 add_subdirectory(${GLM_DIR})
-add_subdirectory(${GLFW_DIR})
 
-add_subdirectory(${SRC_DIR})
+add_subdirectory(${ENGINE_DIR})
+if (PD_BUILD_APP)
+    add_subdirectory(${GLFW_DIR})
+    add_subdirectory(${APP_DIR})
+endif ()
 
 # If MSVC is being used, and ASAN is enabled, we need to set the debugger environment
 # so that it behaves well with MSVC's debugger, and we can run the target from visual studio
