@@ -24,9 +24,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt install libncurses5
-          wget https://github.com/llvm/llvm-project/releases/download/llvmorg-16.0.0/clang+llvm-16.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-          tar xf clang+llvm-16.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-          cd clang+llvm-16.0.0-x86_64-linux-gnu-ubuntu-18.04
+          wget https://github.com/llvm/llvm-project/releases/download/llvmorg-16.0.4/clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04.tar.xz
+          tar xf clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04.tar.xz
+          cd clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04
           sudo cp -R * /usr/local/
       - name: Install X11
         run: sudo apt install xorg-dev
