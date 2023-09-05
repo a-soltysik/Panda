@@ -10,8 +10,13 @@ namespace panda::utils
 template <auto>
 using ConstexprChecker = void;
 
-template<class... Ts> struct overload : Ts... { using Ts::operator()...; };
-template<class... Ts> overload(Ts...) -> overload<Ts...>;
+template <class... Ts>
+struct overload : Ts...
+{
+    using Ts::operator()...;
+};
+template <class... Ts>
+overload(Ts...) -> overload<Ts...>;
 
 template <typename T, typename... Rest>
 auto hashCombine(size_t& seed, const T& v, const Rest&... rest) -> void

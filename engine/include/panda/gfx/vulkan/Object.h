@@ -28,7 +28,7 @@ public:
 
     Transform transform;
     glm::vec3 color {};
-    Mesh* mesh{};
+    Mesh* mesh {};
 
 private:
     inline static Id currentId = 0;

@@ -1,9 +1,10 @@
 #pragma once
 
+#include <panda/gfx/vulkan/Context.h>
+
 #include <memory>
 
 #include "GlfwWindow.h"
-#include <panda/gfx/vulkan/Context.h>
 
 namespace app
 {

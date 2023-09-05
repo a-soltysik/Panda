@@ -65,15 +65,15 @@ auto Mesh::createVertexBuffer(const vulkan::Device& device, std::span<const vulk
 
     const auto stagingBuffer =
         vulkan::Buffer {device,
-                       vertices,
-                       vk::BufferUsageFlagBits::eTransferSrc,
-                       vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+                        vertices,
+                        vk::BufferUsageFlagBits::eTransferSrc,
+                        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
 
     auto newVertexBuffer =
         std::make_unique<vulkan::Buffer>(device,
-                                        stagingBuffer.size,
-                                        vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                                        vk::MemoryPropertyFlagBits::eDeviceLocal);
+                                         stagingBuffer.size,
+                                         vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                                         vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     vulkan::Buffer::copy(stagingBuffer, *newVertexBuffer);
 
@@ -122,15 +122,15 @@ auto Mesh::createIndexBuffer(const vulkan::Device& device, const std::span<const
 
     const auto stagingBuffer =
         vulkan::Buffer {device,
-                       indices,
-                       vk::BufferUsageFlagBits::eTransferSrc,
-                       vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+                        indices,
+                        vk::BufferUsageFlagBits::eTransferSrc,
+                        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
 
     auto newIndexBuffer =
         std::make_unique<vulkan::Buffer>(device,
-                                        stagingBuffer.size,
-                                        vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                                        vk::MemoryPropertyFlagBits::eDeviceLocal);
+                                         stagingBuffer.size,
+                                         vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                                         vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     vulkan::Buffer::copy(stagingBuffer, *newIndexBuffer);
 
@@ -164,9 +164,9 @@ auto Mesh::loadMesh(const vulkan::Device& device, const std::filesystem::path& p
         {
             const auto vertex =
                 vulkan::Vertex {getVertexAttribute3(attribute, &tinyobj::attrib_t::vertices, index.vertex_index),
-                               getVertexAttribute3(attribute, &tinyobj::attrib_t::colors, index.vertex_index),
-                               getVertexAttribute3(attribute, &tinyobj::attrib_t::normals, index.normal_index),
-                               getVertexAttribute2(attribute, &tinyobj::attrib_t::texcoords, index.texcoord_index)};
+                                getVertexAttribute3(attribute, &tinyobj::attrib_t::colors, index.vertex_index),
+                                getVertexAttribute3(attribute, &tinyobj::attrib_t::normals, index.normal_index),
+                                getVertexAttribute2(attribute, &tinyobj::attrib_t::texcoords, index.texcoord_index)};
             if (!uniqueVertices.contains(vertex))
             {
                 uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());

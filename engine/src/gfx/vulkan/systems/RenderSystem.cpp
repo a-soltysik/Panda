@@ -1,8 +1,8 @@
 #include "RenderSystem.h"
 
-#include "panda/internal/config.h"
 #include "panda/gfx/vulkan/Mesh.h"
 #include "panda/gfx/vulkan/Vertex.h"
+#include "panda/internal/config.h"
 
 namespace panda::gfx::vulkan
 {

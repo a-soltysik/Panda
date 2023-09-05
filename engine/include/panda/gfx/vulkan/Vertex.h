@@ -36,8 +36,10 @@ namespace std
 {
 
 template <>
-struct hash<panda::gfx::vulkan::Vertex> {
-    auto operator()(panda::gfx::vulkan::Vertex const &vertex) const -> size_t {
+struct hash<panda::gfx::vulkan::Vertex>
+{
+    auto operator()(const panda::gfx::vulkan::Vertex& vertex) const -> size_t
+    {
         size_t seed = 0;
         panda::utils::hashCombine(seed, vertex.position, vertex.color, vertex.normal, vertex.uv);
         return seed;

@@ -136,7 +136,8 @@ auto Buffer::getDescriptorInfo() const noexcept -> vk::DescriptorBufferInfo
     return getDescriptorInfoAt(size, 0);
 }
 
-auto Buffer::getDescriptorInfoAt(vk::DeviceSize dataSize, vk::DeviceSize offset) const noexcept -> vk::DescriptorBufferInfo
+auto Buffer::getDescriptorInfoAt(vk::DeviceSize dataSize, vk::DeviceSize offset) const noexcept
+    -> vk::DescriptorBufferInfo
 {
     return {
         buffer,

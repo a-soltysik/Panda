@@ -111,7 +111,8 @@ public:
     [[nodiscard]] auto getAlignment(vk::DeviceSize instanceSize) const noexcept -> vk::DeviceSize;
     [[nodiscard]] auto getCurrentOffset() const noexcept -> vk::DeviceSize;
     [[nodiscard]] auto getDescriptorInfo() const noexcept -> vk::DescriptorBufferInfo;
-    [[nodiscard]] auto getDescriptorInfoAt(vk::DeviceSize dataSize, vk::DeviceSize offset) const noexcept -> vk::DescriptorBufferInfo;
+    [[nodiscard]] auto getDescriptorInfoAt(vk::DeviceSize dataSize, vk::DeviceSize offset) const noexcept
+        -> vk::DescriptorBufferInfo;
 
     const vk::DeviceSize size;
     const vk::Buffer buffer;

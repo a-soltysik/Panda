@@ -88,7 +88,7 @@ DescriptorPool::DescriptorPool(const Device& device,
                                uint32_t maxSets,
                                const std::vector<vk::DescriptorPoolSize>& poolSizes)
     : _device {device},
-      _descriptorPool {createDescriptorPool(device, maxSets,  poolFlags, poolSizes)}
+      _descriptorPool {createDescriptorPool(device, maxSets, poolFlags, poolSizes)}
 {
 }
 
@@ -97,8 +97,8 @@ DescriptorPool::~DescriptorPool() noexcept
     _device.logicalDevice.destroyDescriptorPool(_descriptorPool);
 }
 
-auto DescriptorPool::allocateDescriptor(vk::DescriptorSetLayout descriptorSetLayout, vk::DescriptorSet& descriptor) const
-    -> bool
+auto DescriptorPool::allocateDescriptor(vk::DescriptorSetLayout descriptorSetLayout,
+                                        vk::DescriptorSet& descriptor) const -> bool
 {
     const auto allocInfo = vk::DescriptorSetAllocateInfo {_descriptorPool, descriptorSetLayout};
 

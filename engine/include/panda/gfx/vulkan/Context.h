@@ -4,7 +4,6 @@
 #include <span>
 #include <unordered_set>
 
-#include "panda/internal/config.h"
 #include "panda/Window.h"
 #include "panda/gfx/Camera.h"
 #include "panda/gfx/Light.h"
@@ -16,6 +15,7 @@
 #include "panda/gfx/vulkan/Renderer.h"
 #include "panda/gfx/vulkan/systems/PointLightSystem.h"
 #include "panda/gfx/vulkan/systems/RenderSystem.h"
+#include "panda/internal/config.h"
 
 namespace panda::gfx::vulkan
 {
@@ -29,7 +29,10 @@ public:
 
     static constexpr auto maxFramesInFlight = size_t {2};
 
-    auto makeFrame(float deltaTime, const Camera& camera, std::span<const Object> objects, std::span<const Light> lights) -> void;
+    auto makeFrame(float deltaTime,
+                   const Camera& camera,
+                   std::span<const Object> objects,
+                   std::span<const Light> lights) -> void;
     [[nodiscard]] auto getDevice() const noexcept -> const Device&;
     [[nodiscard]] auto getRenderer() const noexcept -> const Renderer&;
 
