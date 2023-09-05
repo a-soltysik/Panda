@@ -21,10 +21,8 @@ public:
     auto draw(const vk::CommandBuffer& commandBuffer) const -> void;
 
 private:
-    static auto createVertexBuffer(const Device& device, std::span<const Vertex> vertices)
-        -> std::unique_ptr<Buffer>;
-    static auto createIndexBuffer(const Device& device, std::span<const uint32_t> indices)
-        -> std::unique_ptr<Buffer>;
+    static auto createVertexBuffer(const Device& device, std::span<const Vertex> vertices) -> std::unique_ptr<Buffer>;
+    static auto createIndexBuffer(const Device& device, std::span<const uint32_t> indices) -> std::unique_ptr<Buffer>;
 
     const Device& _device;
     const std::unique_ptr<Buffer> _vertexBuffer;

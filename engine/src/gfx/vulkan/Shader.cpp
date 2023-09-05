@@ -22,7 +22,8 @@ auto Shader::createFromFile(const vk::Device& device, const std::filesystem::pat
 
     const auto pathStr = path.string();
     const auto lastExtension = pathStr.rfind('.');
-    const auto shaderExtension = pathStr.substr(pathStr.rfind('.', lastExtension - 1), pathStr.size() - lastExtension + 1);
+    const auto shaderExtension =
+        pathStr.substr(pathStr.rfind('.', lastExtension - 1), pathStr.size() - lastExtension + 1);
 
     const auto it = extensions.find(shaderExtension);
     if (it == extensions.cend())

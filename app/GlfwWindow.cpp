@@ -117,7 +117,7 @@ auto GlfwWindow::setCursorPositionCallback(GLFWcursorposfun callback) const noex
     return glfwSetCursorPosCallback(_window, callback);
 }
 
-auto GlfwWindow::getId() const-> size_t
+auto GlfwWindow::getId() const -> size_t
 {
     return makeId(_window);
 }

@@ -58,7 +58,7 @@ auto Camera::setViewDirection(glm::vec3 position, glm::vec3 direction, glm::vec3
     _viewMatrix[3][1] = -glm::dot(v, position);
     _viewMatrix[3][2] = -glm::dot(w, position);
 
-    _inverseViewMatrix = glm::mat4{1.f};
+    _inverseViewMatrix = glm::mat4 {1.f};
     _inverseViewMatrix[0][0] = u.x;
     _inverseViewMatrix[0][1] = u.y;
     _inverseViewMatrix[0][2] = u.z;
@@ -105,7 +105,7 @@ auto Camera::setViewYXZ(glm::vec3 position, glm::vec3 rotation) -> void
     _viewMatrix[3][1] = -glm::dot(v, position);
     _viewMatrix[3][2] = -glm::dot(w, position);
 
-    _inverseViewMatrix = glm::mat4{1.f};
+    _inverseViewMatrix = glm::mat4 {1.f};
     _inverseViewMatrix[0][0] = u.x;
     _inverseViewMatrix[0][1] = u.y;
     _inverseViewMatrix[0][2] = u.z;

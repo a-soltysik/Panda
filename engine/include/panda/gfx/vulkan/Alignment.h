@@ -124,4 +124,3 @@ consteval auto maxAlignment(T a, U b, Args... args) noexcept -> size_t
     {                                                   \
         return maxAlignment(__VA_ARGS__, glm::vec4 {}); \
     }
-

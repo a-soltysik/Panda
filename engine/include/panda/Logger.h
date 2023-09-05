@@ -69,7 +69,7 @@ public:
     private:
         friend struct internal::LogDispatcher;
 
-        auto log(Level level, std::string_view message) -> void; //cppcheck-suppress unusedPrivateFunction
+        auto log(Level level, std::string_view message) -> void;  //cppcheck-suppress unusedPrivateFunction
 
         std::set<Level> levels = {Level::Debug, Level::Info, Level::Warning, Level::Error};
         bool isStarted = false;
