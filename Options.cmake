@@ -40,6 +40,7 @@ macro(PD_setup_options)
         option(PD_ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
         option(PD_ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
         option(PD_ENABLE_CPPCHECK "Enable cpp-check analysis" OFF)
+        option(PD_ENABLE_IWYU "Enable include-what-you-use analysis" OFF)
         option(PD_ENABLE_CACHE "Enable ccache" OFF)
         option(PD_ENABLE_PCH "Enable precompiled headers" OFF)
     else ()
@@ -53,6 +54,7 @@ macro(PD_setup_options)
         option(PD_ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
         option(PD_ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
         option(PD_ENABLE_CPPCHECK "Enable cpp-check analysis" OFF)
+        option(PD_ENABLE_IWYU "Enable include-what-you-use analysis" OFF)
         option(PD_ENABLE_CACHE "Enable ccache" OFF)
         option(PD_ENABLE_PCH "Enable precompiled headers" OFF)
     endif ()
@@ -69,6 +71,7 @@ macro(PD_setup_options)
             PD_ENABLE_SANITIZER_MEMORY
             PD_ENABLE_CLANG_TIDY
             PD_ENABLE_CPPCHECK
+            PD_ENABLE_IWYU
             PD_ENABLE_CACHE
             PD_ENABLE_PCH)
     endif ()
@@ -117,7 +120,7 @@ macro(PD_local_options EXT_DIR)
 
     if (PD_ENABLE_USER_LINKER)
         include(cmake/Linker.cmake)
-        configure_linker(PD_options)
+        PD_configure_linker(PD_options)
     endif ()
 
     include(cmake/Sanitizers.cmake)
@@ -142,6 +145,9 @@ macro(PD_local_options EXT_DIR)
     if (PD_ENABLE_CPPCHECK)
         PD_enable_cppcheck(${PD_WARNINGS_AS_ERRORS} "" ${EXT_DIR}# override cppcheck options
             )
+    endif ()
+    if (PD_ENABLE_IWYU)
+        PD_enable_include_what_you_use()
     endif ()
 
     if (PD_WARNINGS_AS_ERRORS)

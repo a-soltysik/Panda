@@ -1,5 +1,3 @@
-
-
 function(PD_set_project_warnings project_name WARNINGS_AS_ERRORS)
     set(MSVC_WARNINGS
         /W4 # Baseline reasonable warnings
@@ -25,7 +23,7 @@ function(PD_set_project_warnings project_name WARNINGS_AS_ERRORS)
         /w14906 # string literal cast to 'LPWSTR'
         /w14928 # illegal copy-initialization; more than one user-defined conversion has been implicitly applied
         /permissive- # standards conformance mode for MSVC compiler.
-        )
+    )
 
     set(CLANG_WARNINGS
         -Wall
@@ -45,7 +43,7 @@ function(PD_set_project_warnings project_name WARNINGS_AS_ERRORS)
         -Wformat=2 # warn on security issues around functions that format output (ie printf)
         -Wimplicit-fallthrough # warn on statements that fallthrough without an explicit annotation
         -Wswitch-enum
-        )
+    )
 
     set(GCC_WARNINGS
         ${CLANG_WARNINGS}
@@ -54,7 +52,7 @@ function(PD_set_project_warnings project_name WARNINGS_AS_ERRORS)
         -Wduplicated-branches # warn if if / else branches have duplicated code
         -Wlogical-op # warn about logical operations being used where bitwise were probably wanted
         -Wuseless-cast # warn if you perform a cast to the same type
-        )
+    )
 
     if (WARNINGS_AS_ERRORS)
         message(TRACE "Warnings are treated as errors")
