@@ -1,15 +1,15 @@
-set(SHADER_SRC_DIR .)
+set(SHADER_SRC_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 set(SHADER_TARGET_NAME ${ENGINE_TARGET_NAME}.Shader)
 
 file(GLOB_RECURSE ${SHADER_TARGET_NAME}_SRC_LIST
-    ${SHADER_SRC_DIR}/*.vert
-    ${SHADER_SRC_DIR}/*.tesc
-    ${SHADER_SRC_DIR}/*.tese
-    ${SHADER_SRC_DIR}/*.geom
-    ${SHADER_SRC_DIR}/*.frag
-    ${SHADER_SRC_DIR}/*.comp
-    )
+     ${SHADER_SRC_DIR}/*.vert
+     ${SHADER_SRC_DIR}/*.tesc
+     ${SHADER_SRC_DIR}/*.tese
+     ${SHADER_SRC_DIR}/*.geom
+     ${SHADER_SRC_DIR}/*.frag
+     ${SHADER_SRC_DIR}/*.comp
+)
 
 foreach (GLSL_FILE ${${SHADER_TARGET_NAME}_SRC_LIST})
     get_filename_component(FILE_NAME ${GLSL_FILE} NAME)
