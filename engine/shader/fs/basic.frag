@@ -1,34 +1,25 @@
 #version 450
 
+#include "lightUtils.glsl"
+
 layout (location = 0) in vec3 fragColor;
 layout (location = 1) in vec3 fragWorldPosition;
 layout (location = 2) in vec3 fragNormalWorld;
 
 layout(location = 0) out vec4 outColor;
 
-struct DirectionalLight
+layout (set = 0, binding = 1) uniform GlobalUbo
 {
-    vec4 direction;
-    vec4 color;
-};
-
-struct PointLight
-{
-    vec4 position;
-    vec4 color;
-};
-
-layout (set = 0, binding = 0) uniform GlobalUbo
-{
-    mat4 projection;
-    mat4 view;
     mat4 inverseView;
 
-    vec4 ambientColor;
-    PointLight pointLights[6];
-    DirectionalLight directionalLights[6];
+    PointLight pointLights[5];
+    DirectionalLight directionalLights[5];
+    SpotLight spotLights[5];
+
+    vec3 globalAmbient;
     uint activePointLights;
     uint activeDirectionalLights;
+    uint activeSpotLights;
 } ubo;
 
 
@@ -37,35 +28,78 @@ layout (push_constant) uniform Push {
     mat4 normalMatrix;
 } push;
 
+vec3 calculateLight(BaseLight light, vec3 lightDirection, vec3 normal)
+{
+    float lambertian = max(dot(lightDirection, normal), 0.0);
+    float specularValue = 0.0;
+
+    if (lambertian > 0.0)
+    {
+        vec3 cameraWorldPosition = ubo.inverseView[3].xyz;
+        vec3 viewDirection = normalize(cameraWorldPosition - fragWorldPosition);
+        vec3 halfDirection = normalize(lightDirection + viewDirection);
+        float specularAngle = max(dot(halfDirection, normal), 0.0);
+        specularValue = pow(specularAngle, 64.0);
+    }
+
+    vec3 ambient = light.ambient * vec3(0.05) + ubo.globalAmbient * vec3(0.05);
+    vec3 diffuse = light.diffuse * vec3(0.8) * lambertian * light.intensity;
+    vec3 specular = light.specular * vec3(1.0) * specularValue * light.intensity;
+
+    return ambient + diffuse + specular;
+}
+
+vec3 calculatePointLight(PointLight light, vec3 normal)
+{
+    vec3 lightDirection = light.position - fragWorldPosition;
+    float distance = length(lightDirection);
+    lightDirection = normalize(lightDirection);
+
+    float attenuation = light.attenuation.constant -
+    light.attenuation.linear * distance -
+    light.attenuation.exp * distance * distance;
+
+    return calculateLight(light.base, lightDirection, normal) * attenuation;
+}
+
+vec3 calculateDirectionalLight(DirectionalLight light, vec3 normal)
+{
+    return calculateLight(light.base, light.direction, normal);
+}
+
+vec3 calculateSpotLight(SpotLight light, vec3 normal)
+{
+    vec3 lightToPixel = normalize(fragWorldPosition - light.base.position);
+    float spotFactor = dot(lightToPixel, normalize(light.direction));
+
+    if (spotFactor > light.cutOff)
+    {
+        vec3 color = calculatePointLight(light.base, normal);
+        float spotLightIntensity = (1.0 - (1.0 - spotFactor)/(1.0 - light.cutOff));
+        return color * spotLightIntensity;
+    }
+    else
+    {
+        return light.base.base.ambient;
+    }
+}
+
 void main() {
-    vec3 lightSum = ubo.ambientColor.xyz * ubo.ambientColor.w;
-    vec3 surfaceNormal = normalize(fragNormalWorld);
-    vec3 specular = vec3(0.0);
-    vec3 cameraWorldPosition = ubo.inverseView[3].xyz;
-    vec3 viewDirection = normalize(cameraWorldPosition - fragWorldPosition);
+    vec3 totalLight = vec3(0.0);
+    vec3 normal = normalize(fragNormalWorld);
 
     for (uint i = 0; i < ubo.activeDirectionalLights; i++)
     {
-        DirectionalLight light = ubo.directionalLights[i];
-        float intensity = max(dot(fragNormalWorld, normalize(light.direction.xyz)), 0.0);
-        lightSum += light.color.xyz * light.color.w * intensity;
+        totalLight += calculateDirectionalLight(ubo.directionalLights[i], normal);
     }
-
     for (uint i = 0; i < ubo.activePointLights; i++)
     {
-        PointLight light = ubo.pointLights[i];
-        vec3 direction = light.position.xyz - fragWorldPosition;
-        float attenuation = 1.0 / dot(direction, direction);
-        direction = normalize(direction);
-        float incidence = max(dot(surfaceNormal, direction), 0.0);
-
-        lightSum += light.color.xyz * light.color.w * attenuation * incidence;
-        vec3 halfAngle = normalize(direction + viewDirection);
-        float blinnTerm = dot(surfaceNormal, halfAngle);
-        blinnTerm = clamp(blinnTerm, 0.0, 1.0);
-        blinnTerm = pow(blinnTerm, 128.0);
-        specular += light.color.xyz * light.color.w * attenuation * blinnTerm;
+        totalLight += calculatePointLight(ubo.pointLights[i], normal);
+    }
+    for (uint i = 0; i < ubo.activeSpotLights; i++)
+    {
+        totalLight += calculateSpotLight(ubo.spotLights[i], normal);
     }
 
-    outColor = vec4((lightSum + specular) * fragColor, 1.0);
+    outColor = vec4(totalLight, 1.0);
 }

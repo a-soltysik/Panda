@@ -1,5 +1,6 @@
 #pragma once
 
+#include "panda/gfx/Light.h"
 #include "panda/gfx/vulkan/Mesh.h"
 
 namespace panda::gfx::vulkan
@@ -27,7 +28,6 @@ public:
     [[nodiscard]] auto getId() const noexcept -> Id;
 
     Transform transform;
-    glm::vec3 color {};
     Mesh* mesh {};
 
 private:
