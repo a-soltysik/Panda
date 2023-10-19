@@ -29,10 +29,8 @@ public:
 
     static constexpr auto maxFramesInFlight = size_t {2};
 
-    auto makeFrame(float deltaTime,
-                   const Camera& camera,
-                   std::span<const Object> objects,
-                   std::span<const Light> lights) -> void;
+    auto makeFrame(float deltaTime, const Camera& camera, std::span<const Object> objects, const Lights& lights)
+        -> void;
     [[nodiscard]] auto getDevice() const noexcept -> const Device&;
     [[nodiscard]] auto getRenderer() const noexcept -> const Renderer&;
 
@@ -69,7 +67,8 @@ private:
     std::unique_ptr<RenderSystem> _renderSystem;
     std::unique_ptr<PointLightSystem> _pointLightSystem;
     vk::DebugUtilsMessengerEXT _debugMessenger {};
-    std::vector<std::unique_ptr<Buffer>> _uboBuffers;
+    std::vector<std::unique_ptr<Buffer>> _uboFragBuffers;
+    std::vector<std::unique_ptr<Buffer>> _uboVertBuffers;
     std::unique_ptr<DescriptorPool> _globalPool;
     std::unique_ptr<DescriptorSetLayout> _globalSetLayout;
     std::vector<vk::DescriptorSet> _globalDescriptorSets = std::vector<vk::DescriptorSet>(maxFramesInFlight);

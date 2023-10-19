@@ -9,29 +9,10 @@ layout (location = 0) out vec3 fragColor;
 layout (location = 1) out vec3 fragWorldPosition;
 layout (location = 2) out vec3 fragNormalWorld;
 
-struct DirectionalLight
-{
-    vec4 direction;
-    vec4 color;
-};
-
-struct PointLight
-{
-    vec4 position;
-    vec4 color;
-};
-
-layout (set = 0, binding = 0) uniform GlobalUbo
+layout (set = 0, binding = 0) uniform VertUbo
 {
     mat4 projection;
     mat4 view;
-    mat4 inverseView;
-
-    vec4 ambientColor;
-    PointLight pointLights[6];
-    DirectionalLight directionalLights[6];
-    uint activePointLights;
-    uint activeDirectionalLights;
 } ubo;
 
 layout (push_constant) uniform Push {

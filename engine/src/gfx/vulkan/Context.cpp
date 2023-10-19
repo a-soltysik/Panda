@@ -74,31 +74,43 @@ Context::Context(const Window& window)
 
     _renderer = std::make_unique<Renderer>(window, *_device, _surface);
 
-    _uboBuffers.reserve(maxFramesInFlight);
+    _uboFragBuffers.reserve(maxFramesInFlight);
+    _uboVertBuffers.reserve(maxFramesInFlight);
 
     for (auto i = uint32_t {}; i < maxFramesInFlight; i++)
     {
-        _uboBuffers.push_back(std::make_unique<Buffer>(
+        _uboFragBuffers.push_back(std::make_unique<Buffer>(
             *_device,
-            sizeof(GlobalUbo),
+            sizeof(FragUbo),
             1,
             vk::BufferUsageFlagBits::eUniformBuffer,
             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
             _device->physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment));
-        _uboBuffers.back()->mapWhole();
+        _uboFragBuffers.back()->mapWhole();
+
+        _uboVertBuffers.push_back(std::make_unique<Buffer>(
+            *_device,
+            sizeof(VertUbo),
+            1,
+            vk::BufferUsageFlagBits::eUniformBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+            _device->physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment));
+        _uboVertBuffers.back()->mapWhole();
     }
 
     _globalPool = DescriptorPool::Builder(*_device)
                       .addPoolSize(vk::DescriptorType::eUniformBuffer, maxFramesInFlight)
                       .build(maxFramesInFlight);
     _globalSetLayout = DescriptorSetLayout::Builder(*_device)
-                           .addBinding(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eAllGraphics)
+                           .addBinding(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex)
+                           .addBinding(1, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eFragment)
                            .build();
 
     for (auto i = uint32_t {}; i < maxFramesInFlight; i++)
     {
         DescriptorWriter(*_device, *_globalSetLayout, *_globalPool)
-            .writeBuffer(0, _uboBuffers[i]->getDescriptorInfo())
+            .writeBuffer(0, _uboVertBuffers[i]->getDescriptorInfo())
+            .writeBuffer(1, _uboFragBuffers[i]->getDescriptorInfo())
             .build(_globalDescriptorSets[i]);
     }
 
@@ -252,10 +264,8 @@ auto Context::areValidationLayersSupported() const -> bool
     return true;
 }
 
-auto Context::makeFrame(float deltaTime,
-                        const Camera& camera,
-                        std::span<const Object> objects,
-                        std::span<const Light> lights) -> void
+auto Context::makeFrame(float deltaTime, const Camera& camera, std::span<const Object> objects, const Lights& lights)
+    -> void
 {
     const auto commandBuffer = _renderer->beginFrame();
     if (!commandBuffer)
@@ -269,19 +279,24 @@ auto Context::makeFrame(float deltaTime,
                                       .frameIndex = frameIndex,
                                       .deltaTime = deltaTime};
 
-    auto ubo = GlobalUbo {
+    auto vertUbo = VertUbo {
         camera.getProjection(),
         camera.getView(),
+    };
+
+    auto fragUbo = FragUbo {
         camera.getInverseView(),
-        {0.1f, 0.1f, 0.1f, 1.f},
         {},
         {},
+        {},
+        {0.1f, 0.1f, 0.1f},
         {},
         {}
     };
 
-    _pointLightSystem->update(lights, ubo);
-    _uboBuffers[frameIndex]->writeAt(ubo, 0);
+    _pointLightSystem->update(lights, fragUbo);
+    _uboVertBuffers[frameIndex]->writeAt(vertUbo, 0);
+    _uboFragBuffers[frameIndex]->writeAt(fragUbo, 0);
     _renderer->beginSwapChainRenderPass();
     _renderSystem->render(frameInfo, objects);
 

@@ -17,20 +17,26 @@ struct FrameInfo
     float deltaTime;
 };
 
-struct GlobalUbo
+struct VertUbo
 {
-    template <typename T>
-    using LightArray = std::array<T, 6>;
-
     PD_ALIGN(glm::mat4) projection {1.f};
     PD_ALIGN(glm::mat4) view {1.f};
+};
+
+struct FragUbo
+{
+    template <typename T>
+    using LightArray = std::array<T, 5>;
     PD_ALIGN(glm::mat4) inverseView {1.f};
 
-    PD_ALIGN(glm::vec4) ambientColor;
+    //PD_ALIGN(UboMaterial) material;
     PD_ALIGN(LightArray<UboPointLight>) pointLights;
     PD_ALIGN(LightArray<UboDirectionalLight>) directionalLights;
+    PD_ALIGN(LightArray<UboSpotLight>) spotLights;
+    PD_ALIGN(glm::vec3) ambientColor;
     PD_ALIGN(uint32_t) activePointLights;
     PD_ALIGN(uint32_t) activeDirectionalLights;
+    PD_ALIGN(uint32_t) activeSpotLights;
 };
 
 }
