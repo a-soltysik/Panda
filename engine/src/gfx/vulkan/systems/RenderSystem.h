@@ -18,7 +18,7 @@ public:
 
     auto render(const FrameInfo& frameInfo, std::span<const Object> objects) const -> void;
 
-private:
+    //private:
     static auto createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout;
     static auto createPipeline(const Device& device, vk::RenderPass renderPass, vk::PipelineLayout pipelineLayout)
         -> std::unique_ptr<Pipeline>;

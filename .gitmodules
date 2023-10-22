@@ -20,6 +20,7 @@
 [submodule "ext/imgui-cmake/imgui"]
 	path = ext/imgui-cmake/imgui
 	url = git@github.com:ocornut/imgui.git
+	branch = docking
 [submodule "ext/implot-cmake/implot"]
 	path = ext/implot-cmake/implot
 	url = git@github.com:epezent/implot.git

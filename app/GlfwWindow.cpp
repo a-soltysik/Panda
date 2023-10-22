@@ -1,5 +1,8 @@
 #include "GlfwWindow.h"
 
+#include <backends/imgui_impl_glfw.h>
+#include <imgui.h>
+
 namespace
 {
 
@@ -28,10 +31,15 @@ GlfwWindow::GlfwWindow(glm::uvec2 size, const char* name)
         panda::log::Debug("Received framebuffer resized notif");
         _size = {x, y};
     });
+
+    setupImGui();
 }
 
 GlfwWindow::~GlfwWindow() noexcept
 {
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
     glfwDestroyWindow(_window);
     glfwTerminate();
     panda::log::Info("Window [{}] destroyed", static_cast<void*>(_window));
@@ -135,6 +143,12 @@ auto GlfwWindow::makeId(GLFWwindow* window) -> panda::Window::Id
 auto GlfwWindow::getMouseHandler() const noexcept -> const MouseHandler&
 {
     return *mouseHandler;
+}
+
+auto GlfwWindow::setupImGui() -> void
+{
+    ImGui::CreateContext();
+    ImGui_ImplGlfw_InitForVulkan(_window, true);
 }
 
 }

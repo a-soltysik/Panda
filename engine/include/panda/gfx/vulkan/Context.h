@@ -23,14 +23,20 @@ namespace panda::gfx::vulkan
 class Context
 {
 public:
+    struct Scene
+    {
+        Camera camera;
+        std::vector<Object> objects;
+        Lights lights;
+    };
+
     explicit Context(const Window& window);
     PD_DELETE_ALL(Context);
     ~Context() noexcept;
 
     static constexpr auto maxFramesInFlight = size_t {2};
 
-    auto makeFrame(float deltaTime, const Camera& camera, std::span<const Object> objects, const Lights& lights)
-        -> void;
+    auto makeFrame(float deltaTime, const Scene& scene) -> void;
     [[nodiscard]] auto getDevice() const noexcept -> const Device&;
     [[nodiscard]] auto getRenderer() const noexcept -> const Renderer&;
 
@@ -54,6 +60,7 @@ private:
     [[nodiscard]] auto areValidationLayersSupported() const -> bool;
 
     auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
+    auto initializeImGui() -> void;
 
     static constexpr auto requiredDeviceExtensions = std::array {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     inline static const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo =

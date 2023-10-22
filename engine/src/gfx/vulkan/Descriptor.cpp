@@ -129,6 +129,11 @@ auto DescriptorPool::resetPool() -> void
     _device.logicalDevice.resetDescriptorPool(_descriptorPool);
 }
 
+auto DescriptorPool::getHandle() const noexcept -> vk::DescriptorPool
+{
+    return _descriptorPool;
+}
+
 DescriptorWriter::DescriptorWriter(const Device& device,
                                    const DescriptorSetLayout& setLayout,
                                    const DescriptorPool& pool)

@@ -27,6 +27,9 @@ public:
 
     [[nodiscard]] auto getFrameIndex() const noexcept -> uint32_t;
 
+    [[nodiscard]] auto beginSingleTimeCommandBuffer() const noexcept -> vk::CommandBuffer;
+    auto endSingleTimeCommandBuffer(vk::CommandBuffer buffer) const noexcept -> void;
+
 private:
     [[nodiscard]] auto createCommandBuffers() -> std::vector<vk::CommandBuffer>;
 
