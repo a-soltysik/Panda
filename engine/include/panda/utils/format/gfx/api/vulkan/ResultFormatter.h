@@ -106,4 +106,9 @@ struct fmt::formatter<vk::Result> : formatter<std::string_view>
             return "UnknownResult"sv;
         }
     }
+
+    [[nodiscard]] static constexpr auto getResultName(VkResult result) noexcept -> std::string_view
+    {
+        return getResultName(vk::Result {result});
+    }
 };

@@ -37,6 +37,7 @@ public:
 
 private:
     [[nodiscard]] static auto createWindow(glm::uvec2 size, const char* name) -> GLFWwindow*;
+    auto setupImGui() -> void;
 
     std::unique_ptr<KeyboardHandler> keyboardHandler;
     std::unique_ptr<MouseHandler> mouseHandler;

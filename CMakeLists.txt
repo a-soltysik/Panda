@@ -49,12 +49,18 @@ add_subdirectory(${ENGINE_DIR})
 if (PD_BUILD_APP)
     set(IMGUI_BUILD_GLFW_BINDING ON)
     set(IMGUI_BUILD_VULKAN_BINDING ON)
-    set(IMGUI_FREETYPE ON)
-    
+
+    if (MSVC)
+        set(IMGUI_FREETYPE OFF)
+    else ()
+        set(IMGUI_FREETYPE ON)
+    endif ()
+
     add_subdirectory(${GLFW_DIR})
     add_subdirectory(${FREETYPE_DIR})
     add_subdirectory(${IMGUI_DIR})
     add_subdirectory(${IMPLOT_DIR})
+
     add_subdirectory(${APP_DIR})
 endif ()
 

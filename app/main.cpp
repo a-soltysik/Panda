@@ -1,5 +1,3 @@
-#include <iostream>
-
 #include "App.h"
 
 auto main() -> int

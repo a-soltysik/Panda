@@ -1,8 +1,8 @@
 #include "App.h"
 
-#include <chrono>
 #include <csignal>
 
+#include "gui/GuiManager.h"
 #include "internal/config.h"
 #include "movementHandlers/MovementHandler.h"
 #include "movementHandlers/RotationHandler.h"
@@ -40,9 +40,8 @@ namespace
 
 void processObjects(float deltaTime,
                     const app::GlfwWindow& window,
-                    panda::gfx::Camera& camera,
                     panda::gfx::vulkan::Object& cameraObject,
-                    panda::gfx::Lights& lights)
+                    panda::gfx::vulkan::Context::Scene& scene)
 {
     static constexpr auto rotationVelocity = 500.f;
     static constexpr auto moveVelocity = 2.5f;
@@ -85,18 +84,17 @@ void processObjects(float deltaTime,
         cameraObject.transform.translation += glm::normalize(translation) * moveVelocity * deltaTime;
     }
 
-    camera.setViewYXZ(cameraObject.transform.translation,
-                      {-cameraObject.transform.rotation.x, cameraObject.transform.rotation.y, 0.f});
+    scene.camera.setViewYXZ(cameraObject.transform.translation,
+                            {-cameraObject.transform.rotation.x, cameraObject.transform.rotation.y, 0.f});
 
-    if (!lights.directionalLights.empty())
+    if (!scene.lights.directionalLights.empty())
     {
-        lights.directionalLights.front().direction =
-            glm::rotateY(lights.directionalLights.front().direction, deltaTime);
+        scene.lights.directionalLights.front().direction =
+            glm::rotateY(scene.lights.directionalLights.front().direction, deltaTime);
     }
 }
 
-void setObjects(std::vector<panda::gfx::vulkan::Object>& objects,
-                panda::gfx::Lights& lights,
+void setObjects(panda::gfx::vulkan::Context::Scene& scene,
                 panda::gfx::vulkan::Mesh* vaseMesh,
                 panda::gfx::vulkan::Mesh* floorMesh)
 {
@@ -106,7 +104,7 @@ void setObjects(std::vector<panda::gfx::vulkan::Object>& objects,
     object.transform.translation = {1.f, 0.f, 0.f};
     object.transform.scale = {5.f, 5.f, 5.f};
 
-    objects.push_back(std::move(object));
+    scene.objects.push_back(std::move(object));
 
     object = panda::gfx::vulkan::Object {};
     object.mesh = vaseMesh;
@@ -114,7 +112,7 @@ void setObjects(std::vector<panda::gfx::vulkan::Object>& objects,
     object.transform.translation = {-1.f, 0.f, 0.f};
     object.transform.scale = {5.f, 5.f, 5.f};
 
-    objects.push_back(std::move(object));
+    scene.objects.push_back(std::move(object));
 
     object = panda::gfx::vulkan::Object {};
     object.mesh = floorMesh;
@@ -122,29 +120,29 @@ void setObjects(std::vector<panda::gfx::vulkan::Object>& objects,
     object.transform.translation = {0.f, 0.f, 0.f};
     object.transform.scale = {10.f, 10.f, 10.f};
 
-    objects.push_back(std::move(object));
+    scene.objects.push_back(std::move(object));
 
-    lights.pointLights.push_back(panda::gfx::PointLight {
+    scene.lights.pointLights.push_back(panda::gfx::PointLight {
         panda::gfx::makeColorLight({1.f, 0.f,   0.f   },
         0.0f, 0.8f, 1.f, 1.f),
         {2.f, -2.f,  -1.5f },
         {1.f, 0.05f, 0.005f}
     });
 
-    lights.spotLights.push_back(panda::gfx::SpotLight {
+    scene.lights.spotLights.push_back(panda::gfx::SpotLight {
         {panda::gfx::makeColorLight({0.f, 1.f, 0.f}, 0.0f, 0.8f, 1.f, 1.f), {0.f, -5.f, 0.f}, {1.f, 0.05f, 0.005f}},
         {0.f, 1.f, 0.f},
         glm::cos(glm::radians(30.f))
     });
 
-    lights.pointLights.push_back(panda::gfx::PointLight {
+    scene.lights.pointLights.push_back(panda::gfx::PointLight {
         panda::gfx::makeColorLight({0.f,  0.f,   1.f   },
         0.0f, 0.8f, 1.f, 1.f),
         {-2.f, -2.f,  -1.5f },
         {1.f,  0.05f, 0.005f}
     });
 
-    lights.directionalLights.push_back(panda::gfx::DirectionalLight {
+    scene.lights.directionalLights.push_back(panda::gfx::DirectionalLight {
         panda::gfx::makeColorLight({1.f, .8f,  .8f },
         0.0f, 0.8f, 1.f, 0.02f),
         {0.f, -2.f, 10.f},
@@ -197,16 +195,16 @@ auto App::mainLoop() -> void
     const auto floorMesh =
         panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "square.obj");
 
-    auto objects = std::vector<panda::gfx::vulkan::Object> {};
-    auto lights = panda::gfx::Lights {};
+    auto scene = panda::gfx::vulkan::Context::Scene {};
 
-    setObjects(objects, lights, vaseMesh.get(), floorMesh.get());
+    setObjects(scene, vaseMesh.get(), floorMesh.get());
 
     auto cameraObject = panda::gfx::vulkan::Object {};
-    auto camera = panda::gfx::Camera {};
 
     cameraObject.transform.translation = {0.f, 2.f, -8.f};
-    camera.setViewYXZ(cameraObject.transform.translation, cameraObject.transform.rotation);
+    scene.camera.setViewYXZ(cameraObject.transform.translation, cameraObject.transform.rotation);
+
+    [[maybe_unused]] const auto gui = GuiManager {};
 
     while (!_window->shouldClose()) [[likely]]
     {
@@ -217,10 +215,13 @@ auto App::mainLoop() -> void
 
             currentTime.update();
 
-            camera.setPerspectiveProjection(glm::radians(50.f), _api->getRenderer().getAspectRatio(), 0.1f, 100.f);
-            processObjects(currentTime.deltaTime, *_window, camera, cameraObject, lights);
+            scene.camera.setPerspectiveProjection(glm::radians(50.f),
+                                                  _api->getRenderer().getAspectRatio(),
+                                                  0.1f,
+                                                  100.f);
+            processObjects(currentTime.deltaTime, *_window, cameraObject, scene);
 
-            _api->makeFrame(currentTime.deltaTime, camera, objects, lights);
+            _api->makeFrame(currentTime.deltaTime, scene);
         }
         else [[unlikely]]
         {

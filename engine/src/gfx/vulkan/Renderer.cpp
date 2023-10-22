@@ -123,4 +123,26 @@ auto Renderer::getAspectRatio() const noexcept -> float
     return _swapChain->getExtentAspectRatio();
 }
 
+auto Renderer::beginSingleTimeCommandBuffer() const noexcept -> vk::CommandBuffer
+{
+    const auto allocationInfo =
+        vk::CommandBufferAllocateInfo {_device.commandPool, vk::CommandBufferLevel::ePrimary, 1};
+    const auto commandBuffer = expect(_device.logicalDevice.allocateCommandBuffers(allocationInfo),
+                                      vk::Result::eSuccess,
+                                      "Can't allocate command buffer");
+    const auto beginInfo = vk::CommandBufferBeginInfo {vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
+    expect(commandBuffer.front().begin(beginInfo), vk::Result::eSuccess, "Couldn't begin command buffer");
+    return commandBuffer.front();
+}
+
+auto Renderer::endSingleTimeCommandBuffer(vk::CommandBuffer buffer) const noexcept -> void
+{
+    expect(buffer.end(), vk::Result::eSuccess, "Couldn't end command buffer");
+
+    const auto submitInfo = vk::SubmitInfo {{}, {}, buffer};
+    expect(_device.graphicsQueue.submit(submitInfo), vk::Result::eSuccess, "Couldn't submit graphics queue");
+    shouldBe(_device.graphicsQueue.waitIdle(), vk::Result::eSuccess, "Couldn't wait idle on graphics queue");
+    _device.logicalDevice.free(_device.commandPool, buffer);
+}
+
 }

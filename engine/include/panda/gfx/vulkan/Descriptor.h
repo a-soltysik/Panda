@@ -71,6 +71,7 @@ public:
     auto allocateDescriptor(vk::DescriptorSetLayout descriptorSetLayout, vk::DescriptorSet& descriptor) const -> bool;
     auto freeDescriptors(const std::vector<vk::DescriptorSet>& descriptors) const -> void;
     auto resetPool() -> void;
+    [[nodiscard]] auto getHandle() const noexcept -> vk::DescriptorPool;
 
 private:
     [[nodiscard]] static auto createDescriptorPool(const Device& device,
