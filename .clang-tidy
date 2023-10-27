@@ -18,6 +18,7 @@ Checks: "*,
         -readability-magic-numbers,
         -bugprone-easily-swappable-parameters,
         -hicpp-uppercase-literal-suffix,
+        -modernize-pass-by-value
 "
 WarningsAsErrors: ''
 HeaderFilterRegex: ''

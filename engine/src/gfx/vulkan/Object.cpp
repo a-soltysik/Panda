@@ -3,14 +3,20 @@
 namespace panda::gfx::vulkan
 {
 
-Object::Object() noexcept
-    : _id {currentId++}
-{
-}
-
 auto Object::getId() const noexcept -> Id
 {
     return _id;
+}
+
+Object::Object(const std::string& name)
+    : _name {name},
+      _id {currentId++}
+{
+}
+
+auto Object::getName() const noexcept -> const std::string&
+{
+    return _name;
 }
 
 auto Transform::mat4() const noexcept -> glm::mat4

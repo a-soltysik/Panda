@@ -13,6 +13,7 @@
 #include "panda/gfx/vulkan/Device.h"
 #include "panda/gfx/vulkan/Object.h"
 #include "panda/gfx/vulkan/Renderer.h"
+#include "panda/gfx/vulkan/Scene.h"
 #include "panda/gfx/vulkan/systems/PointLightSystem.h"
 #include "panda/gfx/vulkan/systems/RenderSystem.h"
 #include "panda/internal/config.h"
@@ -23,20 +24,13 @@ namespace panda::gfx::vulkan
 class Context
 {
 public:
-    struct Scene
-    {
-        Camera camera;
-        std::vector<Object> objects;
-        Lights lights;
-    };
-
     explicit Context(const Window& window);
     PD_DELETE_ALL(Context);
     ~Context() noexcept;
 
     static constexpr auto maxFramesInFlight = size_t {2};
 
-    auto makeFrame(float deltaTime, const Scene& scene) -> void;
+    auto makeFrame(float deltaTime, Scene& scene) -> void;
     [[nodiscard]] auto getDevice() const noexcept -> const Device&;
     [[nodiscard]] auto getRenderer() const noexcept -> const Renderer&;
 

@@ -6,12 +6,13 @@
 
 app::GuiManager::GuiManager()
 {
-    _beginGuiReceiver = panda::utils::Signals::beginGuiRender.connect([this](vk::CommandBuffer commandBuffer) {
+    _beginGuiReceiver = panda::utils::Signals::beginGuiRender.connect([this](auto commandBuffer, auto& scene) {
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
         _devGui.render();
+        _userGui.render(scene);
 
         ImGui::Render();
 

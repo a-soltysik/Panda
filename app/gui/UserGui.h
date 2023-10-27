@@ -1,12 +1,18 @@
-//
-// Created by Andrzej on 22.10.2023.
-//
+#pragma once
 
-#ifndef PANDA_USERGUI_H
-#define PANDA_USERGUI_H
+#include <panda/gfx/vulkan/Scene.h>
+
+namespace app
+{
 
 class UserGui
 {
+public:
+    auto render(panda::gfx::vulkan::Scene& scene) -> void;
+
+private:
+    int _currentObject = 0;
+    panda::gfx::vulkan::Transform* _currentTransform {};
 };
 
-#endif  //PANDA_USERGUI_H
+}

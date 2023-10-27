@@ -41,7 +41,7 @@ namespace
 void processObjects(float deltaTime,
                     const app::GlfwWindow& window,
                     panda::gfx::vulkan::Object& cameraObject,
-                    panda::gfx::vulkan::Context::Scene& scene)
+                    panda::gfx::vulkan::Scene& scene)
 {
     static constexpr auto rotationVelocity = 500.f;
     static constexpr auto moveVelocity = 2.5f;
@@ -94,11 +94,11 @@ void processObjects(float deltaTime,
     }
 }
 
-void setObjects(panda::gfx::vulkan::Context::Scene& scene,
+void setObjects(panda::gfx::vulkan::Scene& scene,
                 panda::gfx::vulkan::Mesh* vaseMesh,
                 panda::gfx::vulkan::Mesh* floorMesh)
 {
-    auto object = panda::gfx::vulkan::Object {};
+    auto object = panda::gfx::vulkan::Object {"Vase_1"};
     object.mesh = vaseMesh;
     object.transform.rotation = {};
     object.transform.translation = {1.f, 0.f, 0.f};
@@ -106,7 +106,7 @@ void setObjects(panda::gfx::vulkan::Context::Scene& scene,
 
     scene.objects.push_back(std::move(object));
 
-    object = panda::gfx::vulkan::Object {};
+    object = panda::gfx::vulkan::Object {"Vase_2"};
     object.mesh = vaseMesh;
     object.transform.rotation = {};
     object.transform.translation = {-1.f, 0.f, 0.f};
@@ -114,7 +114,7 @@ void setObjects(panda::gfx::vulkan::Context::Scene& scene,
 
     scene.objects.push_back(std::move(object));
 
-    object = panda::gfx::vulkan::Object {};
+    object = panda::gfx::vulkan::Object {"Floor"};
     object.mesh = floorMesh;
     object.transform.rotation = {};
     object.transform.translation = {0.f, 0.f, 0.f};
@@ -195,11 +195,11 @@ auto App::mainLoop() -> void
     const auto floorMesh =
         panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "square.obj");
 
-    auto scene = panda::gfx::vulkan::Context::Scene {};
+    auto scene = panda::gfx::vulkan::Scene {};
 
     setObjects(scene, vaseMesh.get(), floorMesh.get());
 
-    auto cameraObject = panda::gfx::vulkan::Object {};
+    auto cameraObject = panda::gfx::vulkan::Object {"Camera"};
 
     cameraObject.transform.translation = {0.f, 2.f, -8.f};
     scene.camera.setViewYXZ(cameraObject.transform.translation, cameraObject.transform.rotation);

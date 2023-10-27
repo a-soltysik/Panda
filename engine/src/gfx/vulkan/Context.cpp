@@ -276,7 +276,7 @@ auto Context::areValidationLayersSupported() const -> bool
     return true;
 }
 
-auto Context::makeFrame(float deltaTime, const Scene& scene) -> void
+auto Context::makeFrame(float deltaTime, Scene& scene) -> void
 {
     const auto commandBuffer = _renderer->beginFrame();
     if (!commandBuffer)
@@ -315,7 +315,7 @@ auto Context::makeFrame(float deltaTime, const Scene& scene) -> void
 
     _pointLightSystem->render(frameInfo, scene.lights);
 
-    utils::Signals::beginGuiRender.registerSender()(commandBuffer);
+    utils::Signals::beginGuiRender.registerSender()(commandBuffer, scene);
 
     _renderer->endSwapChainRenderPass();
 
