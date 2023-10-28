@@ -51,9 +51,9 @@ if (PD_BUILD_APP)
     set(IMGUI_BUILD_VULKAN_BINDING ON)
 
     if (MSVC)
-        set(IMGUI_FREETYPE OFF)
-    else ()
         set(IMGUI_FREETYPE ON)
+    else ()
+        set(IMGUI_FREETYPE OFF)
     endif ()
 
     add_subdirectory(${GLFW_DIR})
