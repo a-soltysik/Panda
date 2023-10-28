@@ -32,9 +32,6 @@ target_link_libraries(
     PRIVATE
     Panda.Engine)
 
-message(STATUS "Configuring resource directory")
 add_custom_command(TARGET ${APP_TARGET_NAME} PRE_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_directory
-                   ${RESOURCE_DIR} ${RESOURCE_BIN_DIR})
-
-add_custom_target(run COMMAND ${APP_TARGET_NAME} DEPENDS ${APP_TARGET_NAME})
+                   ${RESOURCE_DATA_DIR} ${RESOURCE_BIN_DIR})
