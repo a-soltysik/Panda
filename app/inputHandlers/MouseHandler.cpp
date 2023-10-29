@@ -1,5 +1,7 @@
 #include "MouseHandler.h"
 
+#include <imgui.h>
+
 #include "GlfwWindow.h"
 #include "utils/format/app/inputHandlers/MouseHandlerButtonStateFormatter.h"
 
@@ -11,8 +13,14 @@ void mouseButtonStateChangedCallback(GLFWwindow* window, int key, int action, in
     static auto sender = app::utils::Signals::mouseButtonStateChanged.registerSender();
     const auto id = app::GlfwWindow::makeId(window);
     panda::log::Debug("Mouse button state for window [{}] changed to {};{};{}", id, key, action, mods);
-
-    sender(id, key, action, mods);
+    if (ImGui::GetIO().WantCaptureMouse)
+    {
+        panda::log::Debug("ImGui has overtaken mouse input");
+    }
+    else
+    {
+        sender(id, key, action, mods);
+    }
 }
 
 void cursorPositionChangedCallback(GLFWwindow* window, double x, double y)
@@ -21,7 +29,14 @@ void cursorPositionChangedCallback(GLFWwindow* window, double x, double y)
     const auto id = app::GlfwWindow::makeId(window);
     panda::log::Debug("Cursor position for window [{}] changed to ({}, {})", id, x, y);
 
-    sender(id, x, y);
+    if (ImGui::GetIO().WantCaptureMouse)
+    {
+        panda::log::Debug("ImGui has overtaken mouse input");
+    }
+    else
+    {
+        sender(id, x, y);
+    }
 }
 
 }
