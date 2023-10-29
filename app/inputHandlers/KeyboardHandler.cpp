@@ -1,5 +1,7 @@
 #include "KeyboardHandler.h"
 
+#include <imgui.h>
+
 #include "GlfwWindow.h"
 #include "utils/Signals.h"
 #include "utils/format/app/inputHandlers/KeyboardHandlerStateFormatter.h"
@@ -10,14 +12,18 @@ namespace
 void keyboardStateChangedCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     static auto sender = app::utils::Signals::keyboardStateChanged.registerSender();
-    panda::log::Debug("Keyboard state for window [{}] changed to {};{};{};{}",
-                      static_cast<void*>(window),
-                      key,
-                      scancode,
-                      action,
-                      mods);
 
-    sender(app::GlfwWindow::makeId(window), key, scancode, action, mods);
+    const auto id = app::GlfwWindow::makeId(window);
+    panda::log::Debug("Keyboard state for window [{}] changed to {};{};{};{}", id, key, scancode, action, mods);
+
+    if (ImGui::GetIO().WantCaptureKeyboard)
+    {
+        panda::log::Debug("ImGui has overtaken keyboard input");
+    }
+    else
+    {
+        sender(id, key, scancode, action, mods);
+    }
 }
 
 }
