@@ -59,12 +59,12 @@ vec3 calculatePointLight(PointLight light, vec3 normal)
     light.attenuation.linear * distance -
     light.attenuation.exp * distance * distance;
 
-    return calculateLight(light.base, lightDirection, normal) * attenuation;
+    return calculateLight(light.base, normalize(lightDirection), normal) * attenuation;
 }
 
 vec3 calculateDirectionalLight(DirectionalLight light, vec3 normal)
 {
-    return calculateLight(light.base, light.direction, normal);
+    return calculateLight(light.base, normalize(light.direction), normal);
 }
 
 vec3 calculateSpotLight(SpotLight light, vec3 normal)
