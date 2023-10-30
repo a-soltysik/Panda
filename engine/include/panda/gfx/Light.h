@@ -14,6 +14,7 @@ struct Attenuation
 
 struct BaseLight
 {
+    std::string name;
     glm::vec3 ambient;
     glm::vec3 diffuse;
     glm::vec3 specular;
@@ -45,10 +46,11 @@ struct Material
     float shininess;
 };
 
-constexpr auto makeColorLight(glm::vec3 color, float ambient, float diffuse, float specular, float intensity = 1.f)
+inline auto makeColorLight(
+    const std::string& name, glm::vec3 color, float ambient, float diffuse, float specular, float intensity = 1.f)
     -> BaseLight
 {
-    return {color * ambient, color * diffuse, color * specular, intensity};
+    return {name, color * ambient, color * diffuse, color * specular, intensity};
 }
 
 constexpr auto makeColorMaterial(glm::vec3 color, float ambient, float diffuse, float specular, float shininess = 1.f)

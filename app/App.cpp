@@ -38,10 +38,10 @@ namespace
     std::_Exit(signalValue);
 }
 
-void processObjects(float deltaTime,
-                    const app::GlfwWindow& window,
-                    panda::gfx::vulkan::Object& cameraObject,
-                    panda::gfx::vulkan::Scene& scene)
+void processCamera(float deltaTime,
+                   const app::GlfwWindow& window,
+                   panda::gfx::vulkan::Object& cameraObject,
+                   panda::gfx::Camera& camera)
 {
     static constexpr auto rotationVelocity = 500.f;
     static constexpr auto moveVelocity = 2.5f;
@@ -84,14 +84,8 @@ void processObjects(float deltaTime,
         cameraObject.transform.translation += glm::normalize(translation) * moveVelocity * deltaTime;
     }
 
-    scene.camera.setViewYXZ(cameraObject.transform.translation,
-                            {-cameraObject.transform.rotation.x, cameraObject.transform.rotation.y, 0.f});
-
-    if (!scene.lights.directionalLights.empty())
-    {
-        scene.lights.directionalLights.front().direction =
-            glm::rotateY(scene.lights.directionalLights.front().direction, deltaTime);
-    }
+    camera.setViewYXZ(cameraObject.transform.translation,
+                      {-cameraObject.transform.rotation.x, cameraObject.transform.rotation.y, 0.f});
 }
 
 void setObjects(panda::gfx::vulkan::Scene& scene,
@@ -123,28 +117,30 @@ void setObjects(panda::gfx::vulkan::Scene& scene,
     scene.objects.push_back(std::move(object));
 
     scene.lights.pointLights.push_back(panda::gfx::PointLight {
-        panda::gfx::makeColorLight({1.f, 0.f,   0.f   },
-        0.0f, 0.8f, 1.f, 1.f),
+        panda::gfx::makeColorLight("Light_1", {1.f, 0.f,   0.f   },
+         0.0f, 0.8f, 1.f, 1.f),
         {2.f, -2.f,  -1.5f },
         {1.f, 0.05f, 0.005f}
     });
 
     scene.lights.spotLights.push_back(panda::gfx::SpotLight {
-        {panda::gfx::makeColorLight({0.f, 1.f, 0.f}, 0.0f, 0.8f, 1.f, 1.f), {0.f, -5.f, 0.f}, {1.f, 0.05f, 0.005f}},
+        {panda::gfx::makeColorLight("SpotLight", {0.f, 1.f, 0.f}, 0.0f, 0.8f, 1.f, 1.f),
+         {0.f, -5.f, 0.f},
+         {1.f, 0.05f, 0.005f}},
         {0.f, 1.f, 0.f},
         glm::cos(glm::radians(30.f))
     });
 
     scene.lights.pointLights.push_back(panda::gfx::PointLight {
-        panda::gfx::makeColorLight({0.f,  0.f,   1.f   },
-        0.0f, 0.8f, 1.f, 1.f),
+        panda::gfx::makeColorLight("Light_2", {0.f,  0.f,   1.f   },
+         0.0f, 0.8f, 1.f, 1.f),
         {-2.f, -2.f,  -1.5f },
         {1.f,  0.05f, 0.005f}
     });
 
     scene.lights.directionalLights.push_back(panda::gfx::DirectionalLight {
-        panda::gfx::makeColorLight({1.f, .8f,  .8f },
-        0.0f, 0.8f, 1.f, 0.02f),
+        panda::gfx::makeColorLight("DirectionalLight", {1.f, .8f,  .8f },
+         0.0f, 0.8f, 1.f, 0.02f),
         {0.f, -2.f, 10.f},
     });
 }
@@ -219,7 +215,7 @@ auto App::mainLoop() -> void
                                                   _api->getRenderer().getAspectRatio(),
                                                   0.1f,
                                                   100.f);
-            processObjects(currentTime.deltaTime, *_window, cameraObject, scene);
+            processCamera(currentTime.deltaTime, *_window, cameraObject, scene.camera);
 
             _api->makeFrame(currentTime.deltaTime, scene);
         }
