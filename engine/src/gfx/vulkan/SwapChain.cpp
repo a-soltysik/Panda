@@ -23,7 +23,7 @@ SwapChain::SwapChain(const Device& device, const vk::SurfaceKHR& surface, const 
       _renderPass {createRenderPass(_swapChainImageFormat, _swapChainDepthFormat, _device)},
       _swapChainFrameBuffers {
           createFrameBuffers(_swapChainImageViews, _depthImageViews, _renderPass, _swapChainExtent, _device)},
-      _frameBufferResizeReceiver {utils::Signals::frameBufferResized.connect([this](auto, auto) noexcept {
+      _frameBufferResizeReceiver {utils::signals::frameBufferResized.connect([this](auto) noexcept {
           log::Debug("Received framebuffer resized notif");
           _frameBufferResized = true;
       })}

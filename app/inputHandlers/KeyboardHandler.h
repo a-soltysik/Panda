@@ -29,8 +29,8 @@ public:
 
 private:
     std::array<State, GLFW_KEY_LAST> _states {};
-    utils::Signals::KeyboardStateChanged::ReceiverT _keyboardStateChangedReceiver;
-    panda::utils::Signals::GameLoopIterationStarted::ReceiverT _newFrameNotifReceiver;
+    utils::signals::KeyboardStateChanged::Signal::ReceiverT _keyboardStateChangedReceiver;
+    panda::utils::signals::GameLoopIterationStarted::ReceiverT _newFrameNotifReceiver;
     const GlfwWindow& _window;
 };
 
