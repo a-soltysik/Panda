@@ -49,7 +49,7 @@ auto LogDispatcher::log([[maybe_unused]] Level level,
         Config::instance().console.log(level, message);
         Config::instance().file.log(level, message, location);
     }
-    catch (...)
+    catch (...)  //NOLINT(bugprone-empty-catch)
     {
     }
 #endif

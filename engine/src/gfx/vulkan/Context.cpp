@@ -315,7 +315,8 @@ auto Context::makeFrame(float deltaTime, Scene& scene) -> void
 
     _pointLightSystem->render(frameInfo, scene.lights);
 
-    utils::Signals::beginGuiRender.registerSender()(commandBuffer, scene);
+    utils::signals::beginGuiRender.registerSender()(
+        utils::signals::BeginGuiRenderData {commandBuffer, std::ref(scene)});
 
     _renderer->endSwapChainRenderPass();
 

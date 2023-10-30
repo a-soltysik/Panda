@@ -6,16 +6,16 @@
 
 app::GuiManager::GuiManager()
 {
-    _beginGuiReceiver = panda::utils::Signals::beginGuiRender.connect([this](auto commandBuffer, auto& scene) {
+    _beginGuiReceiver = panda::utils::signals::beginGuiRender.connect([this](auto data) {
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
         _devGui.render();
-        _userGui.render(scene);
+        _userGui.render(data.scene);
 
         ImGui::Render();
 
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer, VK_NULL_HANDLE);
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), data.commandBuffer, VK_NULL_HANDLE);
     });
 }

@@ -3,19 +3,41 @@
 #include <panda/Window.h>
 #include <panda/utils/Signal.h>
 
-namespace app::utils
+namespace app::utils::signals
 {
 
-struct Signals
+struct KeyboardStateChangedData
 {
-    using KeyboardStateChanged = panda::utils::Signal<panda::Window::Id, int, int, int, int>;
-    inline static auto keyboardStateChanged = KeyboardStateChanged {};
-
-    using MouseButtonStateChanged = panda::utils::Signal<panda::Window::Id, int, int, int>;
-    inline static auto mouseButtonStateChanged = MouseButtonStateChanged {};
-
-    using CursorPositionChanged = panda::utils::Signal<panda::Window::Id, double, double>;
-    inline static auto cursorPositionChanged = CursorPositionChanged {};
+    panda::Window::Id id;
+    int key;
+    int scancode;
+    int action;
+    int mods;
 };
+
+using KeyboardStateChanged = panda::utils::Signal<KeyboardStateChangedData>;
+
+struct MouseButtonStateChangedData
+{
+    panda::Window::Id id;
+    int button;
+    int action;
+    int mods;
+};
+
+using MouseButtonStateChanged = panda::utils::Signal<MouseButtonStateChangedData>;
+
+struct CursorPositionChangedData
+{
+    panda::Window::Id id;
+    double x;
+    double y;
+};
+
+using CursorPositionChanged = panda::utils::Signal<CursorPositionChangedData>;
+
+inline auto keyboardStateChanged = KeyboardStateChanged {};
+inline auto mouseButtonStateChanged = MouseButtonStateChanged {};
+inline auto cursorPositionChanged = CursorPositionChanged {};
 
 }

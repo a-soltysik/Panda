@@ -10,7 +10,7 @@ public:
     GuiManager();
 
 private:
-    panda::utils::Signals::BeginGuiRender::ReceiverT _beginGuiReceiver;
+    panda::utils::signals::BeginGuiRender::ReceiverT _beginGuiReceiver;
     DevGui _devGui;
     UserGui _userGui;
 };

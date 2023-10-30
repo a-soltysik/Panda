@@ -210,7 +210,7 @@ auto App::mainLoop() -> void
     {
         if (!_window->isMinimized())
         {
-            panda::utils::Signals::gameLoopIterationStarted.registerSender()();
+            panda::utils::signals::gameLoopIterationStarted.registerSender()();
             _window->processInput();
 
             currentTime.update();

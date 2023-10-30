@@ -8,10 +8,11 @@ namespace
 
 void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
-    static auto sender = panda::utils::Signals::frameBufferResized.registerSender();
-    panda::log::Info("Size of window [{}] changed to {}x{}", static_cast<void*>(window), width, height);
+    static auto sender = panda::utils::signals::frameBufferResized.registerSender();
+    const auto id = app::GlfwWindow::makeId(window);
+    panda::log::Info("Size of window [{}] changed to {}x{}", id, width, height);
 
-    sender(width, height);
+    sender(panda::utils::signals::FrameBufferResizedData {id, width, height});
 }
 
 }
@@ -27,9 +28,12 @@ GlfwWindow::GlfwWindow(glm::uvec2 size, const char* name)
     mouseHandler = std::make_unique<MouseHandler>(*this);
     glfwSetFramebufferSizeCallback(_window, framebufferResizeCallback);
 
-    _frameBufferResizedReceiver = panda::utils::Signals::frameBufferResized.connect([this](int x, int y) {
-        panda::log::Debug("Received framebuffer resized notif");
-        _size = {x, y};
+    _frameBufferResizedReceiver = panda::utils::signals::frameBufferResized.connect([this](auto data) {
+        if (data.id == getId())
+        {
+            panda::log::Debug("Received framebuffer resized notif");
+            _size = {data.x, data.y};
+        }
     });
 
     setupImGui();

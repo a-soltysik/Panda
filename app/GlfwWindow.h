@@ -41,7 +41,7 @@ private:
 
     std::unique_ptr<KeyboardHandler> keyboardHandler;
     std::unique_ptr<MouseHandler> mouseHandler;
-    panda::utils::Signals::FrameBufferResized::ReceiverT _frameBufferResizedReceiver;
+    panda::utils::signals::FrameBufferResized::ReceiverT _frameBufferResizedReceiver;
     GLFWwindow* _window;
     glm::uvec2 _size;
 };

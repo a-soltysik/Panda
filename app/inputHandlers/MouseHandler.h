@@ -32,9 +32,9 @@ private:
     glm::dvec2 _currentPosition {};
     glm::dvec2 _previousPosition {};
 
-    utils::Signals::MouseButtonStateChanged::ReceiverT _mouseButtonStateChangedReceiver;
-    utils::Signals::CursorPositionChanged::ReceiverT _cursorStateChangedReceiver;
-    panda::utils::Signals::GameLoopIterationStarted::ReceiverT _newFrameNotifReceiver;
+    utils::signals::MouseButtonStateChanged::ReceiverT _mouseButtonStateChangedReceiver;
+    utils::signals::CursorPositionChanged::ReceiverT _cursorStateChangedReceiver;
+    panda::utils::signals::GameLoopIterationStarted::ReceiverT _newFrameNotifReceiver;
 
     const GlfwWindow& _window;
 };
