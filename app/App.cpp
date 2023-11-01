@@ -2,6 +2,7 @@
 
 #include <csignal>
 
+#include "backend/Profiler.h"
 #include "gui/GuiManager.h"
 #include "internal/config.h"
 #include "movementHandlers/MovementHandler.h"
@@ -200,7 +201,7 @@ auto App::mainLoop() -> void
     cameraObject.transform.translation = {0.f, 2.f, -8.f};
     scene.camera.setViewYXZ(cameraObject.transform.translation, cameraObject.transform.rotation);
 
-    [[maybe_unused]] const auto gui = GuiManager {};
+    [[maybe_unused]] const auto gui = GuiManager {*_window};
 
     while (!_window->shouldClose()) [[likely]]
     {

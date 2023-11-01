@@ -41,7 +41,7 @@ auto RenderSystem::createPipeline(const Device& device, vk::RenderPass renderPas
                                                                              VK_FALSE,
                                                                              VK_FALSE,
                                                                              vk::PolygonMode::eFill,
-                                                                             vk::CullModeFlagBits::eNone,
+                                                                             vk::CullModeFlagBits::eBack,
                                                                              vk::FrontFace::eCounterClockwise,
                                                                              VK_FALSE,
                                                                              {},

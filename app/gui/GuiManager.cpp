@@ -4,7 +4,9 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <imgui.h>
 
-app::GuiManager::GuiManager()
+app::GuiManager::GuiManager(const panda::Window& window)
+    : _devGui {window},
+      _userGui {window}
 {
     _beginGuiReceiver = panda::utils::signals::beginGuiRender.connect([this](auto data) {
         ImGui_ImplVulkan_NewFrame();
