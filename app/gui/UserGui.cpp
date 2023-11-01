@@ -7,8 +7,19 @@
 namespace app
 {
 
+UserGui::UserGui(const panda::Window& window)
+    : _window {window}
+{
+}
+
 auto UserGui::render(panda::gfx::vulkan::Scene& scene) -> void
 {
+    const auto windowSize =
+        ImVec2 {static_cast<float>(_window.getSize().x) / 3.f, static_cast<float>(_window.getSize().y)};
+    ImGui::SetNextWindowPos({static_cast<float>(_window.getSize().x) * 2.f / 3.f, 0}, ImGuiCond_Once);
+    ImGui::SetNextWindowSize(windowSize, ImGuiCond_Once);
+    ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
+
     ImGui::Begin("Scene Info", nullptr);
 
     const auto result = objectListBox(getAllNames(scene));
@@ -62,10 +73,15 @@ auto UserGui::vulkanObject(panda::gfx::vulkan::Object& object) -> void
 
 auto UserGui::objectListBox(const std::vector<std::string>& objects) -> std::string
 {
-    const auto names =
-        objects | std::ranges::views::transform(&std::string::c_str) | utils::to<std::vector<const char*>>();
+    const auto names = objects                                               //
+                       | std::ranges::views::transform(&std::string::c_str)  //
+                       | utils::to<std::vector<const char*>>();
 
-    ImGui::ListBox("Objects", &_currentObject, names.data(), static_cast<int>(names.size()), 4);
+    ImGui::ListBox("Objects",
+                   &_currentObject,
+                   names.data(),
+                   static_cast<int>(names.size()),
+                   static_cast<int>(objects.size()));
 
     return objects[static_cast<size_t>(_currentObject)];
 }

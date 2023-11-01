@@ -2,6 +2,7 @@
 
 #include <backends/imgui_impl_glfw.h>
 #include <imgui.h>
+#include <implot.h>
 
 namespace
 {
@@ -41,6 +42,7 @@ GlfwWindow::GlfwWindow(glm::uvec2 size, const char* name)
 
 GlfwWindow::~GlfwWindow() noexcept
 {
+    ImPlot::DestroyContext();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
@@ -152,6 +154,7 @@ auto GlfwWindow::getMouseHandler() const noexcept -> const MouseHandler&
 auto GlfwWindow::setupImGui() -> void
 {
     ImGui::CreateContext();
+    ImPlot::CreateContext();
     ImGui_ImplGlfw_InitForVulkan(_window, true);
 }
 

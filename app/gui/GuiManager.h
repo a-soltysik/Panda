@@ -7,7 +7,7 @@ namespace app
 class GuiManager
 {
 public:
-    GuiManager();
+    explicit GuiManager(const panda::Window& window);
 
 private:
     panda::utils::signals::BeginGuiRender::ReceiverT _beginGuiReceiver;

@@ -2,12 +2,16 @@
 
 #include <panda/gfx/vulkan/Scene.h>
 
+#include "panda/Window.h"
+
 namespace app
 {
 
 class UserGui
 {
 public:
+    explicit UserGui(const panda::Window& window);
+
     auto render(panda::gfx::vulkan::Scene& scene) -> void;
 
 private:
@@ -22,6 +26,7 @@ private:
     static auto pointLight(panda::gfx::PointLight& light) -> void;
     static auto spotLight(panda::gfx::SpotLight& light) -> void;
 
+    const panda::Window& _window;
     int _currentObject = 0;
 };
 
