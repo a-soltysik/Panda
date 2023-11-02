@@ -3,7 +3,7 @@
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
 #    include "windows/Profiler.h"
 #else
-#    include "unix/Profiler.h"
+#    include "linux/Profiler.h"
 #endif
 
 #include <concepts>
@@ -71,7 +71,7 @@ inline auto getProfiler() -> decltype(auto)
     static auto profiler = Profiler<windows::Profiler> {};
     return profiler;
 #else
-    static auto profiler = Profiler<unix::Profiler> {};
+    static auto profiler = Profiler<linux::Profiler> {};
     return profiler;
 #endif
 }

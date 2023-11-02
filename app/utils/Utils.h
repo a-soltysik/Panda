@@ -1,3 +1,6 @@
+#pragma once
+
+#include <ranges>
 
 namespace app::utils
 {

@@ -38,16 +38,18 @@ auto DevGui::render() -> void
         ImPlot::EndPlot();
     }
 
-    if (ImPlot::BeginPlot("Physical memory usage"))
+    if (ImPlot::BeginPlot("Memory usage"))
     {
         ImPlot::SetupLegend(ImPlotLocation_NorthEast);
         ImPlot::SetupAxes("Time [s]", "Memory usage [MB]", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_None);
         ImPlot::SetupAxesLimits(0,
                                 static_cast<double>(_physicalMemoryUsages.size()),
                                 0,
-                                static_cast<double>(*std::ranges::max_element(_physicalMemoryUsages)),
+                                std::max(static_cast<double>(*std::ranges::max_element(_physicalMemoryUsages)),
+                                         static_cast<double>(*std::ranges::max_element(_virtualMemoryUsages))),
                                 ImPlotCond_Always);
-        ImPlot::PlotLine("", _physicalMemoryUsages.data(), static_cast<int>(_physicalMemoryUsages.size()));
+        ImPlot::PlotLine("Physical", _physicalMemoryUsages.data(), static_cast<int>(_physicalMemoryUsages.size()));
+        ImPlot::PlotLine("Virtual", _virtualMemoryUsages.data(), static_cast<int>(_virtualMemoryUsages.size()));
         ImPlot::EndPlot();
     }
 
@@ -69,22 +71,31 @@ auto DevGui::render() -> void
         _time = 0.f;
 
         std::ranges::rotate(_physicalMemoryUsages, std::ranges::prev(std::ranges::end(_physicalMemoryUsages)));
+        std::ranges::rotate(_virtualMemoryUsages, std::ranges::prev(std::ranges::end(_virtualMemoryUsages)));
         std::ranges::rotate(_frameRates, std::ranges::prev(std::ranges::end(_frameRates)));
         std::ranges::rotate(_cpuUsages, std::ranges::prev(std::ranges::end(_cpuUsages)));
 
         const auto physicalMemoryUsage =
             backend::getProfiler().getPhysicalMemoryUsage() / (size_t {1024} * size_t {1024});
 
+        const auto virtualMemoryUsage =
+            backend::getProfiler().getVirtualMemoryUsage() / (size_t {1024} * size_t {1024});
+
         _physicalMemoryUsages.front() = physicalMemoryUsage;
+        _virtualMemoryUsages.front() = virtualMemoryUsage;
         _frameRates.front() = ImGui::GetIO().Framerate;
         _cpuUsages.front() = static_cast<float>(backend::getProfiler().getCpuUsageInPercents());
 
         const auto totalPhysicalMemory =
-            backend::getProfiler().getPhysicalMemoryUsage() / (size_t {1024} * size_t {1024});
+            backend::getProfiler().getTotalPhysicalMemory() / (size_t {1024} * size_t {1024});
+
+        const auto totalVirtualMemory =
+            backend::getProfiler().getTotalVirtualMemory() / (size_t {1024} * size_t {1024});
 
         panda::log::Info("Average FPS: {}", _frameRates.front());
         panda::log::Info("CPU usage: {}", _cpuUsages.front());
         panda::log::Info("Memory usage: {}/{} MB", _physicalMemoryUsages.front(), totalPhysicalMemory);
+        panda::log::Info("Memory usage: {}/{} MB", _virtualMemoryUsages.front(), totalVirtualMemory);
     }
     ImGui::End();
 }
