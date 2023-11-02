@@ -21,16 +21,22 @@ public:
     [[nodiscard]] auto getPhysicalMemoryUsage() -> size_t;
 
 private:
+    struct TimeInfo
+    {
+        ULARGE_INTEGER idle;
+        ULARGE_INTEGER system;
+        ULARGE_INTEGER user;
+    };
+
     [[nodiscard]] static auto getMemoryStatus() -> MEMORYSTATUSEX;
     [[nodiscard]] auto getProcessMemory() const -> PROCESS_MEMORY_COUNTERS_EX;
     [[nodiscard]] static auto getCurrentTime() -> ULARGE_INTEGER;
     [[nodiscard]] static auto getThreadsCount() -> DWORD;
+    [[nodiscard]] auto getCurrentTimeInfo() -> TimeInfo;
 
-    MEMORYSTATUSEX _memoryStatus {};
-    ULARGE_INTEGER _lastTime {};
-    ULARGE_INTEGER _lastSystemTime {};
-    ULARGE_INTEGER _lastUserTime {};
-    DWORD _threadsCount {};
+    MEMORYSTATUSEX _memoryStatus;
+    TimeInfo _lastTimeInfo {};
+    DWORD _threadsCount;
     HANDLE _process;
 };
 

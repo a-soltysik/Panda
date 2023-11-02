@@ -15,9 +15,10 @@ public:
     auto render() -> void;
 
 private:
-    using MemorySize =
-        unsigned long long;  //Workaround for defining size_t as unsigned long, since ImPLot has no definitions for such type
+    //Workaround for defining size_t as unsigned long, since ImPlot has no definitions for such type
+    using MemorySize = unsigned long long;
     std::array<MemorySize, 60> _physicalMemoryUsages {};
+    std::array<MemorySize, 60> _virtualMemoryUsages {};
     std::array<float, 60> _frameRates {};
     std::array<float, 60> _cpuUsages {};
 

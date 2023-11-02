@@ -2,42 +2,29 @@
 
 #include <bit>
 
+#include "Common.h"
+
 namespace app::backend::windows
 {
 
 Profiler::Profiler()
     : _memoryStatus {getMemoryStatus()},
-      _lastTime {getCurrentTime()},
+      _lastTimeInfo {getCurrentTimeInfo()},
       _threadsCount {getThreadsCount()},
       _process {GetCurrentProcess()}
 {
-    auto systemTime = FILETIME {};
-    auto userTime = FILETIME {};
-    auto dummy = FILETIME {};
-    GetProcessTimes(_process, &dummy, &dummy, &systemTime, &userTime);
-
-    _lastSystemTime = std::bit_cast<ULARGE_INTEGER>(systemTime);
-    _lastUserTime = std::bit_cast<ULARGE_INTEGER>(userTime);
+    panda::log::Info("Number of available threads: {}", _threadsCount);
 }
 
 auto Profiler::getCurrentUsageInPercents() -> double
 {
-    const auto now = getCurrentTime();
-    auto systemFileTime = FILETIME {};
-    auto userFileTime = FILETIME {};
-    auto dummy = FILETIME {};
-    GetProcessTimes(_process, &dummy, &dummy, &systemFileTime, &userFileTime);
+    const auto currentTimeInfo = getCurrentTimeInfo();
+    auto percent = static_cast<double>((currentTimeInfo.system.QuadPart - _lastTimeInfo.system.QuadPart) +
+                                       (currentTimeInfo.user.QuadPart - _lastTimeInfo.user.QuadPart));
+    percent /= static_cast<double>(currentTimeInfo.idle.QuadPart - _lastTimeInfo.idle.QuadPart);
+    percent /= static_cast<double>(_threadsCount);
 
-    const auto systemTime = std::bit_cast<ULARGE_INTEGER>(systemFileTime);
-    const auto userTime = std::bit_cast<ULARGE_INTEGER>(userFileTime);
-    auto percent = static_cast<double>((systemTime.QuadPart - _lastSystemTime.QuadPart) +
-                                       (userTime.QuadPart - _lastUserTime.QuadPart));
-    percent /= static_cast<double>(now.QuadPart - _lastTime.QuadPart);
-    percent /= _threadsCount;
-
-    _lastTime = now;
-    _lastUserTime = userTime;
-    _lastSystemTime = systemTime;
+    _lastTimeInfo = currentTimeInfo;
 
     return percent * 100.;
 }
@@ -91,6 +78,18 @@ auto Profiler::getThreadsCount() -> DWORD
     auto systemInfo = SYSTEM_INFO {};
     GetSystemInfo(&systemInfo);
     return systemInfo.dwNumberOfProcessors;
+}
+
+auto Profiler::getCurrentTimeInfo() -> Profiler::TimeInfo
+{
+    auto system = FILETIME {};
+    auto user = FILETIME {};
+    auto dummy = FILETIME {};
+    GetProcessTimes(_process, &dummy, &dummy, &system, &user);
+
+    return {.idle = getCurrentTime(),
+            .system = std::bit_cast<ULARGE_INTEGER>(system),
+            .user = std::bit_cast<ULARGE_INTEGER>(user)};
 }
 
 }

@@ -23,11 +23,11 @@ if (WIN32)
 
     list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${WIN_SRC_LIST})
 else ()
-    file(GLOB_RECURSE UNIX_SRC_LIST
-            ${APP_DIR}/backend/unix/*.cpp
+    file(GLOB_RECURSE LINUX_SRC_LIST
+            ${APP_DIR}/backend/linux/*.cpp
     )
 
-    list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${UNIX_SRC_LIST})
+    list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${LINUX_SRC_LIST})
 endif ()
 
 add_executable(${APP_TARGET_NAME} ${${APP_TARGET_NAME}_SRC_LIST})
@@ -35,6 +35,9 @@ add_executable(${APP_TARGET_NAME} ${${APP_TARGET_NAME}_SRC_LIST})
 target_link_libraries(${APP_TARGET_NAME} PRIVATE PD::PD_options PD::PD_warnings)
 
 target_include_directories(${APP_TARGET_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${CONFIG_OUTPUT})
+if (MSVC)
+    target_compile_definitions(${APP_TARGET_NAME} PRIVATE NOMINMAX)
+endif ()
 
 if (PD_ENABLE_PCH)
     target_precompile_headers(${APP_TARGET_NAME} PRIVATE Common.h)
