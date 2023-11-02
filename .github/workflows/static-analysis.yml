@@ -30,8 +30,15 @@ jobs:
           sudo cp -R * /usr/local/
       - name: Install X11
         run: sudo apt install xorg-dev
+      - name: Update CMake
+        run: |
+          sudo apt purge --auto-remove cmake
+          wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null
+          sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ jammy main'
+          sudo apt update
+          sudo apt install cmake
       - name: Install tools
-        run : |
+        run: |
           sudo apt install cppcheck
           sudo apt install clang-tidy
       - name: Configure CMake

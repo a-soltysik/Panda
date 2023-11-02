@@ -22,12 +22,18 @@ if (WIN32)
     )
 
     list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${WIN_SRC_LIST})
-else ()
+elseif (LINUX)
     file(GLOB_RECURSE LINUX_SRC_LIST
             ${APP_DIR}/backend/linux/*.cpp
     )
 
     list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${LINUX_SRC_LIST})
+else ()
+    file(GLOB_RECURSE OTHER_SRC_LIST
+            ${APP_DIR}/backend/other/*.cpp
+    )
+
+    list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${OTHER_SRC_LIST})
 endif ()
 
 add_executable(${APP_TARGET_NAME} ${${APP_TARGET_NAME}_SRC_LIST})
