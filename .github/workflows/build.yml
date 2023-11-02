@@ -27,7 +27,7 @@ jobs:
       - name: Build
         run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
         with:
@@ -41,6 +41,13 @@ jobs:
         run: |
           sudo apt update
           sudo apt install xorg-dev
+      - name: Update CMake
+        run: |
+          sudo apt purge --auto-remove cmake
+          wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null
+          sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ jammy main'
+          sudo apt update
+          sudo apt install cmake
       - name: Configure CMake
         run: >-
           cmake -B ${{github.workspace}}/build
