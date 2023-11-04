@@ -26,30 +26,30 @@ auto MovementHandler::getMovement() const -> glm::vec3
 
     if (forwardButton == Pressed || forwardButton == JustPressed)
     {
-        direction.z += 1.f;
+        direction.z += 1;
     }
     if (backButton == Pressed || backButton == JustPressed)
     {
-        direction.z -= 1.f;
+        direction.z -= 1;
     }
     if (rightButton == Pressed || rightButton == JustPressed)
     {
-        direction.x += 1.f;
+        direction.x += 1;
     }
     if (leftButton == Pressed || rightButton == JustPressed)
     {
-        direction.x -= 1.f;
+        direction.x -= 1;
     }
     if (upButton == Pressed || upButton == JustPressed)
     {
-        direction.y += 1.f;
+        direction.y += 1;
     }
     if (downButton == Pressed || downButton == JustPressed)
     {
-        direction.y -= 1.f;
+        direction.y -= 1;
     }
 
-    return glm::clamp(direction, -1.f, 1.f);
+    return glm::clamp(direction, -1.F, 1.F);
 }
 
 }

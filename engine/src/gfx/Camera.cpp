@@ -3,26 +3,26 @@
 namespace panda::gfx
 {
 
-auto Camera::setOrthographicProjection(float left, float right, float top, float bottom, float near, float far) -> void
+auto Camera::setOrthographicProjection(const projection::Orthographic& projection) -> void
 {
-    _projectionMatrix = glm::mat4 {1.f};
-    _projectionMatrix[0][0] = 2.f / (right - left);
-    _projectionMatrix[1][1] = 2.f / (bottom - top);
-    _projectionMatrix[2][2] = 1.f / (far - near);
-    _projectionMatrix[3][0] = -(right + left) / (right - left);
-    _projectionMatrix[3][1] = -(bottom + top) / (bottom - top);
-    _projectionMatrix[3][2] = -near / (far - near);
+    _projectionMatrix = glm::mat4 {1.F};
+    _projectionMatrix[0][0] = 2.F / (projection.right - projection.left);
+    _projectionMatrix[1][1] = 2.F / (projection.bottom - projection.top);
+    _projectionMatrix[2][2] = 1.F / (projection.far - projection.near);
+    _projectionMatrix[3][0] = -(projection.right + projection.left) / (projection.right - projection.left);
+    _projectionMatrix[3][1] = -(projection.bottom + projection.top) / (projection.bottom - projection.top);
+    _projectionMatrix[3][2] = -projection.near / (projection.far - projection.near);
 }
 
-auto Camera::setPerspectiveProjection(float fovY, float aspect, float near, float far) -> void
+auto Camera::setPerspectiveProjection(const projection::Perspective& projection) -> void
 {
-    const auto tanHalfFovY = glm::tan(fovY / 2.f);
-    _projectionMatrix = glm::mat4 {0.f};
-    _projectionMatrix[0][0] = 1.f / (aspect * tanHalfFovY);
-    _projectionMatrix[1][1] = 1.f / tanHalfFovY;
-    _projectionMatrix[2][2] = far / (far - near);
-    _projectionMatrix[2][3] = 1.f;
-    _projectionMatrix[3][2] = -(far * near) / (far - near);
+    const auto tanHalfFovY = glm::tan(projection.fovY / 2.F);
+    _projectionMatrix = glm::mat4 {0.F};
+    _projectionMatrix[0][0] = 1.F / (projection.aspect * tanHalfFovY);
+    _projectionMatrix[1][1] = 1.F / tanHalfFovY;
+    _projectionMatrix[2][2] = projection.far / (projection.far - projection.near);
+    _projectionMatrix[2][3] = 1.F;
+    _projectionMatrix[3][2] = -(projection.far * projection.near) / (projection.far - projection.near);
 }
 
 auto Camera::getProjection() const noexcept -> const glm::mat4&
@@ -35,16 +35,16 @@ auto Camera::getView() const noexcept -> const glm::mat4&
     return _viewMatrix;
 }
 
-auto Camera::setViewDirection(glm::vec3 position, glm::vec3 direction, glm::vec3 up) -> void
+auto Camera::setViewDirection(const view::Direction& view) -> void
 {
-    position.y = -position.y;
-    direction.y = -direction.y;
+    const auto position = glm::vec3 {view.position.x, -view.position.y, view.position.z};
+    const auto direction = glm::vec3 {view.direction.x, -view.direction.y, view.direction.z};
 
     const auto w = glm::vec3 {glm::normalize(direction)};
-    const auto u = glm::vec3 {glm::normalize(glm::cross(w, up))};
+    const auto u = glm::vec3 {glm::normalize(glm::cross(w, view.up))};
     const auto v = glm::vec3 {glm::cross(w, u)};
 
-    _viewMatrix = glm::mat4 {1.f};
+    _viewMatrix = glm::mat4 {1.F};
     _viewMatrix[0][0] = u.x;
     _viewMatrix[1][0] = u.y;
     _viewMatrix[2][0] = u.z;
@@ -58,7 +58,7 @@ auto Camera::setViewDirection(glm::vec3 position, glm::vec3 direction, glm::vec3
     _viewMatrix[3][1] = -glm::dot(v, position);
     _viewMatrix[3][2] = -glm::dot(w, position);
 
-    _inverseViewMatrix = glm::mat4 {1.f};
+    _inverseViewMatrix = glm::mat4 {1.F};
     _inverseViewMatrix[0][0] = u.x;
     _inverseViewMatrix[0][1] = u.y;
     _inverseViewMatrix[0][2] = u.z;
@@ -73,25 +73,25 @@ auto Camera::setViewDirection(glm::vec3 position, glm::vec3 direction, glm::vec3
     _inverseViewMatrix[3][2] = position.z;
 }
 
-auto Camera::setViewTarget(glm::vec3 position, glm::vec3 target, glm::vec3 up) -> void
+auto Camera::setViewTarget(const view::Target& view) -> void
 {
-    setViewDirection(position, target - position, up);
+    setViewDirection({view.position, view.target - view.position, view.up});
 }
 
-auto Camera::setViewYXZ(glm::vec3 position, glm::vec3 rotation) -> void
+auto Camera::setViewYXZ(const view::YXZ& view) -> void
 {
-    position.y = -position.y;
+    const auto position = glm::vec3 {view.position.x, -view.position.y, view.position.z};
 
-    const auto c3 = glm::cos(rotation.z);
-    const auto s3 = glm::sin(rotation.z);
-    const auto c2 = glm::cos(rotation.x);
-    const auto s2 = glm::sin(rotation.x);
-    const auto c1 = glm::cos(rotation.y);
-    const auto s1 = glm::sin(rotation.y);
+    const auto c3 = glm::cos(view.rotation.z);
+    const auto s3 = glm::sin(view.rotation.z);
+    const auto c2 = glm::cos(view.rotation.x);
+    const auto s2 = glm::sin(view.rotation.x);
+    const auto c1 = glm::cos(view.rotation.y);
+    const auto s1 = glm::sin(view.rotation.y);
     const auto u = glm::vec3 {(c1 * c3 + s1 * s2 * s3), (c2 * s3), (c1 * s2 * s3 - c3 * s1)};
     const auto v = glm::vec3 {(c3 * s1 * s2 - c1 * s3), (c2 * c3), (c1 * c3 * s2 + s1 * s3)};
     const auto w = glm::vec3 {(c2 * s1), (-s2), (c1 * c2)};
-    _viewMatrix = glm::mat4 {1.f};
+    _viewMatrix = glm::mat4 {1.F};
     _viewMatrix[0][0] = u.x;
     _viewMatrix[1][0] = u.y;
     _viewMatrix[2][0] = u.z;
@@ -105,7 +105,7 @@ auto Camera::setViewYXZ(glm::vec3 position, glm::vec3 rotation) -> void
     _viewMatrix[3][1] = -glm::dot(v, position);
     _viewMatrix[3][2] = -glm::dot(w, position);
 
-    _inverseViewMatrix = glm::mat4 {1.f};
+    _inverseViewMatrix = glm::mat4 {1.F};
     _inverseViewMatrix[0][0] = u.x;
     _inverseViewMatrix[0][1] = u.y;
     _inverseViewMatrix[0][2] = u.z;

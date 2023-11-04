@@ -47,7 +47,7 @@ auto PointLightSystem::createPipeline(const Device& device,
                                                                              {},
                                                                              {},
                                                                              {},
-                                                                             1.f};
+                                                                             1.F};
 
     const auto multisamplingInfo = vk::PipelineMultisampleStateCreateInfo {{}, vk::SampleCountFlagBits::e1, VK_FALSE};
     const auto colorBlendAttachment =
@@ -109,9 +109,9 @@ auto PointLightSystem::render(const FrameInfo& frameInfo, const Lights& lights) 
     for (const auto& light : lights.pointLights)
     {
         const auto pushConstant = LightPushConstants {
-            {light.position, 1.f            },
+            {light.position, 1.F            },
             {light.diffuse,  light.intensity},
-            light.intensity / 10.f,
+            light.intensity / 10.F,
         };
         frameInfo.commandBuffer.pushConstants<LightPushConstants>(
             _pipelineLayout,
@@ -124,9 +124,9 @@ auto PointLightSystem::render(const FrameInfo& frameInfo, const Lights& lights) 
     for (const auto& light : lights.spotLights)
     {
         const auto pushConstant = LightPushConstants {
-            {light.position, 1.f            },
+            {light.position, 1.F            },
             {light.diffuse,  light.intensity},
-            light.intensity / 10.f,
+            light.intensity / 10.F,
         };
         frameInfo.commandBuffer.pushConstants<LightPushConstants>(
             _pipelineLayout,

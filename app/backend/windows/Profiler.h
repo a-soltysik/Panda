@@ -6,6 +6,9 @@
 
 // clang-format on
 
+#undef near
+#undef far
+
 namespace app::backend::windows
 {
 

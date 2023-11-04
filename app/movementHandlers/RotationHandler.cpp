@@ -21,8 +21,8 @@ auto RotationHandler::getRotation() const -> glm::vec2
 auto RotationHandler::getPixelsToAngleRatio() const -> glm::vec2
 {
     const auto widowSize = _window.getSize();
-    return {2.f * glm::pi<float>() / static_cast<float>(widowSize.x),
-            2.f * glm::pi<float>() / static_cast<float>(widowSize.y)};
+    return {glm::two_pi<float>() / static_cast<float>(widowSize.x),
+            glm::two_pi<float>() / static_cast<float>(widowSize.y)};
 }
 
 }

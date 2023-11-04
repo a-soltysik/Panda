@@ -26,4 +26,16 @@ auto to()
     return detail::to_helper<Container> {};
 }
 
+template <std::floating_point T>
+auto areEqual(T a, T b) -> bool
+{
+    return std::fabs(a - b) <= std::numeric_limits<T>::epsilon() * std::fmax(std::fabs(a), std::fabs(b));
+}
+
+template <std::floating_point T>
+auto isZero(T a) -> bool
+{
+    return areEqual(a, static_cast<T>(0));
+}
+
 }
