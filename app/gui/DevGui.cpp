@@ -15,7 +15,7 @@ DevGui::DevGui(const panda::Window& window)
 auto DevGui::render() -> void
 {
     const auto windowSize =
-        ImVec2 {static_cast<float>(_window.getSize().x) / 3.f, static_cast<float>(_window.getSize().y)};
+        ImVec2 {static_cast<float>(_window.getSize().x) / 3, static_cast<float>(_window.getSize().y)};
     ImGui::SetNextWindowPos({0, 0}, ImGuiCond_Once);
     ImGui::SetNextWindowSize(windowSize, ImGuiCond_Once);
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
@@ -65,10 +65,10 @@ auto DevGui::render() -> void
 
     _time += ImGui::GetIO().DeltaTime;
 
-    static constexpr auto second = 1.f;
+    static constexpr auto second = 1.F;
     if (_time > second)
     {
-        _time = 0.f;
+        _time = 0;
 
         std::ranges::rotate(_physicalMemoryUsages, std::ranges::prev(std::ranges::end(_physicalMemoryUsages)));
         std::ranges::rotate(_virtualMemoryUsages, std::ranges::prev(std::ranges::end(_virtualMemoryUsages)));

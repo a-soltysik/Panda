@@ -121,7 +121,7 @@ auto Device::createLogicalDevice(vk::PhysicalDevice device,
                                  std::span<const char* const> requiredValidationLayers) -> vk::Device
 {
     const auto uniqueFamilies = queueFamilies.getUniqueQueueFamilies();
-    const auto queuePriority = 1.f;
+    const auto queuePriority = 1.F;
 
     auto queueCreateInfos = std::vector<vk::DeviceQueueCreateInfo> {};
     queueCreateInfos.reserve(uniqueFamilies.size());

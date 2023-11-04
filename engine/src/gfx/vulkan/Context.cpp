@@ -238,13 +238,15 @@ auto Context::areRequiredExtensionsAvailable(std::span<const char* const> requir
 
 auto Context::createDebugMessengerCreateInfo() noexcept -> vk::DebugUtilsMessengerCreateInfoEXT
 {
-    static constexpr auto severityMask =
-        vk::DebugUtilsMessageSeverityFlagBitsEXT::eError | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-        vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo | vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose;
+    static constexpr auto severityMask = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError      //
+                                         | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning  //
+                                         | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo     //
+                                         | vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose;
 
-    static constexpr auto typeMask =
-        vk::DebugUtilsMessageTypeFlagBitsEXT::eDeviceAddressBinding | vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
-        vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
+    static constexpr auto typeMask = vk::DebugUtilsMessageTypeFlagBitsEXT::eDeviceAddressBinding  //
+                                     | vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral             //
+                                     | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation          //
+                                     | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
     return {{}, severityMask, typeMask, &debugCallback};
 }
 
@@ -301,7 +303,7 @@ auto Context::makeFrame(float deltaTime, Scene& scene) -> void
         {},
         {},
         {},
-        {0.1f, 0.1f, 0.1f},
+        {0.1F, 0.1F, 0.1F},
         {},
         {}
     };
@@ -368,6 +370,6 @@ auto Context::InstanceDeleter::operator()(vk::Instance* instance) const noexcept
     instance->destroy(surface);
     instance->destroy();
 
-    delete instance;
+    delete instance;  //NOLINT(cppcoreguidelines-owning-memory)
 }
 }

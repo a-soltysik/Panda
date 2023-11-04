@@ -15,8 +15,8 @@ UserGui::UserGui(const panda::Window& window)
 auto UserGui::render(panda::gfx::vulkan::Scene& scene) -> void
 {
     const auto windowSize =
-        ImVec2 {static_cast<float>(_window.getSize().x) / 3.f, static_cast<float>(_window.getSize().y)};
-    ImGui::SetNextWindowPos({static_cast<float>(_window.getSize().x) * 2.f / 3.f, 0}, ImGuiCond_Once);
+        ImVec2 {static_cast<float>(_window.getSize().x) / 3, static_cast<float>(_window.getSize().y)};
+    ImGui::SetNextWindowPos({static_cast<float>(_window.getSize().x) * 2.F / 3.F, 0}, ImGuiCond_Once);
     ImGui::SetNextWindowSize(windowSize, ImGuiCond_Once);
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
 
@@ -30,45 +30,45 @@ auto UserGui::render(panda::gfx::vulkan::Scene& scene) -> void
 
 auto UserGui::baseLight(panda::gfx::BaseLight& light) -> void
 {
-    ImGui::DragFloat("intensity", &light.intensity, 0.05f, 0.f, 5.f);
-    ImGui::DragFloat3("ambient", reinterpret_cast<float*>(&light.ambient), 0.05f, 0.f, 1.f);
-    ImGui::DragFloat3("diffuse", reinterpret_cast<float*>(&light.diffuse), 0.05f, 0.f, 1.f);
-    ImGui::DragFloat3("specular", reinterpret_cast<float*>(&light.specular), 0.05f, 0.f, 1.f);
+    ImGui::DragFloat("intensity", &light.intensity, 0.05F, 0.F, 5.F);
+    ImGui::DragFloat3("ambient", reinterpret_cast<float*>(&light.ambient), 0.05F, 0.F, 1.F);
+    ImGui::DragFloat3("diffuse", reinterpret_cast<float*>(&light.diffuse), 0.05F, 0.F, 1.F);
+    ImGui::DragFloat3("specular", reinterpret_cast<float*>(&light.specular), 0.05F, 0.F, 1.F);
 }
 
 auto UserGui::directionalLight(panda::gfx::DirectionalLight& light) -> void
 {
     baseLight(light);
-    ImGui::DragFloat3("direction", reinterpret_cast<float*>(&light.direction), 0.05f);
+    ImGui::DragFloat3("direction", reinterpret_cast<float*>(&light.direction), 0.05F);
 }
 
 auto UserGui::pointLight(panda::gfx::PointLight& light) -> void
 {
     baseLight(light);
-    ImGui::DragFloat3("position", reinterpret_cast<float*>(&light.position), 0.05f);
+    ImGui::DragFloat3("position", reinterpret_cast<float*>(&light.position), 0.05F);
     attenuation(light.attenuation);
 }
 
 auto UserGui::attenuation(panda::gfx::Attenuation& attenuation) -> void
 {
-    ImGui::DragFloat("constant", &attenuation.constant, 0.005f, 0.f, 1.f);
-    ImGui::DragFloat("linear", &attenuation.linear, 0.005f, 0.f, 1.f);
-    ImGui::DragFloat("exp", &attenuation.exp, 0.005f, 0.f, 1.f);
+    ImGui::DragFloat("constant", &attenuation.constant, 0.005F, 0.F, 1.F);
+    ImGui::DragFloat("linear", &attenuation.linear, 0.005F, 0.F, 1.F);
+    ImGui::DragFloat("exp", &attenuation.exp, 0.005F, 0.F, 1.F);
 }
 
 auto UserGui::spotLight(panda::gfx::SpotLight& light) -> void
 {
     pointLight(light);
-    ImGui::DragFloat3("direction", reinterpret_cast<float*>(&light.direction), 0.05f);
-    ImGui::DragFloat("cutoff", &light.cutOff, 0.005f, 0.f, 1.f);
+    ImGui::DragFloat3("direction", reinterpret_cast<float*>(&light.direction), 0.05F);
+    ImGui::DragFloat("cutoff", &light.cutOff, 0.005F, 0.F, 1.F);
 }
 
 auto UserGui::vulkanObject(panda::gfx::vulkan::Object& object) -> void
 {
     auto& currentTransform = object.transform;
-    ImGui::DragFloat3("translation", reinterpret_cast<float*>(&currentTransform.translation), 0.05f);
-    ImGui::DragFloat3("scale", reinterpret_cast<float*>(&currentTransform.scale), 0.05f);
-    ImGui::DragFloat3("rotation", reinterpret_cast<float*>(&currentTransform.rotation), 0.05f);
+    ImGui::DragFloat3("translation", reinterpret_cast<float*>(&currentTransform.translation), 0.05F);
+    ImGui::DragFloat3("scale", reinterpret_cast<float*>(&currentTransform.scale), 0.05F);
+    ImGui::DragFloat3("rotation", reinterpret_cast<float*>(&currentTransform.rotation), 0.05F);
 }
 
 auto UserGui::objectListBox(const std::vector<std::string>& objects) -> std::string

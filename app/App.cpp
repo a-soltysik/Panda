@@ -2,11 +2,11 @@
 
 #include <csignal>
 
-#include "backend/Profiler.h"
 #include "gui/GuiManager.h"
 #include "internal/config.h"
 #include "movementHandlers/MovementHandler.h"
 #include "movementHandlers/RotationHandler.h"
+#include "utils/Utils.h"
 
 namespace
 {
@@ -44,13 +44,13 @@ void processCamera(float deltaTime,
                    panda::gfx::vulkan::Object& cameraObject,
                    panda::gfx::Camera& camera)
 {
-    static constexpr auto rotationVelocity = 500.f;
-    static constexpr auto moveVelocity = 2.5f;
+    static constexpr auto rotationVelocity = 500.F;
+    static constexpr auto moveVelocity = 2.5F;
 
     if (window.getMouseHandler().getButtonState(GLFW_MOUSE_BUTTON_LEFT) == app::MouseHandler::ButtonState::Pressed)
     {
         cameraObject.transform.rotation +=
-            glm::vec3 {app::RotationHandler {window}.getRotation() * rotationVelocity * deltaTime, 0.f};
+            glm::vec3 {app::RotationHandler {window}.getRotation() * rotationVelocity * deltaTime, 0};
     }
 
     cameraObject.transform.rotation.x =
@@ -64,18 +64,18 @@ void processCamera(float deltaTime,
                    glm::sin(-cameraObject.transform.rotation.x),
                    glm::cos(-cameraObject.transform.rotation.x) * glm::cos(cameraObject.transform.rotation.y)};
     const auto cameraRight =
-        glm::vec3 {glm::cos(cameraObject.transform.rotation.y), 0.f, -glm::sin(cameraObject.transform.rotation.y)};
+        glm::vec3 {glm::cos(cameraObject.transform.rotation.y), 0, -glm::sin(cameraObject.transform.rotation.y)};
 
     auto translation = glm::vec3 {};
-    if (rawMovement.z != 0.f)
+    if (!app::utils::isZero(rawMovement.z))
     {
         translation += cameraDirection * rawMovement.z;
     }
-    if (rawMovement.x != 0.f)
+    if (!app::utils::isZero(rawMovement.x))
     {
         translation += cameraRight * rawMovement.x;
     }
-    if (rawMovement.y != 0.f)
+    if (!app::utils::isZero(rawMovement.y))
     {
         translation.y = rawMovement.y;
     }
@@ -85,85 +85,36 @@ void processCamera(float deltaTime,
         cameraObject.transform.translation += glm::normalize(translation) * moveVelocity * deltaTime;
     }
 
-    camera.setViewYXZ(cameraObject.transform.translation,
-                      {-cameraObject.transform.rotation.x, cameraObject.transform.rotation.y, 0.f});
-}
-
-void setObjects(panda::gfx::vulkan::Scene& scene,
-                panda::gfx::vulkan::Mesh* vaseMesh,
-                panda::gfx::vulkan::Mesh* floorMesh)
-{
-    auto object = panda::gfx::vulkan::Object {"Vase_1"};
-    object.mesh = vaseMesh;
-    object.transform.rotation = {};
-    object.transform.translation = {1.f, 0.f, 0.f};
-    object.transform.scale = {5.f, 5.f, 5.f};
-
-    scene.objects.push_back(std::move(object));
-
-    object = panda::gfx::vulkan::Object {"Vase_2"};
-    object.mesh = vaseMesh;
-    object.transform.rotation = {};
-    object.transform.translation = {-1.f, 0.f, 0.f};
-    object.transform.scale = {5.f, 5.f, 5.f};
-
-    scene.objects.push_back(std::move(object));
-
-    object = panda::gfx::vulkan::Object {"Floor"};
-    object.mesh = floorMesh;
-    object.transform.rotation = {};
-    object.transform.translation = {0.f, 0.f, 0.f};
-    object.transform.scale = {10.f, 10.f, 10.f};
-
-    scene.objects.push_back(std::move(object));
-
-    scene.lights.pointLights.push_back(panda::gfx::PointLight {
-        panda::gfx::makeColorLight("Light_1", {1.f, 0.f,   0.f   },
-         0.0f, 0.8f, 1.f, 1.f),
-        {2.f, -2.f,  -1.5f },
-        {1.f, 0.05f, 0.005f}
-    });
-
-    scene.lights.spotLights.push_back(panda::gfx::SpotLight {
-        {panda::gfx::makeColorLight("SpotLight", {0.f, 1.f, 0.f}, 0.0f, 0.8f, 1.f, 1.f),
-         {0.f, -5.f, 0.f},
-         {1.f, 0.05f, 0.005f}},
-        {0.f, 1.f, 0.f},
-        glm::cos(glm::radians(30.f))
-    });
-
-    scene.lights.pointLights.push_back(panda::gfx::PointLight {
-        panda::gfx::makeColorLight("Light_2", {0.f,  0.f,   1.f   },
-         0.0f, 0.8f, 1.f, 1.f),
-        {-2.f, -2.f,  -1.5f },
-        {1.f,  0.05f, 0.005f}
-    });
-
-    scene.lights.directionalLights.push_back(panda::gfx::DirectionalLight {
-        panda::gfx::makeColorLight("DirectionalLight", {1.f, .8f,  .8f },
-         0.0f, 0.8f, 1.f, 0.02f),
-        {0.f, -2.f, 10.f},
+    camera.setViewYXZ(panda::gfx::view::YXZ {
+        .position = cameraObject.transform.translation,
+        .rotation = {-cameraObject.transform.rotation.x, cameraObject.transform.rotation.y, 0}
     });
 }
 
-struct TimeData
+class TimeData
 {
+public:
     TimeData()
-        : time {std::chrono::steady_clock::now()}
+        : _time {std::chrono::steady_clock::now()}
     {
     }
-
-    std::chrono::steady_clock::time_point time;
-    float deltaTime {};
 
     auto update() -> void
     {
-        auto currentTime = std::chrono::steady_clock::now();
-        deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - time).count();
-        time = currentTime;
+        const auto currentTime = std::chrono::steady_clock::now();
+        _deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - _time).count();
+        _time = currentTime;
     }
-};
 
+    [[nodiscard]] auto getDelta() const noexcept -> float
+    {
+        return _deltaTime;
+    }
+
+private:
+    std::chrono::steady_clock::time_point _time;
+    float _deltaTime {};
+};
 }
 
 namespace app
@@ -179,6 +130,9 @@ auto App::run() -> int
     _window = std::make_unique<GlfwWindow>(glm::uvec2 {defaultWidth, defaultHeight}, config::appName.data());
     _api = std::make_unique<panda::gfx::vulkan::Context>(*_window);
 
+    _vaseMesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "smooth_vase.obj");
+    _floorMesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "square.obj");
+
     mainLoop();
     return 0;
 }
@@ -186,20 +140,15 @@ auto App::run() -> int
 auto App::mainLoop() -> void
 {
     auto currentTime = TimeData {};
-
-    const auto vaseMesh =
-        panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "smooth_vase.obj");
-    const auto floorMesh =
-        panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "square.obj");
-
     auto scene = panda::gfx::vulkan::Scene {};
 
-    setObjects(scene, vaseMesh.get(), floorMesh.get());
+    setObjects(scene);
 
     auto cameraObject = panda::gfx::vulkan::Object {"Camera"};
 
-    cameraObject.transform.translation = {0.f, 2.f, -8.f};
-    scene.camera.setViewYXZ(cameraObject.transform.translation, cameraObject.transform.rotation);
+    cameraObject.transform.translation = {0, 2, -8};
+    scene.camera.setViewYXZ(panda::gfx::view::YXZ {.position = cameraObject.transform.translation,
+                                                   .rotation = cameraObject.transform.rotation});
 
     [[maybe_unused]] const auto gui = GuiManager {*_window};
 
@@ -212,13 +161,14 @@ auto App::mainLoop() -> void
 
             currentTime.update();
 
-            scene.camera.setPerspectiveProjection(glm::radians(50.f),
-                                                  _api->getRenderer().getAspectRatio(),
-                                                  0.1f,
-                                                  100.f);
-            processCamera(currentTime.deltaTime, *_window, cameraObject, scene.camera);
+            scene.camera.setPerspectiveProjection(
+                panda::gfx::projection::Perspective {.fovY = glm::radians(50.F),
+                                                     .aspect = _api->getRenderer().getAspectRatio(),
+                                                     .near = 0.1F,
+                                                     .far = 100});
+            processCamera(currentTime.getDelta(), *_window, cameraObject, scene.camera);
 
-            _api->makeFrame(currentTime.deltaTime, scene);
+            _api->makeFrame(currentTime.getDelta(), scene);
         }
         else [[unlikely]]
         {
@@ -252,6 +202,61 @@ auto App::registerSignalHandlers() -> void
     panda::shouldNotBe(std::signal(SIGINT, signalHandler), SIG_ERR, "Failed to register signal handler");
     panda::shouldNotBe(std::signal(SIGSEGV, signalHandler), SIG_ERR, "Failed to register signal handler");
     panda::shouldNotBe(std::signal(SIGTERM, signalHandler), SIG_ERR, "Failed to register signal handler");
+}
+
+void App::setObjects(panda::gfx::vulkan::Scene& scene)
+{
+    auto object = panda::gfx::vulkan::Object {"Vase_1"};
+    object.mesh = _vaseMesh.get();
+    object.transform.rotation = {};
+    object.transform.translation = {1.F, 0.F, 0.F};
+    object.transform.scale = {5.F, 5.F, 5.F};
+
+    scene.objects.push_back(std::move(object));
+
+    object = panda::gfx::vulkan::Object {"Vase_2"};
+    object.mesh = _vaseMesh.get();
+    object.transform.rotation = {};
+    object.transform.translation = {-1.F, 0.F, 0.F};
+    object.transform.scale = {5.F, 5.F, 5.F};
+
+    scene.objects.push_back(std::move(object));
+
+    object = panda::gfx::vulkan::Object {"Floor"};
+    object.mesh = _floorMesh.get();
+    object.transform.rotation = {};
+    object.transform.translation = {0.F, 0.F, 0.F};
+    object.transform.scale = {10.F, 10.F, 10.F};
+
+    scene.objects.push_back(std::move(object));
+
+    scene.lights.pointLights.push_back(panda::gfx::PointLight {
+        panda::gfx::makeColorLight("Light_1", {1.F, 0.F,   0.F   },
+         0.F, 0.8F, 1.F, 1.F),
+        {2.F, -2.F,  -1.5F },
+        {1.F, 0.05F, 0.005F}
+    });
+
+    scene.lights.spotLights.push_back(panda::gfx::SpotLight {
+        {panda::gfx::makeColorLight("SpotLight", {0.F, 1.F, 0.F}, 0.0F, 0.8F, 1.F, 1.F),
+         {0.F, -5.F, 0.F},
+         {1.F, 0.05F, 0.005F}},
+        {0.F, 1.F, 0.F},
+        glm::cos(glm::radians(30.F))
+    });
+
+    scene.lights.pointLights.push_back(panda::gfx::PointLight {
+        panda::gfx::makeColorLight("Light_2", {0.F,  0.F,   1.F   },
+         0.F, 0.8F, 1.F, 1.F),
+        {-2.F, -2.F,  -1.5F },
+        {1.F,  0.05F, 0.005F}
+    });
+
+    scene.lights.directionalLights.push_back(panda::gfx::DirectionalLight {
+        panda::gfx::makeColorLight("DirectionalLight", {1.F, .8F,  .8F },
+         0.F, 0.8F, 1.F, 0.02F),
+        {0.F, -2.F, 10.F},
+    });
 }
 
 }

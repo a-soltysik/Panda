@@ -47,10 +47,10 @@ auto Renderer::beginSwapChainRenderPass() const -> void
 {
     expect(_isFrameStarted, "Can't begin render pass when frame is not began");
     const auto clearColor = vk::ClearValue {
-        vk::ClearColorValue {0.f, 0.f, 0.f, 1.f}
+        vk::ClearColorValue {0.F, 0.F, 0.F, 1.F}
     };
     const auto depthStencil = vk::ClearValue {
-        vk::ClearDepthStencilValue {1.f, 0}
+        vk::ClearDepthStencilValue {1.F, 0}
     };
     const auto clearValues = std::array {clearColor, depthStencil};
     const auto renderPassBeginInfo = vk::RenderPassBeginInfo {
@@ -64,12 +64,12 @@ auto Renderer::beginSwapChainRenderPass() const -> void
 
     commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
 
-    const auto viewport = vk::Viewport {0.f,
-                                        0.f,
+    const auto viewport = vk::Viewport {0.F,
+                                        0.F,
                                         static_cast<float>(_swapChain->getExtent().width),
                                         static_cast<float>(_swapChain->getExtent().height),
-                                        0.f,
-                                        1.f};
+                                        0.F,
+                                        1.F};
     commandBuffer.setViewport(0, viewport);
 
     const auto scissor = vk::Rect2D {

@@ -118,7 +118,7 @@ auto Buffer::allocateMemory(const Device& device, vk::Buffer buffer, vk::MemoryP
 
 auto Buffer::getAlignment(vk::DeviceSize instanceSize, vk::DeviceSize minOffsetAlignment) noexcept -> vk::DeviceSize
 {
-    return (instanceSize + minOffsetAlignment - 1u) & ~(minOffsetAlignment - 1u);
+    return (instanceSize + minOffsetAlignment - 1) & ~(minOffsetAlignment - 1);
 }
 
 auto Buffer::getAlignment(vk::DeviceSize instanceSize) const noexcept -> vk::DeviceSize

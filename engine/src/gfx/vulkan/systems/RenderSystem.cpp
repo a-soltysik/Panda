@@ -47,7 +47,7 @@ auto RenderSystem::createPipeline(const Device& device, vk::RenderPass renderPas
                                                                              {},
                                                                              {},
                                                                              {},
-                                                                             1.f};
+                                                                             1.F};
 
     const auto multisamplingInfo = vk::PipelineMultisampleStateCreateInfo {{}, vk::SampleCountFlagBits::e1, VK_FALSE};
     const auto colorBlendAttachment =
