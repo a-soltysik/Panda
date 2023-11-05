@@ -120,6 +120,23 @@ private:
 namespace app
 {
 
+App::App()
+{
+    _newMeshAddedReceiver = utils::signals::newMeshAdded.connect([this](auto newMeshAddedData) {
+        if (_window->getId() != newMeshAddedData.id)
+        {
+            return;
+        }
+        auto mesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), newMeshAddedData.fileName);
+
+        auto object = panda::gfx::vulkan::Object {getCorrectObjectName(newMeshAddedData.fileName)};
+        object.mesh = mesh.get();
+        _scene.objects.push_back(std::move(object));
+
+        _meshes.push_back(std::move(mesh));
+    });
+}
+
 auto App::run() -> int
 {
     initializeLogger();
@@ -130,9 +147,7 @@ auto App::run() -> int
     _window = std::make_unique<GlfwWindow>(glm::uvec2 {defaultWidth, defaultHeight}, config::appName.data());
     _api = std::make_unique<panda::gfx::vulkan::Context>(*_window);
 
-    _vaseMesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "smooth_vase.obj");
-    _floorMesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "square.obj");
-
+    setDefaultScene();
     mainLoop();
     return 0;
 }
@@ -140,15 +155,12 @@ auto App::run() -> int
 auto App::mainLoop() -> void
 {
     auto currentTime = TimeData {};
-    auto scene = panda::gfx::vulkan::Scene {};
-
-    setObjects(scene);
 
     auto cameraObject = panda::gfx::vulkan::Object {"Camera"};
 
     cameraObject.transform.translation = {0, 2, -8};
-    scene.camera.setViewYXZ(panda::gfx::view::YXZ {.position = cameraObject.transform.translation,
-                                                   .rotation = cameraObject.transform.rotation});
+    _scene.camera.setViewYXZ(panda::gfx::view::YXZ {.position = cameraObject.transform.translation,
+                                                    .rotation = cameraObject.transform.rotation});
 
     [[maybe_unused]] const auto gui = GuiManager {*_window};
 
@@ -161,14 +173,14 @@ auto App::mainLoop() -> void
 
             currentTime.update();
 
-            scene.camera.setPerspectiveProjection(
+            _scene.camera.setPerspectiveProjection(
                 panda::gfx::projection::Perspective {.fovY = glm::radians(50.F),
                                                      .aspect = _api->getRenderer().getAspectRatio(),
                                                      .near = 0.1F,
                                                      .far = 100});
-            processCamera(currentTime.getDelta(), *_window, cameraObject, scene.camera);
+            processCamera(currentTime.getDelta(), *_window, cameraObject, _scene.camera);
 
-            _api->makeFrame(currentTime.getDelta(), scene);
+            _api->makeFrame(currentTime.getDelta(), _scene);
         }
         else [[unlikely]]
         {
@@ -204,40 +216,43 @@ auto App::registerSignalHandlers() -> void
     panda::shouldNotBe(std::signal(SIGTERM, signalHandler), SIG_ERR, "Failed to register signal handler");
 }
 
-void App::setObjects(panda::gfx::vulkan::Scene& scene)
+void App::setDefaultScene()
 {
+    auto vaseMesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "smooth_vase.obj");
+    auto floorMesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "square.obj");
+
     auto object = panda::gfx::vulkan::Object {"Vase_1"};
-    object.mesh = _vaseMesh.get();
+    object.mesh = vaseMesh.get();
     object.transform.rotation = {};
     object.transform.translation = {1.F, 0.F, 0.F};
     object.transform.scale = {5.F, 5.F, 5.F};
 
-    scene.objects.push_back(std::move(object));
+    _scene.objects.push_back(std::move(object));
 
     object = panda::gfx::vulkan::Object {"Vase_2"};
-    object.mesh = _vaseMesh.get();
+    object.mesh = vaseMesh.get();
     object.transform.rotation = {};
     object.transform.translation = {-1.F, 0.F, 0.F};
     object.transform.scale = {5.F, 5.F, 5.F};
 
-    scene.objects.push_back(std::move(object));
+    _scene.objects.push_back(std::move(object));
 
     object = panda::gfx::vulkan::Object {"Floor"};
-    object.mesh = _floorMesh.get();
+    object.mesh = floorMesh.get();
     object.transform.rotation = {};
     object.transform.translation = {0.F, 0.F, 0.F};
     object.transform.scale = {10.F, 10.F, 10.F};
 
-    scene.objects.push_back(std::move(object));
+    _scene.objects.push_back(std::move(object));
 
-    scene.lights.pointLights.push_back(panda::gfx::PointLight {
+    _scene.lights.pointLights.push_back(panda::gfx::PointLight {
         panda::gfx::makeColorLight("Light_1", {1.F, 0.F,   0.F   },
          0.F, 0.8F, 1.F, 1.F),
         {2.F, -2.F,  -1.5F },
         {1.F, 0.05F, 0.005F}
     });
 
-    scene.lights.spotLights.push_back(panda::gfx::SpotLight {
+    _scene.lights.spotLights.push_back(panda::gfx::SpotLight {
         {panda::gfx::makeColorLight("SpotLight", {0.F, 1.F, 0.F}, 0.0F, 0.8F, 1.F, 1.F),
          {0.F, -5.F, 0.F},
          {1.F, 0.05F, 0.005F}},
@@ -245,18 +260,50 @@ void App::setObjects(panda::gfx::vulkan::Scene& scene)
         glm::cos(glm::radians(30.F))
     });
 
-    scene.lights.pointLights.push_back(panda::gfx::PointLight {
+    _scene.lights.pointLights.push_back(panda::gfx::PointLight {
         panda::gfx::makeColorLight("Light_2", {0.F,  0.F,   1.F   },
          0.F, 0.8F, 1.F, 1.F),
         {-2.F, -2.F,  -1.5F },
         {1.F,  0.05F, 0.005F}
     });
 
-    scene.lights.directionalLights.push_back(panda::gfx::DirectionalLight {
+    _scene.lights.directionalLights.push_back(panda::gfx::DirectionalLight {
         panda::gfx::makeColorLight("DirectionalLight", {1.F, .8F,  .8F },
          0.F, 0.8F, 1.F, 0.02F),
         {0.F, -2.F, 10.F},
     });
+
+    _meshes.push_back(std::move(vaseMesh));
+    _meshes.push_back(std::move(floorMesh));
+}
+
+auto App::getCorrectObjectName(const std::string& name) -> std::string
+{
+    const auto objectNames = _scene.objects | std::ranges::views::transform(&panda::gfx::vulkan::Object::getName);
+    const auto it = std::ranges::find(objectNames, name);
+
+    if (it == std::ranges::end(objectNames))
+    {
+        return name;
+    }
+
+    const auto prefix = name + '#';
+    auto maxNumber = uint32_t {1};
+    for (const auto& currentName : objectNames)
+    {
+        const auto nameView = std::string_view {currentName};
+        const auto position = nameView.find(prefix);
+        if (position != std::string::npos)
+        {
+            const auto number = nameView.substr(position + prefix.size());
+            const auto numberValue = utils::toNumber<uint32_t>(number);
+            if (numberValue.has_value())
+            {
+                maxNumber = std::max(maxNumber, numberValue.value() + 1);
+            }
+        }
+    }
+    return prefix + utils::toString(maxNumber);
 }
 
 }

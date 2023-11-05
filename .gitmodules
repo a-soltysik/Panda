@@ -24,3 +24,6 @@
 [submodule "ext/implot-cmake/implot"]
 	path = ext/implot-cmake/implot
 	url = git@github.com:epezent/implot.git
+[submodule "ext/portable-file-dialogs"]
+	path = ext/portable-file-dialogs
+	url = git@github.com:samhocevar/portable-file-dialogs.git
