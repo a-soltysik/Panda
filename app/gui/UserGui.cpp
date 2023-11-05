@@ -1,7 +1,9 @@
 #include "UserGui.h"
 
 #include <imgui.h>
+#include <portable-file-dialogs.h>
 
+#include "utils/Signals.h"
 #include "utils/Utils.h"
 
 namespace app
@@ -24,6 +26,18 @@ auto UserGui::render(panda::gfx::vulkan::Scene& scene) -> void
 
     const auto result = objectListBox(getAllNames(scene));
     objectInfo(scene, result);
+
+    if (ImGui::Button("Add model from file"))
+    {
+        auto file = pfd::open_file("Choose file to save", pfd::path::home(), {"OBJ files (.obj)", "*.obj"});
+
+        if (!file.result().empty())
+        {
+            panda::log::Warning("Selected file: {}", file.result().front());
+            utils::signals::newMeshAdded.registerSender()(
+                utils::signals::NewMeshAddedData {_window.getId(), file.result().front()});
+        }
+    }
 
     ImGui::End();
 }

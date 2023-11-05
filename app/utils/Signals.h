@@ -36,8 +36,17 @@ struct CursorPositionChangedData
 
 using CursorPositionChanged = panda::utils::Signal<CursorPositionChangedData>;
 
+struct NewMeshAddedData
+{
+    panda::Window::Id id;
+    std::string fileName;
+};
+
+using NewMeshAdded = panda::utils::Signal<NewMeshAddedData>;
+
 inline auto keyboardStateChanged = KeyboardStateChanged {};
 inline auto mouseButtonStateChanged = MouseButtonStateChanged {};
 inline auto cursorPositionChanged = CursorPositionChanged {};
+inline auto newMeshAdded = NewMeshAdded {};
 
 }

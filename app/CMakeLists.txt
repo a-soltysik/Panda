@@ -53,7 +53,7 @@ find_package(Vulkan REQUIRED)
 target_link_system_libraries(
         ${APP_TARGET_NAME}
         PRIVATE
-        Vulkan::Vulkan glfw glm fmt imgui implot)
+        Vulkan::Vulkan glfw glm fmt imgui implot portable_file_dialogs)
 
 target_link_libraries(
         ${APP_TARGET_NAME}
