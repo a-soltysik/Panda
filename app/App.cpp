@@ -127,13 +127,10 @@ App::App()
         {
             return;
         }
-        auto mesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), newMeshAddedData.fileName);
 
         auto object = panda::gfx::vulkan::Object {getCorrectObjectName(newMeshAddedData.fileName)};
-        object.mesh = mesh.get();
+        object.mesh = panda::gfx::vulkan::Mesh::loadMesh(*_api, newMeshAddedData.fileName);
         _scene.objects.push_back(std::move(object));
-
-        _meshes.push_back(std::move(mesh));
     });
 }
 
@@ -218,11 +215,11 @@ auto App::registerSignalHandlers() -> void
 
 void App::setDefaultScene()
 {
-    auto vaseMesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "smooth_vase.obj");
-    auto floorMesh = panda::gfx::vulkan::Mesh::loadMesh(_api->getDevice(), config::resource::models / "square.obj");
+    auto* vaseMesh = panda::gfx::vulkan::Mesh::loadMesh(*_api, config::resource::models / "smooth_vase.obj");
+    auto* floorMesh = panda::gfx::vulkan::Mesh::loadMesh(*_api, config::resource::models / "square.obj");
 
     auto object = panda::gfx::vulkan::Object {"Vase_1"};
-    object.mesh = vaseMesh.get();
+    object.mesh = vaseMesh;
     object.transform.rotation = {};
     object.transform.translation = {1.F, 0.F, 0.F};
     object.transform.scale = {5.F, 5.F, 5.F};
@@ -230,7 +227,7 @@ void App::setDefaultScene()
     _scene.objects.push_back(std::move(object));
 
     object = panda::gfx::vulkan::Object {"Vase_2"};
-    object.mesh = vaseMesh.get();
+    object.mesh = vaseMesh;
     object.transform.rotation = {};
     object.transform.translation = {-1.F, 0.F, 0.F};
     object.transform.scale = {5.F, 5.F, 5.F};
@@ -238,7 +235,7 @@ void App::setDefaultScene()
     _scene.objects.push_back(std::move(object));
 
     object = panda::gfx::vulkan::Object {"Floor"};
-    object.mesh = floorMesh.get();
+    object.mesh = floorMesh;
     object.transform.rotation = {};
     object.transform.translation = {0.F, 0.F, 0.F};
     object.transform.scale = {10.F, 10.F, 10.F};
@@ -272,9 +269,6 @@ void App::setDefaultScene()
          0.F, 0.8F, 1.F, 0.02F),
         {0.F, -2.F, 10.F},
     });
-
-    _meshes.push_back(std::move(vaseMesh));
-    _meshes.push_back(std::move(floorMesh));
 }
 
 auto App::getCorrectObjectName(const std::string& name) -> std::string

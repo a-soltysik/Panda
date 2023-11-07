@@ -11,6 +11,7 @@
 #include "panda/gfx/vulkan/Buffer.h"
 #include "panda/gfx/vulkan/Descriptor.h"
 #include "panda/gfx/vulkan/Device.h"
+#include "panda/gfx/vulkan/Mesh.h"
 #include "panda/gfx/vulkan/Object.h"
 #include "panda/gfx/vulkan/Renderer.h"
 #include "panda/gfx/vulkan/Scene.h"
@@ -33,6 +34,7 @@ public:
     auto makeFrame(float deltaTime, Scene& scene) -> void;
     [[nodiscard]] auto getDevice() const noexcept -> const Device&;
     [[nodiscard]] auto getRenderer() const noexcept -> const Renderer&;
+    auto registerMesh(std::unique_ptr<Mesh> mesh) -> void;
 
 private:
     struct InstanceDeleter
@@ -68,6 +70,7 @@ private:
     std::unique_ptr<RenderSystem> _renderSystem;
     std::unique_ptr<PointLightSystem> _pointLightSystem;
     vk::DebugUtilsMessengerEXT _debugMessenger {};
+    std::vector<std::unique_ptr<Mesh>> _meshes;
     std::vector<std::unique_ptr<Buffer>> _uboFragBuffers;
     std::vector<std::unique_ptr<Buffer>> _uboVertBuffers;
     std::unique_ptr<DescriptorPool> _globalPool;

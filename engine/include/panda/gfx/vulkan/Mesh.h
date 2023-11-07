@@ -9,11 +9,12 @@
 namespace panda::gfx::vulkan
 {
 
+class Context;
+
 class Mesh
 {
 public:
-    [[nodiscard]] static auto loadMesh(const Device& device, const std::filesystem::path& path)
-        -> std::unique_ptr<Mesh>;
+    [[nodiscard]] static auto loadMesh(Context& context, const std::filesystem::path& path) -> Mesh*;
 
     Mesh(const Device& device, std::span<const Vertex> vertices, std::span<const uint32_t> indices = {});
 
