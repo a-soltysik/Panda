@@ -2,6 +2,8 @@
 
 #include <tiny_obj_loader.h>
 
+#include "panda/gfx/vulkan/Context.h"
+
 namespace
 {
 
@@ -137,7 +139,7 @@ auto Mesh::createIndexBuffer(const vulkan::Device& device, const std::span<const
     return newIndexBuffer;
 }
 
-auto Mesh::loadMesh(const vulkan::Device& device, const std::filesystem::path& path) -> std::unique_ptr<Mesh>
+auto Mesh::loadMesh(Context& context, const std::filesystem::path& path) -> Mesh*
 {
     auto attribute = tinyobj::attrib_t {};
     auto shapes = std::vector<tinyobj::shape_t> {};
@@ -176,7 +178,11 @@ auto Mesh::loadMesh(const vulkan::Device& device, const std::filesystem::path& p
         }
     }
 
-    return std::make_unique<Mesh>(device, vertices, indices);
+    auto mesh = std::make_unique<Mesh>(context.getDevice(), vertices, indices);
+    auto* result = mesh.get();
+    context.registerMesh(std::move(mesh));
+
+    return result;
 }
 
 }

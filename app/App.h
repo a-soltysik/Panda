@@ -24,7 +24,7 @@ private:
     auto getCorrectObjectName(const std::string& name) -> std::string;
 
     panda::gfx::vulkan::Scene _scene {};
-    std::vector<std::unique_ptr<panda::gfx::vulkan::Mesh>> _meshes;
+
     utils::signals::NewMeshAdded::ReceiverT _newMeshAddedReceiver;
     std::unique_ptr<GlfwWindow> _window;
     std::unique_ptr<panda::gfx::vulkan::Context> _api;

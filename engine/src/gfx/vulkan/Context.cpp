@@ -364,6 +364,11 @@ auto Context::initializeImGui() -> void
     ImGui_ImplVulkan_DestroyFontUploadObjects();
 }
 
+auto Context::registerMesh(std::unique_ptr<Mesh> mesh) -> void
+{
+    _meshes.push_back(std::move(mesh));
+}
+
 auto Context::InstanceDeleter::operator()(vk::Instance* instance) const noexcept -> void
 {
     log::Info("Destroying instance");
