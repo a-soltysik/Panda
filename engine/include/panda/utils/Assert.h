@@ -39,7 +39,7 @@ concept Result = requires {
 
 template <typename T>
 auto expect(T&& result,
-            const std::convertible_to<T> auto& expected,
+            const std::equality_comparable_with<T> auto& expected,
             std::string_view message,
             std::source_location location = std::source_location::current()) noexcept -> T
 {
@@ -115,7 +115,7 @@ inline auto expectNot(std::convertible_to<bool> auto&& result,
 
 template <typename T>
 auto expectNot(T&& result,
-               const std::convertible_to<T> auto& expected,
+               const std::equality_comparable_with<T> auto& expected,
                std::string_view message,
                std::source_location location = std::source_location::current()) noexcept -> T
 {
@@ -180,7 +180,7 @@ auto expect(std::optional<T>&& value,
 
 template <typename T>
 auto shouldBe(T&& result,
-              const std::convertible_to<T> auto& expected,
+              const std::equality_comparable_with<T> auto& expected,
               std::string_view message,
               std::source_location location = std::source_location::current()) noexcept -> bool
 {
@@ -227,7 +227,7 @@ template <typename T>
 
 template <typename T>
 auto shouldNotBe(T&& result,
-                 const std::convertible_to<T> auto& expected,
+                 const std::equality_comparable_with<T> auto& expected,
                  std::string_view message,
                  std::source_location location = std::source_location::current()) noexcept -> bool
 {
