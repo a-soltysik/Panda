@@ -11,12 +11,6 @@
 [submodule "ext/glm"]
 	path = ext/glm
 	url = git@github.com:g-truc/glm.git
-[submodule "ext/tinyobjloader"]
-	path = ext/tinyobjloader
-	url = git@github.com:tinyobjloader/tinyobjloader.git
-[submodule "ext/freetype"]
-	path = ext/freetype
-	url = git@github.com:freetype/freetype.git
 [submodule "ext/imgui-cmake/imgui"]
 	path = ext/imgui-cmake/imgui
 	url = git@github.com:ocornut/imgui.git
@@ -27,3 +21,6 @@
 [submodule "ext/portable-file-dialogs"]
 	path = ext/portable-file-dialogs
 	url = git@github.com:samhocevar/portable-file-dialogs.git
+[submodule "ext/assimp"]
+	path = ext/assimp
+	url = git@github.com:assimp/assimp.git

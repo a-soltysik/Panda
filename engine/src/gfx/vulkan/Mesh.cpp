@@ -1,43 +1,49 @@
 #include "panda/gfx/vulkan/Mesh.h"
 
-#include <tiny_obj_loader.h>
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
+
+#include <assimp/Importer.hpp>
+#include <numeric>
 
 #include "panda/gfx/vulkan/Context.h"
 
 namespace
 {
 
-template <typename T>
-[[nodiscard]] auto getVertexAttribute2(const tinyobj::attrib_t& attribute,
-                                       T tinyobj::attrib_t::*attributePointer,
-                                       int index) -> glm::vec2
+auto getIndices(const aiMesh& mesh, std::vector<uint32_t>& indices, uint32_t offset = 0) -> void
 {
-    if (index >= 0)
+    const auto faces = std::span(mesh.mFaces, mesh.mNumFaces);
+    for (const auto& face : faces)
     {
-        const auto& value = attribute.*attributePointer;
-        return {
-            value[2 * static_cast<uint32_t>(index) + 0],
-            value[2 * static_cast<uint32_t>(index) + 1],
-        };
+        const auto faceIndices = std::span(face.mIndices, face.mNumIndices);
+        indices.push_back(faceIndices[0] + offset);
+        indices.push_back(faceIndices[1] + offset);
+        indices.push_back(faceIndices[2] + offset);
     }
-    return {};
 }
 
-template <typename T>
-[[nodiscard]] auto getVertexAttribute3(const tinyobj::attrib_t& attribute,
-                                       T tinyobj::attrib_t::*attributePointer,
-                                       int index) -> glm::vec3
+auto getVertices(const aiMesh& mesh, std::vector<panda::gfx::vulkan::Vertex>& vertices) -> void
 {
-    if (index >= 0)
+    const auto meshVertices = std::span(mesh.mVertices, mesh.mNumVertices);
+    const auto meshNormals = std::span(mesh.mNormals, mesh.mNumVertices);
+    for (auto i = uint32_t {}; i < mesh.mNumVertices; i++)
     {
-        const auto& value = attribute.*attributePointer;
-        return {
-            value[3 * static_cast<uint32_t>(index) + 0],
-            value[3 * static_cast<uint32_t>(index) + 1],
-            value[3 * static_cast<uint32_t>(index) + 2],
+        const auto vertex = panda::gfx::vulkan::Vertex {
+            .position = {meshVertices[i].x, meshVertices[i].y, meshVertices[i].z},
+            .normal = {meshNormals[i].x,  meshNormals[i].y,  meshNormals[i].z }
         };
+        vertices.push_back(vertex);
     }
-    return {};
+}
+
+auto getProperName(const aiScene& scene) -> std::string
+{
+    if (scene.mNumMeshes == 1 || (scene.mNumMeshes > 1 && scene.mName.length == 0))
+    {
+        return std::span(scene.mMeshes, scene.mNumMeshes).front()->mName.C_Str();
+    }
+    return scene.mName.C_Str();
 }
 
 }
@@ -45,8 +51,12 @@ template <typename T>
 namespace panda::gfx::vulkan
 {
 
-Mesh::Mesh(const vulkan::Device& device, std::span<const vulkan::Vertex> vertices, std::span<const uint32_t> indices)
+Mesh::Mesh(const std::string& name,
+           const Device& device,
+           std::span<const Vertex> vertices,
+           std::span<const uint32_t> indices)
     : _device {device},
+      _name {name},
       _vertexBuffer {createVertexBuffer(_device, vertices)},
       _indexBuffer {createIndexBuffer(_device, indices)},
       _vertexCount {static_cast<uint32_t>(vertices.size())},
@@ -139,49 +149,78 @@ auto Mesh::createIndexBuffer(const vulkan::Device& device, const std::span<const
     return newIndexBuffer;
 }
 
+auto Mesh::getName() const noexcept -> const std::string&
+{
+    return _name;
+}
+
 auto Mesh::loadMesh(Context& context, const std::filesystem::path& path) -> Mesh*
 {
-    auto attribute = tinyobj::attrib_t {};
-    auto shapes = std::vector<tinyobj::shape_t> {};
-    auto materials = std::vector<tinyobj::material_t> {};
-    auto warning = std::string {};
-    auto error = std::string {};
+    const auto pathStr = path.string();
+    auto importer = Assimp::Importer {};
+    const auto* const scene =
+        importer.ReadFile(pathStr.c_str(),
+                          aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_JoinIdenticalVertices);
 
-    if (!shouldBe(tinyobj::LoadObj(&attribute, &shapes, &materials, &warning, &error, path.string().c_str()),
-                  fmt::format("Warning: {}\nError: {}", warning, error)))
+    if (!shouldNotBe(scene,
+                     nullptr,
+                     fmt::format("Error during opening \"{}\" file: {}", pathStr.c_str(), importer.GetErrorString())))
     {
         return nullptr;
     }
 
-    shouldBe(warning.empty(), warning);
-    shouldBe(error.empty(), error);
-
     auto vertices = std::vector<vulkan::Vertex> {};
     auto indices = std::vector<uint32_t> {};
-    auto uniqueVertices = std::unordered_map<vulkan::Vertex, uint32_t> {};
+    auto offset = uint32_t {};
 
-    for (const auto& shape : shapes)
+    const auto meshes = std::span(scene->mMeshes, scene->mNumMeshes);
+    for (const auto* currentMesh : meshes)
     {
-        for (const auto& index : shape.mesh.indices)
-        {
-            const auto vertex =
-                vulkan::Vertex {getVertexAttribute3(attribute, &tinyobj::attrib_t::vertices, index.vertex_index),
-                                getVertexAttribute3(attribute, &tinyobj::attrib_t::colors, index.vertex_index),
-                                getVertexAttribute3(attribute, &tinyobj::attrib_t::normals, index.normal_index),
-                                getVertexAttribute2(attribute, &tinyobj::attrib_t::texcoords, index.texcoord_index)};
-            if (!uniqueVertices.contains(vertex))
-            {
-                uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-                vertices.push_back(vertex);
-            }
-            indices.push_back(uniqueVertices[vertex]);
-        }
+        getIndices(*currentMesh, indices, offset);
+        getVertices(*currentMesh, vertices);
+
+        offset += currentMesh->mNumVertices;
     }
 
-    auto mesh = std::make_unique<Mesh>(context.getDevice(), vertices, indices);
+    auto mesh = std::make_unique<Mesh>(getProperName(*scene), context.getDevice(), vertices, indices);
+
     auto* result = mesh.get();
     context.registerMesh(std::move(mesh));
 
+    return result;
+}
+
+auto Mesh::loadMeshes(Context& context, const std::filesystem::path& path) -> std::vector<Mesh*>
+{
+    const auto pathStr = path.string();
+    auto importer = Assimp::Importer {};
+    const auto* scene =
+        importer.ReadFile(pathStr.c_str(),
+                          aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_JoinIdenticalVertices);
+
+    if (!shouldNotBe(scene,
+                     nullptr,
+                     fmt::format("Error during opening \"{}\" file: {}", pathStr.c_str(), importer.GetErrorString())))
+    {
+        return {};
+    }
+
+    auto result = std::vector<Mesh*> {};
+    result.reserve(scene->mNumMeshes);
+
+    const auto meshes = std::span(scene->mMeshes, scene->mNumMeshes);
+    for (const auto* currentMesh : meshes)
+    {
+        auto vertices = std::vector<vulkan::Vertex> {};
+        auto indices = std::vector<uint32_t> {};
+        getIndices(*currentMesh, indices);
+        getVertices(*currentMesh, vertices);
+
+        auto mesh = std::make_unique<Mesh>(currentMesh->mName.C_Str(), context.getDevice(), vertices, indices);
+
+        result.push_back(mesh.get());
+        context.registerMesh(std::move(mesh));
+    }
     return result;
 }
 
