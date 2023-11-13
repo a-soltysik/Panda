@@ -6,6 +6,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 #include <algorithm>
 
+#include "panda/gfx/vulkan/CommandBuffer.h"
 #include "panda/gfx/vulkan/Context.h"
 #include "panda/utils/Signals.h"
 #include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"
@@ -24,19 +25,19 @@ VKAPI_ATTR auto VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT 
     switch (messageSeverity)
     {
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-        log::Debug(pCallbackData->pMessage);
+        log::Debug("{}", pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-        log::Info(pCallbackData->pMessage);
+        log::Info("{}", pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-        log::Warning(pCallbackData->pMessage);
+        log::Warning("{}", pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-        log::Error(pCallbackData->pMessage);
+        log::Error("{}", pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT:
-        log::Debug(pCallbackData->pMessage);
+        log::Debug("{}", pCallbackData->pMessage);
         break;
     }
 
@@ -78,6 +79,8 @@ Context::Context(const Window& window)
     log::Info("Chosen GPU: {}", std::string_view {_device->physicalDevice.getProperties().deviceName});
 
     VULKAN_HPP_DEFAULT_DISPATCHER.init(_device->logicalDevice);
+    //vkCmdPushDescriptorSetKHR = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(
+    //    _device->logicalDevice.getProcAddr("vkCmdPushDescriptorSetKHR"));
 
     _renderer = std::make_unique<Renderer>(window, *_device, _surface);
 
@@ -105,22 +108,15 @@ Context::Context(const Window& window)
         _uboVertBuffers.back()->mapWhole();
     }
 
-    _globalPool = DescriptorPool::Builder(*_device)
-                      .addPoolSize(vk::DescriptorType::eUniformBuffer, maxFramesInFlight)
-                      .addPoolSize(vk::DescriptorType::eCombinedImageSampler, maxFramesInFlight)
-                      .build(maxFramesInFlight * 2, vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
     _globalSetLayout = DescriptorSetLayout::Builder(*_device)
                            .addBinding(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex)
                            .addBinding(1, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eFragment)
-                           .build();
+                           .addBinding(2, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment)
+                           .build(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR);
 
-    for (auto i = uint32_t {}; i < maxFramesInFlight; i++)
-    {
-        DescriptorWriter(*_device, *_globalSetLayout, *_globalPool)
-            .writeBuffer(0, _uboVertBuffers[i]->getDescriptorInfo())
-            .writeBuffer(1, _uboFragBuffers[i]->getDescriptorInfo())
-            .build(_globalDescriptorSets[i]);
-    }
+    _lightSetLayout = DescriptorSetLayout::Builder(*_device)
+                          .addBinding(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex)
+                          .build(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR);
 
     _renderSystem = std::make_unique<RenderSystem>(*_device,
                                                    _renderer->getSwapChainRenderPass(),
@@ -128,7 +124,7 @@ Context::Context(const Window& window)
 
     _pointLightSystem = std::make_unique<PointLightSystem>(*_device,
                                                            _renderer->getSwapChainRenderPass(),
-                                                           _globalSetLayout->getDescriptorSetLayout());
+                                                           _lightSetLayout->getDescriptorSetLayout());
 
     log::Info("Vulkan API has been successfully initialized");
 
@@ -286,12 +282,7 @@ auto Context::makeFrame(float deltaTime, Scene& scene) -> void
         return;
     }
 
-    const auto frameIndex = _renderer->getFrameIndex();
-    const auto frameInfo = FrameInfo {.camera = scene.camera,
-                                      .commandBuffer = commandBuffer,
-                                      .descriptorSet = _globalDescriptorSets[frameIndex],
-                                      .frameIndex = frameIndex,
-                                      .deltaTime = deltaTime};
+    auto frameIndex = _renderer->getFrameIndex();
 
     auto vertUbo = VertUbo {
         scene.camera.getProjection(),
@@ -313,10 +304,26 @@ auto Context::makeFrame(float deltaTime, Scene& scene) -> void
     _uboFragBuffers[frameIndex]->writeAt(fragUbo, 0);
     _renderer->beginSwapChainRenderPass();
 
-    _renderSystem->render(frameInfo, scene.objects);
+    _renderSystem->render(FrameInfo {.camera = scene.camera,
+                                     .device = *_device,
+                                     .fragUbo = *_uboFragBuffers[frameIndex],
+                                     .vertUbo = *_uboVertBuffers[frameIndex],
+                                     .descriptorSetLayout = *_globalSetLayout,
+                                     .commandBuffer = commandBuffer,
+                                     .frameIndex = frameIndex,
+                                     .deltaTime = deltaTime},
+                          scene.objects);
 
-    _pointLightSystem->render(frameInfo, scene.lights);
-
+    //_pointLightSystem->render(FrameInfo {.camera = scene.camera,
+    //                                     .device = *_device,
+    //                                     .fragUbo = *_uboFragBuffers[frameIndex],
+    //                                     .vertUbo = *_uboVertBuffers[frameIndex],
+    //                                     .descriptorSetLayout = *_lightSetLayout,
+    //                                     .commandBuffer = commandBuffer,
+    //                                     .frameIndex = frameIndex,
+    //                                     .deltaTime = deltaTime},
+    //                          scene.lights);
+    //
     utils::signals::beginGuiRender.registerSender()(
         utils::signals::BeginGuiRenderData {commandBuffer, std::ref(scene)});
 
@@ -337,13 +344,16 @@ auto Context::getRenderer() const noexcept -> const Renderer&
 
 auto Context::initializeImGui() -> void
 {
+    _guiPool = DescriptorPool::Builder(*_device)
+                   .addPoolSize(vk::DescriptorType::eCombinedImageSampler, maxFramesInFlight)
+                   .build(maxFramesInFlight, vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
     auto initInfo = ImGui_ImplVulkan_InitInfo {*_instance,
                                                _device->physicalDevice,
                                                _device->logicalDevice,
                                                _device->queueFamilies.graphicsFamily,
                                                _device->graphicsQueue,
                                                {},
-                                               _globalPool->getHandle(),
+                                               _guiPool->getHandle(),
                                                0,
                                                maxFramesInFlight,
                                                maxFramesInFlight,
@@ -355,11 +365,11 @@ auto Context::initializeImGui() -> void
 
     ImGui_ImplVulkan_Init(&initInfo, _renderer->getSwapChainRenderPass());
 
-    const auto command_buffer = _renderer->beginSingleTimeCommandBuffer();
+    const auto commandBuffer = CommandBuffer::beginSingleTimeCommandBuffer(*_device);
 
-    ImGui_ImplVulkan_CreateFontsTexture(command_buffer);
+    ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
 
-    _renderer->endSingleTimeCommandBuffer(command_buffer);
+    CommandBuffer::endSingleTimeCommandBuffer(*_device, commandBuffer);
     shouldBe(_device->logicalDevice.waitIdle(), vk::Result::eSuccess, "Couldn't wait idle on logical device");
     ImGui_ImplVulkan_DestroyFontUploadObjects();
 }
@@ -367,6 +377,11 @@ auto Context::initializeImGui() -> void
 auto Context::registerMesh(std::unique_ptr<Mesh> mesh) -> void
 {
     _meshes.push_back(std::move(mesh));
+}
+
+auto Context::registerTexture(std::unique_ptr<Texture> texture) -> void
+{
+    _textures.push_back(std::move(texture));
 }
 
 auto Context::InstanceDeleter::operator()(vk::Instance* instance) const noexcept -> void

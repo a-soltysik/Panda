@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Buffer.h"
+#include "Descriptor.h"
 #include "panda/gfx/Camera.h"
 #include "panda/gfx/vulkan/Alignment.h"
 #include "panda/gfx/vulkan/UboLight.h"
@@ -10,8 +12,11 @@ namespace panda::gfx::vulkan
 struct FrameInfo
 {
     const Camera& camera;
+    const Device& device;
+    const Buffer& fragUbo;
+    const Buffer& vertUbo;
+    const DescriptorSetLayout& descriptorSetLayout;
     vk::CommandBuffer commandBuffer;
-    vk::DescriptorSet descriptorSet;
 
     uint32_t frameIndex;
     float deltaTime;

@@ -11,10 +11,10 @@
 #include "panda/gfx/vulkan/Buffer.h"
 #include "panda/gfx/vulkan/Descriptor.h"
 #include "panda/gfx/vulkan/Device.h"
-#include "panda/gfx/vulkan/Mesh.h"
-#include "panda/gfx/vulkan/Object.h"
 #include "panda/gfx/vulkan/Renderer.h"
 #include "panda/gfx/vulkan/Scene.h"
+#include "panda/gfx/vulkan/object/Mesh.h"
+#include "panda/gfx/vulkan/object/Object.h"
 #include "panda/gfx/vulkan/systems/PointLightSystem.h"
 #include "panda/gfx/vulkan/systems/RenderSystem.h"
 #include "panda/internal/config.h"
@@ -34,6 +34,7 @@ public:
     auto makeFrame(float deltaTime, Scene& scene) -> void;
     [[nodiscard]] auto getDevice() const noexcept -> const Device&;
     [[nodiscard]] auto getRenderer() const noexcept -> const Renderer&;
+    auto registerTexture(std::unique_ptr<Texture> texture) -> void;
     auto registerMesh(std::unique_ptr<Mesh> mesh) -> void;
 
 private:
@@ -58,7 +59,8 @@ private:
     auto enableValidationLayers(vk::InstanceCreateInfo& createInfo) -> bool;
     auto initializeImGui() -> void;
 
-    static constexpr auto requiredDeviceExtensions = std::array {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    static constexpr auto requiredDeviceExtensions =
+        std::array {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME};
     inline static const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo =
         createDebugMessengerCreateInfo();
 
@@ -70,12 +72,13 @@ private:
     std::unique_ptr<RenderSystem> _renderSystem;
     std::unique_ptr<PointLightSystem> _pointLightSystem;
     vk::DebugUtilsMessengerEXT _debugMessenger {};
+    std::vector<std::unique_ptr<Texture>> _textures;
     std::vector<std::unique_ptr<Mesh>> _meshes;
     std::vector<std::unique_ptr<Buffer>> _uboFragBuffers;
     std::vector<std::unique_ptr<Buffer>> _uboVertBuffers;
-    std::unique_ptr<DescriptorPool> _globalPool;
     std::unique_ptr<DescriptorSetLayout> _globalSetLayout;
-    std::vector<vk::DescriptorSet> _globalDescriptorSets = std::vector<vk::DescriptorSet>(maxFramesInFlight);
+    std::unique_ptr<DescriptorSetLayout> _lightSetLayout;
+    std::unique_ptr<DescriptorPool> _guiPool;
 
     const Window& _window;
 };

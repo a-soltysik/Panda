@@ -1,7 +1,7 @@
 #include "RenderSystem.h"
 
-#include "panda/gfx/vulkan/Mesh.h"
 #include "panda/gfx/vulkan/Vertex.h"
+#include "panda/gfx/vulkan/object/Mesh.h"
 #include "panda/internal/config.h"
 
 namespace panda::gfx::vulkan
@@ -99,11 +99,6 @@ auto RenderSystem::createPipelineLayout(const Device& device, vk::DescriptorSetL
 auto RenderSystem::render(const FrameInfo& frameInfo, std::span<const Object> objects) const -> void
 {
     frameInfo.commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline->getHandle());
-    frameInfo.commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                               _pipelineLayout,
-                                               0,
-                                               frameInfo.descriptorSet,
-                                               {});
 
     for (const auto& object : objects)
     {
@@ -114,8 +109,18 @@ auto RenderSystem::render(const FrameInfo& frameInfo, std::span<const Object> ob
             vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
             0,
             push);
-        object.mesh->bind(frameInfo.commandBuffer);
-        object.mesh->draw(frameInfo.commandBuffer);
+
+        for (const auto& surface : object.surfaces)
+        {
+            DescriptorWriter(frameInfo.descriptorSetLayout)
+                .writeBuffer(0, frameInfo.vertUbo.getDescriptorInfo())
+                .writeBuffer(1, frameInfo.fragUbo.getDescriptorInfo())
+                .writeImage(2, surface.texture->getDescriptorImageInfo())
+                .push(frameInfo.commandBuffer, _pipelineLayout);
+
+            surface.mesh->bind(frameInfo.commandBuffer);
+            surface.mesh->draw(frameInfo.commandBuffer);
+        }
     }
 }
 

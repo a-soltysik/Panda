@@ -8,6 +8,7 @@ layout (location = 3) in vec2 uv;
 layout (location = 0) out vec3 fragColor;
 layout (location = 1) out vec3 fragWorldPosition;
 layout (location = 2) out vec3 fragNormalWorld;
+layout (location = 3) out vec2 fragTexCoord;
 
 layout (set = 0, binding = 0) uniform VertUbo
 {
@@ -27,4 +28,5 @@ void main() {
     fragNormalWorld = normalize(mat3(push.normalMatrix) * normal);
     fragWorldPosition = worldPosition.xyz;
     fragColor = color;
+    fragTexCoord = uv;
 }

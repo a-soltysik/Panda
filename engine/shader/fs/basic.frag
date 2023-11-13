@@ -5,6 +5,7 @@
 layout (location = 0) in vec3 fragColor;
 layout (location = 1) in vec3 fragWorldPosition;
 layout (location = 2) in vec3 fragNormalWorld;
+layout (location = 3) in vec2 fragTexCoord;
 
 layout(location = 0) out vec4 outColor;
 
@@ -21,6 +22,8 @@ layout (set = 0, binding = 1) uniform GlobalUbo
     uint activeDirectionalLights;
     uint activeSpotLights;
 } ubo;
+
+layout (binding = 2) uniform sampler2D texSampler;
 
 
 layout (push_constant) uniform Push {
@@ -42,9 +45,9 @@ vec3 calculateLight(BaseLight light, vec3 lightDirection, vec3 normal)
         specularValue = pow(specularAngle, 64.0);
     }
 
-    vec3 ambient = light.ambient * vec3(0.05) + ubo.globalAmbient * vec3(0.05);
-    vec3 diffuse = light.diffuse * vec3(0.8) * lambertian * light.intensity;
-    vec3 specular = light.specular * vec3(1.0) * specularValue * light.intensity;
+    vec3 ambient = light.ambient;
+    vec3 diffuse = light.diffuse * lambertian * light.intensity;
+    vec3 specular = light.specular  * specularValue * light.intensity;
 
     return ambient + diffuse + specular;
 }
@@ -101,5 +104,5 @@ void main() {
         totalLight += calculateSpotLight(ubo.spotLights[i], normal);
     }
 
-    outColor = vec4(totalLight, 1.0);
+    outColor = texture(texSampler, fragTexCoord) * vec4(totalLight, 1.0);
 }

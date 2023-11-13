@@ -29,7 +29,7 @@ auto UserGui::render(panda::gfx::vulkan::Scene& scene) -> void
 
     if (ImGui::Button("Add model from file"))
     {
-        auto file = pfd::open_file("Choose file to save", pfd::path::home(), {"OBJ files (.obj)", "*.obj"});
+        auto file = pfd::open_file("Choose file to save", pfd::path::home(), {"Model files", "*.*"});
 
         if (!file.result().empty())
         {

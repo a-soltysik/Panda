@@ -3,7 +3,7 @@
 #include "Device.h"
 #include "SwapChain.h"
 #include "panda/Window.h"
-#include "panda/gfx/vulkan/Object.h"
+#include "panda/gfx/vulkan/object/Object.h"
 
 namespace panda::gfx::vulkan
 {
@@ -26,9 +26,6 @@ public:
     [[nodiscard]] auto getSwapChainRenderPass() const noexcept -> const vk::RenderPass&;
 
     [[nodiscard]] auto getFrameIndex() const noexcept -> uint32_t;
-
-    [[nodiscard]] auto beginSingleTimeCommandBuffer() const noexcept -> vk::CommandBuffer;
-    auto endSingleTimeCommandBuffer(vk::CommandBuffer buffer) const noexcept -> void;
 
 private:
     [[nodiscard]] auto createCommandBuffers() -> std::vector<vk::CommandBuffer>;

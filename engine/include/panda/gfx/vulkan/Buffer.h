@@ -58,6 +58,13 @@ public:
         return writeAt(data, _currentOffset);
     }
 
+    template <typename T>
+    requires(std::is_standard_layout_v<T>)
+    auto write(const T* data, size_t dataCount) -> vk::DeviceSize
+    {
+        return writeAt(data, dataCount, _currentOffset);
+    }
+
     template <std::ranges::range T>
     requires(std::is_standard_layout_v<std::ranges::range_value_t<T>>)
     auto writeAt(const T& data, vk::DeviceSize offset) -> vk::DeviceSize
@@ -93,6 +100,27 @@ public:
 
         std::copy(reinterpret_cast<const char*>(&data),
                   reinterpret_cast<const char*>(&data) + sizeof(data),
+                  reinterpret_cast<char*>(_mappedMemory) + offset);
+
+        const auto previousOffset = _currentOffset;
+        _currentOffset = offset + dataSize;
+
+        return previousOffset;
+    }
+
+    template <typename T>
+    requires(std::is_standard_layout_v<T>)
+    auto writeAt(const T* data, size_t dataCount, vk::DeviceSize offset) -> vk::DeviceSize
+    {
+        const auto dataSize = getAlignment(dataCount * sizeof(T), _minOffsetAlignment);
+        expect(dataSize + offset <= size,
+               fmt::format("Data with size: {} can't fit to buffer with size: {} and offset: {}",
+                           dataSize,
+                           size,
+                           _currentOffset));
+
+        std::copy(reinterpret_cast<const char*>(data),
+                  reinterpret_cast<const char*>(data) + dataCount,
                   reinterpret_cast<char*>(_mappedMemory) + offset);
 
         const auto previousOffset = _currentOffset;
