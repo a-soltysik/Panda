@@ -14,7 +14,7 @@ find_package(Vulkan REQUIRED)
 target_link_system_libraries(
         ${ENGINE_TARGET_NAME}
         PRIVATE
-        Vulkan::Vulkan glm fmt assimp imgui)
+        Vulkan::Vulkan glm fmt assimp imgui stb::image)
 
 target_compile_definitions(
         ${ENGINE_TARGET_NAME}

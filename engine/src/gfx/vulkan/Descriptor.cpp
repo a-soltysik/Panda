@@ -20,16 +20,18 @@ auto DescriptorSetLayout::Builder::addBinding(uint32_t binding,
     return *this;
 }
 
-auto DescriptorSetLayout::Builder::build() const -> std::unique_ptr<DescriptorSetLayout>
+auto DescriptorSetLayout::Builder::build(vk::DescriptorSetLayoutCreateFlags flags) const
+    -> std::unique_ptr<DescriptorSetLayout>
 {
-    return std::make_unique<DescriptorSetLayout>(_device, _bindings);
+    return std::make_unique<DescriptorSetLayout>(_device, _bindings, flags);
 }
 
 DescriptorSetLayout::DescriptorSetLayout(const Device& device,
-                                         const std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding>& bindings)
+                                         const std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding>& bindings,
+                                         vk::DescriptorSetLayoutCreateFlags flags)
     : _bindings {bindings},
       _device {device},
-      _descriptorSetLayout {createDescriptorSetLayout(device, bindings)}
+      _descriptorSetLayout {createDescriptorSetLayout(device, bindings, flags)}
 {
 }
 
@@ -39,8 +41,9 @@ DescriptorSetLayout::~DescriptorSetLayout() noexcept
 }
 
 auto DescriptorSetLayout::createDescriptorSetLayout(
-    const Device& device, const std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding>& bindings)
-    -> vk::DescriptorSetLayout
+    const Device& device,
+    const std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding>& bindings,
+    vk::DescriptorSetLayoutCreateFlags flags) -> vk::DescriptorSetLayout
 {
     auto layoutBindings = std::vector<vk::DescriptorSetLayoutBinding> {};
     layoutBindings.reserve(bindings.size());
@@ -49,7 +52,7 @@ auto DescriptorSetLayout::createDescriptorSetLayout(
         return binding.second;
     });
 
-    const auto descriptorSetLayoutInfo = vk::DescriptorSetLayoutCreateInfo {{}, layoutBindings};
+    const auto descriptorSetLayoutInfo = vk::DescriptorSetLayoutCreateInfo {flags, layoutBindings};
     return expect(device.logicalDevice.createDescriptorSetLayout(descriptorSetLayoutInfo),
                   vk::Result::eSuccess,
                   "Failed to create descriptor set layout");
@@ -134,12 +137,8 @@ auto DescriptorPool::getHandle() const noexcept -> vk::DescriptorPool
     return _descriptorPool;
 }
 
-DescriptorWriter::DescriptorWriter(const Device& device,
-                                   const DescriptorSetLayout& setLayout,
-                                   const DescriptorPool& pool)
-    : _device {device},
-      _setLayout {setLayout},
-      _pool {pool}
+DescriptorWriter::DescriptorWriter(const DescriptorSetLayout& setLayout)
+    : _setLayout {setLayout}
 {
 }
 
@@ -161,23 +160,9 @@ auto DescriptorWriter::writeImage(uint32_t binding, const vk::DescriptorImageInf
     return *this;
 }
 
-auto DescriptorWriter::build(vk::DescriptorSet& set) -> bool
+auto DescriptorWriter::push(vk::CommandBuffer commandBuffer, vk::PipelineLayout layout) -> void
 {
-    if (!_pool.allocateDescriptor(_setLayout.getDescriptorSetLayout(), set))
-    {
-        log::Warning("Failed to allocate descriptor!");
-        return false;
-    }
-    overwrite(set);
-    return true;
+    commandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, layout, 0, _writes);
 }
 
-auto DescriptorWriter::overwrite(vk::DescriptorSet set) -> void
-{
-    for (auto& write : _writes)
-    {
-        write.dstSet = set;
-    }
-    _device.logicalDevice.updateDescriptorSets(_writes, {});
-}
 }

@@ -46,7 +46,8 @@ auto Device::isDeviceSuitable(vk::PhysicalDevice device,
     const auto queueFamilies = findQueueFamilies(device, surface);
     const auto swapChainSupport = querySwapChainSupport(device, surface);
     return queueFamilies && checkDeviceExtensionSupport(device, requiredExtensions) &&
-           !swapChainSupport.formats.empty() && !swapChainSupport.presentationModes.empty();
+           !swapChainSupport.formats.empty() && !swapChainSupport.presentationModes.empty() &&
+           device.getFeatures().samplerAnisotropy > 0;
 }
 
 auto Device::findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> std::optional<QueueFamilies>
@@ -132,7 +133,8 @@ auto Device::createLogicalDevice(vk::PhysicalDevice device,
                                return vk::DeviceQueueCreateInfo {{}, queueFamily, 1, &queuePriority};
                            });
 
-    const auto physicalDeviceFeatures = vk::PhysicalDeviceFeatures {};
+    const auto physicalDeviceFeatures = vk::PhysicalDeviceFeatures {{}, {}, {}, {}, {}, {}, {}, {}, {}, {},
+                                                                    {}, {}, {}, {}, {}, {}, {}, {}, {}, vk::True};
 
     auto createInfo = vk::DeviceCreateInfo({},
                                            queueCreateInfos,

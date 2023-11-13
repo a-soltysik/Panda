@@ -129,7 +129,7 @@ App::App()
         }
 
         auto object = panda::gfx::vulkan::Object {getCorrectObjectName(newMeshAddedData.fileName)};
-        object.mesh = panda::gfx::vulkan::Mesh::loadMesh(*_api, newMeshAddedData.fileName);
+        object.surfaces = panda::gfx::vulkan::Object::loadSurfaces(*_api, newMeshAddedData.fileName);
         _scene.objects.push_back(std::move(object));
     });
 }
@@ -155,7 +155,7 @@ auto App::mainLoop() -> void
 
     auto cameraObject = panda::gfx::vulkan::Object {"Camera"};
 
-    cameraObject.transform.translation = {0, 2, -8};
+    cameraObject.transform.translation = {0, 1, -5};
     _scene.camera.setViewYXZ(panda::gfx::view::YXZ {.position = cameraObject.transform.translation,
                                                     .rotation = cameraObject.transform.rotation});
 
@@ -215,59 +215,37 @@ auto App::registerSignalHandlers() -> void
 
 void App::setDefaultScene()
 {
-    auto* vaseMesh = panda::gfx::vulkan::Mesh::loadMesh(*_api, config::resource::models / "smooth_vase.obj");
-    auto* floorMesh = panda::gfx::vulkan::Mesh::loadMesh(*_api, config::resource::models / "square.obj");
+    const auto f1Mesh = panda::gfx::vulkan::Object::loadSurfaces(*_api, config::resource::models / "formula_1.obj");
 
-    auto object = panda::gfx::vulkan::Object {"Vase_1"};
-    object.mesh = vaseMesh;
-    object.transform.rotation = {};
-    object.transform.translation = {1.F, 0.F, 0.F};
-    object.transform.scale = {5.F, 5.F, 5.F};
+    const auto roadMesh = panda::gfx::vulkan::Object::loadSurfaces(*_api, config::resource::models / "road.obj");
 
-    _scene.objects.push_back(std::move(object));
-
-    object = panda::gfx::vulkan::Object {"Vase_2"};
-    object.mesh = vaseMesh;
-    object.transform.rotation = {};
-    object.transform.translation = {-1.F, 0.F, 0.F};
-    object.transform.scale = {5.F, 5.F, 5.F};
+    auto object = panda::gfx::vulkan::Object {"Road"};
+    object.surfaces = roadMesh;
+    object.transform.translation = {0, -0.3F, 0};
+    object.transform.rotation = {0, glm::half_pi<float>() + glm::quarter_pi<float>(), 0};
+    object.transform.scale = {1.F, 1.F, 1.F};
 
     _scene.objects.push_back(std::move(object));
 
-    object = panda::gfx::vulkan::Object {"Floor"};
-    object.mesh = floorMesh;
-    object.transform.rotation = {};
-    object.transform.translation = {0.F, 0.F, 0.F};
-    object.transform.scale = {10.F, 10.F, 10.F};
-
+    object = panda::gfx::vulkan::Object {"F1"};
+    object.surfaces = f1Mesh;
+    object.transform.rotation = {0, glm::quarter_pi<float>(), 3.142};
+    object.transform.translation = {};
+    object.transform.scale = {0.01, 0.01, 0.01};
     _scene.objects.push_back(std::move(object));
-
-    _scene.lights.pointLights.push_back(panda::gfx::PointLight {
-        panda::gfx::makeColorLight("Light_1", {1.F, 0.F,   0.F   },
-         0.F, 0.8F, 1.F, 1.F),
-        {2.F, -2.F,  -1.5F },
-        {1.F, 0.05F, 0.005F}
-    });
 
     _scene.lights.spotLights.push_back(panda::gfx::SpotLight {
-        {panda::gfx::makeColorLight("SpotLight", {0.F, 1.F, 0.F}, 0.0F, 0.8F, 1.F, 1.F),
+        {panda::gfx::makeColorLight("SpotLight", {1.F, 1.F, 1.F}, 0.0F, 0.8F, 1.F, 1.F),
          {0.F, -5.F, 0.F},
          {1.F, 0.05F, 0.005F}},
         {0.F, 1.F, 0.F},
         glm::cos(glm::radians(30.F))
     });
 
-    _scene.lights.pointLights.push_back(panda::gfx::PointLight {
-        panda::gfx::makeColorLight("Light_2", {0.F,  0.F,   1.F   },
-         0.F, 0.8F, 1.F, 1.F),
-        {-2.F, -2.F,  -1.5F },
-        {1.F,  0.05F, 0.005F}
-    });
-
     _scene.lights.directionalLights.push_back(panda::gfx::DirectionalLight {
-        panda::gfx::makeColorLight("DirectionalLight", {1.F, .8F,  .8F },
-         0.F, 0.8F, 1.F, 0.02F),
-        {0.F, -2.F, 10.F},
+        panda::gfx::makeColorLight("DirectionalLight", {1.F,   .8F,  .8F},
+         0.F, 0.8F, 1.F, 0.1F),
+        {-6.2F, -2.F, 0  },
     });
 }
 

@@ -100,11 +100,10 @@ auto PointLightSystem::createPipelineLayout(const Device& device, vk::Descriptor
 auto PointLightSystem::render(const FrameInfo& frameInfo, const Lights& lights) const -> void
 {
     frameInfo.commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline->getHandle());
-    frameInfo.commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                               _pipelineLayout,
-                                               0,
-                                               frameInfo.descriptorSet,
-                                               {});
+
+    DescriptorWriter(frameInfo.descriptorSetLayout)
+        .writeBuffer(0, frameInfo.vertUbo.getDescriptorInfo())
+        .push(frameInfo.commandBuffer, _pipelineLayout);
 
     for (const auto& light : lights.pointLights)
     {

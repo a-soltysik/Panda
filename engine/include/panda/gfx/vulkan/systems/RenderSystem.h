@@ -3,8 +3,8 @@
 #include "panda/gfx/Camera.h"
 #include "panda/gfx/vulkan/Device.h"
 #include "panda/gfx/vulkan/FrameInfo.h"
-#include "panda/gfx/vulkan/Object.h"
 #include "panda/gfx/vulkan/Pipeline.h"
+#include "panda/gfx/vulkan/object/Object.h"
 
 namespace panda::gfx::vulkan
 {

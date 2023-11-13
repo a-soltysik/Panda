@@ -1,25 +1,16 @@
 #include "panda/gfx/vulkan/Buffer.h"
 
+#include "panda/gfx/vulkan/CommandBuffer.h"
+
 namespace panda::gfx::vulkan
 {
 auto Buffer::copy(const Buffer& src, const Buffer& dst) -> void
 {
-    const auto allocInfo = vk::CommandBufferAllocateInfo {src._device.commandPool, vk::CommandBufferLevel::ePrimary, 1};
-    const auto tmpCommandBuffers = expect(src._device.logicalDevice.allocateCommandBuffers(allocInfo),
-                                          vk::Result::eSuccess,
-                                          "Failed to allocate command buffer");
-
-    const auto beginInfo = vk::CommandBufferBeginInfo {vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
-    expect(tmpCommandBuffers.front().begin(beginInfo), vk::Result::eSuccess, "Failed to begin command buffer");
+    const auto commandBuffer = CommandBuffer::beginSingleTimeCommandBuffer(src._device);
 
     const auto copyRegion = vk::BufferCopy {{}, {}, src.size};
-    tmpCommandBuffers.front().copyBuffer(src.buffer, dst.buffer, copyRegion);
-    expect(tmpCommandBuffers.front().end(), vk::Result::eSuccess, "Failed to end command buffer");
-
-    const auto submitInfo = vk::SubmitInfo {{}, {}, tmpCommandBuffers.front()};
-    expect(src._device.graphicsQueue.submit(submitInfo), vk::Result::eSuccess, "Failed to submit command buffer");
-    shouldBe(src._device.graphicsQueue.waitIdle(), vk::Result::eSuccess, "Failed to wait idle");
-    src._device.logicalDevice.freeCommandBuffers(src._device.commandPool, tmpCommandBuffers);
+    commandBuffer.copyBuffer(src.buffer, dst.buffer, copyRegion);
+    CommandBuffer::endSingleTimeCommandBuffer(src._device, commandBuffer);
 
     log::Info("Copied buffer [{}] to buffer [{}]", static_cast<void*>(src.buffer), static_cast<void*>(dst.buffer));
 }

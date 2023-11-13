@@ -39,7 +39,7 @@ struct UboDirectionalLight
 
 struct UboPointLight
 {
-    UboBaseLight base;
+    alignas(16) UboBaseLight base;
     alignas(16) UboAttenuation attenuation;
     alignas(16) glm::vec3 position;
 

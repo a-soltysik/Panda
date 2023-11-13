@@ -18,7 +18,8 @@ public:
                                       vk::DescriptorType descriptorType,
                                       vk::ShaderStageFlags stageFlags,
                                       uint32_t count = 1) -> Builder&;
-        [[nodiscard]] auto build() const -> std::unique_ptr<DescriptorSetLayout>;
+        [[nodiscard]] auto build(vk::DescriptorSetLayoutCreateFlags flags = {}) const
+            -> std::unique_ptr<DescriptorSetLayout>;
 
     private:
         const Device& _device;
@@ -26,7 +27,8 @@ public:
     };
 
     DescriptorSetLayout(const Device& device,
-                        const std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding>& bindings);
+                        const std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding>& bindings,
+                        vk::DescriptorSetLayoutCreateFlags flags = {});
 
     PD_DELETE_ALL(DescriptorSetLayout);
     ~DescriptorSetLayout() noexcept;
@@ -36,8 +38,9 @@ public:
 
 private:
     [[nodiscard]] static auto createDescriptorSetLayout(
-        const Device& device, const std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding>& bindings)
-        -> vk::DescriptorSetLayout;
+        const Device& device,
+        const std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding>& bindings,
+        vk::DescriptorSetLayoutCreateFlags flags) -> vk::DescriptorSetLayout;
 
     std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding> _bindings;
     const Device& _device;
@@ -86,18 +89,15 @@ private:
 class DescriptorWriter
 {
 public:
-    DescriptorWriter(const Device& device, const DescriptorSetLayout& setLayout, const DescriptorPool& pool);
+    explicit DescriptorWriter(const DescriptorSetLayout& setLayout);
 
     [[nodiscard]] auto writeBuffer(uint32_t binding, const vk::DescriptorBufferInfo& bufferInfo) -> DescriptorWriter&;
     [[nodiscard]] auto writeImage(uint32_t binding, const vk::DescriptorImageInfo& imageInfo) -> DescriptorWriter&;
 
-    auto build(vk::DescriptorSet& set) -> bool;
-    auto overwrite(vk::DescriptorSet set) -> void;
+    auto push(vk::CommandBuffer commandBuffer, vk::PipelineLayout layout) -> void;
 
 private:
-    const Device& _device;
     const DescriptorSetLayout& _setLayout;
-    const DescriptorPool& _pool;
 
     std::vector<vk::WriteDescriptorSet> _writes;
 };
