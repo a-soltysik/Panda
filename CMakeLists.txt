@@ -20,8 +20,8 @@ PD_local_options(${EXT_DIR})
 
 target_compile_features(PD_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
 
-add_library(PD::PD_options ALIAS PD_options)
-add_library(PD::PD_warnings ALIAS PD_warnings)
+add_library(PD::Options ALIAS PD_options)
+add_library(PD::Warnings ALIAS PD_warnings)
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DPD_DEBUG=1 -DPD_RELEASE=0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DPD_DEBUG=0 -DPD_RELEASE=1")
@@ -48,20 +48,23 @@ set(ASSIMP_BUILD_TESTS OFF)
 set(ASSIMP_INSTALL OFF)
 set(ASSIMP_INSTALL_PDB OFF)
 set(INJECT_DEBUG_POSTFIX OFF)
+set(IMGUI_BUILD_GLFW_BINDING ON)
+set(IMGUI_BUILD_VULKAN_BINDING ON)
+
+include(cmake/InterproceduralOptimization.cmake)
 
 add_subdirectory(${STB_DIR})
+PD_suppress_ipo()
 add_subdirectory(${ASSIMP_DIR})
+PD_resume_ipo()
 add_subdirectory(${FMT_DIR})
 add_subdirectory(${VULKAN_HPP_DIR})
 add_subdirectory(${GLM_DIR})
+add_subdirectory(${GLFW_DIR})
+add_subdirectory(${IMGUI_DIR})
 
 add_subdirectory(${ENGINE_DIR})
 if (PD_BUILD_APP)
-    set(IMGUI_BUILD_GLFW_BINDING ON)
-    set(IMGUI_BUILD_VULKAN_BINDING ON)
-
-    add_subdirectory(${GLFW_DIR})
-    add_subdirectory(${IMGUI_DIR})
     add_subdirectory(${IMPLOT_DIR})
     add_subdirectory(${PORTABLE_FILE_DIALOGS_DIR})
 

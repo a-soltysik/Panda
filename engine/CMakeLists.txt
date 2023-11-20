@@ -6,6 +6,7 @@ file(GLOB_RECURSE ${ENGINE_TARGET_NAME}_SRC_LIST
 )
 
 add_library(${ENGINE_TARGET_NAME} STATIC ${${ENGINE_TARGET_NAME}_SRC_LIST})
+add_library(PD::Engine ALIAS ${ENGINE_TARGET_NAME})
 
 target_include_directories(${ENGINE_TARGET_NAME} PUBLIC include)
 target_include_directories(${ENGINE_TARGET_NAME} PUBLIC ${CONFIG_OUTPUT})
