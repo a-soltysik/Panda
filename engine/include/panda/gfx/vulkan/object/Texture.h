@@ -12,10 +12,10 @@ class Context;
 class Texture
 {
 public:
-    [[nodiscard]] static auto getDefaultTexture(Context& context, glm::vec4 color = {1.F, 1.F, 1.F, 1.F})
+    [[nodiscard]] static auto getDefaultTexture(const Context& context, glm::vec4 color = {1.F, 1.F, 1.F, 1.F})
         -> std::unique_ptr<Texture>;
-    Texture(Context& context, const std::filesystem::path& path);
-    Texture(Context& context, std::span<const char> data, size_t width, size_t height);
+    Texture(const Context& context, const std::filesystem::path& path);
+    Texture(const Context& context, std::span<const char> data, size_t width, size_t height);
 
     ~Texture();
 
@@ -24,7 +24,7 @@ public:
 private:
     auto load(std::span<const char> data, size_t width, size_t height) -> void;
 
-    Context& _context;
+    const Context& _context;
     vk::Image _image;
     vk::ImageView _imageView;
     vk::DeviceMemory _imageMemory;

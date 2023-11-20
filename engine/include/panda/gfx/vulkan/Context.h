@@ -15,7 +15,7 @@
 #include "panda/gfx/vulkan/Scene.h"
 #include "panda/gfx/vulkan/object/Mesh.h"
 #include "panda/gfx/vulkan/object/Object.h"
-#include "panda/gfx/vulkan/systems/PointLightSystem.h"
+#include "panda/gfx/vulkan/systems/LightSystem.h"
 #include "panda/gfx/vulkan/systems/RenderSystem.h"
 #include "panda/internal/config.h"
 
@@ -70,7 +70,7 @@ private:
     std::unique_ptr<Device> _device;
     std::unique_ptr<Renderer> _renderer;
     std::unique_ptr<RenderSystem> _renderSystem;
-    std::unique_ptr<PointLightSystem> _pointLightSystem;
+    std::unique_ptr<LightSystem> _pointLightSystem;
     vk::DebugUtilsMessengerEXT _debugMessenger {};
     std::vector<std::unique_ptr<Texture>> _textures;
     std::vector<std::unique_ptr<Mesh>> _meshes;

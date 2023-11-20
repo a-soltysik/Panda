@@ -122,9 +122,9 @@ Context::Context(const Window& window)
                                                    _renderer->getSwapChainRenderPass(),
                                                    _globalSetLayout->getDescriptorSetLayout());
 
-    _pointLightSystem = std::make_unique<PointLightSystem>(*_device,
-                                                           _renderer->getSwapChainRenderPass(),
-                                                           _lightSetLayout->getDescriptorSetLayout());
+    _pointLightSystem = std::make_unique<LightSystem>(*_device,
+                                                      _renderer->getSwapChainRenderPass(),
+                                                      _lightSetLayout->getDescriptorSetLayout());
 
     log::Info("Vulkan API has been successfully initialized");
 

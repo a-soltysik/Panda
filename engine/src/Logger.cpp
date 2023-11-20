@@ -43,7 +43,6 @@ auto LogDispatcher::log([[maybe_unused]] Level level,
                         [[maybe_unused]] std::string_view message,
                         [[maybe_unused]] const std::source_location& location) noexcept -> void
 {
-#ifndef PD_DISABLE_LOGS
     try
     {
         Config::instance().console.log(level, message);
@@ -52,7 +51,6 @@ auto LogDispatcher::log([[maybe_unused]] Level level,
     catch (...)  //NOLINT(bugprone-empty-catch)
     {
     }
-#endif
 }
 
 }
@@ -120,7 +118,6 @@ auto Config::File::setLevels(std::span<const Level> newLevels) -> void
 
 auto Config::File::start() -> void
 {
-#ifndef PD_DISABLE_LOGS
     if (_file)
     {
         _isStarted = true;
@@ -145,7 +142,6 @@ auto Config::File::start() -> void
         _isStarted = false;
         Error(e.what());
     }
-#endif
 }
 
 auto Config::File::stop() -> void
@@ -161,13 +157,11 @@ auto Config::File::setBufferSize(size_t size) -> void
 
 auto Config::File::flush() -> void
 {
-#ifndef PD_DISABLE_LOGS
     for (const auto& line : _buffer)
     {
         _file->print("{}", line);
     }
     _buffer.clear();
-#endif
 }
 
 Config::File::~File()
@@ -177,10 +171,8 @@ Config::File::~File()
 
 auto Config::File::terminate() -> void
 {
-#ifndef PD_DISABLE_LOGS
     flush();
     _file->close();
-#endif
 }
 
 }

@@ -1,18 +1,7 @@
 #include "panda/gfx/vulkan/object/Mesh.h"
 
-#include "panda/gfx/vulkan/Context.h"
-
 namespace
 {
-
-//auto getProperName(const aiScene& scene) -> std::string
-//{
-//    if (scene.mNumMeshes == 1 || (scene.mNumMeshes > 1 && scene.mName.length == 0))
-//    {
-//        return std::span(scene.mMeshes, scene.mNumMeshes).front()->mName.C_Str();
-//    }
-//    return scene.mName.C_Str();
-//}
 
 }
 
@@ -33,8 +22,7 @@ Mesh::Mesh(const std::string& name,
     log::Info("Created Mesh with {} vertices and {} indices", _vertexCount, _indexCount);
 }
 
-auto Mesh::createVertexBuffer(const vulkan::Device& device, std::span<const vulkan::Vertex> vertices)
-    -> std::unique_ptr<vulkan::Buffer>
+auto Mesh::createVertexBuffer(const Device& device, std::span<const Vertex> vertices) -> std::unique_ptr<Buffer>
 {
     expect(
         vertices.size(),
@@ -44,18 +32,18 @@ auto Mesh::createVertexBuffer(const vulkan::Device& device, std::span<const vulk
         "Vertices size should be greater or equal to 3");
 
     const auto stagingBuffer =
-        vulkan::Buffer {device,
-                        vertices,
-                        vk::BufferUsageFlagBits::eTransferSrc,
-                        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+        Buffer {device,
+                vertices,
+                vk::BufferUsageFlagBits::eTransferSrc,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
 
     auto newVertexBuffer =
-        std::make_unique<vulkan::Buffer>(device,
-                                         stagingBuffer.size,
-                                         vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                                         vk::MemoryPropertyFlagBits::eDeviceLocal);
+        std::make_unique<Buffer>(device,
+                                 stagingBuffer.size,
+                                 vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                                 vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    vulkan::Buffer::copy(stagingBuffer, *newVertexBuffer);
+    Buffer::copy(stagingBuffer, *newVertexBuffer);
 
     return newVertexBuffer;
 }
@@ -82,8 +70,7 @@ auto Mesh::draw(const vk::CommandBuffer& commandBuffer) const -> void
     }
 }
 
-auto Mesh::createIndexBuffer(const vulkan::Device& device, const std::span<const uint32_t> indices)
-    -> std::unique_ptr<vulkan::Buffer>
+auto Mesh::createIndexBuffer(const Device& device, const std::span<const uint32_t> indices) -> std::unique_ptr<Buffer>
 {
     if (indices.empty())
     {
@@ -101,18 +88,18 @@ auto Mesh::createIndexBuffer(const vulkan::Device& device, const std::span<const
     }
 
     const auto stagingBuffer =
-        vulkan::Buffer {device,
-                        indices,
-                        vk::BufferUsageFlagBits::eTransferSrc,
-                        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+        Buffer {device,
+                indices,
+                vk::BufferUsageFlagBits::eTransferSrc,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
 
     auto newIndexBuffer =
-        std::make_unique<vulkan::Buffer>(device,
-                                         stagingBuffer.size,
-                                         vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                                         vk::MemoryPropertyFlagBits::eDeviceLocal);
+        std::make_unique<Buffer>(device,
+                                 stagingBuffer.size,
+                                 vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                                 vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    vulkan::Buffer::copy(stagingBuffer, *newIndexBuffer);
+    Buffer::copy(stagingBuffer, *newIndexBuffer);
 
     return newIndexBuffer;
 }
