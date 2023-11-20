@@ -103,7 +103,7 @@ auto getVertices(const aiMesh& mesh, std::vector<panda::gfx::vulkan::Vertex>& ve
     }
 }
 
-auto getTextureFromMaterial(Context& context, const aiMaterial& material, const std::filesystem::path& parentPath)
+auto getTextureFromMaterial(const Context& context, const aiMaterial& material, const std::filesystem::path& parentPath)
     -> std::unique_ptr<Texture>
 {
     auto textureFile = aiString {};

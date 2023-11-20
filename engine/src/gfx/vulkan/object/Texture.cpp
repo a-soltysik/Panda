@@ -107,7 +107,7 @@ auto createTextureSampler(const Device& device) -> vk::Sampler
 }
 }
 
-Texture::Texture(Context& context, const std::filesystem::path& path)
+Texture::Texture(const Context& context, const std::filesystem::path& path)
     : _context {context}
 {
     auto width = int {};
@@ -139,7 +139,7 @@ auto Texture::getDescriptorImageInfo() const noexcept -> vk::DescriptorImageInfo
     return vk::DescriptorImageInfo {_sampler, _imageView, vk::ImageLayout::eShaderReadOnlyOptimal};
 }
 
-auto Texture::getDefaultTexture(Context& context, glm::vec4 color) -> std::unique_ptr<Texture>
+auto Texture::getDefaultTexture(const Context& context, glm::vec4 color) -> std::unique_ptr<Texture>
 {
     return std::make_unique<Texture>(
         context,
@@ -151,7 +151,7 @@ auto Texture::getDefaultTexture(Context& context, glm::vec4 color) -> std::uniqu
         1);
 }
 
-Texture::Texture(Context& context, std::span<const char> data, size_t width, size_t height)
+Texture::Texture(const Context& context, std::span<const char> data, size_t width, size_t height)
     : _context {context}
 {
     load(data, width, height);
