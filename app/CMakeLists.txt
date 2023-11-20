@@ -37,8 +37,9 @@ else ()
 endif ()
 
 add_executable(${APP_TARGET_NAME} ${${APP_TARGET_NAME}_SRC_LIST})
+add_executable(PD::APP ALIAS ${APP_TARGET_NAME})
 
-target_link_libraries(${APP_TARGET_NAME} PRIVATE PD::PD_options PD::PD_warnings)
+target_link_libraries(${APP_TARGET_NAME} PRIVATE PD::Options PD::Warnings)
 
 target_include_directories(${APP_TARGET_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${CONFIG_OUTPUT})
 if (MSVC)
@@ -58,7 +59,7 @@ target_link_system_libraries(
 target_link_libraries(
         ${APP_TARGET_NAME}
         PRIVATE
-        Panda.Engine)
+        PD::Engine)
 
 add_custom_command(TARGET ${APP_TARGET_NAME} PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
