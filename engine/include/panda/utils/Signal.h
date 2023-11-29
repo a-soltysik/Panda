@@ -29,17 +29,17 @@ private:
     friend class Sender<Args...>;
 
     template <std::convertible_to<Args>... Params>
-    auto emit(Params&&... params) const -> void
+    auto emit(const Params&... params) const -> void
     {
-        std::lock_guard<std::mutex> lock {connectionsMutex};
-        for ([[maybe_unused]] auto& [key, value] : connections)
+        std::lock_guard<std::mutex> lock {_connectionsMutex};
+        for ([[maybe_unused]] auto& [key, value] : _connections)
         {
-            value(std::forward<Params>(params)...);
+            value(params...);
         }
     }
 
-    std::vector<std::pair<size_t, ChannelT>> connections;
-    mutable std::mutex connectionsMutex;
+    std::vector<std::pair<size_t, ChannelT>> _connections;
+    mutable std::mutex _connectionsMutex;
 };
 
 template <typename... Args>
@@ -115,9 +115,9 @@ public:
     ~Sender() = default;
 
     template <std::convertible_to<Args>... Params>
-    auto operator()(Params&&... params) const -> void
+    auto operator()(const Params&... params) const -> void
     {
-        _signal.emit(std::forward<Params>(params)...);
+        _signal.emit(params...);
     }
 
 private:
@@ -133,17 +133,17 @@ template <typename... Args>
 template <typename... Args>
 [[nodiscard]] auto Signal<Args...>::connect(ChannelT&& connection) -> ReceiverT
 {
-    std::lock_guard<std::mutex> lock {connectionsMutex};
+    std::lock_guard<std::mutex> lock {_connectionsMutex};
     auto receiver = ReceiverT {*this};
-    connections.emplace_back(receiver.getId(), std::move(connection));
+    _connections.emplace_back(receiver.getId(), std::move(connection));
     return receiver;
 }
 
 template <typename... Args>
 auto Signal<Args...>::disconnect(const ReceiverT& receiver) -> void
 {
-    std::lock_guard<std::mutex> lock {connectionsMutex};
-    std::erase_if(connections, [&receiver](const auto& elem) noexcept {
+    std::lock_guard<std::mutex> lock {_connectionsMutex};
+    std::erase_if(_connections, [&receiver](const auto& elem) noexcept {
         return elem.first == receiver.getId();
     });
 }

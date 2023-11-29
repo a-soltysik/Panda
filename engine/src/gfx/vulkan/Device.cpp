@@ -45,6 +45,7 @@ auto Device::isDeviceSuitable(vk::PhysicalDevice device,
 {
     const auto queueFamilies = findQueueFamilies(device, surface);
     const auto swapChainSupport = querySwapChainSupport(device, surface);
+
     return queueFamilies && checkDeviceExtensionSupport(device, requiredExtensions) &&
            !swapChainSupport.formats.empty() && !swapChainSupport.presentationModes.empty() &&
            device.getFeatures().samplerAnisotropy > 0;

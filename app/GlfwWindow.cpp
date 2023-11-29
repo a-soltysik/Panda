@@ -9,7 +9,7 @@ namespace
 
 void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
-    static auto sender = panda::utils::signals::frameBufferResized.registerSender();
+    static const auto sender = panda::utils::signals::frameBufferResized.registerSender();
     const auto id = app::GlfwWindow::makeId(window);
     panda::log::Info("Size of window [{}] changed to {}x{}", id, width, height);
 

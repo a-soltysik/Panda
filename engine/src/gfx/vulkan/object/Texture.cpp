@@ -117,11 +117,6 @@ Texture::Texture(const Context& context, const std::filesystem::path& path)
     const auto size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
     const auto data = std::span {pixels, size};
 
-    for (const auto& a : path)
-    {
-        log::Warning("Path: {}", a.string());
-    }
-
     load(std::vector<char> {data.begin(), data.end()}, width, height);
     stbi_image_free(pixels);
 }

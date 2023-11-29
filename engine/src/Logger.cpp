@@ -1,3 +1,5 @@
+#include "panda/Logger.h"
+
 #include <fmt/chrono.h>
 
 #include <filesystem>
@@ -45,8 +47,7 @@ auto LogDispatcher::log([[maybe_unused]] Level level,
 {
     try
     {
-        Config::instance().console.log(level, message);
-        Config::instance().file.log(level, message, location);
+        FileLogger::instance().log(level, message, location);
     }
     catch (...)  //NOLINT(bugprone-empty-catch)
     {
@@ -55,40 +56,13 @@ auto LogDispatcher::log([[maybe_unused]] Level level,
 
 }
 
-auto Config::instance() -> Config&
+auto FileLogger::instance() -> FileLogger&
 {
-    static Config config;
+    static FileLogger config;
     return config;
 }
 
-auto Config::Console::log(Level level, std::string_view message) -> void
-{
-    if (!isStarted)
-    {
-        return;
-    }
-    if (levels.contains(level))
-    {
-        fmt::println(stderr, "{} {}", getLevelTag(level), message);
-    }
-}
-
-auto Config::Console::setLevels(std::span<const Level> newLevels) -> void
-{
-    levels = {newLevels.begin(), newLevels.end()};
-}
-
-auto Config::Console::start() -> void
-{
-    isStarted = true;
-}
-
-auto Config::Console::stop() -> void
-{
-    isStarted = false;
-}
-
-auto Config::File::log(Level level, std::string_view message, const std::source_location& location) -> void
+auto FileLogger::log(Level level, std::string_view message, const std::source_location& location) -> void
 {
     if (!_isStarted)
     {
@@ -96,14 +70,11 @@ auto Config::File::log(Level level, std::string_view message, const std::source_
     }
     if (_levels.contains(level))
     {
-        const auto time = std::chrono::system_clock::now();
-        _buffer.push_back(fmt::format("{:%H:%M:%S} {} {}:{}, {}\n",
-                                      std::chrono::floor<std::chrono::microseconds>(time),
-                                      getLevelTag(level),
-                                      getFunctionName(location.function_name()),
-                                      location.line(),
-                                      message));
-
+        _buffer.push_back(LogData {.index = _currentIndex++,
+                                   .message = std::string {message},
+                                   .location = location,
+                                   .time = std::chrono::system_clock::now(),
+                                   .level = level});
         if (_buffer.size() >= _bufferSize)
         {
             flush();
@@ -111,12 +82,12 @@ auto Config::File::log(Level level, std::string_view message, const std::source_
     }
 }
 
-auto Config::File::setLevels(std::span<const Level> newLevels) -> void
+auto FileLogger::setLevels(std::span<const Level> newLevels) -> void
 {
     _levels = {newLevels.begin(), newLevels.end()};
 }
 
-auto Config::File::start() -> void
+auto FileLogger::start() -> void
 {
     if (_file)
     {
@@ -144,35 +115,45 @@ auto Config::File::start() -> void
     }
 }
 
-auto Config::File::stop() -> void
+auto FileLogger::stop() -> void
 {
     _isStarted = false;
     flush();
 }
 
-auto Config::File::setBufferSize(size_t size) -> void
+auto FileLogger::setBufferSize(size_t size) -> void
 {
     _bufferSize = size;
 }
 
-auto Config::File::flush() -> void
+auto FileLogger::flush() -> void
 {
     for (const auto& line : _buffer)
     {
-        _file->print("{}", line);
+        _file->print("{:%H:%M:%S} {} {}:{}, {}\n",
+                     line.time,
+                     getLevelTag(line.level),
+                     getFunctionName(line.location.function_name()),
+                     line.location.line(),
+                     line.message);
     }
     _buffer.clear();
 }
 
-Config::File::~File()
+FileLogger::~FileLogger()
 {
     flush();
 }
 
-auto Config::File::terminate() -> void
+auto FileLogger::terminate() -> void
 {
     flush();
     _file->close();
+}
+
+auto panda::log::FileLogger::getBuffer() -> const std::vector<LogData>&
+{
+    return _buffer;
 }
 
 }

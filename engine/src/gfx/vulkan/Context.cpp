@@ -79,8 +79,6 @@ Context::Context(const Window& window)
     log::Info("Chosen GPU: {}", std::string_view {_device->physicalDevice.getProperties().deviceName});
 
     VULKAN_HPP_DEFAULT_DISPATCHER.init(_device->logicalDevice);
-    //vkCmdPushDescriptorSetKHR = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(
-    //    _device->logicalDevice.getProcAddr("vkCmdPushDescriptorSetKHR"));
 
     _renderer = std::make_unique<Renderer>(window, *_device, _surface);
 
@@ -314,16 +312,16 @@ auto Context::makeFrame(float deltaTime, Scene& scene) -> void
                                      .deltaTime = deltaTime},
                           scene.objects);
 
-    //_pointLightSystem->render(FrameInfo {.camera = scene.camera,
-    //                                     .device = *_device,
-    //                                     .fragUbo = *_uboFragBuffers[frameIndex],
-    //                                     .vertUbo = *_uboVertBuffers[frameIndex],
-    //                                     .descriptorSetLayout = *_lightSetLayout,
-    //                                     .commandBuffer = commandBuffer,
-    //                                     .frameIndex = frameIndex,
-    //                                     .deltaTime = deltaTime},
-    //                          scene.lights);
-    //
+    _pointLightSystem->render(FrameInfo {.camera = scene.camera,
+                                         .device = *_device,
+                                         .fragUbo = *_uboFragBuffers[frameIndex],
+                                         .vertUbo = *_uboVertBuffers[frameIndex],
+                                         .descriptorSetLayout = *_lightSetLayout,
+                                         .commandBuffer = commandBuffer,
+                                         .frameIndex = frameIndex,
+                                         .deltaTime = deltaTime},
+                              scene.lights);
+
     utils::signals::beginGuiRender.registerSender()(
         utils::signals::BeginGuiRenderData {commandBuffer, std::ref(scene)});
 

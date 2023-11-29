@@ -3,6 +3,7 @@
 #include <fmt/core.h>
 #include <fmt/os.h>
 
+#include <chrono>
 #include <set>
 #include <source_location>
 #include <span>
@@ -56,61 +57,42 @@ namespace internal
 struct LogDispatcher;
 }
 
-class Config
+class FileLogger
 {
 public:
-    class Console
+    struct LogData
     {
-    public:
-        auto setLevels(std::span<const Level> newLevels) -> void;
-        auto start() -> void;
-        auto stop() -> void;
-
-    private:
-        friend struct internal::LogDispatcher;
-
-        auto log(Level level, std::string_view message) -> void;  //cppcheck-suppress unusedPrivateFunction
-
-        std::set<Level> levels = {Level::Debug, Level::Info, Level::Warning, Level::Error};
-        bool isStarted = false;
+        uint32_t index;
+        std::string message;
+        std::source_location location;
+        std::chrono::system_clock::time_point time;
+        Level level;
     };
 
-    class File
-    {
-    public:
-        File() = default;
-        File(const File&) = delete;
-        File(File&&) = delete;
-        auto operator=(const File&) -> File& = delete;
-        auto operator=(File&&) -> File& = delete;
-        ~File();
+    ~FileLogger();
 
-        auto setLevels(std::span<const Level> newLevels) -> void;
-        auto start() -> void;
-        auto stop() -> void;
-        auto terminate() -> void;
-        auto setBufferSize(size_t size) -> void;
+    auto setLevels(std::span<const Level> newLevels) -> void;
+    auto start() -> void;
+    auto stop() -> void;
+    auto terminate() -> void;
+    auto setBufferSize(size_t size) -> void;
+    auto getBuffer() -> const std::vector<LogData>&;
 
-    private:
-        friend struct internal::LogDispatcher;
-
-        auto log(Level level, std::string_view message, const std::source_location& location) -> void;
-        auto flush() -> void;
-
-        std::set<Level> _levels = {Level::Debug, Level::Info, Level::Warning, Level::Error};
-        std::vector<std::string> _buffer;
-        std::unique_ptr<fmt::ostream> _file;
-        size_t _bufferSize = 100;
-        bool _isStarted = false;
-    };
-
-    static auto instance() -> Config&;
-
-    Console console;
-    File file;
+    static auto instance() -> FileLogger&;
 
 private:
-    Config() = default;
+    friend struct internal::LogDispatcher;
+
+    FileLogger() = default;
+    auto log(Level level, std::string_view message, const std::source_location& location) -> void;
+    auto flush() -> void;
+
+    std::set<Level> _levels = {Level::Debug, Level::Info, Level::Warning, Level::Error};
+    std::vector<LogData> _buffer;
+    std::unique_ptr<fmt::ostream> _file;
+    size_t _bufferSize = 1000;
+    uint32_t _currentIndex = 0;
+    bool _isStarted = false;
 };
 
 namespace internal
