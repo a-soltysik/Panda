@@ -4,6 +4,28 @@
 #include <imgui.h>
 #include <implot.h>
 
+namespace
+{
+[[nodiscard]] constexpr auto getLevelTag(panda::log::Level level) -> std::string_view
+{
+    using namespace std::string_view_literals;
+    using enum panda::log::Level;
+    switch (level)
+    {
+    case Debug:
+        return "[DBG]"sv;
+    case Info:
+        return "[INF]"sv;
+    case Warning:
+        return "[WRN]"sv;
+    case Error:
+        return "[ERR]"sv;
+    default:
+        [[unlikely]] return "[???]"sv;
+    }
+}
+}
+
 namespace app
 {
 
@@ -20,9 +42,61 @@ auto DevGui::render() -> void
     ImGui::SetNextWindowSize(windowSize, ImGuiCond_Once);
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
 
-    ImGui::Begin("Profiler", nullptr, static_cast<uint32_t>(ImGuiWindowFlags_NoScrollbar));
+    updateProfiler();
+    updateLogs();
 
+    ImGui::Begin("Debug Info", nullptr, static_cast<uint32_t>(ImGuiWindowFlags_NoScrollbar));
+
+    if (ImGui::BeginTabBar("MyTabBar"))
+    {
+        for (auto i = uint32_t {}; i < _openedTabs.size(); i++)
+        {
+            if (_openedTabs[i] && ImGui::BeginTabItem(_tabsNames[i], &_openedTabs[i], ImGuiTabItemFlags_None))
+            {
+                if (i == 0)
+                {
+                    renderProfiler();
+                }
+                else
+                {
+                    renderLogger();
+                }
+                ImGui::EndTabItem();
+            }
+        }
+        ImGui::EndTabBar();
+    }
+
+    ImGui::End();
+}
+
+auto DevGui::renderLogger() -> void
+{
+    ImGui::Checkbox("Anchor logs", &_anchorLogs);
+    if (ImGui::BeginChild("Logger",
+                          ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y),
+                          true,
+                          ImGuiWindowFlags_AlwaysHorizontalScrollbar))
+    {
+        for (auto i = uint32_t {}; i < _logs.size(); i++)
+        {
+            //NOLINTBEGIN(cppcoreguidelines-pro-type-vararg, hicpp-vararg)
+            ImGui::Text("%s %s", getLevelTag(_logs[i].level).data(), _logs[i].message.c_str());
+            //NOLINTEND(cppcoreguidelines-pro-type-vararg, hicpp-vararg)
+            if (_anchorLogs && i == _logs.size() - 1)
+            {
+                ImGui::SetScrollHereY(1.F);
+            }
+        }
+    }
+    ImGui::EndChild();
+}
+
+auto DevGui::renderProfiler() -> void
+{
     const auto plotSize = ImVec2 {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y / 3};
+
+    static constexpr auto maxValueOffset = 1.05;
 
     ImPlot::PushStyleVar(ImPlotStyleVar_PlotDefaultSize, plotSize);
     if (ImPlot::BeginPlot("Framerate"))
@@ -32,7 +106,7 @@ auto DevGui::render() -> void
         ImPlot::SetupAxesLimits(0,
                                 static_cast<double>(_frameRates.size()),
                                 0,
-                                static_cast<double>(*std::ranges::max_element(_frameRates)),
+                                static_cast<double>(*std::ranges::max_element(_frameRates)) * maxValueOffset,
                                 ImPlotCond_Always);
         ImPlot::PlotLine("", _frameRates.data(), static_cast<int>(_frameRates.size()));
         ImPlot::EndPlot();
@@ -46,7 +120,8 @@ auto DevGui::render() -> void
                                 static_cast<double>(_physicalMemoryUsages.size()),
                                 0,
                                 std::max(static_cast<double>(*std::ranges::max_element(_physicalMemoryUsages)),
-                                         static_cast<double>(*std::ranges::max_element(_virtualMemoryUsages))),
+                                         static_cast<double>(*std::ranges::max_element(_virtualMemoryUsages))) *
+                                    maxValueOffset,
                                 ImPlotCond_Always);
         ImPlot::PlotLine("Physical", _physicalMemoryUsages.data(), static_cast<int>(_physicalMemoryUsages.size()));
         ImPlot::PlotLine("Virtual", _virtualMemoryUsages.data(), static_cast<int>(_virtualMemoryUsages.size()));
@@ -62,7 +137,10 @@ auto DevGui::render() -> void
         ImPlot::PlotLine("", _cpuUsages.data(), static_cast<int>(_cpuUsages.size()));
         ImPlot::EndPlot();
     }
+}
 
+auto DevGui::updateProfiler() -> void
+{
     _time += ImGui::GetIO().DeltaTime;
 
     static constexpr auto second = 1.F;
@@ -95,9 +173,22 @@ auto DevGui::render() -> void
         panda::log::Info("Average FPS: {}", _frameRates.front());
         panda::log::Info("CPU usage: {}", _cpuUsages.front());
         panda::log::Info("Memory usage: {}/{} MB", _physicalMemoryUsages.front(), totalPhysicalMemory);
-        panda::log::Info("Memory usage: {}/{} MB", _virtualMemoryUsages.front(), totalVirtualMemory);
+        panda::log::Info("Virtual Memory usage: {}/{} MB", _virtualMemoryUsages.front(), totalVirtualMemory);
     }
-    ImGui::End();
+}
+
+auto DevGui::updateLogs() -> void
+{
+    const auto logBuffer = panda::log::FileLogger::instance().getBuffer();
+    const auto lastLog = std::ranges::find(logBuffer, _lastMaxIndex, &panda::log::FileLogger::LogData::index);
+    const auto begin =
+        (lastLog == std::ranges::end(logBuffer) ? std::ranges::begin(logBuffer) : std::ranges::next(lastLog));
+
+    if (begin != std::ranges::end(logBuffer))
+    {
+        _lastMaxIndex = std::max(_lastMaxIndex, logBuffer.back().index);
+        std::ranges::move(std::ranges::subrange(begin, std::ranges::end(logBuffer)), std::back_inserter(_logs));
+    }
 }
 
 }

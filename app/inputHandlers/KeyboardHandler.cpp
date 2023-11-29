@@ -16,11 +16,7 @@ void keyboardStateChangedCallback(GLFWwindow* window, int key, int scancode, int
     const auto id = app::GlfwWindow::makeId(window);
     panda::log::Debug("Keyboard state for window [{}] changed to {};{};{};{}", id, key, scancode, action, mods);
 
-    if (ImGui::GetIO().WantCaptureKeyboard)
-    {
-        panda::log::Debug("ImGui has overtaken keyboard input");
-    }
-    else
+    if (!ImGui::GetIO().WantCaptureKeyboard)
     {
         sender(app::utils::signals::KeyboardStateChangedData {id, key, scancode, action, mods});
     }
@@ -87,8 +83,6 @@ auto KeyboardHandler::getKeyState(int key) const -> State
             return userKey < static_cast<int>(_states.size()) && userKey >= 0;
         },
         fmt::format("Key: {} is beyond the size of array", key));
-
-    panda::log::Debug("State of key \"{}\": {}", key, _states[static_cast<size_t>(key)]);
 
     return _states[static_cast<size_t>(key)];
 }

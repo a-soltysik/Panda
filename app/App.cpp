@@ -35,7 +35,7 @@ namespace
 [[noreturn]] auto signalHandler(int signalValue) -> void
 {
     panda::log::Error("Received {} signal", getSignalName(signalValue));
-    panda::log::Config::instance().file.terminate();
+    panda::log::FileLogger::instance().terminate();
     std::_Exit(signalValue);
 }
 
@@ -192,15 +192,14 @@ auto App::initializeLogger() -> void
 
     if constexpr (config::isDebug)
     {
-        panda::log::Config::instance().console.setLevels(std::array {Warning, Error});
-        panda::log::Config::instance().console.start();
+        panda::log::FileLogger::instance().setLevels(std::array {Debug, Info, Warning, Error});
     }
     else
     {
-        panda::log::Config::instance().file.setLevels(std::array {Info, Warning, Error});
+        panda::log::FileLogger::instance().setLevels(std::array {Info, Warning, Error});
     }
 
-    panda::log::Config::instance().file.start();
+    panda::log::FileLogger::instance().start();
 }
 
 auto App::registerSignalHandlers() -> void
