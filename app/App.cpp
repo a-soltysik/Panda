@@ -131,7 +131,15 @@ App::App()
         auto object = panda::gfx::vulkan::Object {
             utils::getUniqueName(newMeshAddedData.fileName, utils::getNamesFromScene(_scene))};
         object.surfaces = panda::gfx::vulkan::Object::loadSurfaces(*_api, newMeshAddedData.fileName);
-        _scene.objects.push_back(std::move(object));
+
+        if (object.surfaces.empty())
+        {
+            panda::log::Warning("Failed to load a model from file: {}", newMeshAddedData.fileName);
+        }
+        else
+        {
+            _scene.objects.push_back(std::move(object));
+        }
     });
 }
 

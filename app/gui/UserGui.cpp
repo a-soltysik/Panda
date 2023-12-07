@@ -33,11 +33,11 @@ auto UserGui::render(panda::gfx::vulkan::Scene& scene) -> void
 
     if (ImGui::Button("Add model from file"))
     {
-        auto file = pfd::open_file("Choose file to save", pfd::path::home(), {"Model files", "*.*"});
+        auto file = pfd::open_file("Choose file to save", ".", {"3D Model File", "*"});
 
         if (!file.result().empty())
         {
-            panda::log::Warning("Selected file: {}", file.result().front());
+            panda::log::Info("Selected file: {}", file.result().front());
             utils::signals::newMeshAdded.registerSender()(
                 utils::signals::NewMeshAddedData {_window.getId(), file.result().front()});
         }
