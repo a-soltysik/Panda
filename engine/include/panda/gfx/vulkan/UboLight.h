@@ -55,16 +55,6 @@ struct UboSpotLight
     PD_MAKE_ALIGNED(base, direction, cutOff)
 };
 
-struct UboMaterial
-{
-    alignas(16) glm::vec3 ambient;
-    alignas(16) glm::vec3 diffuse;
-    alignas(16) glm::vec3 specular;
-    float shininess;
-
-    PD_MAKE_ALIGNED(ambient, diffuse, specular, shininess)
-};
-
 constexpr auto fromDirectionalLight(const DirectionalLight& light) noexcept -> UboDirectionalLight
 {
     return {

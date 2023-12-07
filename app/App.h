@@ -21,7 +21,6 @@ private:
     static auto registerSignalHandlers() -> void;
     auto mainLoop() -> void;
     auto setDefaultScene() -> void;
-    auto getCorrectObjectName(const std::string& name) -> std::string;
 
     panda::gfx::vulkan::Scene _scene {};
 

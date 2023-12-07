@@ -14,7 +14,8 @@ class Texture
 public:
     [[nodiscard]] static auto getDefaultTexture(const Context& context, glm::vec4 color = {1.F, 1.F, 1.F, 1.F})
         -> std::unique_ptr<Texture>;
-    Texture(const Context& context, const std::filesystem::path& path);
+    [[nodiscard]] static auto fromFile(const Context& context, const std::filesystem::path& path)
+        -> std::unique_ptr<Texture>;
     Texture(const Context& context, std::span<const char> data, size_t width, size_t height);
 
     ~Texture();

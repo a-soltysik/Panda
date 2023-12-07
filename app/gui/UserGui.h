@@ -16,8 +16,9 @@ public:
 
 private:
     auto objectListBox(const std::vector<std::string>& objects) -> std::string;
+    auto removeObject(panda::gfx::vulkan::Scene& scene, const std::vector<std::string>& objects) -> void;
+    auto addLight(panda::gfx::vulkan::Scene& scene, const std::vector<std::string>& objects) -> void;
     static auto objectInfo(panda::gfx::vulkan::Scene& scene, const std::string& name) -> void;
-    static auto getAllNames(const panda::gfx::vulkan::Scene& scene) -> std::vector<std::string>;
 
     static auto vulkanObject(panda::gfx::vulkan::Object& object) -> void;
     static auto attenuation(panda::gfx::Attenuation& attenuation) -> void;
@@ -28,6 +29,7 @@ private:
 
     const panda::Window& _window;
     int _currentObject = 0;
+    int _currentLight = 0;
 };
 
 }

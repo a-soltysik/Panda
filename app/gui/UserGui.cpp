@@ -24,8 +24,12 @@ auto UserGui::render(panda::gfx::vulkan::Scene& scene) -> void
 
     ImGui::Begin("Scene Info", nullptr);
 
-    const auto result = objectListBox(getAllNames(scene));
-    objectInfo(scene, result);
+    const auto objectNames = utils::getNamesFromScene(scene);
+
+    if (!objectNames.empty())
+    {
+        objectInfo(scene, objectListBox(objectNames));
+    }
 
     if (ImGui::Button("Add model from file"))
     {
@@ -36,6 +40,16 @@ auto UserGui::render(panda::gfx::vulkan::Scene& scene) -> void
             panda::log::Warning("Selected file: {}", file.result().front());
             utils::signals::newMeshAdded.registerSender()(
                 utils::signals::NewMeshAddedData {_window.getId(), file.result().front()});
+        }
+    }
+
+    addLight(scene, objectNames);
+
+    if (ImGui::Button("Remove selected object"))
+    {
+        if (!objectNames.empty())
+        {
+            removeObject(scene, objectNames);
         }
     }
 
@@ -91,6 +105,11 @@ auto UserGui::objectListBox(const std::vector<std::string>& objects) -> std::str
                        | std::ranges::views::transform(&std::string::c_str)  //
                        | utils::to<std::vector<const char*>>();
 
+    if (objects.empty())
+    {
+        return {};
+    }
+
     ImGui::ListBox("Objects",
                    &_currentObject,
                    names.data(),
@@ -128,25 +147,105 @@ auto UserGui::objectInfo(panda::gfx::vulkan::Scene& scene, const std::string& na
     }
 }
 
-auto UserGui::getAllNames(const panda::gfx::vulkan::Scene& scene) -> std::vector<std::string>
+auto UserGui::removeObject(panda::gfx::vulkan::Scene& scene, const std::vector<std::string>& objects) -> void
 {
-    const auto objectNames = scene.objects | std::ranges::views::transform(&panda::gfx::vulkan::Object::getName);
-    const auto directionalLightNames =
-        scene.lights.directionalLights | std::ranges::views::transform(&panda::gfx::BaseLight::name);
-    const auto pointLightNames = scene.lights.pointLights | std::ranges::views::transform(&panda::gfx::BaseLight::name);
-    const auto spotLightNames = scene.lights.spotLights | std::ranges::views::transform(&panda::gfx::BaseLight::name);
+    const auto& currentName = objects[static_cast<size_t>(_currentObject)];
+    _currentObject = std::max(_currentObject - 1, 0);
 
-    const auto size =
-        objectNames.size() + directionalLightNames.size() + pointLightNames.size() + spotLightNames.size();
-    auto result = std::vector<std::string> {};
-    result.reserve(size);
-
-    std::ranges::copy(objectNames, std::back_inserter(result));
-    std::ranges::copy(directionalLightNames, std::back_inserter(result));
-    std::ranges::copy(pointLightNames, std::back_inserter(result));
-    std::ranges::copy(spotLightNames, std::back_inserter(result));
-
-    return result;
+    const auto objectIt = std::ranges::find(scene.objects, currentName, &panda::gfx::vulkan::Object::getName);
+    if (objectIt != std::ranges::end(scene.objects))
+    {
+        scene.objects.erase(objectIt);
+        return;
+    }
+    const auto directionalLightIt =
+        std::ranges::find(scene.lights.directionalLights, currentName, &panda::gfx::BaseLight::name);
+    if (directionalLightIt != std::ranges::end(scene.lights.directionalLights))
+    {
+        scene.lights.directionalLights.erase(directionalLightIt);
+        return;
+    }
+    const auto pointLightIt = std::ranges::find(scene.lights.pointLights, currentName, &panda::gfx::BaseLight::name);
+    if (pointLightIt != std::ranges::end(scene.lights.pointLights))
+    {
+        scene.lights.pointLights.erase(pointLightIt);
+        return;
+    }
+    const auto spotLightIt = std::ranges::find(scene.lights.spotLights, currentName, &panda::gfx::BaseLight::name);
+    if (spotLightIt != std::ranges::end(scene.lights.spotLights))
+    {
+        scene.lights.spotLights.erase(spotLightIt);
+    }
 }
 
+auto UserGui::addLight(panda::gfx::vulkan::Scene& scene, const std::vector<std::string>& objects) -> void
+{
+    static constexpr auto lightsNames = std::array {"Directional", "Point", "Spot"};
+    ImGui::Combo("Light", &_currentLight, lightsNames.data(), lightsNames.size());
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Add light"))
+    {
+        switch (_currentLight)
+        {
+        case 0:
+            if (scene.lights.directionalLights.size() >= panda::gfx::maxLights)
+            {
+                panda::log::Warning("Can't add more directional lights. Max number is {}", panda::gfx::maxLights);
+            }
+            else
+            {
+                scene.lights.directionalLights.push_back(panda::gfx::DirectionalLight {
+                    panda::gfx::makeColorLight(utils::getUniqueName("DirectionalLight", objects),
+                                               {1, 1,  1},
+                                               0.F,
+                                               0.8F,
+                                               1.F,
+                                               0.1F),
+                    {0, -1, 0},
+                });
+            }
+            break;
+        case 1:
+            if (scene.lights.pointLights.size() >= panda::gfx::maxLights)
+            {
+                panda::log::Warning("Can't add more point lights. Max number is {}", panda::gfx::maxLights);
+            }
+            else
+            {
+                scene.lights.pointLights.push_back(panda::gfx::PointLight {
+                    panda::gfx::makeColorLight(utils::getUniqueName("PointLight", objects),
+                                               {1,   1,     1     },
+                                               0.F,
+                                               0.8F,
+                                               1.F,
+                                               0.1F),
+                    {0,   0,     0     },
+                    {1.F, 0.05F, 0.005F}
+                });
+            }
+            break;
+        case 2:
+            if (scene.lights.spotLights.size() >= panda::gfx::maxLights)
+            {
+                panda::log::Warning("Can't add more spot lights. Max number is {}", panda::gfx::maxLights);
+            }
+            else
+            {
+                scene.lights.spotLights.push_back(panda::gfx::SpotLight {
+                    {panda::gfx::makeColorLight(utils::getUniqueName("SpotLight", objects),
+                     {1, 1, 1},
+                     0.F, 0.8F,
+                     1.F, 0.1F),
+                     {0.F, -5.F, 0.F},
+                     {1.F, 0.05F, 0.005F}},
+                    {0.F, 1.F, 0.F},
+                    glm::cos(glm::radians(30.F))
+                });
+            }
+            break;
+        }
+    }
+}
 }

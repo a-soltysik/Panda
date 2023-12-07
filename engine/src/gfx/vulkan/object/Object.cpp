@@ -93,8 +93,8 @@ auto getVertices(const aiMesh& mesh, std::vector<panda::gfx::vulkan::Vertex>& ve
     for (auto i = uint32_t {}; i < mesh.mNumVertices; i++)
     {
         auto vertex = panda::gfx::vulkan::Vertex {};
-        vertex.position = std::bit_cast<glm::vec3>(meshVertices[i]);
-        vertex.normal = std::bit_cast<glm::vec3>(meshNormals[i]);
+        vertex.position = glm::rotateX(std::bit_cast<glm::vec3>(meshVertices[i]), glm::pi<float>());
+        vertex.normal = glm::rotateX(std::bit_cast<glm::vec3>(meshNormals[i]), glm::pi<float>());
         if (mesh.HasTextureCoords(0))
         {
             vertex.uv = {meshTexCoords[i].x, 1.F - meshTexCoords[i].y};
@@ -110,7 +110,11 @@ auto getTextureFromMaterial(const Context& context, const aiMaterial& material, 
 
     if (material.GetTexture(aiTextureType_DIFFUSE, 0, &textureFile) == aiReturn_SUCCESS)
     {
-        return std::make_unique<Texture>(context, parentPath / std::filesystem::path {textureFile.C_Str()});
+        auto texture = Texture::fromFile(context, parentPath / std::filesystem::path {textureFile.C_Str()});
+        if (texture)
+        {
+            return texture;
+        }
     }
 
     auto color = aiColor4D {};

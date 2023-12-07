@@ -1,8 +1,14 @@
 #pragma once
 
+#include <imgui.h>
+#include <panda/gfx/vulkan/Scene.h>
+
 #include <charconv>
+#include <cmath>
+#include <iomanip>
 #include <optional>
 #include <ranges>
+#include <sstream>
 
 namespace app::utils
 {
@@ -97,5 +103,9 @@ auto toString(std::floating_point auto number, int32_t precision) -> std::string
     stream << std::fixed << std::setprecision(precision) << number;
     return stream.str();
 }
+
+auto getNamesFromScene(const panda::gfx::vulkan::Scene& scene) -> std::vector<std::string>;
+
+auto getUniqueName(const std::string& name, const std::vector<std::string>& names) -> std::string;
 
 }

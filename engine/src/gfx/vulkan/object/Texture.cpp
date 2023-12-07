@@ -1,3 +1,8 @@
+#if defined(__GNUC__) && !defined(NDEBUG) && defined(__OPTIMIZE__)
+#    warning "Undefing __OPTIMIZE__ because of fmt"
+#    undef __OPTIMIZE__
+#endif
+
 #define STB_IMAGE_IMPLEMENTATION
 
 #include "panda/gfx/vulkan/object/Texture.h"
@@ -107,20 +112,6 @@ auto createTextureSampler(const Device& device) -> vk::Sampler
 }
 }
 
-Texture::Texture(const Context& context, const std::filesystem::path& path)
-    : _context {context}
-{
-    auto width = int {};
-    auto height = int {};
-    auto channels = int {};
-    auto* pixels = stbi_load(path.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
-    const auto size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
-    const auto data = std::span {pixels, size};
-
-    load(std::vector<char> {data.begin(), data.end()}, width, height);
-    stbi_image_free(pixels);
-}
-
 Texture::~Texture()
 {
     _context.getDevice().logicalDevice.destroy(_sampler);
@@ -213,5 +204,26 @@ auto Texture::load(std::span<const char> data, size_t width, size_t height) -> v
 
     _imageView = createTextureImageView(_context.getDevice(), _image);
     _sampler = createTextureSampler(_context.getDevice());
+}
+
+auto Texture::fromFile(const Context& context, const std::filesystem::path& path) -> std::unique_ptr<Texture>
+{
+    auto width = int {};
+    auto height = int {};
+    auto channels = int {};
+    auto* pixels = stbi_load(path.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+
+    if (!shouldBe(pixels, fmt::format("Failed to read the texture file: {}", path.string())))
+    {
+        return {};
+    }
+
+    const auto size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+    const auto data = std::span {pixels, size};
+
+    auto texture = std::make_unique<Texture>(context, std::vector<char> {data.begin(), data.end()}, width, height);
+    stbi_image_free(pixels);
+
+    return texture;
 }
 }
