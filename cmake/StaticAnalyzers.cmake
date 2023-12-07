@@ -13,31 +13,32 @@ macro(PD_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS EXT_DIR)
             # style should enable the other 3, but we'll be explicit just in case
             message("${CMAKE_CURRENT_SOURCE_DIR}")
             set(CMAKE_CXX_CPPCHECK
-                ${CPPCHECK}
-                --template=${CPPCHECK_TEMPLATE}
-                --enable=style,performance,warning,portability
-                --inline-suppr
-                # We cannot act on a bug/missing feature of cppcheck
-                --suppress=cppcheckError
-                --suppress=internalAstError
-                # if a file does not have an internalAstError, we get an unmatchedSuppression error
-                --suppress=unmatchedSuppression
-                # noisy and incorrect sometimes
-                --suppress=passedByValue
-                # ignores code that cppcheck thinks is invalid C++
-                --suppress=syntaxError
-                --suppress=preprocessorErrorDirective
-                --suppress=*:${EXT_DIR}\*
-                --inconclusive)
+                    ${CPPCHECK}
+                    --template=${CPPCHECK_TEMPLATE}
+                    --enable=style,performance,warning,portability
+                    --inline-suppr
+                    # We cannot act on a bug/missing feature of cppcheck
+                    --suppress=cppcheckError
+                    --suppress=internalAstError
+                    # if a file does not have an internalAstError, we get an unmatchedSuppression error
+                    --suppress=unmatchedSuppression
+                    # noisy and incorrect sometimes
+                    --suppress=passedByValue
+                    # ignores code that cppcheck thinks is invalid C++
+                    --suppress=syntaxError
+                    --suppress=preprocessorErrorDirective
+                    --suppress=*:${EXT_DIR}\*
+                    --suppress=*:*\_deps\*
+                    --inconclusive)
         else ()
             # if the user provides a CPPCHECK_OPTIONS with a template specified, it will override this template
             set(CMAKE_CXX_CPPCHECK ${CPPCHECK} --template=${CPPCHECK_TEMPLATE} ${CPPCHECK_OPTIONS})
         endif ()
 
         if (NOT
-            "${CMAKE_CXX_STANDARD}"
-            STREQUAL
-            "")
+                "${CMAKE_CXX_STANDARD}"
+                STREQUAL
+                "")
             set(CMAKE_CXX_CPPCHECK ${CMAKE_CXX_CPPCHECK} --std=c++${CMAKE_CXX_STANDARD})
         endif ()
         if (${WARNINGS_AS_ERRORS})
@@ -68,16 +69,16 @@ macro(PD_enable_clang_tidy target WARNINGS_AS_ERRORS)
 
         # construct the clang-tidy command line
         set(CLANG_TIDY_OPTIONS
-            ${CLANGTIDY}
-            -extra-arg=-Wno-unknown-warning-option
-            -extra-arg=-Wno-ignored-optimization-argument
-            -extra-arg=-Wno-unused-command-line-argument
-            -p)
+                ${CLANGTIDY}
+                -extra-arg=-Wno-unknown-warning-option
+                -extra-arg=-Wno-ignored-optimization-argument
+                -extra-arg=-Wno-unused-command-line-argument
+                -p)
         # set standard
         if (NOT
-            "${CMAKE_CXX_STANDARD}"
-            STREQUAL
-            "")
+                "${CMAKE_CXX_STANDARD}"
+                STREQUAL
+                "")
             if ("${CLANG_TIDY_OPTIONS_DRIVER_MODE}" STREQUAL "cl")
                 set(CLANG_TIDY_OPTIONS ${CLANG_TIDY_OPTIONS} -extra-arg=/std:c++${CMAKE_CXX_STANDARD})
             else ()
