@@ -293,8 +293,6 @@ auto Context::makeFrame(float deltaTime, Scene& scene) -> void
         {},
         {},
         {0.1F, 0.1F, 0.1F},
-        {},
-        {}
     };
 
     _pointLightSystem->update(scene.lights, fragUbo);

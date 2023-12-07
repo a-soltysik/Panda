@@ -128,7 +128,8 @@ App::App()
             return;
         }
 
-        auto object = panda::gfx::vulkan::Object {getCorrectObjectName(newMeshAddedData.fileName)};
+        auto object = panda::gfx::vulkan::Object {
+            utils::getUniqueName(newMeshAddedData.fileName, utils::getNamesFromScene(_scene))};
         object.surfaces = panda::gfx::vulkan::Object::loadSurfaces(*_api, newMeshAddedData.fileName);
         _scene.objects.push_back(std::move(object));
     });
@@ -139,8 +140,8 @@ auto App::run() -> int
     initializeLogger();
     registerSignalHandlers();
 
-    static constexpr auto defaultWidth = uint32_t {1280};
-    static constexpr auto defaultHeight = uint32_t {720};
+    static constexpr auto defaultWidth = uint32_t {1920};
+    static constexpr auto defaultHeight = uint32_t {1080};
     _window = std::make_unique<GlfwWindow>(glm::uvec2 {defaultWidth, defaultHeight}, config::appName.data());
     _api = std::make_unique<panda::gfx::vulkan::Context>(*_window);
 
@@ -155,7 +156,7 @@ auto App::mainLoop() -> void
 
     auto cameraObject = panda::gfx::vulkan::Object {"Camera"};
 
-    cameraObject.transform.translation = {0, 1, -5};
+    cameraObject.transform.translation = {0, 0.5, -5};
     _scene.camera.setViewYXZ(panda::gfx::view::YXZ {.position = cameraObject.transform.translation,
                                                     .rotation = cameraObject.transform.rotation});
 
@@ -220,16 +221,16 @@ void App::setDefaultScene()
 
     auto object = panda::gfx::vulkan::Object {"Road"};
     object.surfaces = roadMesh;
-    object.transform.translation = {0, -0.3F, 0};
-    object.transform.rotation = {0, glm::half_pi<float>() + glm::quarter_pi<float>(), 0};
+    object.transform.translation = {};
+    object.transform.rotation = {glm::pi<float>(), -glm::quarter_pi<float>(), 0};
     object.transform.scale = {1.F, 1.F, 1.F};
 
     _scene.objects.push_back(std::move(object));
 
     object = panda::gfx::vulkan::Object {"F1"};
     object.surfaces = f1Mesh;
-    object.transform.rotation = {0, glm::quarter_pi<float>(), 3.142};
-    object.transform.translation = {};
+    object.transform.rotation = {0, glm::quarter_pi<float>() + glm::pi<float>(), 0};
+    object.transform.translation = {0, 0.3F, 0};
     object.transform.scale = {0.01, 0.01, 0.01};
     _scene.objects.push_back(std::move(object));
 
@@ -246,35 +247,6 @@ void App::setDefaultScene()
          0.F, 0.8F, 1.F, 0.1F),
         {-6.2F, -2.F, 0  },
     });
-}
-
-auto App::getCorrectObjectName(const std::string& name) -> std::string
-{
-    const auto objectNames = _scene.objects | std::ranges::views::transform(&panda::gfx::vulkan::Object::getName);
-    const auto it = std::ranges::find(objectNames, name);
-
-    if (it == std::ranges::end(objectNames))
-    {
-        return name;
-    }
-
-    const auto prefix = name + '#';
-    auto maxNumber = uint32_t {1};
-    for (const auto& currentName : objectNames)
-    {
-        const auto nameView = std::string_view {currentName};
-        const auto position = nameView.find(prefix);
-        if (position != std::string::npos)
-        {
-            const auto number = nameView.substr(position + prefix.size());
-            const auto numberValue = utils::toNumber<uint32_t>(number);
-            if (numberValue.has_value())
-            {
-                maxNumber = std::max(maxNumber, numberValue.value() + 1);
-            }
-        }
-    }
-    return prefix + utils::toString(maxNumber);
 }
 
 }

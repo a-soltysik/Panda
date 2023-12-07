@@ -32,16 +32,16 @@ struct FragUbo
 {
     template <typename T>
     using LightArray = std::array<T, 5>;
-    PD_ALIGN(glm::mat4) inverseView {1.f};
+    glm::mat4 inverseView {1.f};
 
     //PD_ALIGN(UboMaterial) material;
-    PD_ALIGN(LightArray<UboPointLight>) pointLights;
-    PD_ALIGN(LightArray<UboDirectionalLight>) directionalLights;
-    PD_ALIGN(LightArray<UboSpotLight>) spotLights;
-    PD_ALIGN(glm::vec3) ambientColor;
-    PD_ALIGN(uint32_t) activePointLights;
-    PD_ALIGN(uint32_t) activeDirectionalLights;
-    PD_ALIGN(uint32_t) activeSpotLights;
+    LightArray<UboPointLight> pointLights;
+    LightArray<UboDirectionalLight> directionalLights;
+    LightArray<UboSpotLight> spotLights;
+    glm::vec3 ambientColor;
+    uint32_t activePointLights;
+    uint32_t activeDirectionalLights;
+    uint32_t activeSpotLights;
 };
 
 }

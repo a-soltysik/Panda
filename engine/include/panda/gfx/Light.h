@@ -5,6 +5,8 @@
 namespace panda::gfx
 {
 
+inline constexpr auto maxLights = size_t {5};
+
 struct Attenuation
 {
     float constant;
@@ -38,25 +40,11 @@ struct SpotLight : public PointLight
     float cutOff;
 };
 
-struct Material
-{
-    glm::vec3 ambient;
-    glm::vec3 diffuse;
-    glm::vec3 specular;
-    float shininess;
-};
-
 inline auto makeColorLight(
     const std::string& name, glm::vec3 color, float ambient, float diffuse, float specular, float intensity = 1.f)
     -> BaseLight
 {
     return {name, color * ambient, color * diffuse, color * specular, intensity};
-}
-
-constexpr auto makeColorMaterial(glm::vec3 color, float ambient, float diffuse, float specular, float shininess = 1.f)
-    -> Material
-{
-    return {color * ambient, color * diffuse, color * specular, shininess};
 }
 
 struct Lights
