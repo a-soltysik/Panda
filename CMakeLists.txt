@@ -60,4 +60,5 @@ if (PD_BUILD_APP)
     add_subdirectory(${APP_DIR})
 endif ()
 
+include(cmake/Utils.cmake)
 setup_msvc_if_needed()
