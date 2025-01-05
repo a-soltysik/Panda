@@ -84,9 +84,9 @@ auto Device::findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface
 
 auto Device::querySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> SwapChainSupportDetails
 {
-    return {device.getSurfaceCapabilitiesKHR(surface).value,
-            device.getSurfaceFormatsKHR(surface).value,
-            device.getSurfacePresentModesKHR(surface).value};
+    return {.capabilities = device.getSurfaceCapabilitiesKHR(surface).value,
+            .formats = device.getSurfaceFormatsKHR(surface).value,
+            .presentationModes = device.getSurfacePresentModesKHR(surface).value};
 }
 
 auto Device::checkDeviceExtensionSupport(vk::PhysicalDevice device, std::span<const char* const> requiredExtensions)

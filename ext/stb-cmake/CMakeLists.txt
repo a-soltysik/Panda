@@ -24,10 +24,3 @@ install(FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/stb_image.h
         DESTINATION include
 )
-
-#install(
-#        EXPORT ${PROJECT_NAME}_target
-#        NAMESPACE ${PROJECT_NAME}::
-#        FILE ${PROJECT_NAME}-targets.cmake
-#        DESTINATION share/${PROJECT_NAME}
-#)

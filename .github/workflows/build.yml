@@ -52,5 +52,7 @@ jobs:
         run: >-
           cmake -B ${{github.workspace}}/build
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+          -DPD_BUILD_APP=ON
+          -DGLFW_BUILD_WAYLAND=OFF
       - name: Build
         run: 'cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}'

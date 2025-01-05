@@ -67,20 +67,21 @@ auto RenderSystem::createPipeline(const Device& device, vk::RenderPass renderPas
     const auto depthStencilInfo =
         vk::PipelineDepthStencilStateCreateInfo {{}, VK_TRUE, VK_TRUE, vk::CompareOp::eLess, VK_FALSE, VK_FALSE};
 
-    return std::make_unique<Pipeline>(device,
-                                      PipelineConfig {config::shaderPath / "basic.vert.spv",
-                                                      config::shaderPath / "basic.frag.spv",
-                                                      {Vertex::getBindingDescription()},
-                                                      utils::fromArray(Vertex::getAttributeDescriptions()),
-                                                      inputAssemblyInfo,
-                                                      viewportInfo,
-                                                      rasterizationInfo,
-                                                      multisamplingInfo,
-                                                      colorBlendInfo,
-                                                      depthStencilInfo,
-                                                      pipelineLayout,
-                                                      renderPass,
-                                                      0});
+    return std::make_unique<Pipeline>(
+        device,
+        PipelineConfig {.vertexShaderPath = config::shaderPath / "basic.vert.spv",
+                        .fragmentShaderPath = config::shaderPath / "basic.frag.spv",
+                        .vertexBindingDescriptions = {Vertex::getBindingDescription()},
+                        .vertexAttributeDescriptions = utils::fromArray(Vertex::getAttributeDescriptions()),
+                        .inputAssemblyInfo = inputAssemblyInfo,
+                        .viewportInfo = viewportInfo,
+                        .rasterizationInfo = rasterizationInfo,
+                        .multisamplingInfo = multisamplingInfo,
+                        .colorBlendInfo = colorBlendInfo,
+                        .depthStencilInfo = depthStencilInfo,
+                        .pipelineLayout = pipelineLayout,
+                        .renderPass = renderPass,
+                        .subpass = 0});
 }
 
 auto RenderSystem::createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout
@@ -102,7 +103,8 @@ auto RenderSystem::render(const FrameInfo& frameInfo, std::span<const Object> ob
 
     for (const auto& object : objects)
     {
-        const auto push = PushConstantData {object.transform.mat4(), object.transform.normalMatrix()};
+        const auto push =
+            PushConstantData {.modelMatrix = object.transform.mat4(), .normalMatrix = object.transform.normalMatrix()};
 
         frameInfo.commandBuffer.pushConstants<PushConstantData>(
             _pipelineLayout,

@@ -8,43 +8,45 @@ if (APPLE)
     enable_language(OBJCXX)
 endif ()
 
-add_library(${PROJECT_NAME} "")
+CPMAddPackage("gh:epezent/implot@0.16")
+
+add_library(${PROJECT_NAME})
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_include_directories(
-    ${PROJECT_NAME}
-    PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/implot>
-    $<INSTALL_INTERFACE:include>
+        ${PROJECT_NAME}
+        PUBLIC
+        $<BUILD_INTERFACE:${implot_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:include>
 )
 
 target_sources(
-    ${PROJECT_NAME}
-    PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/implot/implot.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/implot/implot_demo.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/implot/implot_items.cpp
+        ${PROJECT_NAME}
+        PRIVATE
+        ${implot_SOURCE_DIR}/implot.cpp
+        ${implot_SOURCE_DIR}/implot_demo.cpp
+        ${implot_SOURCE_DIR}/implot_items.cpp
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 
 install(
-    TARGETS ${PROJECT_NAME}
-    EXPORT ${PROJECT_NAME}_target
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
+        TARGETS ${PROJECT_NAME}
+        EXPORT ${PROJECT_NAME}_target
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
 )
 
 install(FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/implot/implot.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/implot/implot_internal.h
+        ${implot_SOURCE_DIR}/implot.h
+        ${implot_SOURCE_DIR}/implot_internal.h
         DESTINATION include
 )
 
 install(
-    EXPORT ${PROJECT_NAME}_target
-    NAMESPACE ${PROJECT_NAME}::
-    FILE ${PROJECT_NAME}-targets.cmake
-    DESTINATION share/${PROJECT_NAME}
+        EXPORT ${PROJECT_NAME}_target
+        NAMESPACE ${PROJECT_NAME}::
+        FILE ${PROJECT_NAME}-targets.cmake
+        DESTINATION share/${PROJECT_NAME}
 )

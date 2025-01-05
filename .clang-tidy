@@ -14,6 +14,7 @@ Checks: "*,
         -modernize-pass-by-value
         -readability-identifier-length,
         -readability-magic-numbers,
+        -readability-identifier-length
 "
 
 WarningsAsErrors: ''

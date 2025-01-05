@@ -67,19 +67,19 @@ auto LightSystem::createPipeline(const Device& device, vk::RenderPass renderPass
         vk::PipelineDepthStencilStateCreateInfo {{}, VK_TRUE, VK_TRUE, vk::CompareOp::eLess, VK_FALSE, VK_FALSE};
 
     return std::make_unique<Pipeline>(device,
-                                      PipelineConfig {config::shaderPath / "pointLight.vert.spv",
-                                                      config::shaderPath / "pointLight.frag.spv",
-                                                      {},
-                                                      {},
-                                                      inputAssemblyInfo,
-                                                      viewportInfo,
-                                                      rasterizationInfo,
-                                                      multisamplingInfo,
-                                                      colorBlendInfo,
-                                                      depthStencilInfo,
-                                                      pipelineLayout,
-                                                      renderPass,
-                                                      0});
+                                      PipelineConfig {.vertexShaderPath = config::shaderPath / "pointLight.vert.spv",
+                                                      .fragmentShaderPath = config::shaderPath / "pointLight.frag.spv",
+                                                      .vertexBindingDescriptions = {},
+                                                      .vertexAttributeDescriptions = {},
+                                                      .inputAssemblyInfo = inputAssemblyInfo,
+                                                      .viewportInfo = viewportInfo,
+                                                      .rasterizationInfo = rasterizationInfo,
+                                                      .multisamplingInfo = multisamplingInfo,
+                                                      .colorBlendInfo = colorBlendInfo,
+                                                      .depthStencilInfo = depthStencilInfo,
+                                                      .pipelineLayout = pipelineLayout,
+                                                      .renderPass = renderPass,
+                                                      .subpass = 0});
 }
 
 auto LightSystem::createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout
@@ -106,9 +106,9 @@ auto LightSystem::render(const FrameInfo& frameInfo, const Lights& lights) const
     for (const auto& light : lights.pointLights)
     {
         const auto pushConstant = LightPushConstants {
-            {light.position, 1.F            },
-            {light.diffuse,  light.intensity},
-            light.intensity / 10.F,
+            .position = {light.position, 1.F            },
+            .color = {light.diffuse,  light.intensity},
+            .radius = light.intensity / 10.F,
         };
         frameInfo.commandBuffer.pushConstants<LightPushConstants>(
             _pipelineLayout,
@@ -121,9 +121,9 @@ auto LightSystem::render(const FrameInfo& frameInfo, const Lights& lights) const
     for (const auto& light : lights.spotLights)
     {
         const auto pushConstant = LightPushConstants {
-            {light.position, 1.F            },
-            {light.diffuse,  light.intensity},
-            light.intensity / 10.F,
+            .position = {light.position, 1.F            },
+            .color = {light.diffuse,  light.intensity},
+            .radius = light.intensity / 10.F,
         };
         frameInfo.commandBuffer.pushConstants<LightPushConstants>(
             _pipelineLayout,

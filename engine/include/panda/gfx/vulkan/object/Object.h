@@ -22,7 +22,7 @@ public:
 
     static auto loadSurfaces(Context& context, const std::filesystem::path& path) -> std::vector<Surface>;
 
-    explicit Object(const std::string& name);
+    explicit Object(std::string name);
     PD_MOVE_ONLY(Object);
     ~Object() noexcept = default;
 

@@ -9,7 +9,10 @@ inline constexpr auto projectName = std::string_view {"@PROJECT_NAME@"};
 inline constexpr auto appName = std::string_view {"@APP_TARGET_NAME@"};
 inline constexpr auto resourceDir = std::string_view {"@RESOURCE_DIR@"};
 
-inline constexpr auto isDebug = bool{PD_DEBUG == 1};
-inline constexpr auto isRelease = bool{PD_RELEASE == 1};
+#if defined(NDEBUG)
+inline constexpr auto isDebug = false;
+#else
+inline constexpr auto isDebug = true;
+#endif
 
 }

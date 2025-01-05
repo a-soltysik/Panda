@@ -78,14 +78,12 @@ auto Profiler::getCurrentTimeInfo() -> Profiler::TimeInfo
 
     const auto currentTime = times(&timeSample);
 
-    return {currentTime, timeSample.tms_stime, timeSample.tms_utime};
+    return {.idle = currentTime, .system = timeSample.tms_stime, .user = timeSample.tms_utime};
 }
 
 auto Profiler::getMemoryInfo() -> struct sysinfo
 {
-    struct sysinfo memoryInfo
-    {
-    };
+    struct sysinfo memoryInfo {};
 
     sysinfo(&memoryInfo);
 

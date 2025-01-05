@@ -75,13 +75,13 @@ auto DevGui::renderLogger() -> void
     ImGui::Checkbox("Anchor logs", &_anchorLogs);
     if (ImGui::BeginChild("Logger",
                           ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y),
-                          true,
+                          static_cast<int>(true),
                           ImGuiWindowFlags_AlwaysHorizontalScrollbar))
     {
         for (auto i = uint32_t {}; i < _logs.size(); i++)
         {
             //NOLINTBEGIN(cppcoreguidelines-pro-type-vararg, hicpp-vararg)
-            ImGui::Text("%s %s", getLevelTag(_logs[i].level).data(), _logs[i].message.c_str());
+            ImGui::Text("%s %s", std::string {getLevelTag(_logs[i].level)}.data(), _logs[i].message.c_str());
             //NOLINTEND(cppcoreguidelines-pro-type-vararg, hicpp-vararg)
             if (_anchorLogs && i == _logs.size() - 1)
             {

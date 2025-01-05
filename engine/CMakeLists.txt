@@ -1,15 +1,24 @@
 set(ENGINE_TARGET_NAME ${PROJECT_NAME}.Engine)
-set(CONFIG_OUTPUT ${CMAKE_BINARY_DIR}/engine/generated)
+set(CONFIG_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 file(GLOB_RECURSE ${ENGINE_TARGET_NAME}_SRC_LIST
         src/*.cpp
 )
 
-add_library(${ENGINE_TARGET_NAME} STATIC ${${ENGINE_TARGET_NAME}_SRC_LIST})
+file(GLOB_RECURSE ${ENGINE_TARGET_NAME}_INC_LIST
+        include/*.h
+)
+
+add_library(${ENGINE_TARGET_NAME})
 add_library(PD::Engine ALIAS ${ENGINE_TARGET_NAME})
 
-target_include_directories(${ENGINE_TARGET_NAME} PUBLIC include)
-target_include_directories(${ENGINE_TARGET_NAME} PUBLIC ${CONFIG_OUTPUT})
+target_sources(${ENGINE_TARGET_NAME} PRIVATE ${${ENGINE_TARGET_NAME}_SRC_LIST})
+
+target_include_directories(${ENGINE_TARGET_NAME} PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CONFIG_OUTPUT}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
 find_package(Vulkan REQUIRED)
 target_link_system_libraries(

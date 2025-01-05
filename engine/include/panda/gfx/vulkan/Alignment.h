@@ -15,9 +15,7 @@ namespace internal
 
 template <typename T>
 concept UboStruct = requires {
-    {
-        T {}.alignment()
-    } -> std::convertible_to<size_t>;
+    { T {}.alignment() } -> std::convertible_to<size_t>;
     typename utils::ConstexprChecker<T {}.alignment()>;
 };
 
