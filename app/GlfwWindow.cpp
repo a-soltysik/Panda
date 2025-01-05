@@ -13,7 +13,7 @@ void framebufferResizeCallback(GLFWwindow* window, int width, int height)
     const auto id = app::GlfwWindow::makeId(window);
     panda::log::Info("Size of window [{}] changed to {}x{}", id, width, height);
 
-    sender(panda::utils::signals::FrameBufferResizedData {id, width, height});
+    sender(panda::utils::signals::FrameBufferResizedData {.id = id, .x = width, .y = height});
 }
 
 }

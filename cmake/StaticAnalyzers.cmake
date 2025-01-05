@@ -1,4 +1,4 @@
-macro(PD_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS EXT_DIR)
+macro(PD_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS)
     find_program(CPPCHECK cppcheck)
     if (CPPCHECK)
 
@@ -27,7 +27,6 @@ macro(PD_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS EXT_DIR)
                     # ignores code that cppcheck thinks is invalid C++
                     --suppress=syntaxError
                     --suppress=preprocessorErrorDirective
-                    --suppress=*:${EXT_DIR}\*
                     --suppress=*:*\_deps\*
                     --inconclusive)
         else ()

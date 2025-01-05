@@ -75,7 +75,7 @@ auto Camera::setViewDirection(const view::Direction& view) -> void
 
 auto Camera::setViewTarget(const view::Target& view) -> void
 {
-    setViewDirection({view.position, view.target - view.position, view.up});
+    setViewDirection({.position = view.position, .direction = view.target - view.position, .up = view.up});
 }
 
 auto Camera::setViewYXZ(const view::YXZ& view) -> void
@@ -88,8 +88,8 @@ auto Camera::setViewYXZ(const view::YXZ& view) -> void
     const auto s2 = glm::sin(view.rotation.x);
     const auto c1 = glm::cos(view.rotation.y);
     const auto s1 = glm::sin(view.rotation.y);
-    const auto u = glm::vec3 {(c1 * c3 + s1 * s2 * s3), (c2 * s3), (c1 * s2 * s3 - c3 * s1)};
-    const auto v = glm::vec3 {(c3 * s1 * s2 - c1 * s3), (c2 * c3), (c1 * c3 * s2 + s1 * s3)};
+    const auto u = glm::vec3 {((c1 * c3) + (s1 * s2 * s3)), (c2 * s3), ((c1 * s2 * s3) - (c3 * s1))};
+    const auto v = glm::vec3 {((c3 * s1 * s2) - (c1 * s3)), (c2 * c3), ((c1 * c3 * s2) + (s1 * s3))};
     const auto w = glm::vec3 {(c2 * s1), (-s2), (c1 * c2)};
     _viewMatrix = glm::mat4 {1.F};
     _viewMatrix[0][0] = u.x;

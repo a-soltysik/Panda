@@ -10,3 +10,6 @@ out
 
 # VS specific file
 CMakeSettings.json
+
+# Cache
+.cache/

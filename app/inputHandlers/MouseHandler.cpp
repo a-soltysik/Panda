@@ -17,7 +17,8 @@ void mouseButtonStateChangedCallback(GLFWwindow* window, int key, int action, in
     panda::log::Debug("Mouse button state for window [{}] changed to {};{};{}", id, key, action, mods);
     if (!ImGui::GetIO().WantCaptureMouse)
     {
-        sender(app::utils::signals::MouseButtonStateChangedData {id, key, action, mods});
+        sender(
+            app::utils::signals::MouseButtonStateChangedData {.id = id, .button = key, .action = action, .mods = mods});
     }
 }
 
@@ -29,7 +30,7 @@ void cursorPositionChangedCallback(GLFWwindow* window, double x, double y)
 
     if (!ImGui::GetIO().WantCaptureMouse)
     {
-        sender(app::utils::signals::CursorPositionChangedData {id, x, y});
+        sender(app::utils::signals::CursorPositionChangedData {.id = id, .x = x, .y = y});
     }
 }
 
@@ -100,7 +101,7 @@ MouseHandler::MouseHandler(const GlfwWindow& window)
 
 auto MouseHandler::getButtonState(int button) const -> ButtonState
 {
-    const auto isCorrectButton = button < static_cast<int>(_states.size()) && button >= 0;
+    const auto isCorrectButton = static_cast<size_t>(button) < _states.size() && button >= 0;
 
     panda::expect(isCorrectButton, fmt::format("Button: {} is beyond the size of array", button));
 

@@ -15,7 +15,7 @@ class Context;
 class Mesh
 {
 public:
-    Mesh(const std::string& name,
+    Mesh(std::string name,
          const Device& device,
          std::span<const Vertex> vertices,
          std::span<const uint32_t> indices = {});

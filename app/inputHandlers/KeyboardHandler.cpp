@@ -18,7 +18,11 @@ void keyboardStateChangedCallback(GLFWwindow* window, int key, int scancode, int
 
     if (!ImGui::GetIO().WantCaptureKeyboard)
     {
-        sender(app::utils::signals::KeyboardStateChangedData {id, key, scancode, action, mods});
+        sender(app::utils::signals::KeyboardStateChangedData {.id = id,
+                                                              .key = key,
+                                                              .scancode = scancode,
+                                                              .action = action,
+                                                              .mods = mods});
     }
 }
 

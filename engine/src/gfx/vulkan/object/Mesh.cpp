@@ -8,12 +8,9 @@ namespace
 namespace panda::gfx::vulkan
 {
 
-Mesh::Mesh(const std::string& name,
-           const Device& device,
-           std::span<const Vertex> vertices,
-           std::span<const uint32_t> indices)
+Mesh::Mesh(std::string name, const Device& device, std::span<const Vertex> vertices, std::span<const uint32_t> indices)
     : _device {device},
-      _name {name},
+      _name {std::move(name)},
       _vertexBuffer {createVertexBuffer(_device, vertices)},
       _indexBuffer {createIndexBuffer(_device, indices)},
       _vertexCount {static_cast<uint32_t>(vertices.size())},

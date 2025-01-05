@@ -4,6 +4,7 @@
 #include <fmt/os.h>
 
 #include <chrono>
+#include <memory>
 #include <set>
 #include <source_location>
 #include <span>

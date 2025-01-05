@@ -24,8 +24,8 @@ struct FrameInfo
 
 struct VertUbo
 {
-    PD_ALIGN(glm::mat4) projection {1.f};
-    PD_ALIGN(glm::mat4) view {1.f};
+    PD_ALIGN(glm::mat4) projection { 1.f };
+    PD_ALIGN(glm::mat4) view { 1.f };
 };
 
 struct FragUbo

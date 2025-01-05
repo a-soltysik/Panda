@@ -39,7 +39,7 @@ auto UserGui::render(panda::gfx::vulkan::Scene& scene) -> void
         {
             panda::log::Info("Selected file: {}", file.result().front());
             utils::signals::newMeshAdded.registerSender()(
-                utils::signals::NewMeshAddedData {_window.getId(), file.result().front()});
+                utils::signals::NewMeshAddedData {.id = _window.getId(), .fileName = file.result().front()});
         }
     }
 
@@ -216,13 +216,13 @@ auto UserGui::addLight(panda::gfx::vulkan::Scene& scene, const std::vector<std::
             {
                 scene.lights.pointLights.push_back(panda::gfx::PointLight {
                     panda::gfx::makeColorLight(utils::getUniqueName("PointLight", objects),
-                                               {1,   1,     1     },
+                                               {1,               1,               1            },
                                                0.F,
                                                0.8F,
                                                1.F,
                                                0.1F),
-                    {0,   0,     0     },
-                    {1.F, 0.05F, 0.005F}
+                    {0,               0,               0            },
+                    {.constant = 1.F, .linear = 0.05F, .exp = 0.005F}
                 });
             }
             break;
@@ -239,11 +239,13 @@ auto UserGui::addLight(panda::gfx::vulkan::Scene& scene, const std::vector<std::
                      0.F, 0.8F,
                      1.F, 0.1F),
                      {0.F, -5.F, 0.F},
-                     {1.F, 0.05F, 0.005F}},
+                     {.constant = 1.F, .linear = 0.05F, .exp = 0.005F}},
                     {0.F, 1.F, 0.F},
                     glm::cos(glm::radians(30.F))
                 });
             }
+            break;
+        default:
             break;
         }
     }

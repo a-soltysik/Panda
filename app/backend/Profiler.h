@@ -15,23 +15,13 @@ namespace app::backend
 
 template <typename T>
 concept ProfilerImpl = requires(T profiler) {
-    {
-        profiler.getCurrentUsageInPercents()
-    } -> std::same_as<double>;
+    { profiler.getCurrentUsageInPercents() } -> std::same_as<double>;
 
-    {
-        profiler.getTotalVirtualMemory()
-    } -> std::same_as<size_t>;
-    {
-        profiler.getVirtualMemoryUsage()
-    } -> std::same_as<size_t>;
+    { profiler.getTotalVirtualMemory() } -> std::same_as<size_t>;
+    { profiler.getVirtualMemoryUsage() } -> std::same_as<size_t>;
 
-    {
-        profiler.getTotalPhysicalMemory()
-    } -> std::same_as<size_t>;
-    {
-        profiler.getPhysicalMemoryUsage()
-    } -> std::same_as<size_t>;
+    { profiler.getTotalPhysicalMemory() } -> std::same_as<size_t>;
+    { profiler.getPhysicalMemoryUsage() } -> std::same_as<size_t>;
 };
 
 template <ProfilerImpl T>

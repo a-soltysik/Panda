@@ -18,14 +18,14 @@ macro(PD_supports_sanitizers)
 endmacro()
 
 macro(PD_setup_options)
-    option(PD_BUILD_APP "Build app" ON)
+    option(PD_BUILD_APP "Build app" OFF)
     option(PD_ENABLE_HARDENING "Enable hardening" OFF)
     cmake_dependent_option(
-        PD_ENABLE_GLOBAL_HARDENING
-        "Attempt to push hardening options to built dependencies"
-        OFF
-        PD_ENABLE_HARDENING
-        OFF)
+            PD_ENABLE_GLOBAL_HARDENING
+            "Attempt to push hardening options to built dependencies"
+            OFF
+            PD_ENABLE_HARDENING
+            OFF)
 
     PD_supports_sanitizers()
 
@@ -61,19 +61,19 @@ macro(PD_setup_options)
 
     if (NOT PROJECT_IS_TOP_LEVEL)
         mark_as_advanced(
-            PD_ENABLE_IPO
-            PD_WARNINGS_AS_ERRORS
-            PD_ENABLE_USER_LINKER
-            PD_ENABLE_SANITIZER_ADDRESS
-            PD_ENABLE_SANITIZER_LEAK
-            PD_ENABLE_SANITIZER_UNDEFINED
-            PD_ENABLE_SANITIZER_THREAD
-            PD_ENABLE_SANITIZER_MEMORY
-            PD_ENABLE_CLANG_TIDY
-            PD_ENABLE_CPPCHECK
-            PD_ENABLE_IWYU
-            PD_ENABLE_CACHE
-            PD_ENABLE_PCH)
+                PD_ENABLE_IPO
+                PD_WARNINGS_AS_ERRORS
+                PD_ENABLE_USER_LINKER
+                PD_ENABLE_SANITIZER_ADDRESS
+                PD_ENABLE_SANITIZER_LEAK
+                PD_ENABLE_SANITIZER_UNDEFINED
+                PD_ENABLE_SANITIZER_THREAD
+                PD_ENABLE_SANITIZER_MEMORY
+                PD_ENABLE_CLANG_TIDY
+                PD_ENABLE_CPPCHECK
+                PD_ENABLE_IWYU
+                PD_ENABLE_CACHE
+                PD_ENABLE_PCH)
     endif ()
 endmacro()
 
@@ -88,10 +88,10 @@ macro(PD_global_options)
     if (PD_ENABLE_HARDENING AND PD_ENABLE_GLOBAL_HARDENING)
         include(cmake/Hardening.cmake)
         if (NOT SUPPORTS_UBSAN
-            OR PD_ENABLE_SANITIZER_UNDEFINED
-            OR PD_ENABLE_SANITIZER_ADDRESS
-            OR PD_ENABLE_SANITIZER_THREAD
-            OR PD_ENABLE_SANITIZER_LEAK)
+                OR PD_ENABLE_SANITIZER_UNDEFINED
+                OR PD_ENABLE_SANITIZER_ADDRESS
+                OR PD_ENABLE_SANITIZER_THREAD
+                OR PD_ENABLE_SANITIZER_LEAK)
             set(ENABLE_UBSAN_MINIMAL_RUNTIME FALSE)
         else ()
             set(ENABLE_UBSAN_MINIMAL_RUNTIME TRUE)
@@ -101,7 +101,7 @@ macro(PD_global_options)
     endif ()
 endmacro()
 
-macro(PD_local_options EXT_DIR)
+macro(PD_local_options)
     if (PROJECT_IS_TOP_LEVEL)
         include(cmake/StandardSettings.cmake)
     endif ()
@@ -111,12 +111,12 @@ macro(PD_local_options EXT_DIR)
 
     include(cmake/CompilerWarnings.cmake)
     PD_set_project_warnings(
-        PD_warnings
-        ${PD_WARNINGS_AS_ERRORS}
-        ""
-        ""
-        ""
-        "")
+            PD_warnings
+            ${PD_WARNINGS_AS_ERRORS}
+            ""
+            ""
+            ""
+            "")
 
     if (PD_ENABLE_USER_LINKER)
         include(cmake/Linker.cmake)
@@ -125,12 +125,12 @@ macro(PD_local_options EXT_DIR)
 
     include(cmake/Sanitizers.cmake)
     PD_enable_sanitizers(
-        PD_options
-        ${PD_ENABLE_SANITIZER_ADDRESS}
-        ${PD_ENABLE_SANITIZER_LEAK}
-        ${PD_ENABLE_SANITIZER_UNDEFINED}
-        ${PD_ENABLE_SANITIZER_THREAD}
-        ${PD_ENABLE_SANITIZER_MEMORY})
+            PD_options
+            ${PD_ENABLE_SANITIZER_ADDRESS}
+            ${PD_ENABLE_SANITIZER_LEAK}
+            ${PD_ENABLE_SANITIZER_UNDEFINED}
+            ${PD_ENABLE_SANITIZER_THREAD}
+            ${PD_ENABLE_SANITIZER_MEMORY})
 
     if (PD_ENABLE_CACHE)
         include(cmake/Cache.cmake)
@@ -143,8 +143,8 @@ macro(PD_local_options EXT_DIR)
     endif ()
 
     if (PD_ENABLE_CPPCHECK)
-        PD_enable_cppcheck(${PD_WARNINGS_AS_ERRORS} "" ${EXT_DIR}# override cppcheck options
-            )
+        PD_enable_cppcheck(${PD_WARNINGS_AS_ERRORS} ""# override cppcheck options
+        )
     endif ()
     if (PD_ENABLE_IWYU)
         PD_enable_include_what_you_use()
@@ -161,10 +161,10 @@ macro(PD_local_options EXT_DIR)
     if (PD_ENABLE_HARDENING AND NOT PD_ENABLE_GLOBAL_HARDENING)
         include(cmake/Hardening.cmake)
         if (NOT SUPPORTS_UBSAN
-            OR PD_ENABLE_SANITIZER_UNDEFINED
-            OR PD_ENABLE_SANITIZER_ADDRESS
-            OR PD_ENABLE_SANITIZER_THREAD
-            OR PD_ENABLE_SANITIZER_LEAK)
+                OR PD_ENABLE_SANITIZER_UNDEFINED
+                OR PD_ENABLE_SANITIZER_ADDRESS
+                OR PD_ENABLE_SANITIZER_THREAD
+                OR PD_ENABLE_SANITIZER_LEAK)
             set(ENABLE_UBSAN_MINIMAL_RUNTIME FALSE)
         else ()
             set(ENABLE_UBSAN_MINIMAL_RUNTIME TRUE)

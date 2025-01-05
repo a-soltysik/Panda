@@ -149,9 +149,9 @@ auto Context::createInstance(const Window& window) -> std::unique_ptr<vk::Instan
     const auto vkGetInstanceProcAddr = dynamicLoader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
-    const auto appInfo = vk::ApplicationInfo(config::projectName.data(),
+    const auto appInfo = vk::ApplicationInfo(std::string {config::projectName}.data(),
                                              VK_API_VERSION_1_0,
-                                             config::engineName.data(),
+                                             std::string {config::engineName}.data(),
                                              VK_API_VERSION_1_0,
                                              VK_API_VERSION_1_3);
 
@@ -283,19 +283,19 @@ auto Context::makeFrame(float deltaTime, Scene& scene) -> void
     auto frameIndex = _renderer->getFrameIndex();
 
     auto vertUbo = VertUbo {
-        scene.camera.getProjection(),
-        scene.camera.getView(),
+        .projection = scene.camera.getProjection(),
+        .view = scene.camera.getView(),
     };
 
     auto fragUbo = FragUbo {
-        scene.camera.getInverseView(),
-        {},
-        {},
-        {},
-        {0.1F, 0.1F, 0.1F},
+        .inverseView = scene.camera.getInverseView(),
+        .pointLights = {},
+        .directionalLights = {},
+        .spotLights = {},
+        .ambientColor = {0.1F, 0.1F, 0.1F},
     };
 
-    _pointLightSystem->update(scene.lights, fragUbo);
+    LightSystem::update(scene.lights, fragUbo);
     _uboVertBuffers[frameIndex]->writeAt(vertUbo, 0);
     _uboFragBuffers[frameIndex]->writeAt(fragUbo, 0);
     _renderer->beginSwapChainRenderPass();
@@ -321,7 +321,7 @@ auto Context::makeFrame(float deltaTime, Scene& scene) -> void
                               scene.lights);
 
     utils::signals::beginGuiRender.registerSender()(
-        utils::signals::BeginGuiRenderData {commandBuffer, std::ref(scene)});
+        utils::signals::BeginGuiRenderData {.commandBuffer = commandBuffer, .scene = std::ref(scene)});
 
     _renderer->endSwapChainRenderPass();
 
@@ -343,31 +343,26 @@ auto Context::initializeImGui() -> void
     _guiPool = DescriptorPool::Builder(*_device)
                    .addPoolSize(vk::DescriptorType::eCombinedImageSampler, maxFramesInFlight)
                    .build(maxFramesInFlight, vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
-    auto initInfo = ImGui_ImplVulkan_InitInfo {*_instance,
-                                               _device->physicalDevice,
-                                               _device->logicalDevice,
-                                               _device->queueFamilies.graphicsFamily,
-                                               _device->graphicsQueue,
-                                               {},
-                                               _guiPool->getHandle(),
-                                               0,
-                                               maxFramesInFlight,
-                                               maxFramesInFlight,
-                                               VK_SAMPLE_COUNT_1_BIT,
-                                               false,
-                                               VK_FORMAT_B8G8R8A8_SRGB,
-                                               {},
-                                               imGuiCallback};
+    auto initInfo = ImGui_ImplVulkan_InitInfo {.Instance = *_instance,
+                                               .PhysicalDevice = _device->physicalDevice,
+                                               .Device = _device->logicalDevice,
+                                               .QueueFamily = _device->queueFamilies.graphicsFamily,
+                                               .Queue = _device->graphicsQueue,
+                                               .DescriptorPool = _guiPool->getHandle(),
+                                               .RenderPass = _renderer->getSwapChainRenderPass(),
+                                               .MinImageCount = maxFramesInFlight,
+                                               .ImageCount = maxFramesInFlight,
+                                               .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+                                               .PipelineCache = {},
+                                               .Subpass = {},
+                                               .DescriptorPoolSize = {},
+                                               .UseDynamicRendering = false,
+                                               .PipelineRenderingCreateInfo = {},
+                                               .Allocator = {},
+                                               .CheckVkResultFn = imGuiCallback,
+                                               .MinAllocationSize = {}};
 
-    ImGui_ImplVulkan_Init(&initInfo, _renderer->getSwapChainRenderPass());
-
-    const auto commandBuffer = CommandBuffer::beginSingleTimeCommandBuffer(*_device);
-
-    ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
-
-    CommandBuffer::endSingleTimeCommandBuffer(*_device, commandBuffer);
-    shouldBe(_device->logicalDevice.waitIdle(), vk::Result::eSuccess, "Couldn't wait idle on logical device");
-    ImGui_ImplVulkan_DestroyFontUploadObjects();
+    ImGui_ImplVulkan_Init(&initInfo);
 }
 
 auto Context::registerMesh(std::unique_ptr<Mesh> mesh) -> void

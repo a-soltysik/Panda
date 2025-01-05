@@ -245,7 +245,7 @@ void App::setDefaultScene()
     _scene.lights.spotLights.push_back(panda::gfx::SpotLight {
         {panda::gfx::makeColorLight("SpotLight", {1.F, 1.F, 1.F}, 0.0F, 0.8F, 1.F, 1.F),
          {0.F, -5.F, 0.F},
-         {1.F, 0.05F, 0.005F}},
+         {.constant = 1.F, .linear = 0.05F, .exp = 0.005F}},
         {0.F, 1.F, 0.F},
         glm::cos(glm::radians(30.F))
     });
