@@ -1,12 +1,15 @@
-#include "panda/Common.h"
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <vulkan/vulkan.hpp>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 #include <backends/imgui_impl_vulkan.h>
 
-#include <algorithm>
+#include <vulkan/vulkan_enums.hpp>
 
-#include "panda/gfx/vulkan/CommandBuffer.h"
 #include "panda/gfx/vulkan/Context.h"
 #include "panda/utils/Signals.h"
 #include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"
@@ -17,31 +20,28 @@ namespace panda::gfx::vulkan
 namespace
 {
 
-VKAPI_ATTR auto VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                                         [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                         [[maybe_unused]] void* pUserData) -> VkBool32
+VKAPI_ATTR auto VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                                         [[maybe_unused]] vk::DebugUtilsMessageTypeFlagsEXT messageType,
+                                         const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                                         [[maybe_unused]] void* pUserData) -> vk::Bool32
 {
     switch (messageSeverity)
     {
-    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+    case vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose:
         log::Debug("{}", pCallbackData->pMessage);
         break;
-    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+    case vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo:
         log::Info("{}", pCallbackData->pMessage);
         break;
-    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+    case vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning:
         log::Warning("{}", pCallbackData->pMessage);
         break;
-    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+    case vk::DebugUtilsMessageSeverityFlagBitsEXT::eError:
         log::Error("{}", pCallbackData->pMessage);
-        break;
-    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT:
-        log::Debug("{}", pCallbackData->pMessage);
         break;
     }
 
-    return VK_FALSE;
+    return vk::False;
 }
 
 auto imGuiCallback(VkResult result) -> void
@@ -145,7 +145,7 @@ Context::~Context() noexcept
 
 auto Context::createInstance(const Window& window) -> std::unique_ptr<vk::Instance, InstanceDeleter>
 {
-    const auto dynamicLoader = vk::DynamicLoader {};
+    const auto dynamicLoader = vk::detail::DynamicLoader {};
     const auto vkGetInstanceProcAddr = dynamicLoader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
@@ -153,7 +153,7 @@ auto Context::createInstance(const Window& window) -> std::unique_ptr<vk::Instan
                                              VK_API_VERSION_1_0,
                                              std::string {config::engineName}.data(),
                                              VK_API_VERSION_1_0,
-                                             VK_API_VERSION_1_3);
+                                             VK_API_VERSION_1_4);
 
     const auto requiredExtensions = getRequiredExtensions(window);
 
@@ -241,7 +241,7 @@ auto Context::createDebugMessengerCreateInfo() noexcept -> vk::DebugUtilsMesseng
                                      | vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral             //
                                      | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation          //
                                      | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
-    return {{}, severityMask, typeMask, &debugCallback};
+    return {{}, severityMask, typeMask, debugCallback};
 }
 
 auto Context::areValidationLayersSupported() const -> bool

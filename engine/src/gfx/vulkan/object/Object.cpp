@@ -4,6 +4,7 @@
 #include <assimp/scene.h>
 
 #include <assimp/Importer.hpp>
+#include <glm/ext.hpp>
 
 #include "panda/gfx/vulkan/Context.h"
 
@@ -45,8 +46,9 @@ auto getVertices(const aiMesh& mesh, std::vector<panda::gfx::vulkan::Vertex>& ve
     }
 }
 
-auto getTextureFromMaterial(const Context& context, const aiMaterial& material, const std::filesystem::path& parentPath)
-    -> std::unique_ptr<Texture>
+auto getTextureFromMaterial(const Context& context,
+                            const aiMaterial& material,
+                            const std::filesystem::path& parentPath) -> std::unique_ptr<Texture>
 {
     auto textureFile = aiString {};
 
@@ -68,8 +70,9 @@ auto getTextureFromMaterial(const Context& context, const aiMaterial& material, 
     return Texture::getDefaultTexture(context);
 }
 
-auto getTextureCache(Context& context, const aiScene& scene, const std::filesystem::path& parentPath)
-    -> std::unordered_map<uint32_t, Texture*>
+auto getTextureCache(Context& context,
+                     const aiScene& scene,
+                     const std::filesystem::path& parentPath) -> std::unordered_map<uint32_t, Texture*>
 {
     auto result = std::unordered_map<uint32_t, Texture*> {};
 

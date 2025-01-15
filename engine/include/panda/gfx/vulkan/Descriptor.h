@@ -1,6 +1,11 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include <unordered_map>
+#include <vulkan/vulkan.hpp>
 
 #include "Device.h"
 
@@ -55,8 +60,8 @@ public:
     public:
         explicit Builder(const Device& device);
         [[nodiscard]] auto addPoolSize(vk::DescriptorType descriptorType, uint32_t count) -> Builder&;
-        [[nodiscard]] auto build(uint32_t maxSets, vk::DescriptorPoolCreateFlags flags = {})
-            -> std::unique_ptr<DescriptorPool>;
+        [[nodiscard]] auto build(uint32_t maxSets,
+                                 vk::DescriptorPoolCreateFlags flags = {}) -> std::unique_ptr<DescriptorPool>;
 
     private:
         const Device& _device;

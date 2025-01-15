@@ -21,8 +21,9 @@ public:
 
 private:
     static auto createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout;
-    static auto createPipeline(const Device& device, vk::RenderPass renderPass, vk::PipelineLayout pipelineLayout)
-        -> std::unique_ptr<Pipeline>;
+    static auto createPipeline(const Device& device,
+                               vk::RenderPass renderPass,
+                               vk::PipelineLayout pipelineLayout) -> std::unique_ptr<Pipeline>;
 
     const Device& _device;
     vk::PipelineLayout _pipelineLayout;

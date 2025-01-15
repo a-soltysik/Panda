@@ -1,7 +1,13 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include <optional>
 #include <unordered_set>
+#include <vector>
+#include <vulkan/vulkan.hpp>
 
 #include "panda/Common.h"
 
@@ -39,8 +45,8 @@ public:
     [[nodiscard]] auto findSupportedFormat(std::span<const vk::Format> candidates,
                                            vk::ImageTiling tiling,
                                            vk::FormatFeatureFlags features) const noexcept -> std::optional<vk::Format>;
-    [[nodiscard]] auto findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const noexcept
-        -> std::optional<uint32_t>;
+    [[nodiscard]] auto findMemoryType(uint32_t typeFilter,
+                                      vk::MemoryPropertyFlags properties) const noexcept -> std::optional<uint32_t>;
 
     const vk::PhysicalDevice physicalDevice;
     const QueueFamilies queueFamilies;
@@ -59,8 +65,8 @@ private:
                                  std::span<const char* const> requiredExtensions) -> bool;
     static auto findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> std::optional<QueueFamilies>;
     static auto querySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR surface) -> SwapChainSupportDetails;
-    static auto checkDeviceExtensionSupport(vk::PhysicalDevice device, std::span<const char* const> requiredExtensions)
-        -> bool;
+    static auto checkDeviceExtensionSupport(vk::PhysicalDevice device,
+                                            std::span<const char* const> requiredExtensions) -> bool;
     static auto createLogicalDevice(vk::PhysicalDevice device,
                                     const QueueFamilies& queueFamilies,
                                     std::span<const char* const> requiredExtensions,

@@ -29,8 +29,9 @@ LightSystem::~LightSystem() noexcept
     _device.logicalDevice.destroyPipelineLayout(_pipelineLayout);
 }
 
-auto LightSystem::createPipeline(const Device& device, vk::RenderPass renderPass, vk::PipelineLayout pipelineLayout)
-    -> std::unique_ptr<Pipeline>
+auto LightSystem::createPipeline(const Device& device,
+                                 vk::RenderPass renderPass,
+                                 vk::PipelineLayout pipelineLayout) -> std::unique_ptr<Pipeline>
 {
     const auto inputAssemblyInfo =
         vk::PipelineInputAssemblyStateCreateInfo {{}, vk::PrimitiveTopology::eTriangleList, VK_FALSE};

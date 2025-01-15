@@ -1,6 +1,8 @@
 #pragma once
 
-#include "panda/Common.h"
+#include <glm/ext/vector_float3.hpp>
+#include <string>
+#include <vector>
 
 namespace panda::gfx
 {
@@ -40,9 +42,12 @@ struct SpotLight : public PointLight
     float cutOff;
 };
 
-inline auto makeColorLight(
-    const std::string& name, glm::vec3 color, float ambient, float diffuse, float specular, float intensity = 1.f)
-    -> BaseLight
+inline auto makeColorLight(const std::string& name,
+                           glm::vec3 color,
+                           float ambient,
+                           float diffuse,
+                           float specular,
+                           float intensity = 1.F) -> BaseLight
 {
     return {name, color * ambient, color * diffuse, color * specular, intensity};
 }

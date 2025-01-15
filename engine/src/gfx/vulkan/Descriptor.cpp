@@ -80,8 +80,8 @@ auto DescriptorPool::Builder::addPoolSize(vk::DescriptorType descriptorType, uin
     return *this;
 }
 
-auto DescriptorPool::Builder::build(uint32_t maxSets, vk::DescriptorPoolCreateFlags flags)
-    -> std::unique_ptr<DescriptorPool>
+auto DescriptorPool::Builder::build(uint32_t maxSets,
+                                    vk::DescriptorPoolCreateFlags flags) -> std::unique_ptr<DescriptorPool>
 {
     return std::make_unique<DescriptorPool>(_device, flags, maxSets, _poolSizes);
 }

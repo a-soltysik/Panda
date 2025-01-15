@@ -1,6 +1,8 @@
 #include "panda/gfx/vulkan/Device.h"
 
 #include <ranges>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
 
 #include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"
 
@@ -89,8 +91,8 @@ auto Device::querySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR sur
             .presentationModes = device.getSurfacePresentModesKHR(surface).value};
 }
 
-auto Device::checkDeviceExtensionSupport(vk::PhysicalDevice device, std::span<const char* const> requiredExtensions)
-    -> bool
+auto Device::checkDeviceExtensionSupport(vk::PhysicalDevice device,
+                                         std::span<const char* const> requiredExtensions) -> bool
 {
     const auto availableExtensions = device.enumerateDeviceExtensionProperties();
     if (availableExtensions.result != vk::Result::eSuccess)
@@ -178,8 +180,8 @@ auto Device::findSupportedFormat(std::span<const vk::Format> candidates,
     return {};
 }
 
-auto Device::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const noexcept
-    -> std::optional<uint32_t>
+auto Device::findMemoryType(uint32_t typeFilter,
+                            vk::MemoryPropertyFlags properties) const noexcept -> std::optional<uint32_t>
 {
     const auto memoryProperties = physicalDevice.getMemoryProperties();
 
