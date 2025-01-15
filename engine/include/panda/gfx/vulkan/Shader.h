@@ -26,10 +26,11 @@ public:
     PD_DELETE_ALL(Shader);
     ~Shader() noexcept;
 
-    [[nodiscard]] static auto createFromFile(const vk::Device& device, const std::filesystem::path& path)
-        -> std::optional<Shader>;
-    [[nodiscard]] static auto createFromFile(const vk::Device& device, const std::filesystem::path& path, Type type)
-        -> std::optional<Shader>;
+    [[nodiscard]] static auto createFromFile(const vk::Device& device,
+                                             const std::filesystem::path& path) -> std::optional<Shader>;
+    [[nodiscard]] static auto createFromFile(const vk::Device& device,
+                                             const std::filesystem::path& path,
+                                             Type type) -> std::optional<Shader>;
     [[nodiscard]] static auto createFromRawData(const vk::Device& device,
                                                 const std::vector<uint32_t>& buffer,
                                                 Type type) -> std::optional<Shader>;

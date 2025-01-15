@@ -1,5 +1,8 @@
 #include "panda/gfx/Camera.h"
 
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/trigonometric.hpp>
+
 namespace panda::gfx
 {
 

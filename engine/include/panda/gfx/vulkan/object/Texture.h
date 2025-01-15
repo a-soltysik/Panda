@@ -1,8 +1,13 @@
 #pragma once
 
-#include <filesystem>
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
 
-#include "panda/gfx/vulkan/Descriptor.h"
+#include <filesystem>
+#include <glm/ext/vector_float4.hpp>
+#include <span>
+#include <vulkan/vulkan.hpp>
 
 namespace panda::gfx::vulkan
 {
@@ -12,10 +17,10 @@ class Context;
 class Texture
 {
 public:
-    [[nodiscard]] static auto getDefaultTexture(const Context& context, glm::vec4 color = {1.F, 1.F, 1.F, 1.F})
-        -> std::unique_ptr<Texture>;
-    [[nodiscard]] static auto fromFile(const Context& context, const std::filesystem::path& path)
-        -> std::unique_ptr<Texture>;
+    [[nodiscard]] static auto getDefaultTexture(const Context& context,
+                                                glm::vec4 color = {1.F, 1.F, 1.F, 1.F}) -> std::unique_ptr<Texture>;
+    [[nodiscard]] static auto fromFile(const Context& context,
+                                       const std::filesystem::path& path) -> std::unique_ptr<Texture>;
     Texture(const Context& context, std::span<const char> data, size_t width, size_t height);
 
     ~Texture();

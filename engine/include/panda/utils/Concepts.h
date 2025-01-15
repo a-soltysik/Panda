@@ -27,7 +27,8 @@ template <glm::length_t C,
           glm::length_t R,
           typename T,
           glm::qualifier Q,
-          template <glm::length_t, glm::length_t, typename, glm::qualifier> class M>
+          template <glm::length_t, glm::length_t, typename, glm::qualifier>
+          class M>
 struct isMat<M<C, R, T, Q>, M> : public std::true_type
 {
 };

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "panda/Common.h"
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
 
 namespace panda::gfx
 {
@@ -35,14 +36,14 @@ struct Direction
 {
     glm::vec3 position;
     glm::vec3 direction;
-    glm::vec3 up = glm::vec3 {0.f, -1.f, 0.f};
+    glm::vec3 up = glm::vec3 {0.F, -1.F, 0.F};
 };
 
 struct Target
 {
     glm::vec3 position;
     glm::vec3 target;
-    glm::vec3 up = glm::vec3 {0.f, -1.f, 0.f};
+    glm::vec3 up = glm::vec3 {0.F, -1.F, 0.F};
 };
 
 struct YXZ
@@ -67,9 +68,9 @@ public:
     [[nodiscard]] auto getInverseView() const noexcept -> const glm::mat4&;
 
 private:
-    glm::mat4 _projectionMatrix {1.f};
-    glm::mat4 _viewMatrix {1.f};
-    glm::mat4 _inverseViewMatrix {1.f};
+    glm::mat4 _projectionMatrix {1.F};
+    glm::mat4 _viewMatrix {1.F};
+    glm::mat4 _inverseViewMatrix {1.F};
 };
 
 }

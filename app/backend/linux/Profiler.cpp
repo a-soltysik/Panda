@@ -1,10 +1,10 @@
 #include "Profiler.h"
 
+#include <panda/Logger.h>
 #include <sys/times.h>
+#include <unistd.h>
 
 #include <fstream>
-
-#include "Common.h"
 
 namespace
 {
@@ -83,7 +83,9 @@ auto Profiler::getCurrentTimeInfo() -> Profiler::TimeInfo
 
 auto Profiler::getMemoryInfo() -> struct sysinfo
 {
-    struct sysinfo memoryInfo {};
+    struct sysinfo memoryInfo
+    {
+    };
 
     sysinfo(&memoryInfo);
 

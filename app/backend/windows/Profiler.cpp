@@ -1,8 +1,8 @@
 #include "Profiler.h"
 
-#include <bit>
+#include <panda/Logger.h>
 
-#include "Common.h"
+#include <bit>
 
 namespace app::backend::windows
 {

@@ -95,8 +95,9 @@ auto Buffer::createBuffer(const Device& device, vk::DeviceSize bufferSize, vk::B
     return expect(device.logicalDevice.createBuffer(bufferInfo), vk::Result::eSuccess, "Failed to create buffer");
 }
 
-auto Buffer::allocateMemory(const Device& device, vk::Buffer buffer, vk::MemoryPropertyFlags properties)
-    -> vk::DeviceMemory
+auto Buffer::allocateMemory(const Device& device,
+                            vk::Buffer buffer,
+                            vk::MemoryPropertyFlags properties) -> vk::DeviceMemory
 {
     const auto memoryRequirements = device.logicalDevice.getBufferMemoryRequirements(buffer);
     const auto allocInfo = vk::MemoryAllocateInfo {
@@ -127,8 +128,8 @@ auto Buffer::getDescriptorInfo() const noexcept -> vk::DescriptorBufferInfo
     return getDescriptorInfoAt(size, 0);
 }
 
-auto Buffer::getDescriptorInfoAt(vk::DeviceSize dataSize, vk::DeviceSize offset) const noexcept
-    -> vk::DescriptorBufferInfo
+auto Buffer::getDescriptorInfoAt(vk::DeviceSize dataSize,
+                                 vk::DeviceSize offset) const noexcept -> vk::DescriptorBufferInfo
 {
     return {
         buffer,

@@ -31,8 +31,8 @@ private:
         -> vk::SurfaceFormatKHR;
     [[nodiscard]] static auto choosePresentationMode(
         std::span<const vk::PresentModeKHR> availablePresentationModes) noexcept -> vk::PresentModeKHR;
-    [[nodiscard]] static auto chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities, const Window& window)
-        -> vk::Extent2D;
+    [[nodiscard]] static auto chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities,
+                                               const Window& window) -> vk::Extent2D;
 
     [[nodiscard]] static auto createImageViews(const std::vector<vk::Image>& swapChainImages,
                                                const vk::SurfaceFormatKHR& swapChainImageFormat,

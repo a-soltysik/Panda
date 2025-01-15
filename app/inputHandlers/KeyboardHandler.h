@@ -1,10 +1,8 @@
 #pragma once
 
+#include <GLFW/glfw3.h>
 #include <panda/utils/Signals.h>
 
-#include <array>
-
-#include "Common.h"
 #include "utils/Signals.h"
 
 namespace app

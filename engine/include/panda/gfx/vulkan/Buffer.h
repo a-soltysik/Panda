@@ -139,21 +139,22 @@ public:
     [[nodiscard]] auto getAlignment(vk::DeviceSize instanceSize) const noexcept -> vk::DeviceSize;
     [[nodiscard]] auto getCurrentOffset() const noexcept -> vk::DeviceSize;
     [[nodiscard]] auto getDescriptorInfo() const noexcept -> vk::DescriptorBufferInfo;
-    [[nodiscard]] auto getDescriptorInfoAt(vk::DeviceSize dataSize, vk::DeviceSize offset) const noexcept
-        -> vk::DescriptorBufferInfo;
+    [[nodiscard]] auto getDescriptorInfoAt(vk::DeviceSize dataSize,
+                                           vk::DeviceSize offset) const noexcept -> vk::DescriptorBufferInfo;
 
     const vk::DeviceSize size;
     const vk::Buffer buffer;
     const vk::DeviceMemory memory;
 
 private:
-    [[nodiscard]] static auto createBuffer(const Device& device, vk::DeviceSize bufferSize, vk::BufferUsageFlags usage)
-        -> vk::Buffer;
+    [[nodiscard]] static auto createBuffer(const Device& device,
+                                           vk::DeviceSize bufferSize,
+                                           vk::BufferUsageFlags usage) -> vk::Buffer;
     [[nodiscard]] static auto allocateMemory(const Device& device,
                                              vk::Buffer buffer,
                                              vk::MemoryPropertyFlags properties) -> vk::DeviceMemory;
-    [[nodiscard]] static auto getAlignment(vk::DeviceSize instanceSize, vk::DeviceSize minOffsetAlignment) noexcept
-        -> vk::DeviceSize;
+    [[nodiscard]] static auto getAlignment(vk::DeviceSize instanceSize,
+                                           vk::DeviceSize minOffsetAlignment) noexcept -> vk::DeviceSize;
 
     const Device& _device;
     const vk::DeviceSize _minOffsetAlignment;

@@ -35,8 +35,10 @@ auto copyBufferToImage(const Device& device, const Buffer& buffer, vk::Image ima
     CommandBuffer::endSingleTimeCommandBuffer(device, commandBuffer);
 }
 
-auto transitionImageLayout(const Device& device, vk::Image image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout)
-    -> void
+auto transitionImageLayout(const Device& device,
+                           vk::Image image,
+                           vk::ImageLayout oldLayout,
+                           vk::ImageLayout newLayout) -> void
 {
     const auto commandBuffer = CommandBuffer::beginSingleTimeCommandBuffer(device);
 

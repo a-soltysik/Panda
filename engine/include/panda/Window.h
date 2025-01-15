@@ -1,5 +1,10 @@
 #pragma once
 
+#include <vulkan/vulkan_core.h>
+
+#include <glm/fwd.hpp>
+#include <vector>
+
 #include "Common.h"
 
 namespace panda

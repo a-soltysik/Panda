@@ -34,8 +34,9 @@ auto Shader::createFromFile(const vk::Device& device, const std::filesystem::pat
     return createFromFile(device, path, it->second);
 }
 
-auto Shader::createFromFile(const vk::Device& device, const std::filesystem::path& path, Type type)
-    -> std::optional<Shader>
+auto Shader::createFromFile(const vk::Device& device,
+                            const std::filesystem::path& path,
+                            Type type) -> std::optional<Shader>
 {
     auto fin = std::ifstream(path, std::ios::ate | std::ios::binary);
 
@@ -55,8 +56,9 @@ auto Shader::createFromFile(const vk::Device& device, const std::filesystem::pat
     return createFromRawData(device, buffer, type);
 }
 
-auto Shader::createFromRawData(const vk::Device& device, const std::vector<uint32_t>& buffer, Type type)
-    -> std::optional<Shader>
+auto Shader::createFromRawData(const vk::Device& device,
+                               const std::vector<uint32_t>& buffer,
+                               Type type) -> std::optional<Shader>
 {
     const auto createInfo = vk::ShaderModuleCreateInfo {{}, buffer};
     const auto shaderModuleResult = device.createShaderModule(createInfo);
