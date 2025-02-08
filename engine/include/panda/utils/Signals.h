@@ -1,7 +1,14 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <functional>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_handles.hpp>
+
 #include "Signal.h"
-#include "panda/Common.h"
 #include "panda/Window.h"
 #include "panda/gfx/vulkan/Scene.h"
 

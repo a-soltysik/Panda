@@ -1,6 +1,21 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
+#include <charconv>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <iomanip>
+#include <ios>
+#include <limits>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <vector>
 
 namespace panda::utils
 {
@@ -17,9 +32,9 @@ template <class... Ts>
 overload(Ts...) -> overload<Ts...>;
 
 template <typename T, typename... Rest>
-auto hashCombine(size_t& seed, const T& v, const Rest&... rest) -> void
+auto hashCombine(size_t& seed, const T& value, const Rest&... rest) -> void
 {
-    seed ^= std::hash<T> {}(v) + 0x9e3779b9 + (seed << 6u) + (seed >> 2u);
+    seed ^= std::hash<T> {}(value) + 0x9e3779b9 + (seed << 6U) + (seed >> 2U);
     (hashCombine(seed, rest), ...);
 }
 
@@ -27,6 +42,64 @@ template <typename T, size_t N, template <typename, typename...> typename To = s
 auto fromArray(const std::array<T, N>& array) -> To<T>
 {
     return {array.cbegin(), array.cend()};
+}
+
+template <std::integral T>
+constexpr auto maxLengthOfType() -> uint32_t
+{
+    return std::numeric_limits<T>::digits10 + 2;
+}
+
+template <std::integral T>
+auto toNumber(std::string_view number) -> std::optional<T>
+{
+    auto result = T {};
+    const auto [ptr, code] {std::from_chars(number.data(), number.data() + number.length(), result)};
+
+    if (code == std::errc::invalid_argument || code == std::errc::result_out_of_range)
+    {
+        return {};
+    }
+
+    return result;
+}
+
+template <std::floating_point T>
+auto toNumber(std::string_view number) -> std::optional<T>
+{
+    auto result = T {};
+    const auto [ptr, code] {std::from_chars(number.data(), number.data() + number.length(), result)};
+
+    if (code == std::errc::invalid_argument || code == std::errc::result_out_of_range)
+    {
+        return {};
+    }
+
+    return result;
+}
+
+template <std::integral T>
+auto toString(T number) -> std::string
+{
+    auto buffer = std::array<char, maxLengthOfType<T>()> {};
+    std::to_chars(buffer.data(), buffer.data() + buffer.size(), number);
+    auto result = std::string {buffer.cbegin(), buffer.cend()};
+    result.erase(std::ranges::find(result, '\0'), result.end());
+    return result;
+}
+
+auto toString(std::floating_point auto number) -> std::string
+{
+    auto stream = std::stringstream {};
+    stream << number;
+    return stream.str();
+}
+
+auto toString(std::floating_point auto number, int32_t precision) -> std::string
+{
+    std::stringstream stream;
+    stream << std::fixed << std::setprecision(precision) << number;
+    return stream.str();
 }
 
 }

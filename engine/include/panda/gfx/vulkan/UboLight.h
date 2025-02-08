@@ -1,5 +1,7 @@
 #pragma once
 
+#include <glm/ext/vector_float3.hpp>
+
 #include "panda/gfx/Light.h"
 #include "panda/gfx/vulkan/Alignment.h"
 
@@ -58,28 +60,41 @@ struct UboSpotLight
 constexpr auto fromDirectionalLight(const DirectionalLight& light) noexcept -> UboDirectionalLight
 {
     return {
-        {light.ambient, light.diffuse, light.specular, light.intensity},
-        light.direction
+        .base = {.ambient = light.ambient,
+                 .diffuse = light.diffuse,
+                 .specular = light.specular,
+                 .intensity = light.intensity},
+        .direction = light.direction
     };
 }
 
 constexpr auto fromPointLight(const PointLight& light) noexcept -> UboPointLight
 {
     return {
-        {light.ambient, light.diffuse, light.specular, light.intensity},
-        {light.attenuation.constant, light.attenuation.linear, light.attenuation.exp},
-        light.position
+        .base = {.ambient = light.ambient,
+                 .diffuse = light.diffuse,
+                 .specular = light.specular,
+                 .intensity = light.intensity},
+        .attenuation = {.constant = light.attenuation.constant,
+                 .linear = light.attenuation.linear,
+                 .exp = light.attenuation.exp},
+        .position = light.position
     };
 }
 
 constexpr auto fromSpotLight(const SpotLight& light) noexcept -> UboSpotLight
 {
     return {
-        {{light.ambient, light.diffuse, light.specular, light.intensity},
-         {light.attenuation.constant, light.attenuation.linear, light.attenuation.exp},
-         light.position},
-        light.direction,
-        light.cutOff
+        .base = {.base = {.ambient = light.ambient,
+                          .diffuse = light.diffuse,
+                          .specular = light.specular,
+                          .intensity = light.intensity},
+                 .attenuation = {.constant = light.attenuation.constant,
+                                 .linear = light.attenuation.linear,
+                                 .exp = light.attenuation.exp},
+                 .position = light.position},
+        .direction = light.direction,
+        .cutOff = light.cutOff
     };
 }
 

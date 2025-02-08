@@ -1,7 +1,11 @@
 #pragma once
 
 #include <GLFW/glfw3.h>
+#include <panda/utils/Signal.h>
 #include <panda/utils/Signals.h>
+
+#include <array>
+#include <cstdint>
 
 #include "utils/Signals.h"
 
@@ -13,7 +17,7 @@ class GlfwWindow;
 class KeyboardHandler
 {
 public:
-    enum class State
+    enum class State : uint8_t
     {
         JustReleased,
         Released,

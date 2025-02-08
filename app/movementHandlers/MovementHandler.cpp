@@ -1,5 +1,11 @@
 #include "MovementHandler.h"
 
+#include <GLFW/glfw3.h>
+
+#include <glm/common.hpp>
+#include <glm/ext/vector_float3.hpp>
+
+#include "GlfwWindow.h"
 #include "inputHandlers/KeyboardHandler.h"
 
 namespace app

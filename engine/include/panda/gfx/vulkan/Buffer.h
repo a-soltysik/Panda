@@ -1,8 +1,21 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <fmt/format.h>
+
+#include <algorithm>
+#include <cstddef>
 #include <ranges>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 #include "Device.h"
+#include "panda/Common.h"
 
 namespace panda::gfx::vulkan
 {
@@ -71,11 +84,9 @@ public:
     {
         using ValueT = std::ranges::range_value_t<T>;
         const auto dataSize = std::ranges::size(data) * getAlignment(sizeof(ValueT), _minOffsetAlignment);
-        expect(dataSize + _currentOffset <= size,
-               fmt::format("Data with size: {} can't fit to buffer with size: {} and offset: {}",
-                           dataSize,
-                           size,
-                           _currentOffset));
+        expect(
+            dataSize + offset <= size,
+            fmt::format("Data with size: {} can't fit to buffer with size: {} and offset: {}", dataSize, size, offset));
 
         std::copy(std::ranges::begin(data),
                   std::ranges::end(data),
@@ -139,22 +150,21 @@ public:
     [[nodiscard]] auto getAlignment(vk::DeviceSize instanceSize) const noexcept -> vk::DeviceSize;
     [[nodiscard]] auto getCurrentOffset() const noexcept -> vk::DeviceSize;
     [[nodiscard]] auto getDescriptorInfo() const noexcept -> vk::DescriptorBufferInfo;
-    [[nodiscard]] auto getDescriptorInfoAt(vk::DeviceSize dataSize,
-                                           vk::DeviceSize offset) const noexcept -> vk::DescriptorBufferInfo;
+    [[nodiscard]] auto getDescriptorInfoAt(vk::DeviceSize dataSize, vk::DeviceSize offset) const noexcept
+        -> vk::DescriptorBufferInfo;
 
     const vk::DeviceSize size;
     const vk::Buffer buffer;
     const vk::DeviceMemory memory;
 
 private:
-    [[nodiscard]] static auto createBuffer(const Device& device,
-                                           vk::DeviceSize bufferSize,
-                                           vk::BufferUsageFlags usage) -> vk::Buffer;
+    [[nodiscard]] static auto createBuffer(const Device& device, vk::DeviceSize bufferSize, vk::BufferUsageFlags usage)
+        -> vk::Buffer;
     [[nodiscard]] static auto allocateMemory(const Device& device,
                                              vk::Buffer buffer,
                                              vk::MemoryPropertyFlags properties) -> vk::DeviceMemory;
-    [[nodiscard]] static auto getAlignment(vk::DeviceSize instanceSize,
-                                           vk::DeviceSize minOffsetAlignment) noexcept -> vk::DeviceSize;
+    [[nodiscard]] static auto getAlignment(vk::DeviceSize instanceSize, vk::DeviceSize minOffsetAlignment) noexcept
+        -> vk::DeviceSize;
 
     const Device& _device;
     const vk::DeviceSize _minOffsetAlignment;

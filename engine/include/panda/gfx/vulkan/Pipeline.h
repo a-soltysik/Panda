@@ -1,8 +1,18 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <cstdint>
 #include <filesystem>
+#include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 #include "Device.h"
+#include "panda/Common.h"
 
 namespace panda::gfx::vulkan
 {

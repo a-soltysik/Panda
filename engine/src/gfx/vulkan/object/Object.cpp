@@ -1,41 +1,60 @@
 #include "panda/gfx/vulkan/object/Object.h"
 
+#include <assimp/color4.h>
+#include <assimp/material.h>
+#include <assimp/mesh.h>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
+#include <assimp/types.h>
+#include <fmt/format.h>
 
 #include <assimp/Importer.hpp>
-#include <glm/ext.hpp>
+#include <bit>
+#include <cstdint>
+#include <filesystem>
+#include <glm/ext/scalar_constants.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/gtx/rotate_vector.hpp>
+#include <memory>
+#include <span>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "panda/gfx/vulkan/Context.h"
+#include "panda/gfx/vulkan/Scene.h"
+#include "panda/gfx/vulkan/Vertex.h"
+#include "panda/gfx/vulkan/object/Mesh.h"
+#include "panda/gfx/vulkan/object/Surface.h"
+#include "panda/gfx/vulkan/object/Texture.h"
+#include "panda/utils/Assert.h"
 
 namespace panda::gfx::vulkan
 {
 
 namespace
 {
-auto getIndices(const aiMesh& mesh, std::vector<uint32_t>& indices, uint32_t offset = 0) -> void
+auto getIndices(const aiMesh& mesh, std::vector<uint32_t>& indices) -> void
 {
     const auto faces = std::span(mesh.mFaces, mesh.mNumFaces);
     for (const auto& face : faces)
     {
         const auto faceIndices = std::span(face.mIndices, face.mNumIndices);
-        indices.push_back(faceIndices[0] + offset);
-        indices.push_back(faceIndices[1] + offset);
-        indices.push_back(faceIndices[2] + offset);
+        indices.push_back(faceIndices[0]);
+        indices.push_back(faceIndices[1]);
+        indices.push_back(faceIndices[2]);
     }
 }
 
-auto getVertices(const aiMesh& mesh, std::vector<panda::gfx::vulkan::Vertex>& vertices) -> void
+auto getVertices(const aiMesh& mesh, std::vector<Vertex>& vertices) -> void
 {
-    static constexpr auto defaultColor = glm::vec3(1);
-    static constexpr auto defaultTexCoord = glm::vec3(0);
-
     const auto meshVertices = std::span(mesh.mVertices, mesh.mNumVertices);
     const auto meshNormals = std::span(mesh.mNormals, mesh.mNumVertices);
     const auto meshTexCoords = std::span(mesh.mTextureCoords[0], mesh.mNumVertices);
     for (auto i = uint32_t {}; i < mesh.mNumVertices; i++)
     {
-        auto vertex = panda::gfx::vulkan::Vertex {};
+        auto vertex = Vertex {};
         vertex.position = glm::rotateX(std::bit_cast<glm::vec3>(meshVertices[i]), glm::pi<float>());
         vertex.normal = glm::rotateX(std::bit_cast<glm::vec3>(meshNormals[i]), glm::pi<float>());
         if (mesh.HasTextureCoords(0))
@@ -46,23 +65,20 @@ auto getVertices(const aiMesh& mesh, std::vector<panda::gfx::vulkan::Vertex>& ve
     }
 }
 
-auto getTextureFromMaterial(const Context& context,
-                            const aiMaterial& material,
-                            const std::filesystem::path& parentPath) -> std::unique_ptr<Texture>
+auto getTextureFromMaterial(const Context& context, const aiMaterial& material, const std::filesystem::path& parentPath)
+    -> std::unique_ptr<Texture>
 {
     auto textureFile = aiString {};
 
     if (material.GetTexture(aiTextureType_DIFFUSE, 0, &textureFile) == aiReturn_SUCCESS)
     {
-        auto texture = Texture::fromFile(context, parentPath / std::filesystem::path {textureFile.C_Str()});
-        if (texture)
+        if (auto texture = Texture::fromFile(context, parentPath / std::filesystem::path {textureFile.C_Str()}))
         {
             return texture;
         }
     }
 
-    auto color = aiColor4D {};
-    if (material.Get(AI_MATKEY_COLOR_DIFFUSE, color) == aiReturn_SUCCESS)
+    if (auto color = aiColor4D {}; material.Get(AI_MATKEY_COLOR_DIFFUSE, color) == aiReturn_SUCCESS)
     {
         return Texture::getDefaultTexture(context, {color.r, color.g, color.b, color.a});
     }
@@ -70,9 +86,8 @@ auto getTextureFromMaterial(const Context& context,
     return Texture::getDefaultTexture(context);
 }
 
-auto getTextureCache(Context& context,
-                     const aiScene& scene,
-                     const std::filesystem::path& parentPath) -> std::unordered_map<uint32_t, Texture*>
+auto getTextureCache(Context& context, const aiScene& scene, const std::filesystem::path& parentPath)
+    -> std::unordered_map<uint32_t, Texture*>
 {
     auto result = std::unordered_map<uint32_t, Texture*> {};
 
@@ -94,8 +109,9 @@ auto Object::getId() const noexcept -> Id
     return _id;
 }
 
-Object::Object(std::string name)
+Object::Object(std::string name, Scene& scene)
     : _name {std::move(name)},
+      _scene {scene},
       _id {currentId++}
 {
 }
@@ -105,51 +121,8 @@ auto Object::getName() const noexcept -> const std::string&
     return _name;
 }
 
-auto Transform::mat4() const noexcept -> glm::mat4
-{
-    const float c3 = glm::cos(rotation.z);
-    const float s3 = glm::sin(rotation.z);
-    const float c2 = glm::cos(rotation.x);
-    const float s2 = glm::sin(rotation.x);
-    const float c1 = glm::cos(rotation.y);
-    const float s1 = glm::sin(rotation.y);
-    return glm::mat4 {
-        {
-         scale.x * (c1 * c3 + s1 * s2 * s3),
-         scale.x * (c2 * s3),
-         scale.x * (c1 * s2 * s3 - c3 * s1),
-         0.0F, },
-        {
-         scale.y * (c3 * s1 * s2 - c1 * s3),
-         scale.y * (c2 * c3),
-         scale.y * (c1 * c3 * s2 + s1 * s3),
-         0.0F, },
-        {
-         scale.z * (c2 * s1),
-         scale.z * (-s2),
-         scale.z * (c1 * c2),
-         0.0F, },
-        {translation.x, translation.y, translation.z, 1.0F}
-    };
-}
-
-auto Transform::normalMatrix() const noexcept -> glm::mat3
-{
-    const float c3 = glm::cos(rotation.z);
-    const float s3 = glm::sin(rotation.z);
-    const float c2 = glm::cos(rotation.x);
-    const float s2 = glm::sin(rotation.x);
-    const float c1 = glm::cos(rotation.y);
-    const float s1 = glm::sin(rotation.y);
-    const auto invScale = 1.F / scale;
-    return glm::mat3 {
-        {invScale.x * (c1 * c3 + s1 * s2 * s3), invScale.x * (c2 * s3), invScale.x * (c1 * s2 * s3 - c3 * s1)},
-        {invScale.y * (c3 * s1 * s2 - c1 * s3), invScale.y * (c2 * c3), invScale.y * (c1 * c3 * s2 + s1 * s3)},
-        {invScale.z * (c2 * s1),                invScale.z * (-s2),     invScale.z * (c1 * c2)               },
-    };
-}
-
-auto Object::loadSurfaces(Context& context, const std::filesystem::path& path) -> std::vector<Surface>
+auto Object::loadSurfaces(Context& context, const std::filesystem::path& path, bool shouldBeInstanced)
+    -> std::vector<Surface>
 {
     const auto pathStr = path.string();
     auto importer = Assimp::Importer {};
@@ -165,12 +138,11 @@ auto Object::loadSurfaces(Context& context, const std::filesystem::path& path) -
     }
 
     auto result = std::vector<Surface> {};
-    auto textureCache = getTextureCache(context, *scene, path.parent_path());
+    const auto textureCache = getTextureCache(context, *scene, path.parent_path());
 
     result.reserve(scene->mNumMeshes);
 
-    const auto meshes = std::span(scene->mMeshes, scene->mNumMeshes);
-    for (const auto* currentMesh : meshes)
+    for (const auto* currentMesh : std::span(scene->mMeshes, scene->mNumMeshes))
     {
         auto vertices = std::vector<vulkan::Vertex> {};
         auto indices = std::vector<uint32_t> {};
@@ -179,11 +151,22 @@ auto Object::loadSurfaces(Context& context, const std::filesystem::path& path) -
 
         auto mesh = std::make_unique<Mesh>(currentMesh->mName.C_Str(), context.getDevice(), vertices, indices);
 
-        result.push_back({textureCache.at(currentMesh->mMaterialIndex), mesh.get()});
+        result.emplace_back(textureCache.at(currentMesh->mMaterialIndex), mesh.get(), shouldBeInstanced);
 
         context.registerMesh(std::move(mesh));
     }
     return result;
+}
+
+auto Object::addSurface(const Surface& surface) -> void
+{
+    surfaces.push_back(surface);
+    _scene.addSurfaceMapping(*this, surfaces.back());
+}
+
+auto Object::getSurfaces() const noexcept -> std::vector<Surface>
+{
+    return surfaces;
 }
 
 }

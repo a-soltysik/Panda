@@ -1,11 +1,14 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include <vulkan/vulkan_core.h>
 
-#include <glm/fwd.hpp>
+#include <glm/ext/vector_uint2.hpp>
 #include <vector>
-
-#include "Common.h"
+#include <vulkan/vulkan.hpp>
 
 namespace panda
 {

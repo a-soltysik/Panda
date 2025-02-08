@@ -1,9 +1,19 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <array>
+#include <cstdint>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_handles.hpp>
+
 #include "Buffer.h"
-#include "Descriptor.h"
-#include "panda/gfx/Camera.h"
 #include "panda/gfx/vulkan/Alignment.h"
+#include "panda/gfx/vulkan/Scene.h"
 #include "panda/gfx/vulkan/UboLight.h"
 
 namespace panda::gfx::vulkan
@@ -11,11 +21,9 @@ namespace panda::gfx::vulkan
 
 struct FrameInfo
 {
-    const Camera& camera;
-    const Device& device;
+    const Scene& scene;
     const Buffer& fragUbo;
     const Buffer& vertUbo;
-    const DescriptorSetLayout& descriptorSetLayout;
     vk::CommandBuffer commandBuffer;
 
     uint32_t frameIndex;
@@ -24,17 +32,16 @@ struct FrameInfo
 
 struct VertUbo
 {
-    PD_ALIGN(glm::mat4) projection {1.f};
-    PD_ALIGN(glm::mat4) view {1.f};
+    glm::mat4 projection {1.F};
+    glm::mat4 view {1.F};
 };
 
 struct FragUbo
 {
     template <typename T>
     using LightArray = std::array<T, 5>;
-    glm::mat4 inverseView {1.f};
+    glm::mat4 inverseView {1.F};
 
-    //PD_ALIGN(UboMaterial) material;
     LightArray<UboPointLight> pointLights;
     LightArray<UboDirectionalLight> directionalLights;
     LightArray<UboSpotLight> spotLights;

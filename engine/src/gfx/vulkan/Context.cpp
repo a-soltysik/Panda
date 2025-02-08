@@ -1,18 +1,52 @@
 // clang-format off
+#include "panda/internal/config.h"
 #include "panda/utils/Assert.h"
 // clang-format on
 
-#include <vulkan/vulkan.hpp>
-
-VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
+#include "panda/gfx/vulkan/Context.h"
 
 #include <backends/imgui_impl_vulkan.h>
+#include <fmt/format.h>
+#include <vulkan/vk_platform.h>
+#include <vulkan/vulkan_core.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+#include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_funcs.hpp>
+#include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_hpp_macros.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
-#include "panda/gfx/vulkan/Context.h"
+#include "panda/Logger.h"
+#include "panda/Window.h"
+#include "panda/gfx/Camera.h"
+#include "panda/gfx/vulkan/Buffer.h"
+#include "panda/gfx/vulkan/Descriptor.h"
+#include "panda/gfx/vulkan/Device.h"
+#include "panda/gfx/vulkan/FrameInfo.h"
+#include "panda/gfx/vulkan/Renderer.h"
+#include "panda/gfx/vulkan/Scene.h"
+#include "panda/gfx/vulkan/object/Mesh.h"
+#include "panda/gfx/vulkan/object/Texture.h"
+#include "panda/gfx/vulkan/systems/InstancedRenderSystem.h"
+#include "panda/gfx/vulkan/systems/LightSystem.h"
+#include "panda/gfx/vulkan/systems/RenderSystem.h"
+#include "panda/utils/Signal.h"
 #include "panda/utils/Signals.h"
-#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"
+#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"  // NOLINT(misc-include-cleaner)
+
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 namespace panda::gfx::vulkan
 {
@@ -51,7 +85,7 @@ auto imGuiCallback(VkResult result) -> void
 
 }
 
-Context::Context(const Window& window)
+Context::Context(const Window& window, const std::optional<size_t>& instancedObjectsCount, bool useSingleRendering)
     : _instance {createInstance(window)},
       _window {window}
 {
@@ -106,23 +140,19 @@ Context::Context(const Window& window)
         _uboVertBuffers.back()->mapWhole();
     }
 
-    _globalSetLayout = DescriptorSetLayout::Builder(*_device)
-                           .addBinding(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex)
-                           .addBinding(1, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eFragment)
-                           .addBinding(2, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment)
-                           .build(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR);
+    if (useSingleRendering)
+    {
+        _renderSystem = std::make_unique<RenderSystem>(*_device, _renderer->getSwapChainRenderPass());
+    }
 
-    _lightSetLayout = DescriptorSetLayout::Builder(*_device)
-                          .addBinding(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex)
-                          .build(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR);
+    if (instancedObjectsCount.has_value())
+    {
+        _instancedRenderSystem = std::make_unique<InstancedRenderSystem>(*_device,
+                                                                         _renderer->getSwapChainRenderPass(),
+                                                                         instancedObjectsCount.value());
+    }
 
-    _renderSystem = std::make_unique<RenderSystem>(*_device,
-                                                   _renderer->getSwapChainRenderPass(),
-                                                   _globalSetLayout->getDescriptorSetLayout());
-
-    _pointLightSystem = std::make_unique<LightSystem>(*_device,
-                                                      _renderer->getSwapChainRenderPass(),
-                                                      _lightSetLayout->getDescriptorSetLayout());
+    _pointLightSystem = std::make_unique<LightSystem>(*_device, _renderer->getSwapChainRenderPass());
 
     log::Info("Vulkan API has been successfully initialized");
 
@@ -150,10 +180,10 @@ auto Context::createInstance(const Window& window) -> std::unique_ptr<vk::Instan
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
     const auto appInfo = vk::ApplicationInfo(std::string {config::projectName}.data(),
-                                             VK_API_VERSION_1_0,
+                                             vk::ApiVersion10,
                                              std::string {config::engineName}.data(),
-                                             VK_API_VERSION_1_0,
-                                             VK_API_VERSION_1_4);
+                                             vk::ApiVersion10,
+                                             vk::ApiVersion14);
 
     const auto requiredExtensions = getRequiredExtensions(window);
 
@@ -197,8 +227,8 @@ auto Context::getRequiredExtensions(const Window& window) -> std::vector<const c
 
     if constexpr (shouldEnableValidationLayers())
     {
-        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+        extensions.push_back(vk::EXTDebugUtilsExtensionName);
+        extensions.push_back(vk::KHRPortabilityEnumerationExtensionName);
     }
 
     return extensions;
@@ -272,7 +302,7 @@ auto Context::areValidationLayersSupported() const -> bool
     return true;
 }
 
-auto Context::makeFrame(float deltaTime, Scene& scene) -> void
+auto Context::makeFrame(float deltaTime, Scene& scene) const -> void
 {
     const auto commandBuffer = _renderer->beginFrame();
     if (!commandBuffer)
@@ -280,45 +310,54 @@ auto Context::makeFrame(float deltaTime, Scene& scene) -> void
         return;
     }
 
-    auto frameIndex = _renderer->getFrameIndex();
+    const auto frameIndex = _renderer->getFrameIndex();
 
-    auto vertUbo = VertUbo {
-        .projection = scene.camera.getProjection(),
-        .view = scene.camera.getView(),
+    const auto vertUbo = VertUbo {
+        .projection = scene.getCamera().getProjection(),
+        .view = scene.getCamera().getView(),
     };
 
+    static constexpr auto ambientColor = 0.1F;
+
     auto fragUbo = FragUbo {
-        .inverseView = scene.camera.getInverseView(),
+        .inverseView = scene.getCamera().getInverseView(),
         .pointLights = {},
         .directionalLights = {},
         .spotLights = {},
-        .ambientColor = {0.1F, 0.1F, 0.1F},
+        .ambientColor = {ambientColor, ambientColor, ambientColor},
     };
 
-    LightSystem::update(scene.lights, fragUbo);
+    LightSystem::update(scene.getLights(), fragUbo);
     _uboVertBuffers[frameIndex]->writeAt(vertUbo, 0);
     _uboFragBuffers[frameIndex]->writeAt(fragUbo, 0);
     _renderer->beginSwapChainRenderPass();
 
-    _renderSystem->render(FrameInfo {.camera = scene.camera,
-                                     .device = *_device,
-                                     .fragUbo = *_uboFragBuffers[frameIndex],
-                                     .vertUbo = *_uboVertBuffers[frameIndex],
-                                     .descriptorSetLayout = *_globalSetLayout,
-                                     .commandBuffer = commandBuffer,
-                                     .frameIndex = frameIndex,
-                                     .deltaTime = deltaTime},
-                          scene.objects);
+    if (_instancedRenderSystem != nullptr)
+    {
+        _instancedRenderSystem->render(FrameInfo {.scene = scene,
+                                                  .fragUbo = *_uboFragBuffers[frameIndex],
+                                                  .vertUbo = *_uboVertBuffers[frameIndex],
+                                                  .commandBuffer = commandBuffer,
+                                                  .frameIndex = frameIndex,
+                                                  .deltaTime = deltaTime});
+    }
 
-    _pointLightSystem->render(FrameInfo {.camera = scene.camera,
-                                         .device = *_device,
+    if (_renderSystem != nullptr)
+    {
+        _renderSystem->render(FrameInfo {.scene = scene,
                                          .fragUbo = *_uboFragBuffers[frameIndex],
                                          .vertUbo = *_uboVertBuffers[frameIndex],
-                                         .descriptorSetLayout = *_lightSetLayout,
                                          .commandBuffer = commandBuffer,
                                          .frameIndex = frameIndex,
-                                         .deltaTime = deltaTime},
-                              scene.lights);
+                                         .deltaTime = deltaTime});
+    }
+
+    _pointLightSystem->render(FrameInfo {.scene = scene,
+                                         .fragUbo = *_uboFragBuffers[frameIndex],
+                                         .vertUbo = *_uboVertBuffers[frameIndex],
+                                         .commandBuffer = commandBuffer,
+                                         .frameIndex = frameIndex,
+                                         .deltaTime = deltaTime});
 
     utils::signals::beginGuiRender.registerSender()(
         utils::signals::BeginGuiRenderData {.commandBuffer = commandBuffer, .scene = std::ref(scene)});

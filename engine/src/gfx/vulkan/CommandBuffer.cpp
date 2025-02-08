@@ -1,4 +1,16 @@
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include "panda/gfx/vulkan/CommandBuffer.h"
+
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_structs.hpp>
+
+#include "panda/gfx/vulkan/Device.h"
+#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"  // NOLINT(misc-include-cleaner)
 
 namespace panda::gfx::vulkan
 {

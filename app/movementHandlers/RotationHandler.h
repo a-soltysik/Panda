@@ -1,9 +1,11 @@
 #pragma once
 
-#include "GlfwWindow.h"
+#include <glm/ext/vector_float2.hpp>
 
 namespace app
 {
+
+class GlfwWindow;
 
 class RotationHandler
 {

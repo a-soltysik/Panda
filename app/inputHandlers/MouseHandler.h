@@ -3,6 +3,11 @@
 #include <GLFW/glfw3.h>
 #include <panda/utils/Signals.h>
 
+#include <array>
+#include <cstdint>
+#include <glm/ext/vector_double2.hpp>
+#include <glm/ext/vector_float2.hpp>
+
 #include "utils/Signals.h"
 
 namespace app
@@ -13,7 +18,7 @@ class GlfwWindow;
 class MouseHandler
 {
 public:
-    enum class ButtonState
+    enum class ButtonState : uint8_t
     {
         JustReleased,
         Released,

@@ -1,19 +1,26 @@
 #pragma once
 
+#include <fmt/base.h>
 #include <fmt/core.h>
 #include <fmt/os.h>
 
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <set>
 #include <source_location>
 #include <span>
+#include <string>
+#include <string_view>
 #include <vector>
+
+#include "panda/Common.h"
 
 namespace panda::log
 {
 
-enum class Level
+enum class Level : uint8_t
 {
     Debug,
     Info,
@@ -70,6 +77,7 @@ public:
         Level level;
     };
 
+    PD_DELETE_ALL(FileLogger);
     ~FileLogger();
 
     auto setLevels(std::span<const Level> newLevels) -> void;

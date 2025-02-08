@@ -1,5 +1,9 @@
 #include "RotationHandler.h"
 
+#include <glm/ext/vector_float2.hpp>
+#include <glm/gtc/constants.hpp>
+
+#include "GlfwWindow.h"
 #include "inputHandlers/MouseHandler.h"
 
 namespace app

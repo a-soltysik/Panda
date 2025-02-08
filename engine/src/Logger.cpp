@@ -1,10 +1,19 @@
 #include "panda/Logger.h"
 
-#include <fmt/chrono.h>
+#include <fmt/chrono.h>  // NOLINT(misc-include-cleaner)
+#include <fmt/format.h>
+#include <fmt/os.h>
 
+#include <chrono>
+#include <cstddef>
 #include <filesystem>
-
-#include "panda/Common.h"
+#include <memory>
+#include <source_location>
+#include <span>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <vector>
 
 namespace panda::log
 {
@@ -102,7 +111,9 @@ auto FileLogger::start() -> void
     {
         std::filesystem::create_directory(logsDir);
         const auto filename =
-            fmt::format("{}/{:%F_%H_%M_%S.pdlog}", logsDir, std::chrono::floor<std::chrono::seconds>(time));
+            fmt::format("{}/{:%F_%H_%M_%S.pdlog}",
+                        logsDir,
+                        std::chrono::floor<std::chrono::seconds>(time));  //NOLINT(misc-include-cleaner)
         _file = std::make_unique<fmt::ostream>(fmt::output_file(filename));
         _isStarted = true;
 
@@ -151,7 +162,7 @@ auto FileLogger::terminate() -> void
     _file->close();
 }
 
-auto panda::log::FileLogger::getBuffer() -> const std::vector<LogData>&
+auto FileLogger::getBuffer() -> const std::vector<LogData>&
 {
     return _buffer;
 }

@@ -1,7 +1,12 @@
 #pragma once
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_handles.hpp>
 
 #include "Device.h"
-#include "panda/Common.h"
 
 namespace panda::gfx::vulkan
 {

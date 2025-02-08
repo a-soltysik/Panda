@@ -1,11 +1,30 @@
 #pragma once
 
-#include "Device.h"
-#include "panda/Window.h"
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
+
+#include "panda/Common.h"
 #include "panda/utils/Signals.h"
+
+namespace panda
+{
+class Window;
+}
 
 namespace panda::gfx::vulkan
 {
+
+class Device;
 
 class SwapChain
 {
@@ -31,8 +50,8 @@ private:
         -> vk::SurfaceFormatKHR;
     [[nodiscard]] static auto choosePresentationMode(
         std::span<const vk::PresentModeKHR> availablePresentationModes) noexcept -> vk::PresentModeKHR;
-    [[nodiscard]] static auto chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities,
-                                               const Window& window) -> vk::Extent2D;
+    [[nodiscard]] static auto chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities, const Window& window)
+        -> vk::Extent2D;
 
     [[nodiscard]] static auto createImageViews(const std::vector<vk::Image>& swapChainImages,
                                                const vk::SurfaceFormatKHR& swapChainImageFormat,
@@ -77,7 +96,7 @@ private:
     std::vector<vk::DeviceMemory> _depthImageMemories;
     std::vector<vk::ImageView> _depthImageViews;
 
-    vk::RenderPass _renderPass {};
+    vk::RenderPass _renderPass;
     std::vector<vk::Framebuffer> _swapChainFrameBuffers;
     std::vector<vk::Semaphore> _imageAvailableSemaphores;
     std::vector<vk::Semaphore> _renderFinishedSemaphores;

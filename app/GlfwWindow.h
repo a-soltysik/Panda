@@ -2,15 +2,18 @@
 
 #include <GLFW/glfw3.h>
 #include <panda/Window.h>
+#include <panda/utils/Signals.h>
+#include <vulkan/vulkan_core.h>
 
-#include <functional>
-
-#include "inputHandlers/KeyboardHandler.h"
-#include "inputHandlers/MouseHandler.h"
-#include "utils/Signals.h"
+#include <glm/ext/vector_uint2.hpp>
+#include <memory>
+#include <vector>
 
 namespace app
 {
+
+class KeyboardHandler;
+class MouseHandler;
 
 class GlfwWindow : public panda::Window
 {
@@ -18,6 +21,10 @@ public:
     [[nodiscard]] static auto makeId(GLFWwindow* window) -> Id;
 
     GlfwWindow(glm::uvec2 size, const char* name);
+    GlfwWindow(const GlfwWindow&) = delete;
+    auto operator=(const GlfwWindow&) -> GlfwWindow& = delete;
+    GlfwWindow(GlfwWindow&&) noexcept;
+    auto operator=(GlfwWindow&&) -> GlfwWindow& = delete;
     ~GlfwWindow() noexcept override;
 
     [[nodiscard]] auto shouldClose() const -> bool override;
@@ -38,10 +45,10 @@ public:
 
 private:
     [[nodiscard]] static auto createWindow(glm::uvec2 size, const char* name) -> GLFWwindow*;
-    auto setupImGui() -> void;
+    auto setupImGui() const -> void;
 
-    std::unique_ptr<KeyboardHandler> keyboardHandler;
-    std::unique_ptr<MouseHandler> mouseHandler;
+    std::unique_ptr<KeyboardHandler> _keyboardHandler;
+    std::unique_ptr<MouseHandler> _mouseHandler;
     panda::utils::signals::FrameBufferResized::ReceiverT _frameBufferResizedReceiver;
     GLFWwindow* _window;
     glm::uvec2 _size;

@@ -1,8 +1,11 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include <filesystem>
 
-#include "Texture.h"
 #include "panda/gfx/vulkan/Buffer.h"
 #include "panda/gfx/vulkan/Device.h"
 #include "panda/gfx/vulkan/Vertex.h"
@@ -22,6 +25,7 @@ public:
 
     auto bind(const vk::CommandBuffer& commandBuffer) const -> void;
     auto draw(const vk::CommandBuffer& commandBuffer) const -> void;
+    auto drawInstanced(const vk::CommandBuffer& commandBuffer, uint32_t instanced, uint32_t base) const -> void;
 
     [[nodiscard]] auto getName() const noexcept -> const std::string&;
 

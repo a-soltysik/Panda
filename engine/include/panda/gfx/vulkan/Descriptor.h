@@ -4,10 +4,17 @@
 #include "panda/utils/Assert.h"
 // clang-format on
 
+#include <cstdint>
+#include <memory>
 #include <unordered_map>
+#include <vector>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 #include "Device.h"
+#include "panda/Common.h"
 
 namespace panda::gfx::vulkan
 {
@@ -60,8 +67,8 @@ public:
     public:
         explicit Builder(const Device& device);
         [[nodiscard]] auto addPoolSize(vk::DescriptorType descriptorType, uint32_t count) -> Builder&;
-        [[nodiscard]] auto build(uint32_t maxSets,
-                                 vk::DescriptorPoolCreateFlags flags = {}) -> std::unique_ptr<DescriptorPool>;
+        [[nodiscard]] auto build(uint32_t maxSets, vk::DescriptorPoolCreateFlags flags = {})
+            -> std::unique_ptr<DescriptorPool>;
 
     private:
         const Device& _device;

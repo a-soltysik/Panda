@@ -1,9 +1,12 @@
 #include "Profiler.h"
 
+#include <linux/sysinfo.h>
 #include <panda/Logger.h>
+#include <sys/sysinfo.h>
 #include <sys/times.h>
 #include <unistd.h>
 
+#include <cstddef>
 #include <fstream>
 
 namespace
@@ -83,9 +86,7 @@ auto Profiler::getCurrentTimeInfo() -> Profiler::TimeInfo
 
 auto Profiler::getMemoryInfo() -> struct sysinfo
 {
-    struct sysinfo memoryInfo
-    {
-    };
+    struct sysinfo memoryInfo {};
 
     sysinfo(&memoryInfo);
 

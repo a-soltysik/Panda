@@ -1,4 +1,24 @@
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include "panda/gfx/vulkan/Descriptor.h"
+
+#include <fmt/format.h>
+
+#include <algorithm>
+#include <cstdint>
+#include <iterator>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_structs.hpp>
+
+#include "panda/gfx/vulkan/Device.h"
+#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"  // NOLINT(misc-include-cleaner)
 
 namespace panda::gfx::vulkan
 {
@@ -11,7 +31,7 @@ DescriptorSetLayout::Builder::Builder(const Device& device)
 auto DescriptorSetLayout::Builder::addBinding(uint32_t binding,
                                               vk::DescriptorType descriptorType,
                                               vk::ShaderStageFlags stageFlags,
-                                              uint32_t count) -> DescriptorSetLayout::Builder&
+                                              uint32_t count) -> Builder&
 {
     expect(!_bindings.contains(binding), fmt::format("Binding: {} already in use", binding));
     const auto layoutBinding = vk::DescriptorSetLayoutBinding {binding, descriptorType, count, stageFlags};
@@ -80,8 +100,8 @@ auto DescriptorPool::Builder::addPoolSize(vk::DescriptorType descriptorType, uin
     return *this;
 }
 
-auto DescriptorPool::Builder::build(uint32_t maxSets,
-                                    vk::DescriptorPoolCreateFlags flags) -> std::unique_ptr<DescriptorPool>
+auto DescriptorPool::Builder::build(uint32_t maxSets, vk::DescriptorPoolCreateFlags flags)
+    -> std::unique_ptr<DescriptorPool>
 {
     return std::make_unique<DescriptorPool>(_device, flags, maxSets, _poolSizes);
 }

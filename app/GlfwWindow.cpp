@@ -1,8 +1,26 @@
 #include "GlfwWindow.h"
 
+#include <GLFW/glfw3.h>
 #include <backends/imgui_impl_glfw.h>
 #include <imgui.h>
 #include <implot.h>
+#include <panda/Logger.h>
+#include <panda/Window.h>
+#include <panda/utils/Assert.h>
+#include <panda/utils/Signals.h>
+#include <vulkan/vulkan_core.h>
+
+#include <bit>
+#include <cstddef>
+#include <cstdint>
+#include <glm/ext/vector_uint2.hpp>
+#include <memory>
+#include <span>
+#include <utility>
+#include <vector>
+
+#include "inputHandlers/KeyboardHandler.h"
+#include "inputHandlers/MouseHandler.h"
 
 namespace
 {
@@ -10,10 +28,10 @@ namespace
 void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
     static const auto sender = panda::utils::signals::frameBufferResized.registerSender();
-    const auto id = app::GlfwWindow::makeId(window);
-    panda::log::Info("Size of window [{}] changed to {}x{}", id, width, height);
+    const auto windowId = app::GlfwWindow::makeId(window);
+    panda::log::Info("Size of window [{}] changed to {}x{}", windowId, width, height);
 
-    sender(panda::utils::signals::FrameBufferResizedData {.id = id, .x = width, .y = height});
+    sender(panda::utils::signals::FrameBufferResizedData {.id = windowId, .x = width, .y = height});
 }
 
 }
@@ -25,8 +43,8 @@ GlfwWindow::GlfwWindow(glm::uvec2 size, const char* name)
     : _window {createWindow(size, name)},
       _size {size}
 {
-    keyboardHandler = std::make_unique<KeyboardHandler>(*this);
-    mouseHandler = std::make_unique<MouseHandler>(*this);
+    _keyboardHandler = std::make_unique<KeyboardHandler>(*this);
+    _mouseHandler = std::make_unique<MouseHandler>(*this);
     glfwSetFramebufferSizeCallback(_window, framebufferResizeCallback);
 
     _frameBufferResizedReceiver = panda::utils::signals::frameBufferResized.connect([this](auto data) {
@@ -40,8 +58,23 @@ GlfwWindow::GlfwWindow(glm::uvec2 size, const char* name)
     setupImGui();
 }
 
+GlfwWindow::GlfwWindow(GlfwWindow&& rhs) noexcept
+    : _keyboardHandler {std::move(rhs._keyboardHandler)},
+      _mouseHandler {std::move(rhs._mouseHandler)},
+      _frameBufferResizedReceiver {std::move(rhs._frameBufferResizedReceiver)},
+      _window {rhs._window},
+      _size {rhs._size}
+{
+    rhs._window = nullptr;
+}
+
 GlfwWindow::~GlfwWindow() noexcept
 {
+    if (_window == nullptr)
+    {
+        return;
+    }
+
     ImPlot::DestroyContext();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -138,7 +171,7 @@ auto GlfwWindow::getId() const -> size_t
 
 auto GlfwWindow::getKeyboardHandler() const noexcept -> const KeyboardHandler&
 {
-    return *keyboardHandler;
+    return *_keyboardHandler;
 }
 
 auto GlfwWindow::makeId(GLFWwindow* window) -> panda::Window::Id
@@ -148,10 +181,10 @@ auto GlfwWindow::makeId(GLFWwindow* window) -> panda::Window::Id
 
 auto GlfwWindow::getMouseHandler() const noexcept -> const MouseHandler&
 {
-    return *mouseHandler;
+    return *_mouseHandler;
 }
 
-auto GlfwWindow::setupImGui() -> void
+auto GlfwWindow::setupImGui() const -> void
 {
     ImGui::CreateContext();
     ImPlot::CreateContext();

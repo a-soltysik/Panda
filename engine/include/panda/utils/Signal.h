@@ -1,9 +1,12 @@
 #pragma once
 
 #include <concepts>
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <utility>
+#include <vector>
 
 namespace panda::utils
 {
@@ -72,7 +75,7 @@ public:
 
     ~Receiver() noexcept
     {
-        if (!_signal)
+        if (_signal == nullptr)
         {
             return;
         }

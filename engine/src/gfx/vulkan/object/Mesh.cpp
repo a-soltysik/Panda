@@ -1,9 +1,22 @@
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include "panda/gfx/vulkan/object/Mesh.h"
 
-namespace
-{
+#include <cstdint>
+#include <memory>
+#include <span>
+#include <string>
+#include <utility>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
 
-}
+#include "panda/Logger.h"
+#include "panda/gfx/vulkan/Buffer.h"
+#include "panda/gfx/vulkan/Device.h"
+#include "panda/gfx/vulkan/Vertex.h"
 
 namespace panda::gfx::vulkan
 {
@@ -64,6 +77,18 @@ auto Mesh::draw(const vk::CommandBuffer& commandBuffer) const -> void
     else
     {
         commandBuffer.draw(_vertexCount, 1, 0, 0);
+    }
+}
+
+auto Mesh::drawInstanced(const vk::CommandBuffer& commandBuffer, uint32_t instanced, uint32_t base) const -> void
+{
+    if (_indexBuffer != nullptr)
+    {
+        commandBuffer.drawIndexed(_indexCount, instanced, 0, 0, base);
+    }
+    else
+    {
+        commandBuffer.draw(_vertexCount, instanced, 0, base);
     }
 }
 

@@ -1,6 +1,8 @@
 #include "panda/gfx/Camera.h"
 
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 
 namespace panda::gfx
@@ -43,34 +45,34 @@ auto Camera::setViewDirection(const view::Direction& view) -> void
     const auto position = glm::vec3 {view.position.x, -view.position.y, view.position.z};
     const auto direction = glm::vec3 {view.direction.x, -view.direction.y, view.direction.z};
 
-    const auto w = glm::vec3 {glm::normalize(direction)};
-    const auto u = glm::vec3 {glm::normalize(glm::cross(w, view.up))};
-    const auto v = glm::vec3 {glm::cross(w, u)};
+    const auto wVec = glm::vec3 {glm::normalize(direction)};
+    const auto uVec = glm::vec3 {glm::normalize(glm::cross(wVec, view.up))};
+    const auto vVec = glm::vec3 {glm::cross(wVec, uVec)};
 
     _viewMatrix = glm::mat4 {1.F};
-    _viewMatrix[0][0] = u.x;
-    _viewMatrix[1][0] = u.y;
-    _viewMatrix[2][0] = u.z;
-    _viewMatrix[0][1] = v.x;
-    _viewMatrix[1][1] = v.y;
-    _viewMatrix[2][1] = v.z;
-    _viewMatrix[0][2] = w.x;
-    _viewMatrix[1][2] = w.y;
-    _viewMatrix[2][2] = w.z;
-    _viewMatrix[3][0] = -glm::dot(u, position);
-    _viewMatrix[3][1] = -glm::dot(v, position);
-    _viewMatrix[3][2] = -glm::dot(w, position);
+    _viewMatrix[0][0] = uVec.x;
+    _viewMatrix[1][0] = uVec.y;
+    _viewMatrix[2][0] = uVec.z;
+    _viewMatrix[0][1] = vVec.x;
+    _viewMatrix[1][1] = vVec.y;
+    _viewMatrix[2][1] = vVec.z;
+    _viewMatrix[0][2] = wVec.x;
+    _viewMatrix[1][2] = wVec.y;
+    _viewMatrix[2][2] = wVec.z;
+    _viewMatrix[3][0] = -glm::dot(uVec, position);
+    _viewMatrix[3][1] = -glm::dot(vVec, position);
+    _viewMatrix[3][2] = -glm::dot(wVec, position);
 
     _inverseViewMatrix = glm::mat4 {1.F};
-    _inverseViewMatrix[0][0] = u.x;
-    _inverseViewMatrix[0][1] = u.y;
-    _inverseViewMatrix[0][2] = u.z;
-    _inverseViewMatrix[1][0] = v.x;
-    _inverseViewMatrix[1][1] = v.y;
-    _inverseViewMatrix[1][2] = v.z;
-    _inverseViewMatrix[2][0] = w.x;
-    _inverseViewMatrix[2][1] = w.y;
-    _inverseViewMatrix[2][2] = w.z;
+    _inverseViewMatrix[0][0] = uVec.x;
+    _inverseViewMatrix[0][1] = uVec.y;
+    _inverseViewMatrix[0][2] = uVec.z;
+    _inverseViewMatrix[1][0] = vVec.x;
+    _inverseViewMatrix[1][1] = vVec.y;
+    _inverseViewMatrix[1][2] = vVec.z;
+    _inverseViewMatrix[2][0] = wVec.x;
+    _inverseViewMatrix[2][1] = wVec.y;
+    _inverseViewMatrix[2][2] = wVec.z;
     _inverseViewMatrix[3][0] = position.x;
     _inverseViewMatrix[3][1] = position.y;
     _inverseViewMatrix[3][2] = position.z;
@@ -85,39 +87,41 @@ auto Camera::setViewYXZ(const view::YXZ& view) -> void
 {
     const auto position = glm::vec3 {view.position.x, -view.position.y, view.position.z};
 
-    const auto c3 = glm::cos(view.rotation.z);
-    const auto s3 = glm::sin(view.rotation.z);
-    const auto c2 = glm::cos(view.rotation.x);
-    const auto s2 = glm::sin(view.rotation.x);
-    const auto c1 = glm::cos(view.rotation.y);
-    const auto s1 = glm::sin(view.rotation.y);
-    const auto u = glm::vec3 {((c1 * c3) + (s1 * s2 * s3)), (c2 * s3), ((c1 * s2 * s3) - (c3 * s1))};
-    const auto v = glm::vec3 {((c3 * s1 * s2) - (c1 * s3)), (c2 * c3), ((c1 * c3 * s2) + (s1 * s3))};
-    const auto w = glm::vec3 {(c2 * s1), (-s2), (c1 * c2)};
+    const auto cosZ = glm::cos(view.rotation.z);
+    const auto sinZ = glm::sin(view.rotation.z);
+    const auto cosX = glm::cos(view.rotation.x);
+    const auto sinX = glm::sin(view.rotation.x);
+    const auto cosY = glm::cos(view.rotation.y);
+    const auto sinY = glm::sin(view.rotation.y);
+    const auto uVec =
+        glm::vec3 {((cosY * cosZ) + (sinY * sinX * sinZ)), (cosX * sinZ), ((cosY * sinX * sinZ) - (cosZ * sinY))};
+    const auto vVec =
+        glm::vec3 {((cosZ * sinY * sinX) - (cosY * sinZ)), (cosX * cosZ), ((cosY * cosZ * sinX) + (sinY * sinZ))};
+    const auto wVec = glm::vec3 {(cosX * sinY), (-sinX), (cosY * cosX)};
     _viewMatrix = glm::mat4 {1.F};
-    _viewMatrix[0][0] = u.x;
-    _viewMatrix[1][0] = u.y;
-    _viewMatrix[2][0] = u.z;
-    _viewMatrix[0][1] = v.x;
-    _viewMatrix[1][1] = v.y;
-    _viewMatrix[2][1] = v.z;
-    _viewMatrix[0][2] = w.x;
-    _viewMatrix[1][2] = w.y;
-    _viewMatrix[2][2] = w.z;
-    _viewMatrix[3][0] = -glm::dot(u, position);
-    _viewMatrix[3][1] = -glm::dot(v, position);
-    _viewMatrix[3][2] = -glm::dot(w, position);
+    _viewMatrix[0][0] = uVec.x;
+    _viewMatrix[1][0] = uVec.y;
+    _viewMatrix[2][0] = uVec.z;
+    _viewMatrix[0][1] = vVec.x;
+    _viewMatrix[1][1] = vVec.y;
+    _viewMatrix[2][1] = vVec.z;
+    _viewMatrix[0][2] = wVec.x;
+    _viewMatrix[1][2] = wVec.y;
+    _viewMatrix[2][2] = wVec.z;
+    _viewMatrix[3][0] = -glm::dot(uVec, position);
+    _viewMatrix[3][1] = -glm::dot(vVec, position);
+    _viewMatrix[3][2] = -glm::dot(wVec, position);
 
     _inverseViewMatrix = glm::mat4 {1.F};
-    _inverseViewMatrix[0][0] = u.x;
-    _inverseViewMatrix[0][1] = u.y;
-    _inverseViewMatrix[0][2] = u.z;
-    _inverseViewMatrix[1][0] = v.x;
-    _inverseViewMatrix[1][1] = v.y;
-    _inverseViewMatrix[1][2] = v.z;
-    _inverseViewMatrix[2][0] = w.x;
-    _inverseViewMatrix[2][1] = w.y;
-    _inverseViewMatrix[2][2] = w.z;
+    _inverseViewMatrix[0][0] = uVec.x;
+    _inverseViewMatrix[0][1] = uVec.y;
+    _inverseViewMatrix[0][2] = uVec.z;
+    _inverseViewMatrix[1][0] = vVec.x;
+    _inverseViewMatrix[1][1] = vVec.y;
+    _inverseViewMatrix[1][2] = vVec.z;
+    _inverseViewMatrix[2][0] = wVec.x;
+    _inverseViewMatrix[2][1] = wVec.y;
+    _inverseViewMatrix[2][2] = wVec.z;
     _inverseViewMatrix[3][0] = position.x;
     _inverseViewMatrix[3][1] = position.y;
     _inverseViewMatrix[3][2] = position.z;

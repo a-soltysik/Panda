@@ -6,18 +6,18 @@ function(
     input)
     # find the prefix
     string(FIND "${input}" "${prefix}" prefix_index)
-    if ("${prefix_index}" STREQUAL "-1")
+    if("${prefix_index}" STREQUAL "-1")
         message(SEND_ERROR "Could not find ${prefix} in ${input}")
-    endif ()
+    endif()
     # find the start index
     string(LENGTH "${prefix}" prefix_length)
     math(EXPR start_index "${prefix_index} + ${prefix_length}")
 
     string(
         SUBSTRING "${input}"
-        "${start_index}"
-        "-1"
-        _output)
+                  "${start_index}"
+                  "-1"
+                  _output)
     set("${output}"
         "${_output}"
         PARENT_SCOPE)
@@ -29,29 +29,29 @@ function(set_env_from_string env_string)
     string(
         REGEX
         REPLACE ";"
-        "__sep__"
-        env_string_sep_added
-        "${env_string}")
+                "__sep__"
+                env_string_sep_added
+                "${env_string}")
 
     # the variables are separated by \r?\n
     string(
         REGEX
         REPLACE "\r?\n"
-        ";"
-        env_list
-        "${env_string_sep_added}")
+                ";"
+                env_list
+                "${env_string_sep_added}")
 
-    foreach (env_var ${env_list})
+    foreach(env_var ${env_list})
         # split by =
         string(
             REGEX
             REPLACE "="
-            ";"
-            env_parts
-            "${env_var}")
+                    ";"
+                    env_parts
+                    "${env_var}")
 
         list(LENGTH env_parts env_parts_length)
-        if ("${env_parts_length}" EQUAL "2")
+        if("${env_parts_length}" EQUAL "2")
             # get the variable name and value
             list(
                 GET
@@ -68,19 +68,19 @@ function(set_env_from_string env_string)
             string(
                 REGEX
                 REPLACE "__sep__"
-                ";"
-                env_value
-                "${env_value}")
+                        ";"
+                        env_value
+                        "${env_value}")
 
             # set env_name to env_value
             set(ENV{${env_name}} "${env_value}")
 
             # update cmake program path
-            if ("${env_name}" EQUAL "PATH")
+            if("${env_name}" EQUAL "PATH")
                 list(APPEND CMAKE_PROGRAM_PATH ${env_value})
-            endif ()
-        endif ()
-    endforeach ()
+            endif()
+        endif()
+    endforeach()
 endfunction()
 
 function(get_all_targets var)
@@ -94,15 +94,15 @@ endfunction()
 function(get_all_installable_targets var)
     set(targets)
     get_all_targets(targets)
-    foreach (_target ${targets})
+    foreach(_target ${targets})
         get_target_property(_target_type ${_target} TYPE)
-        if (NOT
-            ${_target_type}
-            MATCHES
-            ".*LIBRARY|EXECUTABLE")
+        if(NOT
+           ${_target_type}
+           MATCHES
+           ".*LIBRARY|EXECUTABLE")
             list(REMOVE_ITEM targets ${_target})
-        endif ()
-    endforeach ()
+        endif()
+    endforeach()
     set(${var}
         ${targets}
         PARENT_SCOPE)
@@ -113,9 +113,9 @@ macro(get_all_targets_recursive targets dir)
         subdirectories
         DIRECTORY ${dir}
         PROPERTY SUBDIRECTORIES)
-    foreach (subdir ${subdirectories})
+    foreach(subdir ${subdirectories})
         get_all_targets_recursive(${targets} ${subdir})
-    endforeach ()
+    endforeach()
 
     get_property(
         current_targets
@@ -127,11 +127,11 @@ endmacro()
 function(setup_msvc_if_needed)
     # If MSVC is being used, and ASAN is enabled, we need to set the debugger environment
     # so that it behaves well with MSVC's debugger, and we can run the target from visual studio
-    if (MSVC)
+    if(MSVC)
         get_all_installable_targets(all_targets)
         message("all_targets=${all_targets}")
         set_target_properties(${all_targets} PROPERTIES VS_DEBUGGER_ENVIRONMENT "PATH=$(VC_ExecutablePath_x64);%PATH%")
-    endif ()
+    endif()
 
     set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT intro)
 endfunction()

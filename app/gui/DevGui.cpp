@@ -1,8 +1,20 @@
 #include "DevGui.h"
 
-#include <fmt/ranges.h>
 #include <imgui.h>
 #include <implot.h>
+#include <panda/Window.h>
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <ranges>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "backend/Profiler.h"
+#include "panda/Logger.h"
 
 namespace
 {
@@ -45,7 +57,7 @@ auto DevGui::render() -> void
     updateProfiler();
     updateLogs();
 
-    ImGui::Begin("Debug Info", nullptr, static_cast<uint32_t>(ImGuiWindowFlags_NoScrollbar));
+    ImGui::Begin("Debug Info", nullptr, ImGuiWindowFlags_NoScrollbar);
 
     if (ImGui::BeginTabBar("MyTabBar"))
     {
@@ -137,6 +149,7 @@ auto DevGui::renderProfiler() -> void
         ImPlot::PlotLine("", _cpuUsages.data(), static_cast<int>(_cpuUsages.size()));
         ImPlot::EndPlot();
     }
+    ImPlot::PopStyleVar();
 }
 
 auto DevGui::updateProfiler() -> void
@@ -179,7 +192,9 @@ auto DevGui::updateProfiler() -> void
 
 auto DevGui::updateLogs() -> void
 {
-    const auto logBuffer = panda::log::FileLogger::instance().getBuffer();
+    static constexpr auto maxLogsCount = size_t {1000};
+
+    const auto& logBuffer = panda::log::FileLogger::instance().getBuffer();
     const auto lastLog = std::ranges::find(logBuffer, _lastMaxIndex, &panda::log::FileLogger::LogData::index);
     const auto begin =
         (lastLog == std::ranges::end(logBuffer) ? std::ranges::begin(logBuffer) : std::ranges::next(lastLog));
@@ -188,6 +203,11 @@ auto DevGui::updateLogs() -> void
     {
         _lastMaxIndex = std::max(_lastMaxIndex, logBuffer.back().index);
         std::ranges::move(std::ranges::subrange(begin, std::ranges::end(logBuffer)), std::back_inserter(_logs));
+
+        if (_logs.size() > maxLogsCount)
+        {
+            _logs.erase(_logs.begin(), _logs.begin() + static_cast<std::ptrdiff_t>(_logs.size() - maxLogsCount));
+        }
     }
 }
 

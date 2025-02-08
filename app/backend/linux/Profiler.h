@@ -1,5 +1,6 @@
 #pragma once
 
+#include <linux/sysinfo.h>
 #include <sys/sysinfo.h>
 
 #include <ctime>

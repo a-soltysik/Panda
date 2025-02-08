@@ -1,10 +1,24 @@
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include "panda/gfx/vulkan/Device.h"
 
-#include <ranges>
+#include <algorithm>
+#include <cstdint>
+#include <iterator>
+#include <optional>
+#include <span>
+#include <string_view>
+#include <unordered_set>
+#include <vector>
+#include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
-#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"
+#include "panda/Logger.h"
+#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"  // NOLINT(misc-include-cleaner)
 
 namespace panda::gfx::vulkan
 {
@@ -91,8 +105,8 @@ auto Device::querySwapChainSupport(vk::PhysicalDevice device, vk::SurfaceKHR sur
             .presentationModes = device.getSurfacePresentModesKHR(surface).value};
 }
 
-auto Device::checkDeviceExtensionSupport(vk::PhysicalDevice device,
-                                         std::span<const char* const> requiredExtensions) -> bool
+auto Device::checkDeviceExtensionSupport(vk::PhysicalDevice device, std::span<const char* const> requiredExtensions)
+    -> bool
 {
     const auto availableExtensions = device.enumerateDeviceExtensionProperties();
     if (availableExtensions.result != vk::Result::eSuccess)
@@ -180,8 +194,8 @@ auto Device::findSupportedFormat(std::span<const vk::Format> candidates,
     return {};
 }
 
-auto Device::findMemoryType(uint32_t typeFilter,
-                            vk::MemoryPropertyFlags properties) const noexcept -> std::optional<uint32_t>
+auto Device::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const noexcept
+    -> std::optional<uint32_t>
 {
     const auto memoryProperties = physicalDevice.getMemoryProperties();
 

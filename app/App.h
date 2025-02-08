@@ -1,6 +1,7 @@
 #pragma once
 
 #include <panda/gfx/vulkan/Context.h>
+#include <panda/gfx/vulkan/Scene.h>
 
 #include <memory>
 
