@@ -3,6 +3,8 @@
 #include <panda/Window.h>
 #include <panda/utils/Signal.h>
 
+#include <string>
+
 namespace app::utils::signals
 {
 

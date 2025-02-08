@@ -1,12 +1,28 @@
 #pragma once
 
-#include "Device.h"
-#include "SwapChain.h"
-#include "panda/Window.h"
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <cstdint>
+#include <memory>
+#include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_handles.hpp>
+
+#include "panda/Common.h"
 #include "panda/gfx/vulkan/object/Object.h"
+
+namespace panda
+{
+class Window;
+}
 
 namespace panda::gfx::vulkan
 {
+
+class Device;
+class SwapChain;
 
 class Renderer
 {

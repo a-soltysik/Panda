@@ -1,10 +1,17 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <cstdint>
 #include <filesystem>
 #include <optional>
-#include <span>
+#include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_handles.hpp>
 
-#include "Device.h"
+#include "panda/Common.h"
 
 namespace panda::gfx::vulkan
 {
@@ -12,7 +19,7 @@ namespace panda::gfx::vulkan
 class Shader
 {
 public:
-    enum class Type
+    enum class Type : uint8_t
     {
         Vertex,
         TessellationControl,
@@ -26,11 +33,10 @@ public:
     PD_DELETE_ALL(Shader);
     ~Shader() noexcept;
 
-    [[nodiscard]] static auto createFromFile(const vk::Device& device,
-                                             const std::filesystem::path& path) -> std::optional<Shader>;
-    [[nodiscard]] static auto createFromFile(const vk::Device& device,
-                                             const std::filesystem::path& path,
-                                             Type type) -> std::optional<Shader>;
+    [[nodiscard]] static auto createFromFile(const vk::Device& device, const std::filesystem::path& path)
+        -> std::optional<Shader>;
+    [[nodiscard]] static auto createFromFile(const vk::Device& device, const std::filesystem::path& path, Type type)
+        -> std::optional<Shader>;
     [[nodiscard]] static auto createFromRawData(const vk::Device& device,
                                                 const std::vector<uint32_t>& buffer,
                                                 Type type) -> std::optional<Shader>;

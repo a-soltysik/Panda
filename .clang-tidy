@@ -1,26 +1,27 @@
 Checks: "*,
-        -abseil-*,
-        -altera-*,
-        -android-*,
-        -fuchsia-*,
-        -google-*,
-        -llvm*,
-        -zircon-*,
-        -cppcoreguidelines-avoid-magic-numbers,
-        -cppcoreguidelines-pro-type-union-access,
-        -cppcoreguidelines-pro-type-reinterpret-cast,
-        -cppcoreguidelines-pro-bounds-constant-array-index,
-        -misc-include-cleaner,,
-        -modernize-pass-by-value
-        -readability-identifier-length,
-        -readability-magic-numbers,
-        -readability-identifier-length
-"
+  -abseil-*,
+  -altera-*,
+  -android-*,
+  -fuchsia-*,
+  -google-*,
+  -llvm*,
+  -zircon-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -modernize-pass-by-value,
+  -readability-magic-numbers,
+  -boost-use-ranges"
 
-WarningsAsErrors: ''
-HeaderFilterRegex: ''
+WarningsAsErrors: ""
+HeaderFilterRegex: ""
 FormatStyle: none
 
 CheckOptions:
-  - key: cppcoreguidelines-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
+  - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
     value: true
+  - key: readability-identifier-length.IgnoredVariableNames
+    value: x|y|it
+  - key: readability-identifier-length.IgnoredParameterNames
+    value: x|y

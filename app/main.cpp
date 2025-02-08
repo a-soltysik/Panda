@@ -1,3 +1,7 @@
+#include <panda/Logger.h>
+
+#include <exception>
+
 #include "App.h"
 
 auto main() -> int

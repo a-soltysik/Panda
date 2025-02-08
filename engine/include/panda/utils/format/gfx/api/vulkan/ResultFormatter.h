@@ -1,5 +1,17 @@
 #pragma once
 
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <fmt/base.h>
+#include <fmt/format.h>
+#include <vulkan/vulkan_core.h>
+
+#include <string_view>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+
 template <>
 struct fmt::formatter<vk::Result> : formatter<std::string_view>
 {

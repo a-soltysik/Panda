@@ -1,9 +1,28 @@
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include "panda/gfx/vulkan/Renderer.h"
 
+#include <array>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_structs.hpp>
+
 #include "panda/gfx/vulkan/Context.h"
+#include "panda/gfx/vulkan/Device.h"
+#include "panda/gfx/vulkan/SwapChain.h"
+#include "panda/gfx/vulkan/object/Object.h"
+#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"  // NOLINT(misc-include-cleaner)
 
 namespace panda::gfx::vulkan
 {
+
 Renderer::Renderer(const Window& window, const Device& device, const vk::SurfaceKHR& surface)
     : _device {device},
       _swapChain {std::make_unique<SwapChain>(device, surface, window)},

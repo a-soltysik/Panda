@@ -9,6 +9,7 @@
 #endif
 
 #include <concepts>
+#include <cstddef>
 
 namespace app::backend
 {

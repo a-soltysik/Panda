@@ -1,8 +1,28 @@
 #pragma once
 
-#include <panda/gfx/vulkan/Scene.h>
+#include <string>
+#include <string_view>
+#include <unordered_set>
 
-#include "panda/Window.h"
+namespace panda
+{
+class Window;
+
+namespace gfx
+{
+struct Attenuation;
+struct BaseLight;
+struct DirectionalLight;
+struct PointLight;
+struct SpotLight;
+
+namespace vulkan
+{
+class Scene;
+class Object;
+}
+}
+}
 
 namespace app
 {
@@ -15,11 +35,11 @@ public:
     auto render(panda::gfx::vulkan::Scene& scene) -> void;
 
 private:
-    auto objectListBox(const std::vector<std::string>& objects) -> std::string;
-    auto removeObject(panda::gfx::vulkan::Scene& scene, const std::vector<std::string>& objects) -> void;
-    auto addLight(panda::gfx::vulkan::Scene& scene, const std::vector<std::string>& objects) -> void;
-    static auto objectInfo(panda::gfx::vulkan::Scene& scene, const std::string& name) -> void;
+    auto removeObject(panda::gfx::vulkan::Scene& scene) -> void;
+    auto addLight(panda::gfx::vulkan::Scene& scene) -> void;
+    auto objectListBox(const std::unordered_set<std::string_view>& objects) -> std::string;
 
+    static auto objectInfo(panda::gfx::vulkan::Scene& scene, const std::string& name) -> void;
     static auto vulkanObject(panda::gfx::vulkan::Object& object) -> void;
     static auto attenuation(panda::gfx::Attenuation& attenuation) -> void;
     static auto baseLight(panda::gfx::BaseLight& light) -> void;
@@ -28,7 +48,8 @@ private:
     static auto spotLight(panda::gfx::SpotLight& light) -> void;
 
     const panda::Window& _window;
-    int _currentObject = 0;
+    std::string _currentObject;
+    int _currentIndex = 0;
     int _currentLight = 0;
 };
 

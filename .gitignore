@@ -13,3 +13,5 @@ CMakeSettings.json
 
 # Cache
 .cache/
+
+compile_commands.json

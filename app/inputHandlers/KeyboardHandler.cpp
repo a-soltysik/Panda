@@ -1,10 +1,19 @@
 #include "KeyboardHandler.h"
 
+#include <GLFW/glfw3.h>
+#include <fmt/format.h>
 #include <imgui.h>
+#include <panda/Logger.h>
+#include <panda/utils/Assert.h>
+#include <panda/utils/Signal.h>
+#include <panda/utils/Signals.h>
+
+#include <cstddef>
+#include <cstdint>
 
 #include "GlfwWindow.h"
 #include "utils/Signals.h"
-#include "utils/format/app/inputHandlers/KeyboardHandlerStateFormatter.h"
+#include "utils/format/app/inputHandlers/KeyboardHandlerStateFormatter.h"  // NOLINT(misc-include-cleaner)
 
 namespace
 {
@@ -13,12 +22,12 @@ void keyboardStateChangedCallback(GLFWwindow* window, int key, int scancode, int
 {
     static auto sender = app::utils::signals::keyboardStateChanged.registerSender();
 
-    const auto id = app::GlfwWindow::makeId(window);
-    panda::log::Debug("Keyboard state for window [{}] changed to {};{};{};{}", id, key, scancode, action, mods);
+    const auto windowId = app::GlfwWindow::makeId(window);
+    panda::log::Debug("Keyboard state for window [{}] changed to {};{};{};{}", windowId, key, scancode, action, mods);
 
     if (!ImGui::GetIO().WantCaptureKeyboard)
     {
-        sender(app::utils::signals::KeyboardStateChangedData {.id = id,
+        sender(app::utils::signals::KeyboardStateChangedData {.id = windowId,
                                                               .key = key,
                                                               .scancode = scancode,
                                                               .action = action,
@@ -64,7 +73,7 @@ KeyboardHandler::KeyboardHandler(const GlfwWindow& window)
         }
     });
 
-    _newFrameNotifReceiver = panda::utils::signals::gameLoopIterationStarted.connect([this]() {
+    _newFrameNotifReceiver = panda::utils::signals::gameLoopIterationStarted.connect([this] {
         for (auto i = uint32_t {}; i < _states.size(); i++)
         {
             if (_states[i] == State::JustReleased)

@@ -1,36 +1,45 @@
 #include "MouseHandler.h"
 
+#include <GLFW/glfw3.h>
+#include <fmt/format.h>
 #include <imgui.h>
+#include <panda/Logger.h>
+#include <panda/utils/Assert.h>
+#include <panda/utils/Signal.h>
+#include <panda/utils/Signals.h>
+
+#include <cstddef>
+#include <glm/ext/vector_float2.hpp>
 
 #include "GlfwWindow.h"
-#include "utils/format/app/inputHandlers/MouseHandlerButtonStateFormatter.h"
+#include "utils/Signals.h"
 
 namespace
 {
 
-using namespace app::utils::signals;
-
 void mouseButtonStateChangedCallback(GLFWwindow* window, int key, int action, int mods)
 {
     static auto sender = app::utils::signals::mouseButtonStateChanged.registerSender();
-    const auto id = app::GlfwWindow::makeId(window);
-    panda::log::Debug("Mouse button state for window [{}] changed to {};{};{}", id, key, action, mods);
+    const auto windowId = app::GlfwWindow::makeId(window);
+    panda::log::Debug("Mouse button state for window [{}] changed to {};{};{}", windowId, key, action, mods);
     if (!ImGui::GetIO().WantCaptureMouse)
     {
-        sender(
-            app::utils::signals::MouseButtonStateChangedData {.id = id, .button = key, .action = action, .mods = mods});
+        sender(app::utils::signals::MouseButtonStateChangedData {.id = windowId,
+                                                                 .button = key,
+                                                                 .action = action,
+                                                                 .mods = mods});
     }
 }
 
 void cursorPositionChangedCallback(GLFWwindow* window, double x, double y)
 {
     static auto sender = app::utils::signals::cursorPositionChanged.registerSender();
-    const auto id = app::GlfwWindow::makeId(window);
-    panda::log::Debug("Cursor position for window [{}] changed to ({}, {})", id, x, y);
+    const auto windowId = app::GlfwWindow::makeId(window);
+    panda::log::Debug("Cursor position for window [{}] changed to ({}, {})", windowId, x, y);
 
     if (!ImGui::GetIO().WantCaptureMouse)
     {
-        sender(app::utils::signals::CursorPositionChangedData {.id = id, .x = x, .y = y});
+        sender(app::utils::signals::CursorPositionChangedData {.id = windowId, .x = x, .y = y});
     }
 }
 
@@ -40,8 +49,7 @@ namespace app
 {
 
 MouseHandler::MouseHandler(const GlfwWindow& window)
-    : _currentPosition {},
-      _previousPosition {_currentPosition},
+    : _previousPosition {_currentPosition},
       _window {window}
 {
     _states.fill(ButtonState::Released);
@@ -83,7 +91,7 @@ MouseHandler::MouseHandler(const GlfwWindow& window)
         _currentPosition = {data.x, data.y};
     });
 
-    _newFrameNotifReceiver = panda::utils::signals::gameLoopIterationStarted.connect([this]() {
+    _newFrameNotifReceiver = panda::utils::signals::gameLoopIterationStarted.connect([this] {
         _previousPosition = _currentPosition;
         for (auto& state : _states)
         {

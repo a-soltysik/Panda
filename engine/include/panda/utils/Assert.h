@@ -1,10 +1,14 @@
 #pragma once
 
+#include <fmt/base.h>
+#include <fmt/format.h>
+
 #include <concepts>
-#include <exception>
+#include <cstdlib>
 #include <optional>
 #include <source_location>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 #include "panda/Logger.h"
@@ -45,7 +49,7 @@ auto expect(T&& result,
 {
     if (result != expected) [[unlikely]]
     {
-        if constexpr (fmt::is_formattable<std::decay_t<T>>())
+        if constexpr (fmt::is_formattable<std::decay_t<T>>() || std::is_enum<std::decay_t<T>>())
         {
             panic(fmt::format("{}: {}", message, result), location);
         }
@@ -54,7 +58,7 @@ auto expect(T&& result,
             panic(message, location);
         }
     }
-    return result;
+    return std::forward<T>(result);
 }
 
 template <Result T>
@@ -65,16 +69,9 @@ auto expect(T&& result,
 {
     if (result.result != expected) [[unlikely]]
     {
-        if constexpr (fmt::is_formattable<std::decay_t<decltype(result.result)>>())
-        {
-            panic(fmt::format("{}: {}", message, result.result), location);
-        }
-        else
-        {
-            panic(message, location);
-        }
+        panic(fmt::format("{}: {}", message, result.result), location);
     }
-    return result.value;
+    return std::forward<typename ResultHelper<T>::Ok>(result.value);
 }
 
 template <typename T>
@@ -90,9 +87,9 @@ auto expect(T&& value,
     return value;
 }
 
-inline auto expect(std::convertible_to<bool> auto&& result,
-                   std::string_view message,
-                   std::source_location location = std::source_location::current()) noexcept
+auto expect(std::convertible_to<bool> auto&& result,
+            std::string_view message,
+            std::source_location location = std::source_location::current()) noexcept
 {
     if (!result) [[unlikely]]
     {
@@ -102,9 +99,9 @@ inline auto expect(std::convertible_to<bool> auto&& result,
     return result;
 }
 
-inline auto expectNot(std::convertible_to<bool> auto&& result,
-                      std::string_view message,
-                      std::source_location location = std::source_location::current()) noexcept
+auto expectNot(std::convertible_to<bool> auto&& result,
+               std::string_view message,
+               std::source_location location = std::source_location::current()) noexcept
 {
     if (result) [[unlikely]]
     {
@@ -121,7 +118,7 @@ auto expectNot(T&& result,
 {
     if (result == expected) [[unlikely]]
     {
-        if constexpr (fmt::is_formattable<std::decay_t<T>>())
+        if constexpr (fmt::is_formattable<std::decay_t<T>>() || std::is_enum<std::decay_t<T>>())
         {
             panic(fmt::format("{}: {}", message, result), location);
         }
@@ -130,7 +127,7 @@ auto expectNot(T&& result,
             panic(message, location);
         }
     }
-    return result;
+    return std::forward<T>(result);
 }
 
 template <Result T>
@@ -141,16 +138,9 @@ auto expectNot(T&& result,
 {
     if (result.result == expected) [[unlikely]]
     {
-        if constexpr (fmt::is_formattable<std::decay_t<decltype(result.result)>>())
-        {
-            panic(fmt::format("{}: {}", message, result.result), location);
-        }
-        else
-        {
-            panic(message, location);
-        }
+        panic(fmt::format("{}: {}", message, result.result), location);
     }
-    return result.value;
+    return std::forward<typename ResultHelper<T>::Ok>(result.value);
 }
 
 template <typename T>
@@ -175,7 +165,7 @@ auto expect(std::optional<T>&& value,
     {
         panic(message, location);
     }
-    return value.value();
+    return std::move(value).value();
 }
 
 template <typename T>
@@ -186,9 +176,11 @@ auto shouldBe(T&& result,
 {
     if (result != expected) [[unlikely]]
     {
-        if constexpr (fmt::is_formattable<std::decay_t<T>>())
+        if constexpr (fmt::is_formattable<std::decay_t<T>>() || std::is_enum<std::decay_t<T>>())
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result), location);
+            log::internal::LogDispatcher::log(log::Level::Error,
+                                              fmt::format("{}: {}", message, std::forward<T>(result)),
+                                              location);
         }
         else
         {
@@ -199,9 +191,9 @@ auto shouldBe(T&& result,
     return true;
 }
 
-inline auto shouldBe(std::convertible_to<bool> auto&& result,
-                     std::string_view message,
-                     std::source_location location = std::source_location::current()) noexcept -> bool
+auto shouldBe(std::convertible_to<bool> auto&& result,
+              std::string_view message,
+              std::source_location location = std::source_location::current()) noexcept -> bool
 {
     if (!result) [[unlikely]]
     {
@@ -233,9 +225,11 @@ auto shouldNotBe(T&& result,
 {
     if (result == expected) [[unlikely]]
     {
-        if constexpr (fmt::is_formattable<std::decay_t<T>>())
+        if constexpr (fmt::is_formattable<std::decay_t<T>>() || std::is_enum<std::decay_t<T>>())
         {
-            log::internal::LogDispatcher::log(log::Level::Error, fmt::format("{}: {}", message, result), location);
+            log::internal::LogDispatcher::log(log::Level::Error,
+                                              fmt::format("{}: {}", message, std::forward<T>(result)),
+                                              location);
         }
         else
         {

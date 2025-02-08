@@ -1,17 +1,34 @@
-#if defined(__GNUC__) && !defined(NDEBUG) && defined(__OPTIMIZE__)
-#    warning "Undefing __OPTIMIZE__ because of fmt"
-#    undef __OPTIMIZE__
-#endif
-
-#define STB_IMAGE_IMPLEMENTATION
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
 
 #include "panda/gfx/vulkan/object/Texture.h"
 
-#include <stb_image.h>
+#include <fmt/format.h>
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <glm/ext/vector_float4.hpp>
+#include <memory>
+#include <span>
+#include <string>
+#include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 #include "panda/gfx/vulkan/Buffer.h"
 #include "panda/gfx/vulkan/CommandBuffer.h"
 #include "panda/gfx/vulkan/Context.h"
+#include "panda/gfx/vulkan/Device.h"
+#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"  // NOLINT(misc-include-cleaner)
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 namespace panda::gfx::vulkan
 {
@@ -35,10 +52,8 @@ auto copyBufferToImage(const Device& device, const Buffer& buffer, vk::Image ima
     CommandBuffer::endSingleTimeCommandBuffer(device, commandBuffer);
 }
 
-auto transitionImageLayout(const Device& device,
-                           vk::Image image,
-                           vk::ImageLayout oldLayout,
-                           vk::ImageLayout newLayout) -> void
+auto transitionImageLayout(const Device& device, vk::Image image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout)
+    -> void
 {
     const auto commandBuffer = CommandBuffer::beginSingleTimeCommandBuffer(device);
 
@@ -129,23 +144,24 @@ auto Texture::getDescriptorImageInfo() const noexcept -> vk::DescriptorImageInfo
 
 auto Texture::getDefaultTexture(const Context& context, glm::vec4 color) -> std::unique_ptr<Texture>
 {
+    static constexpr auto max = int32_t {255};
     return std::make_unique<Texture>(
         context,
-        std::array {static_cast<char>(std::clamp(static_cast<int32_t>(255 * color.x), 0, 255)),
-                    static_cast<char>(std::clamp(static_cast<int32_t>(255 * color.y), 0, 255)),
-                    static_cast<char>(std::clamp(static_cast<int32_t>(255 * color.z), 0, 255)),
-                    static_cast<char>(std::clamp(static_cast<int32_t>(255 * color.w), 0, 255))},
+        std::array {static_cast<uint8_t>(std::clamp(static_cast<int32_t>(max * color.x), 0, max)),
+                    static_cast<uint8_t>(std::clamp(static_cast<int32_t>(max * color.y), 0, max)),
+                    static_cast<uint8_t>(std::clamp(static_cast<int32_t>(max * color.z), 0, max)),
+                    static_cast<uint8_t>(std::clamp(static_cast<int32_t>(max * color.w), 0, max))},
         1,
         1);
 }
 
-Texture::Texture(const Context& context, std::span<const char> data, size_t width, size_t height)
+Texture::Texture(const Context& context, std::span<const uint8_t> data, size_t width, size_t height)
     : _context {context}
 {
     load(data, width, height);
 }
 
-auto Texture::load(std::span<const char> data, size_t width, size_t height) -> void
+auto Texture::load(std::span<const uint8_t> data, size_t width, size_t height) -> void
 {
     const auto imageSize = width * height * 4;
     auto stagingBuffer = Buffer {_context.getDevice(),
@@ -223,7 +239,7 @@ auto Texture::fromFile(const Context& context, const std::filesystem::path& path
     const auto size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
     const auto data = std::span {pixels, size};
 
-    auto texture = std::make_unique<Texture>(context, std::vector<char> {data.begin(), data.end()}, width, height);
+    auto texture = std::make_unique<Texture>(context, std::vector<uint8_t> {data.begin(), data.end()}, width, height);
     stbi_image_free(pixels);
 
     return texture;

@@ -588,9 +588,10 @@ STBIDEF int stbi_zlib_decode_noheader_buffer(char* obuffer, int olen, const char
 
 #    include <limits.h>
 #    include <stdarg.h>
-#    include <stddef.h>  // ptrdiff_t on osx
 #    include <stdlib.h>
 #    include <string.h>
+
+#    include <cstddef>  // ptrdiff_t on osx
 
 #    if !defined(STBI_NO_LINEAR) || !defined(STBI_NO_HDR)
 #        include <math.h>  // ldexp, pow
@@ -645,7 +646,7 @@ typedef signed short stbi__int16;
 typedef unsigned int stbi__uint32;
 typedef signed int stbi__int32;
 #    else
-#        include <stdint.h>
+#        include <cstdint>
 typedef uint16_t stbi__uint16;
 typedef int16_t stbi__int16;
 typedef uint32_t stbi__uint32;

@@ -1,5 +1,13 @@
+#pragma once
+#include <panda/utils/Signals.h>
+
 #include "DevGui.h"
 #include "UserGui.h"
+
+namespace panda
+{
+class Window;
+}
 
 namespace app
 {

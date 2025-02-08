@@ -2,10 +2,9 @@
 
 #include "lightUtils.glsl"
 
-layout (location = 0) in vec3 fragColor;
-layout (location = 1) in vec3 fragWorldPosition;
-layout (location = 2) in vec3 fragNormalWorld;
-layout (location = 3) in vec2 fragTexCoord;
+layout (location = 0) in vec3 fragWorldPosition;
+layout (location = 1) in vec3 fragNormalWorld;
+layout (location = 2) in vec2 fragTexCoord;
 
 layout(location = 0) out vec4 outColor;
 
@@ -24,12 +23,6 @@ layout (set = 0, binding = 1) uniform GlobalUbo
 } ubo;
 
 layout (binding = 2) uniform sampler2D texSampler;
-
-
-layout (push_constant) uniform Push {
-    mat4 modelMatrix;
-    mat4 normalMatrix;
-} push;
 
 vec3 calculateLight(BaseLight light, vec3 lightDirection, vec3 normal)
 {

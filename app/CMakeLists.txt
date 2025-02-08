@@ -1,6 +1,6 @@
 set(APP_TARGET_NAME ${PROJECT_NAME}.App)
 set(RESOURCE_DIR res)
-set(RESOURCE_DATA_DIR ${CMAKE_CURRENT_LIST_DIR}/${RESOURCE_DIR})
+set(RESOURCE_DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/${RESOURCE_DIR})
 set(RESOURCE_BIN_DIR ${CMAKE_CURRENT_BINARY_DIR}/${RESOURCE_DIR})
 set(CONFIG_OUTPUT ${CMAKE_BINARY_DIR}/app/generated)
 
@@ -13,17 +13,17 @@ file(GLOB_RECURSE BACKED_SRC_LIST ${APP_DIR}/backend/*.cpp)
 list(REMOVE_ITEM ${APP_TARGET_NAME}_SRC_LIST ${BACKED_SRC_LIST})
 
 if(WIN32)
-  file(GLOB_RECURSE WIN_SRC_LIST ${APP_DIR}/backend/windows/*.cpp)
+    file(GLOB_RECURSE WIN_SRC_LIST ${APP_DIR}/backend/windows/*.cpp)
 
-  list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${WIN_SRC_LIST})
+    list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${WIN_SRC_LIST})
 elseif(LINUX)
-  file(GLOB_RECURSE LINUX_SRC_LIST ${APP_DIR}/backend/linux/*.cpp)
+    file(GLOB_RECURSE LINUX_SRC_LIST ${APP_DIR}/backend/linux/*.cpp)
 
-  list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${LINUX_SRC_LIST})
+    list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${LINUX_SRC_LIST})
 else()
-  file(GLOB_RECURSE OTHER_SRC_LIST ${APP_DIR}/backend/other/*.cpp)
+    file(GLOB_RECURSE OTHER_SRC_LIST ${APP_DIR}/backend/other/*.cpp)
 
-  list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${OTHER_SRC_LIST})
+    list(APPEND ${APP_TARGET_NAME}_SRC_LIST ${OTHER_SRC_LIST})
 endif()
 
 add_executable(${APP_TARGET_NAME} ${${APP_TARGET_NAME}_SRC_LIST})
@@ -31,60 +31,38 @@ add_executable(PD::APP ALIAS ${APP_TARGET_NAME})
 
 target_link_libraries(${APP_TARGET_NAME} PRIVATE PD::Options PD::Warnings)
 
-target_include_directories(${APP_TARGET_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}
-                                                      ${CONFIG_OUTPUT})
+target_include_directories(${APP_TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CONFIG_OUTPUT})
 
-target_compile_definitions(
-  ${APP_TARGET_NAME}
-  PRIVATE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
-          VULKAN_HPP_NO_EXCEPTIONS
-          VULKAN_HPP_ASSERT_ON_RESULT=EXPECT
-          VULKAN_HPP_ASSERT=DEBUG_EXPECT
-          GLM_FORCE_RADIANS
-          GLM_FORCE_DEPTH_ZERO_TO_ONE
-          GLM_ENABLE_EXPERIMENTAL
-          GLFW_INCLUDE_VULKAN)
 if(MSVC)
-  target_compile_definitions(${APP_TARGET_NAME} PRIVATE NOMINMAX)
+    target_compile_definitions(${APP_TARGET_NAME} PRIVATE NOMINMAX)
 endif()
 
 if(PD_ENABLE_PCH)
-  target_precompile_headers(
-    ${APP_TARGET_NAME}
-    PRIVATE
-    <string>
-    <vector>
-    <GLFW/glfw3.h>
-    <panda/utils/Assert.h>
-    <panda/Common.h>
-    <panda/Logger.h>
-    <vulkan/vulkan.hpp>
-    <vulkan/vulkan_enums.hpp>
-    <vulkan/vulkan_handles.hpp>
-    <vulkan/vulkan_structs.hpp>
-    <vulkan/vulkan_core.h>
-    <glm/ext/matrix_float4x4.hpp>
-    <glm/ext/vector_float3.hpp>
-    <glm/ext/vector_float2.hpp>
-    <glm/fwd.hpp>)
+    target_precompile_headers(
+        ${APP_TARGET_NAME}
+        PRIVATE
+        <cstddef>
+        <cstdint>
+        <GLFW/glfw3.h>
+        <panda/Logger.h>
+        <panda/utils/Signals.h>)
 endif()
 
 find_package(Vulkan REQUIRED)
 target_link_system_libraries(
-  ${APP_TARGET_NAME}
-  PRIVATE
-  Vulkan::Vulkan
-  glfw
-  glm
-  fmt
-  imgui
-  implot
-  portable_file_dialogs)
+    ${APP_TARGET_NAME}
+    PRIVATE
+    Vulkan::Vulkan
+    glfw
+    glm
+    fmt
+    imgui
+    implot
+    portable_file_dialogs)
 
 target_link_libraries(${APP_TARGET_NAME} PRIVATE PD::Engine)
 
 add_custom_command(
-  TARGET ${APP_TARGET_NAME}
-  PRE_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_directory ${RESOURCE_DATA_DIR}
-          ${RESOURCE_BIN_DIR})
+    TARGET ${APP_TARGET_NAME}
+    PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${RESOURCE_DATA_DIR} ${RESOURCE_BIN_DIR})

@@ -1,30 +1,38 @@
 #pragma once
 
-#include "panda/gfx/Camera.h"
-#include "panda/gfx/vulkan/Device.h"
-#include "panda/gfx/vulkan/FrameInfo.h"
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
+#include <memory>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_handles.hpp>
+
+#include "panda/Common.h"
 #include "panda/gfx/vulkan/Pipeline.h"
-#include "panda/gfx/vulkan/object/Object.h"
 
 namespace panda::gfx::vulkan
 {
+class DescriptorSetLayout;
+class Device;
+struct FrameInfo;
 
 class RenderSystem
 {
 public:
-    RenderSystem(const Device& device, vk::RenderPass renderPass, vk::DescriptorSetLayout setLayout);
+    RenderSystem(const Device& device, vk::RenderPass renderPass);
     PD_DELETE_ALL(RenderSystem);
     ~RenderSystem() noexcept;
 
-    auto render(const FrameInfo& frameInfo, std::span<const Object> objects) const -> void;
+    auto render(const FrameInfo& frameInfo) const -> void;
 
-    //private:
+private:
     static auto createPipelineLayout(const Device& device, vk::DescriptorSetLayout setLayout) -> vk::PipelineLayout;
-    static auto createPipeline(const Device& device,
-                               vk::RenderPass renderPass,
-                               vk::PipelineLayout pipelineLayout) -> std::unique_ptr<Pipeline>;
+    static auto createPipeline(const Device& device, vk::RenderPass renderPass, vk::PipelineLayout pipelineLayout)
+        -> std::unique_ptr<Pipeline>;
 
     const Device& _device;
+    std::unique_ptr<DescriptorSetLayout> _descriptorLayout;
     vk::PipelineLayout _pipelineLayout;
     std::unique_ptr<Pipeline> _pipeline;
 };

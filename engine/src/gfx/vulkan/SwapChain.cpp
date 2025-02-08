@@ -1,7 +1,27 @@
+// clang-format off
+#include "panda/utils/Assert.h"
+// clang-format on
+
 #include "panda/gfx/vulkan/SwapChain.h"
 
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <span>
+#include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
+
+#include "panda/Logger.h"
+#include "panda/Window.h"
 #include "panda/gfx/vulkan/Context.h"
-#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"
+#include "panda/gfx/vulkan/Device.h"
+#include "panda/utils/Signals.h"
+#include "panda/utils/format/gfx/api/vulkan/ResultFormatter.h"  // NOLINT(misc-include-cleaner)
 
 namespace panda::gfx::vulkan
 {
@@ -154,7 +174,7 @@ auto SwapChain::createRenderPass(const vk::SurfaceFormatKHR& imageFormat,
                                                  &depthAttachmentRef};
 
     const auto dependency = vk::SubpassDependency {
-        VK_SUBPASS_EXTERNAL,
+        vk::SubpassExternal,
         0,
         vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests,
         vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests,
@@ -299,7 +319,7 @@ auto SwapChain::createSwapChain(const vk::SurfaceKHR& surface,
                                                   swapChainSupport.capabilities.currentTransform,
                                                   vk::CompositeAlphaFlagBitsKHR::eOpaque,
                                                   presentationMode,
-                                                  VK_TRUE};
+                                                  vk::True};
 
     if (device.queueFamilies.graphicsFamily != device.queueFamilies.presentationFamily)
     {
@@ -350,7 +370,7 @@ auto SwapChain::acquireNextImage() -> std::optional<uint32_t>
     }
 
     shouldBe(_device.logicalDevice.waitForFences(_inFlightFences[_currentFrame],
-                                                 VK_TRUE,
+                                                 vk::True,
                                                  std::numeric_limits<uint64_t>::max()),
              vk::Result::eSuccess,
              "Waiting for the fences didn't succeed");
@@ -378,7 +398,7 @@ auto SwapChain::submitCommandBuffers(const vk::CommandBuffer& commandBuffer, uin
     if (_imagesInFlight[imageIndex] != nullptr) [[likely]]
     {
         shouldBe(_device.logicalDevice.waitForFences(*_imagesInFlight[imageIndex],
-                                                     VK_TRUE,
+                                                     vk::True,
                                                      std::numeric_limits<uint64_t>::max()),
                  vk::Result::eSuccess,
                  "Failed to wait for _imagesInFlight fence");

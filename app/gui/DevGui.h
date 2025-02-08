@@ -1,9 +1,15 @@
 #pragma once
 
-#include <imgui.h>
-#include <panda/utils/Signals.h>
+#include <panda/Logger.h>
 
-#include "backend/Profiler.h"
+#include <array>
+#include <cstdint>
+#include <deque>
+
+namespace panda
+{
+class Window;
+}
 
 namespace app
 {
@@ -28,9 +34,9 @@ private:
     std::array<float, 60> _cpuUsages {};
     std::array<bool, 2> _openedTabs {true, true};
     std::array<const char*, 2> _tabsNames {"Profiler", "Logger"};
-    std::vector<panda::log::FileLogger::LogData> _logs;
+    std::deque<panda::log::FileLogger::LogData> _logs;
     uint32_t _lastMaxIndex = 0;
-    float _time = 0.f;
+    float _time = 0.F;
     bool _anchorLogs = true;
 
     const panda::Window& _window;

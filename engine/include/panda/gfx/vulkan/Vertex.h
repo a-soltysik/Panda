@@ -4,12 +4,14 @@
 #include "panda/utils/Assert.h"
 // clang-format on
 
+#include <array>
+#include <cstddef>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtx/hash.hpp>
 #include <vulkan/vulkan.hpp>
-
-#include "panda/utils/Utils.h"
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 namespace panda::gfx::vulkan
 {
@@ -17,7 +19,6 @@ namespace panda::gfx::vulkan
 struct Vertex
 {
     glm::vec3 position;
-    glm::vec3 color;
     glm::vec3 normal;
     glm::vec2 uv;
 
@@ -28,30 +29,13 @@ struct Vertex
         return vk::VertexInputBindingDescription {0, sizeof(Vertex), vk::VertexInputRate::eVertex};
     }
 
-    static constexpr auto getAttributeDescriptions() -> std::array<vk::VertexInputAttributeDescription, 4>
+    static constexpr auto getAttributeDescriptions() -> std::array<vk::VertexInputAttributeDescription, 3>
     {
         return {
             vk::VertexInputAttributeDescription {0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, position)},
-            vk::VertexInputAttributeDescription {1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)   },
-            vk::VertexInputAttributeDescription {2, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal)  },
-            vk::VertexInputAttributeDescription {3, 0, vk::Format::eR32G32Sfloat,    offsetof(Vertex, uv)      }
+            vk::VertexInputAttributeDescription {1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal)  },
+            vk::VertexInputAttributeDescription {2, 0, vk::Format::eR32G32Sfloat,    offsetof(Vertex, uv)      }
         };
-    }
-};
-
-}
-
-namespace std
-{
-
-template <>
-struct hash<panda::gfx::vulkan::Vertex>
-{
-    auto operator()(const panda::gfx::vulkan::Vertex& vertex) const -> size_t
-    {
-        size_t seed = 0;
-        panda::utils::hashCombine(seed, vertex.position, vertex.color, vertex.normal, vertex.uv);
-        return seed;
     }
 };
 
