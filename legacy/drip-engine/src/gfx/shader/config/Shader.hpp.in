@@ -1,0 +1,9 @@
+#pragma once
+
+#include <cstdint>
+#include <array>
+
+namespace drip::gfx::shader
+{
+inline constexpr auto @VAR_NAME@ = std::array<uint32_t, @WORDS_COUNT@>{@WORDS_STR@};
+}

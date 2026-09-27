@@ -1,3 +1,4 @@
+---
 Checks: "*,
   -abseil-*,
   -altera-*,
@@ -6,22 +7,34 @@ Checks: "*,
   -google-*,
   -llvm*,
   -zircon-*,
-  -cppcoreguidelines-avoid-magic-numbers,
+  -bugprone-unused-raii,
   -cppcoreguidelines-pro-type-union-access,
-  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -portability-avoid-pragma-once
+  "
+WarningsAsErrors: "*,
+  -boost-use-ranges,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
   -cppcoreguidelines-pro-bounds-constant-array-index,
-  -modernize-pass-by-value,
-  -readability-magic-numbers,
-  -boost-use-ranges"
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -readability-magic-numbers
+  "
 
-WarningsAsErrors: ""
-HeaderFilterRegex: ""
 FormatStyle: none
+HeaderFilterRegex: '(^|[/\\])(include|src|tests|examples)[/\\]'
 
 CheckOptions:
-  - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
-    value: true
   - key: readability-identifier-length.IgnoredVariableNames
-    value: x|y|it
+    value: "x|y|z|u|v|w|it"
   - key: readability-identifier-length.IgnoredParameterNames
-    value: x|y
+    value: "x|y|z|u|v|w"
+  - key: readability-function-cognitive-complexity.Threshold
+    value: 10
+  - key: readability-function-cognitive-complexity.IgnoreMacros
+    value: true
+  - key: cppcoreguidelines-pro-bounds-avoid-unchecked-container-access.FixMode
+    value: "at"
+  - key: modernize-use-trailing-return-type.TransformLambdas
+    value: "none"
+...

@@ -15,3 +15,6 @@ CMakeSettings.json
 .cache/
 
 compile_commands.json
+
+# Local Python tooling cache
+__pycache__/

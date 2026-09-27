@@ -1,0 +1,25 @@
+function(panda_enable_static_analysis target)
+    if((PANDA_ENABLE_CLANG_TIDY OR PANDA_ENABLE_CPPCHECK) AND PANDA_ENABLE_UNITY)
+        message(FATAL_ERROR "Panda static analysis requires PANDA_ENABLE_UNITY=OFF")
+    endif()
+    if(PANDA_ENABLE_CLANG_TIDY)
+        find_program(PANDA_CLANG_TIDY_EXECUTABLE NAMES clang-tidy REQUIRED)
+        set(clang_tidy ${PANDA_MSVC_LAUNCHER} "${PANDA_CLANG_TIDY_EXECUTABLE}"
+            --extra-arg=-Wno-unknown-warning-option "--exclude-header-filter=(^|[/\\\\])(_deps|legacy)[/\\\\]")
+        if(MSVC)
+            # LLVM tools may be built for MinGW; analyze the actual MSVC ABI instead.
+            list(APPEND clang_tidy --extra-arg=--target=x86_64-pc-windows-msvc)
+            if(CMAKE_CXX_FLAGS MATCHES "(/EH[^ ]+)")
+                list(APPEND clang_tidy "--extra-arg=${CMAKE_MATCH_1}")
+            endif()
+        endif()
+        set_property(TARGET ${target} PROPERTY CXX_CLANG_TIDY "${clang_tidy}")
+    endif()
+
+    if(PANDA_ENABLE_CPPCHECK)
+        find_program(PANDA_CPPCHECK_EXECUTABLE NAMES cppcheck REQUIRED)
+        set(cppcheck ${PANDA_MSVC_LAUNCHER} "${PANDA_CPPCHECK_EXECUTABLE}"
+            --enable=warning,style,performance,portability --error-exitcode=1 --std=c++23 --inline-suppr --quiet)
+        set_property(TARGET ${target} PROPERTY CXX_CPPCHECK "${cppcheck}")
+    endif()
+endfunction()

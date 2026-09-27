@@ -8,7 +8,7 @@ AllowShortIfStatementsOnASingleLine: Never
 AllowShortLambdasOnASingleLine: None
 AllowShortLoopsOnASingleLine: false
 BinPackArguments: false
-BinPackParameters: false
+BinPackParameters: OnePerLine
 BraceWrapping:
   AfterCaseLabel: true
   AfterEnum: true

@@ -1,0 +1,67 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - 'master'
+  pull_request:
+    branches:
+      - 'master'
+jobs:
+  build:
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: "Windows MSVC Release"
+            os: windows-latest
+            preset: windows-msvc-release
+            compiler: msvc
+
+          - name: "Windows MSVC Debug"
+            os: windows-latest
+            preset: windows-msvc-debug
+            compiler: msvc
+
+          - name: "Linux GCC Release"
+            os: ubuntu-latest
+            preset: linux-gcc-release
+            compiler: gcc-14
+
+          - name: "Linux GCC Debug"
+            os: ubuntu-latest
+            preset: linux-gcc-with-warnings
+            compiler: gcc-14
+
+          - name: "Linux Clang Release"
+            os: ubuntu-latest
+            preset: linux-clang-release
+            compiler: llvm-20
+
+          - name: "Linux Clang Debug"
+            os: ubuntu-latest
+            preset: linux-clang-with-warnings
+            compiler: llvm-20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-env
+        with:
+          preset: ${{ matrix.config.preset }}
+          compiler: ${{ matrix.config.compiler }}
+          vcvarsall: ${{ contains(matrix.config.os, 'windows') }}
+
+      - name: Setup Cache
+        uses: ./.github/actions/setup-cache
+        with:
+          preset: ${{ matrix.config.preset }}
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.config.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.config.preset }}

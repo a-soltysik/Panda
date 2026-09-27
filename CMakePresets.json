@@ -1,0 +1,299 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "PANDA_WARNINGS_AS_ERRORS": "ON",
+        "PANDA_ENABLE_CLANG_TIDY": "ON",
+        "PANDA_ENABLE_CPPCHECK": "ON",
+        "PANDA_ENABLE_CLANG_FORMAT": "ON",
+        "PANDA_ENABLE_UNITY": "OFF",
+        "PANDA_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "gcc-base",
+      "hidden": true,
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-${presetName}-${hostSystemName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "msvc-base",
+      "hidden": true,
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "toolset": {
+        "value": "host=x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
+    },
+    {
+      "name": "gcc-development",
+      "displayName": "Panda GCC development build",
+      "inherits": "gcc-base"
+    },
+    {
+      "name": "gcc-quality",
+      "displayName": "Panda GCC quality build",
+      "inherits": "gcc-base",
+      "cacheVariables": {
+        "PANDA_BUILD_EXAMPLES": "ON"
+      }
+    },
+    {
+      "name": "msvc-development",
+      "displayName": "Panda MSVC development build",
+      "inherits": "msvc-base"
+    },
+    {
+      "name": "msvc-quality",
+      "displayName": "Panda MSVC quality build",
+      "inherits": "msvc-base",
+      "cacheVariables": {
+        "PANDA_BUILD_EXAMPLES": "ON"
+      }
+    },
+    {
+      "name": "gcc-sanitizers",
+      "displayName": "Panda Linux GCC Address/UndefinedBehaviorSanitizer build",
+      "inherits": [
+        "tests-base",
+        "gcc-base"
+      ],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "PANDA_ENABLE_SANITIZER_ADDRESS": "ON",
+        "PANDA_ENABLE_SANITIZER_UNDEFINED_BEHAVIOR": "ON"
+      }
+    },
+    {
+      "name": "gcc-thread-sanitizer",
+      "displayName": "Panda Linux GCC ThreadSanitizer build",
+      "inherits": [
+        "tests-base",
+        "gcc-base"
+      ],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "PANDA_ENABLE_SANITIZER_THREAD": "ON"
+      }
+    },
+    {
+      "name": "msvc-sanitizers",
+      "displayName": "Panda MSVC AddressSanitizer build",
+      "inherits": [
+        "tests-base",
+        "msvc-base"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "PANDA_ENABLE_SANITIZER_ADDRESS": "ON"
+      }
+    },
+    {
+      "name": "tests-base",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "PANDA_ENABLE_CLANG_TIDY": "OFF",
+        "PANDA_ENABLE_CPPCHECK": "OFF",
+        "PANDA_ENABLE_CLANG_FORMAT": "OFF"
+      }
+    },
+    {
+      "name": "gcc-tests",
+      "displayName": "Panda GCC CPU tests",
+      "inherits": [
+        "tests-base",
+        "gcc-base"
+      ]
+    },
+    {
+      "name": "msvc-tests",
+      "displayName": "Panda MSVC CPU tests",
+      "inherits": [
+        "tests-base",
+        "msvc-base"
+      ]
+    },
+    {
+      "name": "clang-tests",
+      "displayName": "Panda Linux Clang CPU tests",
+      "inherits": "tests-base",
+      "binaryDir": "${sourceDir}/build-${presetName}-${hostSystemName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "gcc-development",
+      "configurePreset": "gcc-development"
+    },
+    {
+      "name": "gcc-quality",
+      "configurePreset": "gcc-quality"
+    },
+    {
+      "name": "msvc-development",
+      "configurePreset": "msvc-development"
+    },
+    {
+      "name": "msvc-quality",
+      "configurePreset": "msvc-quality"
+    },
+    {
+      "name": "gcc-sanitizers",
+      "configurePreset": "gcc-sanitizers"
+    },
+    {
+      "name": "gcc-thread-sanitizer",
+      "configurePreset": "gcc-thread-sanitizer"
+    },
+    {
+      "name": "msvc-sanitizers",
+      "configurePreset": "msvc-sanitizers"
+    },
+    {
+      "name": "gcc-tests",
+      "configurePreset": "gcc-tests"
+    },
+    {
+      "name": "msvc-tests",
+      "configurePreset": "msvc-tests"
+    },
+    {
+      "name": "clang-tests",
+      "configurePreset": "clang-tests"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "gcc-development",
+      "inherits": "base",
+      "configurePreset": "gcc-development"
+    },
+    {
+      "name": "gcc-quality",
+      "inherits": "base",
+      "configurePreset": "gcc-quality"
+    },
+    {
+      "name": "msvc-development",
+      "inherits": "base",
+      "configurePreset": "msvc-development"
+    },
+    {
+      "name": "msvc-quality",
+      "inherits": "base",
+      "configurePreset": "msvc-quality"
+    },
+    {
+      "name": "gcc-sanitizers",
+      "inherits": "base",
+      "configurePreset": "gcc-sanitizers",
+      "filter": {
+        "exclude": {
+          "label": "system"
+        }
+      }
+    },
+    {
+      "name": "gcc-thread-sanitizer",
+      "inherits": "base",
+      "configurePreset": "gcc-thread-sanitizer",
+      "filter": {
+        "exclude": {
+          "label": "system"
+        }
+      }
+    },
+    {
+      "name": "msvc-sanitizers",
+      "inherits": "base",
+      "configurePreset": "msvc-sanitizers",
+      "filter": {
+        "exclude": {
+          "label": "system"
+        }
+      }
+    },
+    {
+      "name": "gcc-tests",
+      "inherits": "base",
+      "configurePreset": "gcc-tests",
+      "filter": {
+        "exclude": {
+          "label": "system"
+        }
+      }
+    },
+    {
+      "name": "msvc-tests",
+      "inherits": "base",
+      "configurePreset": "msvc-tests",
+      "filter": {
+        "exclude": {
+          "label": "system"
+        }
+      }
+    },
+    {
+      "name": "clang-tests",
+      "inherits": "base",
+      "configurePreset": "clang-tests",
+      "filter": {
+        "exclude": {
+          "label": "system"
+        }
+      }
+    }
+  ]
+}

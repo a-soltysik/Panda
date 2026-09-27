@@ -1,0 +1,45 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux GCC
+            os: ubuntu-26.04
+            compiler: gcc-16
+            preset: gcc-tests
+          - name: Linux Clang
+            os: ubuntu-26.04
+            compiler: llvm-22.1.8
+            preset: clang-tests
+          - name: Windows MSVC
+            os: windows-2025
+            compiler: msvc
+            preset: msvc-tests
+          - name: Linux GCC ASan and UBSan
+            os: ubuntu-26.04
+            compiler: gcc-16
+            preset: gcc-sanitizers
+          - name: Windows MSVC ASan
+            os: windows-2025
+            compiler: msvc
+            preset: msvc-sanitizers
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          compiler: ${{ matrix.compiler }}
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
