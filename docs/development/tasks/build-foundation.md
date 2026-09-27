@@ -56,7 +56,7 @@ Windows MSVC ASan. A Windows MSVC build with traces disabled passed 22 diagnosti
 cases, including the explicit API emitting an ordinary message. Small standalone
 probes produced symbolized frames on Windows GCC/MSVC and Linux GCC/Clang. Debug
 symbols and optimization still govern frame detail; failure-injection for trace
-allocation/symbolization and hosted CI execution remain unverified.
+allocation/symbolization remains unverified; hosted CI success is still pending.
 
 
 Windows/MSYS2 UCRT64: GCC 16.1.0, CMake 4.4.2, Ninja 1.13.2,
@@ -122,8 +122,13 @@ the core unit executable and passed its existing version test.
 TSan execution and a complete instrumented MSan toolchain remain unverified.
 The separate test workflow includes GCC, Clang and MSVC CPU jobs plus ASan/UBSan
 jobs. The quality workflow owns analysis and formatting, including the example.
-Both share tool installation through a local composite action; no hosted run was
-performed. Runtime presets disable formatting as well as static analysis. The GCC, Clang and MSVC CPU presets and both ASan configurations each passed
+Both share tool installation through a local composite action. The initial hosted
+Windows quality job failed during tool setup because Chocolatey did not provide
+the requested cppcheck version. Windows now pins the available 2.19.0 package; its
+package and official installer downloads were verified, including the matching
+SHA-256 checksum. A hosted quality pass remains pending. Runtime presets disable
+formatting as well as static analysis. The GCC, Clang and MSVC CPU presets and both
+ASan configurations each passed
 their 36 behavior cases after the separation; formatting remains in the quality workflow.
 Top-level configuration defaults to a persistent `.cache/cpm` source cache, while
 explicit CMake and environment cache paths remain supported. Fresh Windows and
@@ -144,7 +149,7 @@ recognizing the parameter list, preserving the existing bounded, allocation-free
 parser. Text diagnostics also strip the Panda source-root prefix using a
 non-owning view, preserving original metadata and external paths. The compiler-signature, real-method/lambda and bounded-output cases also
 passed on Windows GCC and MSVC with their quality builds enabled.
-Release, unity, hosted CI, documentation generation and GPU execution remain
+Release, unity, hosted CI success, documentation generation and GPU execution remain
 unverified for the current source. The subsequent toolchain
 and tests/API-documentation tasks retain their acceptance scope. Maintainer
 acceptance and later-phase authorization remain separate.

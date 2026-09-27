@@ -25,7 +25,7 @@ runs:
         ninja: '1.13.2'
         clang-tidy: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
         clang-format: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
-        cppcheck: ${{ inputs.analysis == 'true' && (runner.os == 'Linux' && '2.19.0-3' || '2.22.0') || 'false' }}
+        cppcheck: ${{ inputs.analysis == 'true' && (runner.os == 'Linux' && '2.19.0-3' || '2.19.0') || 'false' }}
         setup-cpp: false
     - name: Build tool versions
       shell: bash
