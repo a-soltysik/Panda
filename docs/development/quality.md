@@ -1,7 +1,8 @@
 # Code and verification quality
 
-These rules apply from the first source file. The current implementation and open
-work are recorded in [Build foundation](tasks/build-foundation.md).
+These rules apply from the first source file. Completed foundation evidence is
+recorded in [Build foundation](tasks/build-foundation.md); the [plan](PLAN.md) tracks
+remaining work.
 The [package specification](../design/package-and-toolchain.md) owns dependency and
 platform boundaries.
 The [project conventions](conventions.md) own maintainer preferences for code style

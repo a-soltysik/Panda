@@ -35,7 +35,7 @@ Tools/example CMake and window tests.
 - Report real quality-build/CPU checks, real GLFW smoke evidence and unavailable
   native-display/platform checks without treating them as passes.
 
-## Current evidence and remaining work
+## Evidence and limits
 
 Windows GCC 16.1.0 and Linux GCC 16.0.1 non-unity Debug builds compiled Tools and
 `simple_scene`. The Windows core-only build contains no GLFW, and configuring

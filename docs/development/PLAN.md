@@ -1,9 +1,9 @@
 # Development plan
 
-The design is accepted and engine implementation is authorized for the build
-foundation. The static core, shared diagnostics, optional GLFW Tools, an empty-window
-example and CPU tests exist; graphics and compute
-remain planned. The current task is **Build foundation**, awaiting maintainer review.
+The design, build foundation and GLFW window wrapper are accepted. The static core,
+shared diagnostics, optional GLFW Tools, an empty-window example and CPU tests exist;
+graphics and compute remain planned. Toolchain compatibility and tests/API
+documentation are the next ready tasks in the authorized build-foundation phase.
 
 ## Task order
 
@@ -14,10 +14,10 @@ criteria and concise current evidence.
 
 | Task | Phase | State | Depends on |
 | --- | --- | --- | --- |
-| [Build foundation](tasks/build-foundation.md) | Build foundation | Review | Accepted design |
-| [GLFW window wrapper](tasks/window-wrapper.md) | Build foundation | In progress | Accepted design; explicitly requested wrapper scope |
-| [C++ and CUDA toolchain compatibility](tasks/toolchain-compatibility.md) | Build foundation | Planned | [Build foundation](tasks/build-foundation.md) |
-| [Tests and API documentation](tasks/tests-and-api-docs.md) | Build foundation | Planned | [Build foundation](tasks/build-foundation.md) |
+| [Build foundation](tasks/build-foundation.md) | Build foundation | Accepted | Accepted design |
+| [GLFW window wrapper](tasks/window-wrapper.md) | Build foundation | Accepted | Accepted design; explicitly requested wrapper scope |
+| [C++ and CUDA toolchain compatibility](tasks/toolchain-compatibility.md) | Build foundation | Ready | [Build foundation](tasks/build-foundation.md) |
+| [Tests and API documentation](tasks/tests-and-api-docs.md) | Build foundation | Ready | [Build foundation](tasks/build-foundation.md) |
 | [Vulkan context and window lifecycle](tasks/vulkan-context.md) | GPU resources | Planned | [Build foundation](tasks/build-foundation.md), [C++ and CUDA toolchain compatibility](tasks/toolchain-compatibility.md), [Tests and API documentation](tasks/tests-and-api-docs.md) |
 | [Allocation, uploads and resource lifetimes](tasks/resource-lifetimes.md) | GPU resources | Planned | [Vulkan context and window lifecycle](tasks/vulkan-context.md) |
 | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) | GPU resources | Planned | [Allocation, uploads and resource lifetimes](tasks/resource-lifetimes.md) |

@@ -32,12 +32,21 @@ refactors separately rather than mixing them into unrelated work.
 
 ## Initialization and local variables
 
-- Prefer brace initialization (`{}`) over copy initialization (`=`).
-  Assignment, default arguments and designated initializers still use `=`.
+- Use `=` to initialize local variables declared with `auto`. Prefer braces (`{}`)
+  when constructing values on the right-hand side and initializing data members.
+  Assignment, default arguments and designated initializers also use `=`.
   Avoid braces when they would select an unintended `initializer_list` overload.
-- Prefer `auto` for local variables when deduction gives the intended type.
-  Use `const auto` for locals that do not change. Keep an explicit type when it
-  is needed to choose the representation or satisfy an API.
+- Always use `auto` for local variables, including loop variables and declarations
+  in conditions. Use `const` unless mutation is required. When a specific type is
+  needed for representation or an API, express it through the initializer.
+  Select `auto&` or `const auto&` deliberately when borrowing to avoid unintended
+  copies. This rule does not apply to function parameters or class data members.
+
+  ```cpp
+  const auto windowTitle = std::string{"Panda - Simple scene"};
+  auto width = std::uint32_t{1280};
+  const auto& entry = entries[index];
+  ```
 - Prefer `static constexpr` for constant variables where permitted, except where
   `static` is redundant, such as in an anonymous namespace. This does not change
   the use of `constexpr` functions or `if constexpr`.
