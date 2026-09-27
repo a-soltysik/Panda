@@ -114,7 +114,7 @@ TEST_F(WindowTest, ValidatesRequestsBeforeCallingGlfw)
 {
     EXPECT_CALL(getMock(), glfwInit()).Times(0);
     EXPECT_CALL(getMock(), glfwCreateWindow(_, _, _, _, _)).Times(0);
-    const auto zero {Window::create({0, 80}, "test")};
+    const auto zero = Window::create({0, 80}, "test");
     ASSERT_FALSE(zero.has_value());
     EXPECT_EQ(zero.error().code, WindowError::Code::InvalidArgument);
     EXPECT_FALSE(Window::create({std::numeric_limits<std::uint32_t>::max(), 80}, "test").has_value());
@@ -127,9 +127,9 @@ TEST_F(WindowTest, InitializationFailureOwnsDiagnosticAndRestoresCallback)
     EXPECT_CALL(getMock(), glfwInit()).WillOnce(Return(GLFW_FALSE));
     EXPECT_CALL(getMock(), glfwTerminate()).Times(0);
     EXPECT_CALL(getMock(), glfwSetErrorCallback(previousCallback)).WillOnce(Return(nullptr));
-    std::string description {"Initialization failed"};
+    auto description = std::string {"Initialization failed"};
     expectError(GLFW_PLATFORM_UNAVAILABLE, description.c_str());
-    const auto failure {Window::create(size, "test")};
+    const auto failure = Window::create(size, "test");
     ASSERT_FALSE(failure.has_value());
     description = "Changed backend text";
     EXPECT_NE(failure.error().message, description);
@@ -144,7 +144,7 @@ TEST_F(WindowTest, InitializationFailureOwnsDiagnosticAndRestoresCallback)
     expectDestruction(getFirst());
     expectSessionRelease();
     EXPECT_CALL(getMock(), glfwGetError(_)).WillRepeatedly(Return(GLFW_NO_ERROR));
-    const auto retry {Window::create(size, "retry")};
+    const auto retry = Window::create(size, "retry");
     EXPECT_TRUE(retry.has_value());
 }
 
@@ -158,7 +158,7 @@ TEST_F(WindowTest, CreationFailureReleasesSessionAndAllowsRetry)
         .WillOnce(Return(GLFW_NO_ERROR))
         .WillOnce(DoAll(SetArgPointee<0>("Creation failed"), Return(GLFW_PLATFORM_ERROR)))
         .RetiresOnSaturation();
-    const auto failure {Window::create(size, "test")};
+    const auto failure = Window::create(size, "test");
     ASSERT_FALSE(failure.has_value());
     EXPECT_EQ(failure.error().code, WindowError::Code::CreationFailed);
     EXPECT_EQ(failure.error().nativeCode, GLFW_PLATFORM_ERROR);
@@ -167,7 +167,7 @@ TEST_F(WindowTest, CreationFailureReleasesSessionAndAllowsRetry)
     expectCreation(getFirst(), "retry");
     expectDestruction(getFirst());
     expectSessionRelease();
-    const auto retry {Window::create(size, "retry")};
+    const auto retry = Window::create(size, "retry");
     EXPECT_TRUE(retry.has_value());
 }
 
@@ -181,15 +181,15 @@ TEST_F(WindowTest, MultipleWindowsShareSessionAndMoveWithoutDoubleDestruction)
     expectDestruction(getFirst());
     expectSessionRelease(previousCallback);
     EXPECT_CALL(getMock(), glfwWindowShouldClose(getFirst())).WillOnce(Return(GLFW_FALSE));
-    auto first {Window::create(size, "first")};
+    auto first = Window::create(size, "first");
     ASSERT_TRUE(first.has_value());
-    const auto identifier {first->getId()};
-    const auto moved {std::move(*first)};
+    const auto identifier = first->getId();
+    const auto moved = std::move(*first);
     EXPECT_FALSE(first->isValid());
     EXPECT_TRUE(moved.isValid());
     EXPECT_EQ(moved.getId(), identifier);
     {
-        const auto second {Window::create(size, "second")};
+        const auto second = Window::create(size, "second");
         ASSERT_TRUE(second.has_value());
         EXPECT_NE(second->getId(), identifier);
         EXPECT_CALL(getMock(), glfwGetError(NotNull()))
@@ -219,7 +219,7 @@ TEST_F(WindowTest, QueriesCurrentDimensionsMinimizationAndCloseFlag)
         .WillOnce(Return(GLFW_FALSE))
         .WillOnce(Return(GLFW_TRUE));
     EXPECT_CALL(getMock(), glfwWindowShouldClose(getFirst())).WillOnce(Return(GLFW_TRUE));
-    const auto window {Window::create(size, "test")};
+    const auto window = Window::create(size, "test");
     ASSERT_TRUE(window.has_value());
     EXPECT_EQ(window->getSize(), size);
     EXPECT_EQ(window->getSize(), (glm::uvec2 {160, 80}));
@@ -235,17 +235,17 @@ TEST_F(WindowTest, QueryErrorsRemainDistinctFromZeroExtent)
     expectCreation(getFirst());
     expectDestruction(getFirst());
     expectSessionRelease();
-    auto window {Window::create(size, "test")};
+    auto window = Window::create(size, "test");
     ASSERT_TRUE(window.has_value());
     EXPECT_CALL(getMock(), glfwGetWindowSize(getFirst(), _, _));
     expectError(GLFW_PLATFORM_ERROR, "Size query failed");
-    const auto dimensions {window->getSize()};
+    const auto dimensions = window->getSize();
     ASSERT_FALSE(dimensions.has_value());
     EXPECT_EQ(dimensions.error().operation, "glfwGetWindowSize");
     EXPECT_EQ(dimensions.error().nativeCode, GLFW_PLATFORM_ERROR);
     EXPECT_CALL(getMock(), glfwGetFramebufferSize(getFirst(), _, _));
     expectError(GLFW_PLATFORM_ERROR, "Framebuffer query failed");
-    const auto minimized {window->isMinimized()};
+    const auto minimized = window->isMinimized();
     ASSERT_FALSE(minimized.has_value());
     EXPECT_EQ(minimized.error().operation, "glfwGetFramebufferSize");
 }
@@ -260,12 +260,12 @@ TEST_F(WindowTest, NegativeDimensionsAreRecoverableBackendErrors)
         .WillOnce(DoAll(SetArgPointee<1>(-1), SetArgPointee<2>(80)));
     EXPECT_CALL(getMock(), glfwGetFramebufferSize(getFirst(), _, _))
         .WillOnce(DoAll(SetArgPointee<1>(100), SetArgPointee<2>(-1)));
-    const auto window {Window::create(size, "test")};
+    const auto window = Window::create(size, "test");
     ASSERT_TRUE(window.has_value());
-    const auto dimensions {window->getSize()};
+    const auto dimensions = window->getSize();
     ASSERT_FALSE(dimensions.has_value());
     EXPECT_EQ(dimensions.error().message, "GLFW reported negative window dimensions");
-    const auto minimized {window->isMinimized()};
+    const auto minimized = window->isMinimized();
     ASSERT_FALSE(minimized.has_value());
     EXPECT_EQ(minimized.error().message, "GLFW reported negative framebuffer dimensions");
 }
@@ -278,7 +278,7 @@ TEST_F(WindowTest, EventFailuresAreRecoverableAndPermitRetry)
     expectSessionRelease();
     EXPECT_CALL(getMock(), glfwPollEvents()).Times(2);
     EXPECT_CALL(getMock(), glfwWaitEvents()).Times(2);
-    auto window {Window::create(size, "test")};
+    auto window = Window::create(size, "test");
     ASSERT_TRUE(window.has_value());
     expectError(GLFW_PLATFORM_ERROR, "Poll failed");
     EXPECT_FALSE(window->processInput().has_value());
@@ -296,11 +296,11 @@ TEST_F(WindowDeathTest, RejectsMovedFromUse)
     expectCreation(getFirst());
     expectDestruction(getFirst());
     expectSessionRelease();
-    auto window {Window::create(size, "test")};
+    auto window = Window::create(size, "test");
     ASSERT_TRUE(window.has_value());
     ASSERT_DEATH(
         {
-            const auto owner {std::move(*window)};
+            const auto owner = std::move(*window);
             std::ignore = window->getSize();
         },
         "Window.cpp:.*Cannot use a moved-from Window");
@@ -312,11 +312,11 @@ TEST_F(WindowDeathTest, RejectsUseFromAnotherThread)
     expectCreation(getFirst());
     expectDestruction(getFirst());
     expectSessionRelease();
-    const auto window {Window::create(size, "test")};
+    const auto window = Window::create(size, "test");
     ASSERT_TRUE(window.has_value());
     ASSERT_DEATH(
         {
-            const std::jthread worker {[&window] {
+            const auto worker = std::jthread {[&window] {
                 std::ignore = window->getId();
             }};
         },

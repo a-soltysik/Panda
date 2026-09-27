@@ -7,7 +7,7 @@ namespace panda
 
 auto version() noexcept -> std::string_view
 {
-    constexpr std::string_view versionText {PANDA_VERSION_TEXT};
+    constexpr auto versionText = std::string_view {PANDA_VERSION_TEXT};
     return versionText;
 }
 

@@ -16,7 +16,7 @@ FunctionName::FunctionName(std::string_view signature) noexcept
         }
         return;
     }
-    const auto operation {signature.rfind("operator")};
+    const auto operation = signature.rfind("operator");
     if (operation != std::string_view::npos)
     {
         appendOperator(signature.substr(operation));
@@ -32,9 +32,9 @@ FunctionName::FunctionName(std::string_view signature) noexcept
 
 void FunctionName::consumeName(std::string_view signature) noexcept
 {
-    auto templateDepth {0UZ};
-    auto remaining {signature};
-    static constexpr std::string_view AnonymousNamespace {"(anonymous namespace)::"};
+    auto templateDepth = 0UZ;
+    auto remaining = signature;
+    static constexpr auto AnonymousNamespace = std::string_view {"(anonymous namespace)::"};
     while (!remaining.empty())
     {
         if (remaining.starts_with(AnonymousNamespace))
@@ -54,7 +54,7 @@ void FunctionName::consumeName(std::string_view signature) noexcept
 
 void FunctionName::appendOperator(std::string_view name) noexcept
 {
-    auto parameters {name.find('(')};
+    auto parameters = name.find('(');
     if (name.starts_with("operator()") || name.starts_with("operator ()"))
     {
         parameters = name.find('(', parameters + 2);
@@ -102,11 +102,11 @@ auto FunctionName::consumeOutsideTemplate(char character) noexcept -> bool
 
 void FunctionName::shortenQualifiers() noexcept
 {
-    const std::string_view name {_text.data(), _size};
-    const auto last {name.rfind("::")};
+    const auto name = std::string_view {_text.data(), _size};
+    const auto last = name.rfind("::");
     if (last != std::string_view::npos && last != 0)
     {
-        const auto previous {name.rfind("::", last - 1)};
+        const auto previous = name.rfind("::", last - 1);
         if (previous != std::string_view::npos)
         {
             _start = previous + 2;

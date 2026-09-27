@@ -21,12 +21,12 @@
 
 TEST(Logger, FiltersSeverityAndPreservesCallerMetadata)
 {
-    panda::test::LogRecords records;
-    panda::log::Logger logger {false};
-    const auto sink {logger.addSink(panda::test::makeRecordingSink(records))};
+    auto records = panda::test::LogRecords {};
+    auto logger = panda::log::Logger {false};
+    const auto sink = logger.addSink(panda::test::makeRecordingSink(records));
     panda::log::write(logger, panda::log::Level::Debug, "hidden {}", 1);
     EXPECT_TRUE(records.entries.empty());
-    const auto line {std::source_location::current().line() + 1};
+    const auto line = std::source_location::current().line() + 1;
     panda::log::write(logger, panda::log::Level::Info, "value {}", 42);
     ASSERT_EQ(records.entries.size(), 1);
     EXPECT_EQ(records.entries.front().message, "value 42");
@@ -49,9 +49,9 @@ TEST(Logger, FiltersSeverityAndPreservesCallerMetadata)
 
 TEST(Logger, SerializesConcurrentWritesAndToleratesFailingSink)
 {
-    panda::test::LogRecords records;
-    panda::log::Logger logger {false};
-    auto broken {std::make_unique<testing::StrictMock<panda::test::SinkMock>>()};
+    auto records = panda::test::LogRecords {};
+    auto logger = panda::log::Logger {false};
+    auto broken = std::make_unique<testing::StrictMock<panda::test::SinkMock>>();
     EXPECT_CALL(*broken, write(testing::_))
         .WillOnce(testing::Return(std::unexpected {panda::log::SinkError::WriteFailed}));
     EXPECT_CALL(*broken, flush())
@@ -63,15 +63,15 @@ TEST(Logger, SerializesConcurrentWritesAndToleratesFailingSink)
     ASSERT_EQ(records.entries.size(), 1);
     EXPECT_EQ(records.flushes, 1);
     EXPECT_TRUE(logger.removeSink(0));
-    static constexpr std::size_t threadCount {4};
-    static constexpr std::size_t entriesPerThread {40};
+    static constexpr auto threadCount = std::size_t {4};
+    static constexpr auto entriesPerThread = std::size_t {40};
     {
-        std::vector<std::jthread> workers;
+        auto workers = std::vector<std::jthread> {};
         workers.reserve(threadCount);
-        for (auto worker {std::size_t {0}}; worker < threadCount; ++worker)
+        for (auto worker = std::size_t {0}; worker < threadCount; ++worker)
         {
             workers.emplace_back([&logger, worker] {
-                for (auto index {std::size_t {0}}; index < entriesPerThread; ++index)
+                for (auto index = std::size_t {0}; index < entriesPerThread; ++index)
                 {
                     panda::log::write(logger, panda::log::Level::Info, "{}:{}", worker, index);
                 }
@@ -79,11 +79,11 @@ TEST(Logger, SerializesConcurrentWritesAndToleratesFailingSink)
         }
     }
     EXPECT_EQ(records.entries.size(), 1 + (threadCount * entriesPerThread));
-    for (auto worker {std::size_t {0}}; worker < threadCount; ++worker)
+    for (auto worker = std::size_t {0}; worker < threadCount; ++worker)
     {
-        for (auto index {std::size_t {0}}; index < entriesPerThread; ++index)
+        for (auto index = std::size_t {0}; index < entriesPerThread; ++index)
         {
-            const auto message {std::format("{}:{}", worker, index)};
+            const auto message = std::format("{}:{}", worker, index);
             EXPECT_EQ(std::ranges::count(records.entries, message, &panda::log::Entry::message), 1);
         }
     }
@@ -91,18 +91,18 @@ TEST(Logger, SerializesConcurrentWritesAndToleratesFailingSink)
 
 TEST(LoggerDeathTest, RejectsNullSink)
 {
-    panda::log::Logger logger {false};
+    auto logger = panda::log::Logger {false};
     ASSERT_DEATH(std::ignore = logger.addSink(nullptr), "Logger.cpp:.*Cannot register a null log sink");
 }
 
 TEST(Logger, ExplicitStacktracePreservesMessageMetadataAndFiltering)
 {
-    panda::test::LogRecords records;
-    panda::log::Logger logger {false};
+    auto records = panda::test::LogRecords {};
+    auto logger = panda::log::Logger {false};
     std::ignore = logger.addSink(panda::test::makeRecordingSink(records));
     panda::log::writeWithStacktrace(logger, panda::log::Level::Debug, "hidden {}", 1);
     EXPECT_TRUE(records.entries.empty());
-    const auto line {std::source_location::current().line() + 1};
+    const auto line = std::source_location::current().line() + 1;
     panda::log::writeWithStacktrace(logger, panda::log::Level::Error, "failure {}", 42);
     ASSERT_EQ(records.entries.size(), 1);
     EXPECT_TRUE(records.entries.front().message.starts_with("failure 42"));

@@ -50,8 +50,8 @@ auto writeStream(std::ostream& stream, const Entry& entry) noexcept -> std::expe
 {
     try
     {
-        const auto time {std::chrono::floor<std::chrono::milliseconds>(entry.time)};
-        const detail::FunctionName functionName {entry.location.function_name()};
+        const auto time = std::chrono::floor<std::chrono::milliseconds>(entry.time);
+        const auto functionName = detail::FunctionName {entry.location.function_name()};
         stream << std::format("{:%FT%T}Z [{}] {}:{} ({}): {}\n",
                               time,
                               levelTag(entry.level),
@@ -94,8 +94,8 @@ void reportSinkFailure(std::expected<void, SinkError> result) noexcept
 {
     if (!result)
     {
-        const auto* message {result.error() == SinkError::WriteFailed ? "[ERR] Panda log sink write failed\n"
-                                                                      : "[ERR] Panda log sink flush failed\n"};
+        const auto* message = result.error() == SinkError::WriteFailed ? "[ERR] Panda log sink write failed\n"
+                                                                       : "[ERR] Panda log sink flush failed\n";
         std::ignore = std::fputs(message, stderr);
         std::ignore = std::fflush(stderr);
     }
@@ -125,7 +125,7 @@ FileSink::FileSink(std::ofstream stream)
 
 auto FileSink::open(const std::filesystem::path& path) -> std::expected<std::unique_ptr<FileSink>, std::string>
 {
-    std::ofstream stream {path, std::ios::app};
+    auto stream = std::ofstream {path, std::ios::app};
     if (!stream)
     {
         return std::unexpected {std::format("Cannot open log file '{}' for append", path.string())};
@@ -158,7 +158,7 @@ Logger::~Logger()
 
 auto Logger::instance() -> Logger&
 {
-    static Logger logger;
+    static auto logger = Logger {};
     return logger;
 }
 
@@ -175,17 +175,17 @@ auto Logger::shouldLog(Level level) const noexcept -> bool
 auto Logger::addSink(std::unique_ptr<Sink> sink) -> SinkId
 {
     expect(sink != nullptr, "Cannot register a null log sink");
-    const std::scoped_lock lock {_mutex};
+    const auto lock = std::scoped_lock {_mutex};
     expect(_nextId != std::numeric_limits<SinkId>::max(), "Log sink identifiers exhausted");
-    const auto identifier {_nextId++};
+    const auto identifier = _nextId++;
     _sinks.emplace_back(identifier, std::move(sink));
     return identifier;
 }
 
 auto Logger::removeSink(SinkId sinkId) -> bool
 {
-    const std::scoped_lock lock {_mutex};
-    const auto found {std::ranges::find(_sinks, sinkId, &decltype(_sinks)::value_type::first)};
+    const auto lock = std::scoped_lock {_mutex};
+    const auto found = std::ranges::find(_sinks, sinkId, &decltype(_sinks)::value_type::first);
     if (found == _sinks.end())
     {
         return false;
@@ -201,11 +201,11 @@ void Logger::write(Level level, std::string message, std::source_location locati
     {
         return;
     }
-    const Entry entry {.message = std::move(message),
-                       .location = location,
-                       .time = std::chrono::system_clock::now(),
-                       .level = level};
-    const std::scoped_lock lock {_mutex};
+    const auto entry = Entry {.message = std::move(message),
+                              .location = location,
+                              .time = std::chrono::system_clock::now(),
+                              .level = level};
+    const auto lock = std::scoped_lock {_mutex};
     for (const auto& [identifier, sink] : _sinks)
     {
         reportSinkFailure(sink->write(entry));
@@ -236,7 +236,7 @@ void Logger::writeWithStacktrace(Level level, std::string message, std::source_l
 
 void Logger::flush()
 {
-    const std::scoped_lock lock {_mutex};
+    const auto lock = std::scoped_lock {_mutex};
     for (const auto& [identifier, sink] : _sinks)
     {
         reportSinkFailure(sink->flush());

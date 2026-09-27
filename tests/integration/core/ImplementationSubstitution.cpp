@@ -17,12 +17,12 @@ using ImplementationSubstitutionIntegration = panda::test::MockTest<panda::test:
 
 TEST_F(ImplementationSubstitutionIntegration, ReplacesOneArchiveMemberAndKeepsOtherImplementationsReal)
 {
-    constexpr std::string_view selectedVersion {"test-selected-version"};
+    constexpr auto selectedVersion = std::string_view {"test-selected-version"};
     EXPECT_CALL(getMock(), version()).WillOnce(testing::Return(selectedVersion));
-    panda::test::LogRecords records;
-    const panda::test::ProcessSinkRegistration registration {records};
+    auto records = panda::test::LogRecords {};
+    const auto registration = panda::test::ProcessSinkRegistration {records};
 
-    const auto version {panda::version()};
+    const auto version = panda::version();
     EXPECT_EQ(version, selectedVersion);
     panda::log::info("Selected version: {}", version);
 

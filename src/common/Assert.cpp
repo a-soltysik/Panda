@@ -32,9 +32,9 @@ void writeFatalText(std::string_view text) noexcept
 
 [[noreturn]] void panic(std::string_view message, std::source_location location) noexcept
 {
-    std::array<char, std::numeric_limits<std::uint_least32_t>::digits10 + 1> line {};
-    const auto converted {std::to_chars(line.data(), std::to_address(line.end()), location.line())};
-    const log::detail::FunctionName functionName {location.function_name()};
+    auto line = std::array<char, std::numeric_limits<std::uint_least32_t>::digits10 + 1> {};
+    const auto converted = std::to_chars(line.data(), std::to_address(line.end()), location.line());
+    const auto functionName = log::detail::FunctionName {location.function_name()};
     writeFatalText("[FATAL] ");
     writeFatalText(log::detail::relativeSourcePath(location.file_name()));
     writeFatalText(":");

@@ -5,8 +5,8 @@
 
 TEST(Version, ReportsPackageVersion)
 {
-    constexpr std::string_view expected {PANDA_EXPECTED_VERSION};
-    const auto actual {panda::version()};
+    constexpr auto expected = std::string_view {PANDA_EXPECTED_VERSION};
+    const auto actual = panda::version();
     EXPECT_FALSE(actual.empty());
     EXPECT_TRUE(actual == expected);
 }
