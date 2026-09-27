@@ -41,7 +41,7 @@ public:
 
 TEST(FunctionName, HandlesCompilerSignatures)
 {
-    static constexpr std::array examples {
+    static constexpr auto examples = std::array {
         Example {.signature = "static std::expected<panda::tools::Window, panda::tools::WindowError> "
                               "panda::tools::Window::create(glm::uvec2, const char*)",                 .display = "Window::create"           },
         Example {.signature = "std::expected<void, panda::Error> panda::Application::run()",
@@ -76,22 +76,22 @@ TEST(FunctionName, HandlesCompilerSignatures)
     for (const auto& example : examples)
     {
         SCOPED_TRACE(example.signature);
-        const panda::log::detail::FunctionName name {example.signature};
+        const auto name = panda::log::detail::FunctionName {example.signature};
         EXPECT_EQ(name.view(), example.display);
     }
 }
 
 TEST(FunctionName, RecognizesRealMethodsAndLambdas)
 {
-    const auto method {FunctionNameProbe<std::array<std::uint32_t, 4>>::method()};
-    const auto lambda {FunctionNameProbe<std::array<std::uint32_t, 4>>::lambda()};
-    const panda::log::detail::FunctionName methodName {method.function_name()};
-    const panda::log::detail::FunctionName lambdaName {lambda.function_name()};
+    const auto method = FunctionNameProbe<std::array<std::uint32_t, 4>>::method();
+    const auto lambda = FunctionNameProbe<std::array<std::uint32_t, 4>>::lambda();
+    const auto methodName = panda::log::detail::FunctionName {method.function_name()};
+    const auto lambdaName = panda::log::detail::FunctionName {lambda.function_name()};
     EXPECT_EQ(methodName.view(), "FunctionNameProbe::method");
     EXPECT_EQ(lambdaName.view(), "<lambda>");
 
-    std::ostringstream stream;
-    panda::log::Logger logger {false};
+    auto stream = std::ostringstream {};
+    auto logger = panda::log::Logger {false};
     std::ignore = logger.addSink(std::make_unique<panda::log::StreamSink>(stream));
     logger.write(panda::log::Level::Info, "test", method);
     EXPECT_TRUE(stream.str().contains(" (FunctionNameProbe::method): test"));
@@ -100,8 +100,8 @@ TEST(FunctionName, RecognizesRealMethodsAndLambdas)
 
 TEST(FunctionName, BoundsOutput)
 {
-    const auto signature {"void panda::" + std::string(256, 'x') + "()"};
-    const panda::log::detail::FunctionName name {signature};
+    const auto signature = "void panda::" + std::string(256, 'x') + "()";
+    const auto name = panda::log::detail::FunctionName {signature};
     EXPECT_EQ(name.view().size(), 128);
     EXPECT_TRUE(name.view().ends_with("..."));
 }

@@ -15,8 +15,8 @@
 
 TEST(Assert, ChecksConditionsAndExtractsOwnedResults)
 {
-    panda::test::LogRecords records;
-    const panda::test::ProcessSinkRegistration registration {records};
+    auto records = panda::test::LogRecords {};
+    const auto registration = panda::test::ProcessSinkRegistration {records};
     EXPECT_TRUE(panda::shouldBe(true, "not logged"));
     EXPECT_FALSE(panda::shouldBe(false, "recoverable warning"));
     ASSERT_EQ(records.entries.size(), 1);
@@ -25,29 +25,29 @@ TEST(Assert, ChecksConditionsAndExtractsOwnedResults)
     panda::expect(true, "valid condition");
     EXPECT_EQ(panda::expect(std::expected<std::uint32_t, std::string> {42}, "required value"), 42);
     panda::expect(std::expected<void, std::string> {}, "required completion");
-    auto value {
+    auto value =
         panda::expect(std::expected<std::unique_ptr<std::uint32_t>, std::string> {std::make_unique<std::uint32_t>(7)},
-                      "required owner")};
+                      "required owner");
     EXPECT_EQ(*value, 7);
-    auto optional {panda::expect(std::optional<std::unique_ptr<std::uint32_t>> {std::make_unique<std::uint32_t>(9)},
-                                 "required optional owner")};
+    auto optional = panda::expect(std::optional<std::unique_ptr<std::uint32_t>> {std::make_unique<std::uint32_t>(9)},
+                                  "required optional owner");
     EXPECT_EQ(*optional, 9);
-    const auto copyable {std::expected<std::uint32_t, std::uint32_t> {3}};
+    const auto copyable = std::expected<std::uint32_t, std::uint32_t> {3};
     EXPECT_EQ(panda::expect(copyable, "copy lvalue"), 3);
     EXPECT_EQ(*copyable, 3);
 }
 
 TEST(Assert, NegatedComparisonsPreserveCallSites)
 {
-    panda::test::LogRecords records;
-    const panda::test::ProcessSinkRegistration registration {records};
-    auto value {std::uint32_t {7}};
-    auto* pointer {&value};
+    auto records = panda::test::LogRecords {};
+    const auto registration = panda::test::ProcessSinkRegistration {records};
+    auto value = std::uint32_t {7};
+    auto* pointer = &value;
     EXPECT_TRUE(panda::shouldNotBe(false, "false is allowed"));
     EXPECT_TRUE(panda::shouldBe(value, std::uint32_t {7}, "equal"));
     EXPECT_TRUE(panda::shouldNotBe(pointer, nullptr, "valid pointer"));
     EXPECT_TRUE(records.entries.empty());
-    const auto line {std::source_location::current().line() + 1};
+    const auto line = std::source_location::current().line() + 1;
     EXPECT_FALSE(panda::shouldNotBe(true, "forbidden true"));
     ASSERT_EQ(records.entries.size(), 1);
     EXPECT_EQ(records.entries.front().location.line(), line);
@@ -59,15 +59,15 @@ TEST(Assert, NegatedComparisonsPreserveCallSites)
     panda::expectNot(false, "valid negation");
     EXPECT_EQ(panda::expect(value, std::uint32_t {7}, "equal value"), 7);
     EXPECT_EQ(panda::expectNot(pointer, nullptr, "valid pointer"), pointer);
-    auto owner {panda::expectNot(std::make_unique<std::uint32_t>(9), nullptr, "valid owner")};
+    auto owner = panda::expectNot(std::make_unique<std::uint32_t>(9), nullptr, "valid owner");
     EXPECT_EQ(*owner, 9);
 }
 
 TEST(Assert, InvokesPredicatesOnceAndPreservesOwnership)
 {
-    panda::test::LogRecords records;
-    const panda::test::ProcessSinkRegistration registration {records};
-    testing::MockFunction<bool(std::int32_t)> predicate;
+    auto records = panda::test::LogRecords {};
+    const auto registration = panda::test::ProcessSinkRegistration {records};
+    auto predicate = testing::MockFunction<bool(std::int32_t)> {};
     EXPECT_CALL(predicate, Call(2)).Times(2).WillRepeatedly(testing::Return(true));
     EXPECT_CALL(predicate, Call(-2)).Times(2).WillRepeatedly(testing::Return(false));
     EXPECT_TRUE(panda::shouldBe(2, predicate.AsStdFunction(), "positive"));
@@ -80,12 +80,12 @@ TEST(Assert, InvokesPredicatesOnceAndPreservesOwnership)
     EXPECT_CALL(predicate, Call(-2)).WillOnce(testing::Return(false));
     EXPECT_EQ(panda::expect(2, predicate.AsStdFunction(), "positive"), 2);
     EXPECT_EQ(panda::expectNot(-2, predicate.AsStdFunction(), "nonpositive"), -2);
-    auto owner {panda::expect(
+    auto owner = panda::expect(
         std::make_unique<std::uint32_t>(5),
         [](const std::unique_ptr<std::uint32_t>& value) {
             return value && *value == 5;
         },
-        "required owner")};
+        "required owner");
     EXPECT_EQ(*owner, 5);
 }
 

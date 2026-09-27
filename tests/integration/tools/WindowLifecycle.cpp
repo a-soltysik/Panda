@@ -9,13 +9,13 @@
 TEST(WindowLifecycleIntegration, NullPlatformSharesSessionAndPreservesOwnership)
 {
     glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_NULL);
-    auto first {panda::tools::Window::create({160, 120}, "Panda window integration")};
+    auto first = panda::tools::Window::create({160, 120}, "Panda window integration");
     ASSERT_TRUE(first.has_value());
     {
-        auto second {panda::tools::Window::create({100, 80}, "Panda second window")};
+        auto second = panda::tools::Window::create({100, 80}, "Panda second window");
         ASSERT_TRUE(second.has_value());
-        const auto identity {second->getId()};
-        auto moved {std::move(*second)};
+        const auto identity = second->getId();
+        auto moved = std::move(*second);
         EXPECT_FALSE(second->isValid());
         EXPECT_EQ(moved.getId(), identity);
         ASSERT_TRUE(moved.processInput().has_value());

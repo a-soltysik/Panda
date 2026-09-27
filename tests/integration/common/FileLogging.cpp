@@ -33,7 +33,7 @@ public:
     {
         try
         {
-            std::error_code error;
+            auto error = std::error_code {};
             std::ignore = std::filesystem::remove_all(_path, error);
             panda::expect(!error, "Cannot remove temporary test directory");
         }
@@ -57,23 +57,24 @@ private:
 
 TEST(FileLoggingIntegration, AppendsEntriesAndReportsOpenFailure)
 {
-    const TemporaryDirectory directory;
-    const auto path {directory.getPath() / "output.log"};
-    for (auto iteration {std::size_t {0}}; iteration < 2; ++iteration)
+    const auto directory = TemporaryDirectory {};
+    const auto path = directory.getPath() / "output.log";
+    for (auto iteration = std::size_t {0}; iteration < 2; ++iteration)
     {
-        auto sink {panda::log::FileSink::open(path)};
+        auto sink = panda::log::FileSink::open(path);
         ASSERT_TRUE(sink.has_value());
-        const panda::log::Entry entry {.message = std::format("entry {}", iteration), .location = {}, .time = {}};
+        const auto entry =
+            panda::log::Entry {.message = std::format("entry {}", iteration), .location = {}, .time = {}};
         ASSERT_TRUE((*sink)->write(entry).has_value());
         ASSERT_TRUE((*sink)->flush().has_value());
     }
-    const std::ifstream input {path};
-    std::stringstream contents;
+    const auto input = std::ifstream {path};
+    auto contents = std::stringstream {};
     contents << input.rdbuf();
     EXPECT_TRUE(contents.str().contains("entry 0"));
     EXPECT_TRUE(contents.str().contains("entry 1"));
-    const auto missing {directory.getPath() / "missing" / "output.log"};
-    const auto failure {panda::log::FileSink::open(missing)};
+    const auto missing = directory.getPath() / "missing" / "output.log";
+    const auto failure = panda::log::FileSink::open(missing);
     ASSERT_FALSE(failure.has_value());
     EXPECT_TRUE(failure.error().contains(missing.string()));
 }

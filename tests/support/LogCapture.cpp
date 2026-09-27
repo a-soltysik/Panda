@@ -12,7 +12,7 @@ namespace panda::test
 {
 auto makeRecordingSink(LogRecords& records) -> std::unique_ptr<log::Sink>
 {
-    auto sink {std::make_unique<testing::StrictMock<SinkMock>>()};
+    auto sink = std::make_unique<testing::StrictMock<SinkMock>>();
     EXPECT_CALL(*sink, write(testing::_)).WillRepeatedly([&records](const log::Entry& entry) -> SinkMock::Result {
         records.entries.push_back(entry);
         return {};

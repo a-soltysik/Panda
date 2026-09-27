@@ -19,11 +19,11 @@ auto main() -> int
         // An empty Wayland surface is not mapped until the application presents a buffer.
         glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
 #endif
-        static constexpr glm::uvec2 windowSize {1280, 720};
-        auto window {panda::tools::Window::create(windowSize, "Panda - Simple scene")};
+        static constexpr auto windowSize = glm::uvec2 {1280, 720};
+        auto window = panda::tools::Window::create(windowSize, "Panda - Simple scene");
         if (!window)
         {
-            const auto& error {window.error()};
+            const auto& error = window.error();
             panda::log::error("{} failed ({}): {}", error.operation, error.nativeCode, error.message);
             return EXIT_FAILURE;
         }
@@ -31,9 +31,9 @@ auto main() -> int
         panda::log::info("Application loop started");
         while (!window->shouldClose())
         {
-            if (auto result {panda::tools::Window::waitForInput()}; !result)
+            if (auto result = panda::tools::Window::waitForInput(); !result)
             {
-                const auto& error {result.error()};
+                const auto& error = result.error();
                 panda::log::error("{} failed ({}): {}", error.operation, error.nativeCode, error.message);
                 return EXIT_FAILURE;
             }

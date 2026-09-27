@@ -44,7 +44,7 @@ GlfwSession::~GlfwSession() noexcept
 
 auto GlfwSession::cache() -> std::weak_ptr<GlfwSession>&
 {
-    static std::weak_ptr<GlfwSession> current;
+    static auto current = std::weak_ptr<GlfwSession> {};
     return current;
 }
 
@@ -55,13 +55,13 @@ auto GlfwSession::acquire() -> std::expected<std::shared_ptr<GlfwSession>, Windo
         current->checkThread();
         return current;
     }
-    auto session {std::make_shared<GlfwSession>()};
+    auto session = std::make_shared<GlfwSession>();
     session->_previousCallback = glfwSetErrorCallback(reportGlfwError);
     std::ignore = glfwGetError(nullptr);
     if (glfwInit() != GLFW_TRUE)
     {
-        const char* description {nullptr};
-        const auto nativeCode {glfwGetError(&description)};
+        const auto* description = static_cast<const char*>(nullptr);
+        const auto nativeCode = glfwGetError(&description);
         return std::unexpected {
             WindowError {.code = WindowError::Code::InitializationFailed,
                          .operation = "glfwInit",

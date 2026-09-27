@@ -44,7 +44,7 @@ public:
 private:
     static auto getActiveSlot() -> Mock*&
     {
-        static Mock* current {nullptr};
+        static auto current = static_cast<Mock*>(nullptr);
         return current;
     }
 
