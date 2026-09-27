@@ -1,88 +1,83 @@
-function(
-    PD_enable_sanitizers
-    project_name
-    ENABLE_SANITIZER_ADDRESS
-    ENABLE_SANITIZER_LEAK
-    ENABLE_SANITIZER_UNDEFINED_BEHAVIOR
-    ENABLE_SANITIZER_THREAD
-    ENABLE_SANITIZER_MEMORY)
+set(panda_sanitizers "")
+foreach(sanitizer IN ITEMS ADDRESS UNDEFINED_BEHAVIOR THREAD MEMORY LEAK)
+    if(PANDA_ENABLE_SANITIZER_${sanitizer})
+        string(TOLOWER "${sanitizer}" sanitizer_name)
+        string(REPLACE "undefined_behavior" "undefined" sanitizer_name "${sanitizer_name}")
+        list(APPEND panda_sanitizers "${sanitizer_name}")
+    endif()
+endforeach()
 
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-        set(SANITIZERS "")
+if((PANDA_ENABLE_SANITIZER_THREAD OR PANDA_ENABLE_SANITIZER_MEMORY)
+        AND (PANDA_ENABLE_SANITIZER_ADDRESS OR PANDA_ENABLE_SANITIZER_LEAK))
+    message(FATAL_ERROR "ThreadSanitizer and MemorySanitizer cannot be combined with AddressSanitizer or LeakSanitizer")
+endif()
+if(PANDA_ENABLE_SANITIZER_THREAD AND PANDA_ENABLE_SANITIZER_MEMORY)
+    message(FATAL_ERROR "ThreadSanitizer and MemorySanitizer require separate builds")
+endif()
+if((PANDA_ENABLE_SANITIZER_THREAD OR PANDA_ENABLE_SANITIZER_MEMORY OR PANDA_ENABLE_SANITIZER_LEAK)
+        AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "Panda currently supports ThreadSanitizer, MemorySanitizer and LeakSanitizer only on Linux")
+endif()
+if(PANDA_ENABLE_SANITIZER_MEMORY AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "MemorySanitizer requires Clang and instrumented dependencies, including the C++ standard library")
+endif()
 
-        if(${ENABLE_SANITIZER_ADDRESS})
-            list(APPEND SANITIZERS "address")
+if(panda_sanitizers)
+    if(MSVC)
+        if(NOT panda_sanitizers STREQUAL "address")
+            message(FATAL_ERROR "MSVC supports only AddressSanitizer")
         endif()
-
-        if(${ENABLE_SANITIZER_LEAK})
-            list(APPEND SANITIZERS "leak")
+        set(panda_sanitizer_compile_options /fsanitize=address /Zi)
+        set(panda_sanitizer_link_options /INCREMENTAL:NO)
+        get_filename_component(msvc_directory "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        find_file(PANDA_ASAN_RUNTIME NAMES clang_rt.asan_dynamic-x86_64.dll
+            HINTS "${msvc_directory}" REQUIRED)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+        list(JOIN panda_sanitizers "," sanitizer_flags)
+        set(panda_sanitizer_compile_options "-fsanitize=${sanitizer_flags}"
+            -fno-sanitize-recover=all -fno-omit-frame-pointer -fno-optimize-sibling-calls -g)
+        set(panda_sanitizer_link_options "-fsanitize=${sanitizer_flags}")
+        if(PANDA_ENABLE_SANITIZER_MEMORY)
+            list(APPEND panda_sanitizer_compile_options -fsanitize-memory-track-origins=2)
         endif()
-
-        if(${ENABLE_SANITIZER_UNDEFINED_BEHAVIOR})
-            list(APPEND SANITIZERS "undefined")
-        endif()
-
-        if(${ENABLE_SANITIZER_THREAD})
-            if("address" IN_LIST SANITIZERS OR "leak" IN_LIST SANITIZERS)
-                message(WARNING "Thread sanitizer does not work with Address and Leak sanitizer enabled")
-            else()
-                list(APPEND SANITIZERS "thread")
-            endif()
-        endif()
-
-        if(${ENABLE_SANITIZER_MEMORY} AND CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-            message(
-                WARNING
-                    "Memory sanitizer requires all the code (including libc++) to be MSan-instrumented otherwise it reports false positives"
-            )
-            if("address" IN_LIST SANITIZERS
-               OR "thread" IN_LIST SANITIZERS
-               OR "leak" IN_LIST SANITIZERS)
-                message(WARNING "Memory sanitizer does not work with Address, Thread or Leak sanitizer enabled")
-            else()
-                list(APPEND SANITIZERS "memory")
-            endif()
-        endif()
-    elseif(MSVC)
-        if(${ENABLE_SANITIZER_ADDRESS})
-            list(APPEND SANITIZERS "address")
-        endif()
-        if(${ENABLE_SANITIZER_LEAK}
-           OR ${ENABLE_SANITIZER_UNDEFINED_BEHAVIOR}
-           OR ${ENABLE_SANITIZER_THREAD}
-           OR ${ENABLE_SANITIZER_MEMORY})
-            message(WARNING "MSVC only supports address sanitizer")
-        endif()
+    else()
+        message(FATAL_ERROR "No Panda sanitizer configuration for ${CMAKE_CXX_COMPILER_ID}")
     endif()
 
-    list(
-        JOIN
-        SANITIZERS
-        ","
-        LIST_OF_SANITIZERS)
-
-    if(LIST_OF_SANITIZERS)
-        if(NOT
-           "${LIST_OF_SANITIZERS}"
-           STREQUAL
-           "")
-            if(NOT MSVC)
-                target_compile_options(${project_name} INTERFACE -fsanitize=${LIST_OF_SANITIZERS})
-                target_link_options(${project_name} INTERFACE -fsanitize=${LIST_OF_SANITIZERS})
-            else()
-                string(FIND "$ENV{PATH}" "$ENV{VSINSTALLDIR}" index_of_vs_install_dir)
-                if("${index_of_vs_install_dir}" STREQUAL "-1")
-                    message(
-                        SEND_ERROR
-                            "Using MSVC sanitizers requires setting the MSVC environment before building the project. Please manually open the MSVC command prompt and rebuild the project."
-                    )
-                endif()
-                target_compile_options(${project_name} INTERFACE /fsanitize=${LIST_OF_SANITIZERS} /Zi /INCREMENTAL:NO)
-                target_compile_definitions(${project_name} INTERFACE _DISABLE_VECTOR_ANNOTATION
-                                                                     _DISABLE_STRING_ANNOTATION)
-                target_link_options(${project_name} INTERFACE /INCREMENTAL:NO)
-            endif()
+    block()
+        include(CheckCXXSourceCompiles)
+        list(JOIN panda_sanitizer_compile_options " " CMAKE_REQUIRED_FLAGS)
+        set(CMAKE_REQUIRED_LINK_OPTIONS ${panda_sanitizer_link_options})
+        set(CMAKE_TRY_COMPILE_CONFIGURATION "${CMAKE_BUILD_TYPE}")
+        set(CMAKE_TRY_COMPILE_TARGET_TYPE EXECUTABLE)
+        unset(PANDA_SANITIZERS_AVAILABLE CACHE)
+        check_cxx_source_compiles("int main() { auto* value = new int{0}; delete value; }" PANDA_SANITIZERS_AVAILABLE)
+        if(NOT PANDA_SANITIZERS_AVAILABLE)
+            message(FATAL_ERROR "Selected sanitizers cannot compile/link with this toolchain and configuration. MSVC ASan requires its runtime and no /RTC or /ZI flags; use the msvc-sanitizers preset.")
         endif()
-    endif()
+    endblock()
+endif()
 
+function(panda_enable_sanitizers target)
+    if(NOT panda_sanitizers)
+        return()
+    endif()
+    get_target_property(aliased_target ${target} ALIASED_TARGET)
+    if(aliased_target)
+        set(target "${aliased_target}")
+    endif()
+    get_target_property(imported ${target} IMPORTED)
+    get_target_property(type ${target} TYPE)
+    if(imported OR type STREQUAL "INTERFACE_LIBRARY")
+        return()
+    endif()
+    target_compile_options(${target} PRIVATE
+        "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:${panda_sanitizer_compile_options}>")
+    # Instrumented static archives require the runtime in the final application.
+    target_link_options(${target} PUBLIC ${panda_sanitizer_link_options})
+    if(MSVC AND type STREQUAL "EXECUTABLE")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${PANDA_ASAN_RUNTIME}" "$<TARGET_FILE_DIR:${target}>"
+            VERBATIM)
+    endif()
 endfunction()

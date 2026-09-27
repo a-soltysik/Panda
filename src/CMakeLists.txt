@@ -1,0 +1,5 @@
+add_subdirectory(common)
+add_subdirectory(core)
+if(PANDA_BUILD_TOOLS)
+    add_subdirectory(tools)
+endif()

@@ -1,0 +1,18 @@
+include("${PANDA_MSVC_ENVIRONMENT}")
+
+math(EXPR last_argument "${CMAKE_ARGC} - 1")
+set(invocation "execute_process(COMMAND")
+foreach(index RANGE 5 ${last_argument})
+    set(argument "${CMAKE_ARGV${index}}")
+    set(delimiter "=")
+    while(argument MATCHES "]${delimiter}]")
+        string(APPEND delimiter "=")
+    endwhile()
+    string(APPEND invocation " [${delimiter}[${argument}]${delimiter}]")
+endforeach()
+string(APPEND invocation " RESULT_VARIABLE result)")
+# Bracket arguments preserve semicolons and trailing Windows path separators.
+cmake_language(EVAL CODE "${invocation}")
+if(NOT result STREQUAL "0")
+    message(FATAL_ERROR "MSVC command failed: ${result}")
+endif()

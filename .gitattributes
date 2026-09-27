@@ -1,0 +1,2 @@
+# Preserve reference snapshots byte-for-byte.
+legacy/** -text

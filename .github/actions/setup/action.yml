@@ -1,0 +1,45 @@
+name: Setup Panda tools
+description: Install the compiler, build tools and optional quality tools.
+inputs:
+  compiler:
+    description: setup-cpp compiler selection
+    required: true
+  analysis:
+    description: Install static analysis and formatting tools
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Restore CPM sources
+      uses: actions/cache@v4
+      with:
+        path: .cache/cpm
+        key: ${{ runner.os }}-cpm-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/CPM.cmake') }}
+        restore-keys: ${{ runner.os }}-cpm-
+    - uses: aminya/setup-cpp@v1.10.1
+      with:
+        compiler: ${{ inputs.compiler }}
+        vcvarsall: false
+        architecture: x64
+        cmake: '4.4.3'
+        ninja: '1.13.2'
+        clang-tidy: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
+        clang-format: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
+        cppcheck: ${{ inputs.analysis == 'true' && (runner.os == 'Linux' && '2.19.0-3' || '2.19.0') || 'false' }}
+        setup-cpp: false
+    - name: Build tool versions
+      shell: bash
+      run: |
+        cmake --version
+        ninja --version
+    - name: Analysis tool versions
+      if: inputs.analysis == 'true'
+      shell: bash
+      run: |
+        clang-tidy --version
+        clang-format --version
+        cppcheck --version
+    - name: Install Linux window-system dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y xorg-dev libwayland-dev libxkbcommon-dev

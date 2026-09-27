@@ -1,0 +1,17 @@
+# IDE directories
+.idea/
+.vs/
+.vscode/
+
+# Output directories
+build*/
+cmake-build-*/
+out
+
+# VS specific file
+CMakeSettings.json
+
+# Cache
+.cache/
+
+compile_commands.json

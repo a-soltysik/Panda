@@ -1,0 +1,17 @@
+#pragma once
+
+#include <string_view>
+
+namespace drip::gfx::config
+{
+
+inline constexpr auto projectName = std::string_view {"@PROJECT_NAME@"};
+inline constexpr auto engineName = std::string_view {"@ENGINE_TARGET_NAME@"};
+
+#if defined(NDEBUG)
+inline constexpr auto isDebug = false;
+#else
+inline constexpr auto isDebug = true;
+#endif
+
+}

@@ -1,0 +1,27 @@
+Checks: "*,
+  -abseil-*,
+  -altera-*,
+  -android-*,
+  -fuchsia-*,
+  -google-*,
+  -llvm*,
+  -zircon-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -modernize-pass-by-value,
+  -readability-magic-numbers,
+  -boost-use-ranges"
+
+WarningsAsErrors: ""
+HeaderFilterRegex: ""
+FormatStyle: none
+
+CheckOptions:
+  - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
+    value: true
+  - key: readability-identifier-length.IgnoredVariableNames
+    value: x|y|it
+  - key: readability-identifier-length.IgnoredParameterNames
+    value: x|y
