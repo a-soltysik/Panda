@@ -110,6 +110,9 @@ ASan builds. Runtime presets disable static analysis and formatting to keep thos
 results in the quality workflow. Native-display scenarios remain explicit local
 system tests; hosted jobs do not claim native-window or rendering evidence.
 
+Both workflows run for pull requests targeting `master` and pushes to `master`.
+Feature-branch pushes do not start a second run alongside the pull request.
+
 Both workflows use the small [setup action](../../.github/actions/setup/action.yml)
 and matching CMake configure/build/test presets. They build their own dependencies
 and executables; no compiled artifacts are shared across compilers or sanitizer
