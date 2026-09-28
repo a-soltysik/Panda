@@ -82,11 +82,14 @@ altering the host. The example returned success and printed `CUDA driver
 unavailable; Panda core remains usable`. The real Runtime integration binary
 also passed in that namespace. A subsequent ordinary launch returned `CUDA
 producer returned 42`, confirming the host driver remained available. WSL is
-the Linux verification environment for this task. The hosted quality workflow
-is configured to install CUDA Toolkit 13.4.92, cache its files per OS, and
-analyze and run CUDA tests on Linux/GCC and Windows/MSVC without GPU-dependent
-examples; hosted runs are still unverified. Windows startup without a driver
-remains open.
+the Linux verification environment for this task. On [PR #50](https://github.com/a-soltysik/Panda/pull/50),
+the hosted Linux/GCC and Windows/MSVC CUDA quality jobs both built with
+clang-tidy and cppcheck and passed seven CUDA cases and 18 formatting checks.
+The ordinary quality and test jobs passed too. A second run restored CUDA Toolkit
+13.4.92 from the OS-specific cache on both systems and passed again. The hosted
+Windows availability test passed without a GPU; it does not record the exact
+unavailable reason. The agreed missing-driver proof is the isolated WSL run,
+not a separate Windows driverless launch.
 
 The application kernel includes only its plain-data C++20 header and CUDA
 Runtime headers. This keeps NVCC away from the C++23 facade and its standard
