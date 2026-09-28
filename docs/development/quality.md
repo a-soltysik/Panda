@@ -55,6 +55,12 @@ Keep warnings, analysis and hardening private to Panda targets, including its te
 do not impose them on consumers or third-party code. Use CMake functions for reusable
 local setup, options for user-facing switches and presets for supported workflows.
 Normal development and CI should not depend on undocumented terminal overrides.
+Owned libraries, tests, support, examples and documentation use CMake `FOLDER`
+metadata for IDE organization. Dependency targets retain their upstream metadata.
+Folder metadata does not change the build graph or test selection.
+When public-header verification is enabled, CMake-generated
+`*_verify_interface_header_sets` and aggregate targets remain outside these
+folders; CMake creates them after project code can assign target properties.
 
 Enable optional features only when implemented. CUDA off means no CUDA language,
 toolkit discovery, headers or link dependencies. Development defaults and dependency
@@ -67,6 +73,15 @@ ordinary translation units with their real compiler arguments or compilation dat
 Keep unity as a separate build check; it can hide missing includes and is not proof
 of ODR correctness. Use one exact supported toolchain per preset/environment and
 record compiler, standard library and SDK compatibility through actual probes.
+The development presets build production libraries and the window example with
+tests off; dedicated test and quality presets enable test targets. The `gcc-unity`
+and `msvc-unity` presets build production libraries and the window
+example with tests off, so archive-member substitution does not force separate
+translation units. Component public header sets use CMake's
+`all_verify_interface_header_sets` target when `PANDA_VERIFY_PUBLIC_HEADERS=ON`.
+Only quality presets enable these extra targets by default. Quality CI builds the
+aggregate after ordinary targets to compile each public header independently with
+its component's usage requirements.
 
 ## Effective quality checks
 
@@ -118,6 +133,10 @@ Linux/GCC, Linux/Clang and Windows/MSVC, plus separate Linux ASan/UBSan and Wind
 ASan builds. Runtime presets disable static analysis and formatting to keep those
 results in the quality workflow. Native-display scenarios remain explicit local
 system tests; hosted jobs do not claim native-window or rendering evidence.
+Quality also builds unity configurations on Linux/GCC and Windows/MSVC, verifies
+public headers independently in ordinary quality configurations, and generates
+downloadable API HTML. Tests runs a separate Linux/GCC CPU coverage job and uploads
+the report to Codecov.
 
 Both workflows run for pull requests targeting `master` and pushes to `master`.
 Feature-branch pushes do not start a second run alongside the pull request.
@@ -228,6 +247,20 @@ Keep guides and rationale in Markdown; generated API pages are build artifacts.
 Enforce useful Doxygen warnings through the documentation harness and compile public
 examples. Each handoff explains one invariant, a failure case and the main tradeoff;
 see [learning](learning.md). Performance evidence follows [benchmarking](benchmarking.md).
+`PANDA_BUILD_DOCS=ON` adds `panda_docs` for all current public headers. The `gcc-docs`
+preset selects it without requiring a window or CUDA toolkit. Doxygen warnings for
+undocumented public members and documentation errors fail the target; generated HTML
+stays in the build directory. Internal `detail` namespaces are excluded from API
+documentation.
+Quality CI makes the HTML available as the `panda-api-docs` downloadable artifact.
+
+`gcc-coverage` instruments Panda and its CPU tests with GCC coverage flags. Run
+noninteractive CTest cases, then use `gcovr` to report production `src/` lines and
+branches. CI stores HTML and Cobertura XML as a downloadable artifact and sends the
+XML to Codecov for the README badge. Coverage has no pass threshold; it is evidence
+about tested CPU paths, not proof of GPU behavior or unsupported environments.
+`codecov.yml` disables Codecov's project and patch status checks so they do not
+introduce coverage gates outside CI.
 
 References: [CMake target features](https://cmake.org/cmake/help/latest/command/target_compile_features.html),
 [clang-tidy](https://clang.llvm.org/extra/clang-tidy/),

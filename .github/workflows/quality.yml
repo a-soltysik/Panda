@@ -7,6 +7,52 @@ on:
     branches: [master]
 
 jobs:
+  unity:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux GCC unity
+            os: ubuntu-26.04
+            compiler: gcc-16
+            preset: gcc-unity
+          - name: Windows MSVC unity
+            os: windows-2025
+            compiler: msvc
+            preset: msvc-unity
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          compiler: ${{ matrix.compiler }}
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+  api-docs:
+    name: Public API documentation
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          compiler: gcc-16
+      - name: Install Doxygen
+        run: sudo apt-get install -y doxygen=1.15.0+ds1-1ubuntu3
+      - name: Configure
+        run: cmake --preset gcc-docs
+      - name: Check and generate API documentation
+        run: cmake --build --preset gcc-docs
+      - name: Upload API documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: panda-api-docs
+          path: build-gcc-docs-Linux/docs/api/generated/html/
+          if-no-files-found: error
+
   quality:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -32,6 +78,8 @@ jobs:
         run: cmake --preset ${{ matrix.preset }}
       - name: Build and analyze
         run: cmake --build --preset ${{ matrix.preset }}
+      - name: Compile public headers independently
+        run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
       - name: Check formatting
         run: ctest --preset ${{ matrix.preset }} -R '_format$'
 
@@ -61,6 +109,8 @@ jobs:
         run: cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DPANDA_BUILD_EXAMPLES=OFF
       - name: Build and analyze
         run: cmake --build --preset ${{ matrix.preset }}
+      - name: Compile public headers independently
+        run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
       - name: Check formatting
         run: ctest --preset ${{ matrix.preset }} -R '_format$'
       - name: Test CUDA

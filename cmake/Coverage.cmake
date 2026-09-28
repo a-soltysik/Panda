@@ -1,0 +1,27 @@
+if(PANDA_ENABLE_COVERAGE)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        message(FATAL_ERROR "PANDA_ENABLE_COVERAGE requires Linux GCC")
+    endif()
+    if(NOT PANDA_BUILD_TESTS)
+        message(FATAL_ERROR "PANDA_ENABLE_COVERAGE requires PANDA_BUILD_TESTS=ON")
+    endif()
+    if(PANDA_ENABLE_SANITIZER_ADDRESS OR PANDA_ENABLE_SANITIZER_UNDEFINED_BEHAVIOR
+            OR PANDA_ENABLE_SANITIZER_THREAD OR PANDA_ENABLE_SANITIZER_MEMORY
+            OR PANDA_ENABLE_SANITIZER_LEAK)
+        message(FATAL_ERROR "PANDA_ENABLE_COVERAGE uses a separate build from sanitizers")
+    endif()
+endif()
+
+function(panda_enable_coverage target)
+    if(NOT PANDA_ENABLE_COVERAGE)
+        return()
+    endif()
+
+    target_compile_options(${target} PRIVATE --coverage -O0)
+    get_target_property(target_type ${target} TYPE)
+    if(target_type STREQUAL "STATIC_LIBRARY" OR target_type STREQUAL "OBJECT_LIBRARY")
+        target_link_options(${target} INTERFACE --coverage)
+    else()
+        target_link_options(${target} PRIVATE --coverage)
+    endif()
+endfunction()

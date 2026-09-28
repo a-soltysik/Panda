@@ -52,27 +52,101 @@
     {
       "name": "gcc-development",
       "displayName": "Panda GCC development build",
-      "inherits": "gcc-base"
+      "inherits": "gcc-base",
+      "cacheVariables": {
+        "PANDA_BUILD_TESTS": "OFF",
+        "PANDA_BUILD_TOOLS": "ON",
+        "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_CUDA": "OFF",
+        "PANDA_ENABLE_CLANG_TIDY": "OFF",
+        "PANDA_ENABLE_CPPCHECK": "OFF",
+        "PANDA_ENABLE_CLANG_FORMAT": "OFF"
+      }
     },
     {
       "name": "gcc-quality",
       "displayName": "Panda GCC quality build",
       "inherits": "gcc-base",
       "cacheVariables": {
-        "PANDA_BUILD_EXAMPLES": "ON"
+        "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_VERIFY_PUBLIC_HEADERS": "ON"
+      }
+    },
+    {
+      "name": "gcc-unity",
+      "displayName": "Panda Linux GCC unity build",
+      "inherits": ["tests-base", "gcc-base"],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "PANDA_BUILD_TESTS": "OFF",
+        "PANDA_BUILD_TOOLS": "ON",
+        "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_ENABLE_UNITY": "ON"
+      }
+    },
+    {
+      "name": "gcc-docs",
+      "displayName": "Panda Linux API documentation",
+      "inherits": ["tests-base", "gcc-base"],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "PANDA_BUILD_TESTS": "OFF",
+        "PANDA_BUILD_DOCS": "ON"
+      }
+    },
+    {
+      "name": "gcc-coverage",
+      "displayName": "Panda Linux GCC coverage",
+      "inherits": ["tests-base", "gcc-base"],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "PANDA_ENABLE_COVERAGE": "ON"
       }
     },
     {
       "name": "msvc-development",
       "displayName": "Panda MSVC development build",
-      "inherits": "msvc-base"
+      "inherits": "msvc-base",
+      "cacheVariables": {
+        "PANDA_BUILD_TESTS": "OFF",
+        "PANDA_BUILD_TOOLS": "ON",
+        "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_CUDA": "OFF",
+        "PANDA_ENABLE_CLANG_TIDY": "OFF",
+        "PANDA_ENABLE_CPPCHECK": "OFF",
+        "PANDA_ENABLE_CLANG_FORMAT": "OFF"
+      }
     },
     {
       "name": "msvc-quality",
       "displayName": "Panda MSVC quality build",
       "inherits": "msvc-base",
       "cacheVariables": {
-        "PANDA_BUILD_EXAMPLES": "ON"
+        "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_VERIFY_PUBLIC_HEADERS": "ON"
+      }
+    },
+    {
+      "name": "msvc-unity",
+      "displayName": "Panda Windows MSVC unity build",
+      "inherits": ["tests-base", "msvc-base"],
+      "cacheVariables": {
+        "PANDA_BUILD_TESTS": "OFF",
+        "PANDA_BUILD_TOOLS": "ON",
+        "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_ENABLE_UNITY": "ON"
       }
     },
     {
@@ -164,6 +238,23 @@
   ],
   "buildPresets": [
     {
+      "name": "gcc-unity",
+      "configurePreset": "gcc-unity"
+    },
+    {
+      "name": "msvc-unity",
+      "configurePreset": "msvc-unity"
+    },
+    {
+      "name": "gcc-docs",
+      "configurePreset": "gcc-docs",
+      "targets": ["panda_docs"]
+    },
+    {
+      "name": "gcc-coverage",
+      "configurePreset": "gcc-coverage"
+    },
+    {
       "name": "gcc-development",
       "configurePreset": "gcc-development"
     },
@@ -216,19 +307,9 @@
       }
     },
     {
-      "name": "gcc-development",
-      "inherits": "base",
-      "configurePreset": "gcc-development"
-    },
-    {
       "name": "gcc-quality",
       "inherits": "base",
       "configurePreset": "gcc-quality"
-    },
-    {
-      "name": "msvc-development",
-      "inherits": "base",
-      "configurePreset": "msvc-development"
     },
     {
       "name": "msvc-quality",
@@ -269,6 +350,16 @@
       "name": "gcc-tests",
       "inherits": "base",
       "configurePreset": "gcc-tests",
+      "filter": {
+        "exclude": {
+          "label": "system"
+        }
+      }
+    },
+    {
+      "name": "gcc-coverage",
+      "inherits": "base",
+      "configurePreset": "gcc-coverage",
       "filter": {
         "exclude": {
           "label": "system"

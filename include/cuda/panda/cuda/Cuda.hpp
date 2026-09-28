@@ -1,5 +1,8 @@
 #pragma once
 
+/// @file
+/// Optional CUDA Runtime availability query.
+
 #include <cstdint>
 #include <expected>
 

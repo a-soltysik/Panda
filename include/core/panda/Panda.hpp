@@ -1,5 +1,8 @@
 #pragma once
 
+/// @file
+/// Core package version query.
+
 #include <string_view>
 
 namespace panda

@@ -7,6 +7,49 @@ on:
     branches: [master]
 
 jobs:
+  coverage:
+    name: Linux GCC coverage
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          compiler: gcc-16
+      - name: Install report generator
+        run: sudo apt-get install -y gcovr=7.2+really-2
+      - name: Configure
+        run: cmake --preset gcc-coverage
+      - name: Build instrumented tests
+        run: cmake --build --preset gcc-coverage
+      - name: Run CPU tests
+        run: ctest --preset gcc-coverage
+      - name: Generate coverage report
+        if: success() || failure()
+        run: |
+          mkdir -p build-gcc-coverage-Linux/coverage
+          gcovr --root . --gcov-executable gcov-16 --filter 'src/.*' \
+            --html-details build-gcc-coverage-Linux/coverage/index.html \
+            --cobertura build-gcc-coverage-Linux/coverage/coverage.xml \
+            --print-summary build-gcc-coverage-Linux
+      - name: Upload downloadable report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: panda-coverage
+          path: build-gcc-coverage-Linux/coverage/
+          if-no-files-found: error
+      - name: Update coverage badge
+        if: success()
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: build-gcc-coverage-Linux/coverage/coverage.xml
+          disable_search: true
+          fail_ci_if_error: true
+
   tests:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}

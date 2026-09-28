@@ -1,4 +1,5 @@
 add_library(panda_test_mock_headers INTERFACE)
+set_target_properties(panda_test_mock_headers PROPERTIES FOLDER "Panda/Test support")
 add_library(PandaTest::MockHeaders ALIAS panda_test_mock_headers)
 target_link_libraries(panda_test_mock_headers INTERFACE PandaTest::Support)
 target_include_directories(panda_test_mock_headers INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
