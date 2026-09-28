@@ -49,9 +49,10 @@ the generated API.
 The Linux GCC coverage configuration passed 38 noninteractive cases. gcovr 7.2
 reported 88.9% production-source lines (367/413), 94.9% functions (56/59), and
 62.1% branches (261/420). This is a local CPU measurement, with native-window
-system scenarios excluded. Hosted CI artifact upload and Codecov badge display
-remain to be observed on a workflow run. No GPU behavior was exercised by these
-checks.
+system scenarios excluded. Hosted CI uploaded the `panda-coverage` and
+`panda-api-docs` artifacts and passed its Codecov upload. Codecov reported
+64.61% for PR #51. The README badge targets `master`, so its published percentage
+remains to be observed after merge. No GPU behavior was exercised by these checks.
 
 The Windows `msvc-development` and WSL `gcc-development` presets reconfigured and
 built with tests, CUDA, static analyzers, formatting checks and header verification
