@@ -34,3 +34,34 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Check formatting
         run: ctest --preset ${{ matrix.preset }} -R '_format$'
+
+  cuda:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux GCC CUDA analysis and tests
+            os: ubuntu-26.04
+            compiler: gcc-16
+            preset: gcc-quality
+          - name: Windows MSVC CUDA analysis and tests
+            os: windows-2025
+            compiler: msvc
+            preset: msvc-quality
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          compiler: ${{ matrix.compiler }}
+          analysis: 'true'
+          cuda: 'true'
+      - name: Configure CUDA without GPU-dependent examples
+        run: cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DPANDA_BUILD_EXAMPLES=OFF
+      - name: Build and analyze
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Check formatting
+        run: ctest --preset ${{ matrix.preset }} -R '_format$'
+      - name: Test CUDA
+        run: ctest --preset ${{ matrix.preset }} -R Cuda

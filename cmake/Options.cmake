@@ -18,6 +18,7 @@ option(PANDA_ENABLE_SANITIZER_MEMORY "Detect uninitialized reads with MemorySani
 option(PANDA_ENABLE_SANITIZER_LEAK "Detect memory leaks with standalone LeakSanitizer (Linux)" OFF)
 
 option(PANDA_BUILD_TOOLS "Build Panda::Tools (always enabled with tests)" OFF)
+option(PANDA_BUILD_CUDA "Build Panda::Cuda" OFF)
 
 if(PANDA_BUILD_TESTS)
     set(PANDA_BUILD_TOOLS ON)

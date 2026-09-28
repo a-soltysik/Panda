@@ -96,15 +96,23 @@ than globally hiding internal errors or whole categories. Do not weaken requirem
 change expected results or exclude code merely to make checks pass.
 
 Test sources, mocks and support headers inherit the root clang-tidy configuration
-through `tests/.clang-tidy`, which disables `cppcoreguidelines-avoid-magic-numbers`
-and `readability-magic-numbers`. Numeric fixtures and expected values do not need
-production-style named constants; other checks remain enabled.
+through `tests/.clang-tidy`, which disables the two magic-number checks and
+`cppcoreguidelines-non-private-member-variables-in-classes` /
+`misc-non-private-member-variables-in-classes`. Numeric fixtures and expected
+values do not need production-style named constants; GoogleTest fixtures may expose
+mock fields to their generated subclasses. Other checks remain enabled.
 
 ## Continuous integration
 
 [Quality](../../.github/workflows/quality.yml) compiles owned production, example
 and test sources with warnings-as-errors, clang-tidy and cppcheck on Linux/GCC and
-Windows/MSVC. Its CTest selection checks formatting.
+Windows/MSVC. Separate CUDA jobs install Toolkit 13.4, analyze the optional
+module and its tests, and run the CUDA CTest cases without a GPU. They leave
+examples off because `cuda_connection` detects a native GPU architecture when
+building its kernel. Toolkit 13.4.92 files are cached separately per OS, so a
+cache hit skips the NVIDIA download and installation. The ordinary quality jobs
+build and analyze examples.
+CTest selections check formatting.
 [Tests](../../.github/workflows/tests.yml) runs unit and integration cases on
 Linux/GCC, Linux/Clang and Windows/MSVC, plus separate Linux ASan/UBSan and Windows
 ASan builds. Runtime presets disable static analysis and formatting to keep those

@@ -7,6 +7,9 @@ inputs:
   analysis:
     description: Install static analysis and formatting tools
     default: 'false'
+  cuda:
+    description: Install CUDA Toolkit 13.4 for CUDA builds
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -43,3 +46,57 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: sudo apt-get update && sudo apt-get install -y xorg-dev libwayland-dev libxkbcommon-dev
+    - name: Prepare Linux CUDA cache directory
+      if: inputs.cuda == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo mkdir -p /usr/local/cuda-13.4
+        sudo chown "$USER" /usr/local/cuda-13.4
+    - name: Cache Linux CUDA Toolkit 13.4
+      if: inputs.cuda == 'true' && runner.os == 'Linux'
+      id: cuda-linux-cache
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/cuda-13.4
+        key: ubuntu-26.04-x64-cuda-13.4.92-nvcc-cudart-v1
+    - name: Install CUDA Toolkit 13.4 on Linux
+      if: inputs.cuda == 'true' && runner.os == 'Linux' && steps.cuda-linux-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        curl -fsSLo "$RUNNER_TEMP/cuda-keyring.deb" https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2604/x86_64/cuda-keyring_1.1-1_all.deb
+        sudo dpkg -i "$RUNNER_TEMP/cuda-keyring.deb"
+        sudo apt-get update
+        sudo apt-get install -y cuda-nvcc-13-4=13.4.92-1 cuda-cudart-dev-13-4=13.4.92-1
+    - name: Expose Linux CUDA Toolkit 13.4
+      if: inputs.cuda == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        echo /usr/local/cuda-13.4/bin >> "$GITHUB_PATH"
+        /usr/local/cuda-13.4/bin/nvcc --version
+    - name: Cache Windows CUDA Toolkit 13.4
+      if: inputs.cuda == 'true' && runner.os == 'Windows'
+      id: cuda-windows-cache
+      uses: actions/cache@v4
+      with:
+        path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4
+        key: windows-2025-x64-cuda-13.4.92-nvcc-cudart-crt-nvvm-v1
+    - name: Install CUDA Toolkit 13.4 on Windows
+      if: inputs.cuda == 'true' && runner.os == 'Windows' && steps.cuda-windows-cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $installer = Join-Path $env:RUNNER_TEMP 'cuda-installer.exe'
+        Invoke-WebRequest -Uri 'https://developer.download.nvidia.com/compute/cuda/13.4.2/network_installers/cuda_13.4.2_windows_x86_64_network.exe' -OutFile $installer
+        & $installer -s nvcc_13.4 cudart_13.4 crt_13.4 nvvm_13.4
+        if ($LASTEXITCODE -ne 0) { throw "CUDA installer failed with exit code $LASTEXITCODE" }
+    - name: Expose Windows CUDA Toolkit 13.4
+      if: inputs.cuda == 'true' && runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $cudaPath = Join-Path $env:ProgramFiles 'NVIDIA GPU Computing Toolkit\CUDA\v13.4'
+        $nvcc = Join-Path $cudaPath 'bin\nvcc.exe'
+        if (-not (Test-Path -LiteralPath $nvcc)) { throw "CUDA compiler missing: $nvcc" }
+        Add-Content -LiteralPath $env:GITHUB_PATH -Value (Join-Path $cudaPath 'bin')
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "CUDA_PATH=$cudaPath"
+        & $nvcc --version

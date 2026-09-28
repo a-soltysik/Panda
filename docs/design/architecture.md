@@ -1,7 +1,8 @@
 # Architecture
 
 This is the accepted design. [The plan](../development/PLAN.md) records implementation
-progress; only the minimal static core currently exists.
+progress; the core, window wrapper and CUDA availability facade are the current
+implemented subset.
 
 ## Modules and responsibilities
 

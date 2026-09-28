@@ -18,8 +18,12 @@ function(panda_enable_static_analysis target)
 
     if(PANDA_ENABLE_CPPCHECK)
         find_program(PANDA_CPPCHECK_EXECUTABLE NAMES cppcheck REQUIRED)
+        get_target_property(panda_cxx_standard ${target} CXX_STANDARD)
+        if(NOT panda_cxx_standard)
+            set(panda_cxx_standard 23)
+        endif()
         set(cppcheck ${PANDA_MSVC_LAUNCHER} "${PANDA_CPPCHECK_EXECUTABLE}"
-            --enable=warning,style,performance,portability --error-exitcode=1 --std=c++23 --inline-suppr --quiet)
+            --enable=warning,style,performance,portability --error-exitcode=1 --std=c++${panda_cxx_standard} --inline-suppr --quiet)
         set_property(TARGET ${target} PROPERTY CXX_CPPCHECK "${cppcheck}")
     endif()
 endfunction()
