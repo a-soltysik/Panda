@@ -5,37 +5,46 @@ selects cases discovered by GoogleTest. Dependencies are pinned through
 CPM only when `PANDA_BUILD_TESTS` is enabled. Tests do not introduce virtual functions
 or mock configuration into production interfaces.
 
-`PANDA_BUILD_TESTS=ON` enables all implemented Panda modules and builds every test
-level, including Tools tests when `PANDA_BUILD_TOOLS` is OFF in the cache. Suite
-CMake files therefore do not conditionally omit modules. Select execution through
-CTest labels; building system tests does not require running them.
+`PANDA_BUILD_TESTS=ON` enables the implemented CPU-only modules and builds every
+test level, including Tools tests when `PANDA_BUILD_TOOLS` is OFF in the cache.
+CUDA remains selected explicitly with `PANDA_BUILD_CUDA` so an ordinary test
+build needs no toolkit. The CUDA connection is a runnable example, not a CTest
+case. With CUDA selected, unit cases run the real `CudaAdapter.cpp` against a
+controlled `cudaGetDeviceCount` call, and an integration case calls the real
+CUDA Runtime through the public facade;
+the latter can run on a machine without a usable device. Select execution
+through CTest labels; building system tests does not require running them.
 
 ## Levels and execution
 
 | Level        | Directory                    | Purpose                                                                        | CTest labels  |
 |--------------|------------------------------|--------------------------------------------------------------------------------|---------------|
-| Unit         | `tests/unit/<module>`        | Test real Panda implementation with controlled dependencies, or pure CPU logic | `unit`        |
-| Integration  | `tests/integration/<module>` | Test real components and dependencies together                                 | `integration` |
-| System smoke | `tests/system`               | Exercise bounded native startup, event processing and teardown                 | `system`      |
+| Unit         | `tests/cases/unit/<module>`        | Test real Panda implementation with controlled dependencies, or pure CPU logic | `unit`        |
+| Integration  | `tests/cases/integration/<module>` | Test real components and dependencies together                                 | `integration` |
+| System smoke | `tests/cases/system`               | Exercise bounded native startup, event processing and teardown                 | `system`      |
 
 Test executables are grouped by level and compatible dependency selections, not
 necessarily by a whole module. Their
 CMake files own their sources and registration. Each unit source file tests one
 class or coherent free-function module; its death tests stay in that file.
-`tests/support` holds shared test plumbing. `tests/mocks/panda/<module>` holds
-Panda implementation replacements, and `tests/mocks/external/<library>` holds
+`tests/cases` holds executable test scenarios; `tests/support` holds shared test
+plumbing and target helpers. `tests/support/mocks/panda/<module>` holds
+Panda implementation replacements, and `tests/support/mocks/external/<library>` holds
 dependency mocks. Each replacement pairs a `*Mock.hpp` declaration with a thin
 `*Stub.cpp` forwarding implementation. Target helpers live in
-`tests/cmake/TestTargets.cmake`; suite CMake files declare only sources, libraries
+`tests/support/cmake/TestTargets.cmake`; suite CMake files declare only sources, libraries
 their level and optional `MOCKS` through `panda_add_test`. Every executable links the same
-`GTest::gmock_main` runner; tests do not define their own main. The helper applies
-the level label to every discovered case in its target.
+`GTest::gmock_main` runner; tests do not define their own main. The helper prefixes
+each CTest name with its level (`unit.`, `integration.`, `system.`) and applies the
+matching label. GoogleTest suite and case names stay unchanged.
 
 Test-only CMake aliases describe their role: `PandaTest::Support` exposes the
 generic mock fixture, `PandaTest::LogCapture` observes the real logger, and
 `PandaTest::GlfwMock` replaces GLFW. Log capture is an observer/helper, not a
 replacement logger. `PandaTest::MockHeaders` exposes mock declarations, including
 `mocks/panda/common/SinkMock.hpp`, without selecting stub implementations.
+With CUDA enabled, `PandaTest::CudaRuntimeMock` replaces only the external
+`cudaGetDeviceCount` function while `CudaAdapter.cpp` remains real.
 Tests list the production module explicitly alongside these
 helpers, so their real subject remains visible.
 
@@ -49,8 +58,7 @@ helpers, so their real subject remains visible.
 
 Case names describe the observed behavior, such as `RejectsMovedFromUse`.
 Unit death suites end in `DeathTest` so GoogleTest schedules them correctly;
-they remain in the source file for the tested class/module. Directories and CTest
-labels identify the level without adding a filename suffix. System tests are
+they remain in the source file for the tested class/module. System tests are
 named for application scenarios even while an initial scenario exercises only
 window startup.
 
@@ -143,11 +151,13 @@ alongside the real logger from the same archive; the ordinary version unit test
 checks the production implementation in a separate executable.
 
 A generic `ScopedMock<Mock>` registration exposes the current mock to stub entry points.
-`MockTest<Mock>` owns this scope for the entire fixture lifetime and provides
-`getMock()` for expectations. Dependent objects must be destroyed before the fixture.
-Scopes cannot overlap in one
-process; GoogleTest runs ordinary cases sequentially, while CTest may run separate
-executables in parallel. Any worker must finish before registration is released.
+Tests can own a local `ScopedMock`, or fixtures can derive from `testing::Test` and
+own one `ScopedMock` member per mocked dependency. Pass that object directly to
+`EXPECT_CALL`. Different mock types can be active together. Two scopes of the
+same type cannot overlap in one process.
+Dependent objects must be destroyed before their mock scope. GoogleTest runs ordinary
+cases sequentially, while CTest may run separate executables in parallel. Any worker
+must finish before registration is released.
 
 Use strict mocks for backend boundaries. Default successful error reads may be
 shared fixture plumbing; failures and ownership transitions are explicit expectations.

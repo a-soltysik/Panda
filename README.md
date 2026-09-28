@@ -2,12 +2,12 @@
 
 Panda is a C++23 graphics engine being developed around Vulkan, with planned CUDA
 interoperability. The current implementation provides the foundation for applications:
-shared logging and diagnostics, an optional GLFW window module, and an empty-window
-example. Rendering is not implemented yet.
+shared logging and diagnostics, an optional GLFW window module, an optional CUDA
+availability query, and examples. Rendering is not implemented yet.
 
 ## Features
 
-- Static libraries with separate core and optional window tools.
+- Static libraries with separate core, optional window tools and optional CUDA availability.
 - Formatted logging with timestamps, source locations, and stream or file sinks.
 - Diagnostics, optional standard stack traces, and recoverable window errors through `std::expected`.
 - CMake/Ninja builds and GoogleTest tests on Windows and Linux.
@@ -30,31 +30,19 @@ sudo apt-get install xorg-dev libwayland-dev libxkbcommon-dev
 
 CMake downloads GLFW, GLM and, when tests are enabled, GoogleTest through CPM.
 An internet connection is needed for the first configuration.
+The CUDA module needs the CUDA Toolkit; its example also needs NVCC and a
+compatible host compiler. Ordinary builds with CUDA off do not discover either.
 
 ## Build and run
 
 After cloning or downloading the repository, open a terminal in its root directory.
+Follow the [empty-window example](examples/simple_scene/README.md) to configure,
+build and run on Windows or Linux. The core library can be used without a window
+or display.
 
-### Windows with MSVC
-
-```powershell
-cmake --preset msvc-development -DPANDA_BUILD_TOOLS=ON -DPANDA_BUILD_EXAMPLES=ON
-cmake --build --preset msvc-development
-./build-msvc-development/examples/simple_scene/simple_scene.exe
-```
-
-### Linux with GCC
-
-```sh
-cmake --preset gcc-development -DPANDA_BUILD_TOOLS=ON -DPANDA_BUILD_EXAMPLES=ON
-cmake --build --preset gcc-development
-./build-gcc-development-Linux/examples/simple_scene/simple_scene
-```
-
-The example opens an empty window and processes events until you close it. On Linux
-it uses X11 (or XWayland), because an empty Wayland surface becomes visible only
-after presenting its first buffer. An X11 display must therefore be available.
-The core library can be used without a window or display.
+For a CUDA build and a small application-owned kernel, follow the
+[CUDA connection example](examples/cuda_connection/README.md). It can start and
+report an unavailable driver or device without disabling Panda core use.
 
 Development presets run static analysis and formatting checks. To build without
 these tools, append the following options to the configure command:
@@ -83,7 +71,9 @@ and source lines require debug symbols.
 
 ## Tests
 
-The CPU test presets build all implemented modules without requiring analysis tools.
+The CPU test presets build core and Tools without requiring CUDA or analysis tools.
+Enable `PANDA_BUILD_CUDA` in a test configuration to add CUDA availability unit
+and integration cases; the CUDA connection example remains a separate program.
 Use `msvc-tests` on Windows, `gcc-tests` on Linux or Windows/MSYS2, or `clang-tests`
 on Linux. For example:
 
@@ -108,8 +98,9 @@ target_link_libraries(my_application PRIVATE Panda::Panda)
 ```
 
 To include the window module, enable `PANDA_BUILD_TOOLS` before adding Panda and link
-`Panda::Tools`. Dependencies are fetched automatically. Public targets propagate their
-C++23 and include-directory requirements.
+`Panda::Tools`. To query CUDA availability, enable `PANDA_BUILD_CUDA` and link
+`Panda::Cuda`. Dependencies are fetched automatically. Public targets propagate
+their C++23 and include-directory requirements.
 
 See [the documentation](docs/README.md) for API contracts and build configuration,
 and [the example](examples/simple_scene/main.cpp) for window creation and event handling.

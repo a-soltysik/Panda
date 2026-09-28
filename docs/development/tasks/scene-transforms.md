@@ -10,7 +10,7 @@ Non-goal: No renderer materials, importer or physics.
 
 Interface: Scene/Entity/ObjectId/Transform operations and opt-in panda/Ecs.hpp.
 
-Paths: `../../../include/core/panda`, `../../../include/core/panda`, `src/scene/`, `tests/unit/` and directly affected documentation.
+Paths: `../../../include/core/panda`, `../../../include/core/panda`, `src/scene/`, `tests/cases/unit/` and directly affected documentation.
 Specifications: [Scene API and transforms](../../design/contracts/scene.md#public-scene-boundary), [ownership](../../design/contracts/resources.md#ownership).
 
 Separate identity/lifecycle, transform math and native ECS integration into

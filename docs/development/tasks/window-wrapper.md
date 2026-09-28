@@ -44,7 +44,7 @@ window creation and loop completion; window appearance has not been reviewed.
 
 Unit tests inject initialization, creation, size,
 framebuffer and event failures and check retry, callback restoration, multi-window
-ownership and movement. GoogleTest death tests in `tests/unit/tools/Window.cpp`
+ownership and movement. GoogleTest death tests in `tests/cases/unit/tools/Window.cpp`
 cover moved-from use, wrong-thread use and waiting without a live window.
 All 11 window unit cases and the real GLFW 3.4 null-platform integration passed on
 Windows GCC 16.1.0, Linux GCC 16.0.1 and Windows MSVC 19.51.36260. The production

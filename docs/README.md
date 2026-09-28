@@ -2,8 +2,8 @@
 
 Panda is being rewritten as a small Vulkan engine with optional CUDA integration.
 The design is accepted; implementation is at the build foundation. A minimal C++23
-static library, shared logger/checked diagnostics, a Tools
-window and an empty-window example exist. Rendering, compute and the broader
+static library, shared logger/checked diagnostics, a Tools window, an optional
+CUDA availability facade and examples exist. Rendering, compute integration and the broader
 application modules remain planned. See [the plan](development/PLAN.md) for current work and approvals.
 
 ## Where to start
@@ -22,7 +22,7 @@ application modules remain planned. See [the plan](development/PLAN.md) for curr
 | What must materials and shaders implement? | [Rendering](design/contracts/rendering.md) |
 | What physics is included? | [Prototype physics](design/contracts/physics.md) |
 | How do we measure and learn? | [Benchmarks](development/benchmarking.md), [learning](development/learning.md) |
-| Where are useful examples? | [Empty-window example](../README.md#build-and-run), [reference code](../legacy/README.md) |
+| Where are useful examples? | [Empty-window example](../examples/simple_scene/README.md), [CUDA connection](../examples/cuda_connection/README.md), [reference code](../legacy/README.md) |
 
 Read only the sections relevant to a change. Specifications describe intended
 behavior and invariants; task cards record delivery criteria and current evidence.

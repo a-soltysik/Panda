@@ -1,0 +1,6 @@
+add_subdirectory(core)
+add_subdirectory(common)
+add_subdirectory(tools)
+if(PANDA_BUILD_CUDA)
+    add_subdirectory(cuda)
+endif()

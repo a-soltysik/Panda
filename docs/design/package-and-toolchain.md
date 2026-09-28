@@ -16,16 +16,19 @@ static linking of every OS/driver/dependency library.
 | `Panda::Panda` | `panda/Panda.hpp` and focused core/scene/resource headers | Always built |
 | `Panda::Import` | `panda/Import.hpp` | `PANDA_BUILD_IMPORT` |
 | `Panda::Tools` | `panda/Tools.hpp` | `PANDA_BUILD_TOOLS` |
-| `Panda::Cuda` | `panda/Cuda.hpp` | `PANDA_BUILD_CUDA` |
+| `Panda::Cuda` | `panda/cuda/Cuda.hpp` | `PANDA_BUILD_CUDA` |
 | `Panda::Physics` | `panda/Physics.hpp` | `PANDA_BUILD_PHYSICS` |
 
-This table describes the intended package. Introduce each optional CMake switch
-with its implementation; do not expose switches for unavailable modules. The
+Core, Tools and the CUDA availability facade are implemented; the other entries
+describe the intended package. Introduce each optional CMake switch with its
+implementation; do not expose switches for unavailable modules. The
 umbrella includes only core headers. Add-ons publicly depend on the core;
 disabled add-ons expose no usable target and trigger no discovery of their exclusive
 dependencies. Internal compilation boundaries need not become extra public targets.
 
 `Panda::Tools` is a static module library containing Window and its GLFW session.
+`Panda::Cuda` is an optional static module with a C++23 availability query and a
+private C++20 Runtime adapter; device matching and sharing remain planned.
 Production libraries follow module responsibilities, not unit-test boundaries.
 Tests can supply mock object files for individual implementations while linking
 the same module archives as applications; see [controlled dependencies](../development/testing.md#controlled-dependencies).
@@ -55,8 +58,9 @@ selectable. They default to ON for top-level Panda development and OFF when Pand
 is included by an application. The quality build enables all four. An example
 requested with a disabled required module fails configuration clearly.
 
-`PANDA_BUILD_TESTS=ON` enables every implemented Panda module, currently including
-Tools, and builds all test levels. `PANDA_BUILD_TOOLS` defaults to OFF and controls
+`PANDA_BUILD_TESTS=ON` enables implemented CPU-only modules, currently including
+Tools, and builds all test levels. `PANDA_BUILD_CUDA` stays explicit so tests can
+run without toolkit discovery. `PANDA_BUILD_TOOLS` defaults to OFF and controls
 Tools when tests are disabled. The test override is scoped to the configuration;
 it does not rewrite the cached module preference. CTest labels select execution
 levels independently of which suites are built.
@@ -113,13 +117,20 @@ the build directory when replacing its recorded toolchain/SDK installation.
 
 ### Examples
 
-`PANDA_BUILD_EXAMPLES` (OFF by default) adds the `simple_scene` executable and
+`PANDA_BUILD_EXAMPLES` (OFF by default) adds the
+[`simple_scene`](../../examples/simple_scene/README.md) executable and
 requires Tools, enabled by `PANDA_BUILD_TOOLS=ON` or `PANDA_BUILD_TESTS=ON`.
 The example creates a local Window with no
 OpenGL context and owns a plain loop in `main`. The empty-window loop waits for
 events instead of polling continuously. Closing the window ends the loop; RAII
 releases the window on exit, including failure or exception unwinding. Creation
 and event errors are logged and return a failing process exit status.
+
+When `PANDA_BUILD_CUDA=ON`, the same example switch also builds
+[`cuda_connection`](../../examples/cuda_connection/README.md). It links
+`Panda::Cuda` and an application-owned CUDA20 kernel; it is a runnable example,
+not a CTest case. With CUDA off, no CUDA toolkit or compiler is discovered for
+examples.
 
 Core has no dependency on Tools or a display. GLFW is discovered and linked only
 when Tools is enabled, so a core-only build needs no window-system packages.
@@ -185,12 +196,11 @@ borrowed `VkCommandBuffer`; the application may use Vulkan C or wrap the handle 
 its own non-owning Hpp object. The native extension header is separate from the
 core umbrella; its required SDK headers/link dependencies are supplied by the target.
 
-Configure internal Hpp consistently in the private namespace `panda_vk`,
-through `VULKAN_HPP_NAMESPACE`. This avoids sharing an application's differently
-configured `vk` definitions or imposing Panda's exception/dispatcher macros on it.
-Test coexistence; this is namespace isolation, not another renderer abstraction.
-The namespace setting is supported by
-[Vulkan-Hpp](https://github.com/KhronosGroup/Vulkan-Hpp/blob/main/vulkan/vulkan_hpp_macros.hpp).
+Use Vulkan-Hpp's default `vk` namespace and configuration in Panda implementation
+files. Do not define Hpp configuration macros for consumers or expose Hpp types
+through Panda public headers. A consumer using a different Hpp configuration
+needs a specific compatibility check before support is claimed; change the
+internal configuration only in response to a demonstrated requirement.
 
 GLM is consciously exposed. Use explicit projection conventions rather than forcing
 global handedness/depth macros. The accepted
@@ -244,6 +254,14 @@ Keep the engine-facing facade and native adapter separate:
 - Only actual kernel targets enable the CUDA language/NVCC. An application's `.cu`
   target uses CUDA20 and the same supported host compiler family, through narrow
   application-owned declarations shared with its C++23 callback.
+
+The implemented `panda::cuda::queryAvailability()` reports `Available`,
+`NoDriver` or `NoDevice`; other Runtime initialization failures return an error
+with the native code. It may initialize and block. This query does not select a
+device, create a session, or establish Vulkan/CUDA interop. The
+[`cuda_connection` example](../../examples/cuda_connection/README.md) owns its
+kernel and plain-data C++20 boundary. Its CUDA target uses the CMake/NVCC
+`native` architecture detection for the build machine's GPU.
 
 No owning STL containers, `std::function`, engine object graph, or exceptions cross
 the native adapter boundary. This is a source-level boundary using a compatible host
@@ -322,7 +340,8 @@ work does not require an unimplemented renderer.
 4. Start a CUDA-enabled sample without an available CUDA driver/device and keep
    rendering when CUDA is optional. Test both OS paths and process library dependencies;
    an explicitly required CUDA case fails clearly.
-5. Build a consumer using its own Hpp configuration without macro/dispatcher collisions.
+5. Compile the public headers with GLM and ordinary Vulkan-Hpp; check any
+   application-specific Hpp configuration before claiming it is supported.
 6. Render embedded built-in/application shaders from another working directory with
    the compiler absent at runtime; verify include-triggered shader rebuilding.
 7. Check optional-module isolation, ordinary/unity builds, and target-scoped diagnostics.
