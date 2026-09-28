@@ -87,8 +87,8 @@ runs:
         $ErrorActionPreference = 'Stop'
         $installer = Join-Path $env:RUNNER_TEMP 'cuda-installer.exe'
         Invoke-WebRequest -Uri 'https://developer.download.nvidia.com/compute/cuda/13.4.2/network_installers/cuda_13.4.2_windows_x86_64_network.exe' -OutFile $installer
-        & $installer -s nvcc_13.4 cudart_13.4 crt_13.4 nvvm_13.4
-        if ($LASTEXITCODE -ne 0) { throw "CUDA installer failed with exit code $LASTEXITCODE" }
+        $installation = Start-Process -FilePath $installer -ArgumentList @('-s', 'nvcc_13.4', 'cudart_13.4', 'crt_13.4', 'nvvm_13.4') -Wait -PassThru -WindowStyle Hidden
+        if ($installation.ExitCode -ne 0) { throw "CUDA installer failed with exit code $($installation.ExitCode)" }
     - name: Expose Windows CUDA Toolkit 13.4
       if: inputs.cuda == 'true' && runner.os == 'Windows'
       shell: pwsh
