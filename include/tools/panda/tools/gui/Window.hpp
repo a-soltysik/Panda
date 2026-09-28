@@ -1,5 +1,8 @@
 #pragma once
 
+/// @file
+/// GLFW window ownership and event processing.
+
 #include <cstdint>
 #include <expected>
 #include <glm/ext/vector_uint2.hpp>
@@ -15,6 +18,7 @@ class GlfwSession;
 /// @brief Owned window diagnostic; nativeCode is a GLFW error code or zero.
 struct WindowError
 {
+    /// @brief Failure category independent of the native GLFW status.
     enum class Code : std::uint8_t
     {
         InvalidArgument,
@@ -23,9 +27,13 @@ struct WindowError
         OperationFailed
     };
 
+    /// Failure category.
     Code code {Code::InvalidArgument};
+    /// Operation that failed, owned by the error.
     std::string operation;
+    /// Diagnostic text, owned by the error.
     std::string message;
+    /// GLFW error code, or zero when no native status applies.
     int nativeCode {0};
 };
 
@@ -36,6 +44,7 @@ struct WindowError
 class Window final
 {
 public:
+    /// @brief Non-owning native window identity, valid only for a live Window.
     using Id = std::uintptr_t;
 
     /// @brief Creates a window and shares the GLFW session, or returns an owned error.

@@ -1,5 +1,8 @@
 # Panda
 
+[![Quality](https://github.com/a-soltysik/Panda/actions/workflows/quality.yml/badge.svg?branch=master)](https://github.com/a-soltysik/Panda/actions/workflows/quality.yml)
+[![Coverage](https://codecov.io/gh/a-soltysik/Panda/branch/master/graph/badge.svg)](https://codecov.io/gh/a-soltysik/Panda)
+
 Panda is a C++23 graphics engine being developed around Vulkan, with planned CUDA
 interoperability. The current implementation provides the foundation for applications:
 shared logging and diagnostics, an optional GLFW window module, an optional CUDA
@@ -16,7 +19,7 @@ availability query, and examples. Rendering is not implemented yet.
 
 - CMake 3.28 or newer and Ninja.
 - A C++23 compiler and standard library supporting `std::format` and `std::expected`.
-- clang-tidy, clang-format and cppcheck for the development presets.
+- clang-tidy, clang-format and cppcheck for the quality presets.
 
 On Windows, install Visual Studio or Build Tools with the **Desktop development with
 C++** workload and a Windows SDK. MSVC builds work from ordinary PowerShell; Panda
@@ -44,12 +47,15 @@ For a CUDA build and a small application-owned kernel, follow the
 [CUDA connection example](examples/cuda_connection/README.md). It can start and
 report an unavailable driver or device without disabling Panda core use.
 
-Development presets run static analysis and formatting checks. To build without
-these tools, append the following options to the configure command:
-
-```sh
--DPANDA_ENABLE_CLANG_TIDY=OFF -DPANDA_ENABLE_CPPCHECK=OFF -DPANDA_ENABLE_CLANG_FORMAT=OFF
-```
+The `gcc-development` and `msvc-development` presets build the libraries and window
+example with compiler warnings but without tests, static analyzers or formatting
+checks. Use a `*-tests` preset when working on tests and a `*-quality` preset for
+public-header verification and the full analysis build.
+In CLion, enable only the profiles you currently need under Settings > Build,
+Execution, Deployment > CMake; disabled profiles do not add their targets to the
+active project view. CMake also labels declared targets in the IDE model under
+`Panda/Libraries`, `Panda/Tests`, `Panda/Test support`, `Panda/Examples`,
+`Panda/Documentation`.
 
 Downloaded dependency sources are cached in `.cache/cpm`, outside build directories.
 Deleting a build directory preserves the downloads. Set `CPM_SOURCE_CACHE` in your
@@ -86,6 +92,10 @@ ctest --preset gcc-tests
 These presets run unit and integration tests without opening a native window.
 For runtime diagnostics, use `gcc-sanitizers` on Linux (ASan + UBSan) or
 `msvc-sanitizers` on Windows (ASan) with the same command sequence.
+The `gcc-coverage` preset instruments Linux CPU tests. The Tests workflow attaches
+an HTML and XML report named `panda-coverage`; the badge above reflects that run.
+No minimum percentage is required. Generated coverage files stay in the build
+directory.
 
 ## Use Panda in your application
 
@@ -104,3 +114,7 @@ their C++23 and include-directory requirements.
 
 See [the documentation](docs/README.md) for API contracts and build configuration,
 and [the example](examples/simple_scene/main.cpp) for window creation and event handling.
+The Quality workflow also provides generated API HTML as the `panda-api-docs`
+downloadable artifact. Locally, run `cmake --preset gcc-docs` and
+`cmake --build --preset gcc-docs`, then open
+`build-gcc-docs-Linux/docs/api/generated/html/index.html`.

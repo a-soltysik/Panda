@@ -1,5 +1,8 @@
 #pragma once
 
+/// @file
+/// Synchronous logging and sink interfaces.
+
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -34,9 +37,13 @@ enum class Level : std::uint8_t
 /// @brief Owned diagnostic text with call-site metadata and wall-clock time.
 struct Entry
 {
+    /// Text owned by this entry.
     std::string message;
+    /// Original call site, valid independently of the caller's stack frame.
     std::source_location location;
+    /// Wall-clock time recorded when the entry was written.
     std::chrono::system_clock::time_point time;
+    /// Severity used for filtering and sink formatting.
     Level level {Level::Info};
 };
 
@@ -115,6 +122,7 @@ private:
 class Logger final
 {
 public:
+    /// @brief Identifier for a sink registered with one Logger instance.
     using SinkId = std::size_t;
 
     /// @brief Starts enabled at Info with an optional stderr sink.
@@ -167,7 +175,9 @@ private:
     SinkId _nextId {0};
 };
 
-/// @brief Captures the caller while checking a format string at compile time.
+namespace detail
+{
+// Captures the caller while checking a format string at compile time.
 template <typename... Args>
 struct Format
 {
@@ -184,6 +194,7 @@ struct Format
     std::format_string<Args...> text;
     std::source_location location;
 };
+}
 
 /// @brief Formats only enabled entries. Argument expressions are still evaluated by C++.
 /// @param logger Destination logger.
@@ -191,7 +202,7 @@ struct Format
 /// @param format Checked text and caller location.
 /// @param args Formatting arguments; formatting/allocation exceptions may propagate.
 template <typename... Args>
-void write(Logger& logger, Level level, Format<std::type_identity_t<Args>...> format, Args&&... args)
+void write(Logger& logger, Level level, detail::Format<std::type_identity_t<Args>...> format, Args&&... args)
 {
     if (logger.shouldLog(level))
     {
@@ -202,7 +213,10 @@ void write(Logger& logger, Level level, Format<std::type_identity_t<Args>...> fo
 /// @brief Formats and gathers a current-thread stack trace only for an enabled entry.
 /// Argument expressions are still evaluated; formatting/allocation failures may propagate.
 template <typename... Args>
-void writeWithStacktrace(Logger& logger, Level level, Format<std::type_identity_t<Args>...> format, Args&&... args)
+void writeWithStacktrace(Logger& logger,
+                         Level level,
+                         detail::Format<std::type_identity_t<Args>...> format,
+                         Args&&... args)
 {
     if (logger.shouldLog(level))
     {
@@ -213,35 +227,35 @@ void writeWithStacktrace(Logger& logger, Level level, Format<std::type_identity_
 /// @brief Writes an explicitly traced entry to the process logger at the requested severity.
 /// Uses the current thread's stack, not the stack from an exception's throw site.
 template <typename... Args>
-void writeWithStacktrace(Level level, Format<std::type_identity_t<Args>...> format, Args&&... args)
+void writeWithStacktrace(Level level, detail::Format<std::type_identity_t<Args>...> format, Args&&... args)
 {
     writeWithStacktrace(Logger::instance(), level, format, std::forward<Args>(args)...);
 }
 
 /// @brief Writes a debug entry to the process logger.
 template <typename... Args>
-void debug(Format<std::type_identity_t<Args>...> format, Args&&... args)
+void debug(detail::Format<std::type_identity_t<Args>...> format, Args&&... args)
 {
     write(Logger::instance(), Level::Debug, format, std::forward<Args>(args)...);
 }
 
 /// @brief Writes an informational entry to the process logger.
 template <typename... Args>
-void info(Format<std::type_identity_t<Args>...> format, Args&&... args)
+void info(detail::Format<std::type_identity_t<Args>...> format, Args&&... args)
 {
     write(Logger::instance(), Level::Info, format, std::forward<Args>(args)...);
 }
 
 /// @brief Writes a warning entry to the process logger.
 template <typename... Args>
-void warning(Format<std::type_identity_t<Args>...> format, Args&&... args)
+void warning(detail::Format<std::type_identity_t<Args>...> format, Args&&... args)
 {
     write(Logger::instance(), Level::Warning, format, std::forward<Args>(args)...);
 }
 
 /// @brief Writes and immediately flushes an error entry to the process logger.
 template <typename... Args>
-void error(Format<std::type_identity_t<Args>...> format, Args&&... args)
+void error(detail::Format<std::type_identity_t<Args>...> format, Args&&... args)
 {
     write(Logger::instance(), Level::Error, format, std::forward<Args>(args)...);
 }

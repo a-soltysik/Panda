@@ -1,5 +1,8 @@
 #pragma once
 
+/// @file
+/// Checked diagnostics and value extraction.
+
 #include <concepts>
 #include <expected>
 #include <format>

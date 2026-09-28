@@ -11,6 +11,7 @@ function(panda_enable_format_check target)
                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
                 VERBATIM
             )
+            set_target_properties(${target}_format_check PROPERTIES FOLDER "Panda/Checks")
             add_dependencies(${target} ${target}_format_check)
         else()
             add_custom_command(TARGET ${target} PRE_LINK
