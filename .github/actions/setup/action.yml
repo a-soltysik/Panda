@@ -42,10 +42,20 @@ runs:
         clang-tidy --version
         clang-format --version
         cppcheck --version
-    - name: Install Linux window-system dependencies
+    - name: Install Linux Vulkan and window-system development files
       if: runner.os == 'Linux'
       shell: bash
-      run: sudo apt-get update && sudo apt-get install -y xorg-dev libwayland-dev libxkbcommon-dev
+      run: sudo apt-get update && sudo apt-get install -y libvulkan-dev=1.4.341.0-1 xorg-dev libwayland-dev libxkbcommon-dev
+    - name: Install Windows Vulkan SDK
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        choco install vulkan-sdk --version=1.4.341 -y --no-progress
+        if ($LASTEXITCODE -ne 0) { throw "Vulkan SDK installation failed: $LASTEXITCODE" }
+        $sdk = 'C:\VulkanSDK\1.4.341.0'
+        if (-not (Test-Path -LiteralPath (Join-Path $sdk 'Include\vulkan\vulkan.hpp'))) { throw "Vulkan-Hpp missing from $sdk" }
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "VULKAN_SDK=$sdk"
+        Add-Content -LiteralPath $env:GITHUB_PATH -Value (Join-Path $sdk 'Bin')
     - name: Prepare Linux CUDA cache directory
       if: inputs.cuda == 'true' && runner.os == 'Linux'
       shell: bash

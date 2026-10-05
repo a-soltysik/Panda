@@ -120,11 +120,12 @@ the build directory when replacing its recorded toolchain/SDK installation.
 `PANDA_BUILD_EXAMPLES` (OFF by default) adds the
 [`simple_scene`](../../examples/simple_scene/README.md) executable and
 requires Tools, enabled by `PANDA_BUILD_TOOLS=ON` or `PANDA_BUILD_TESTS=ON`.
-The example creates a local Window with no
-OpenGL context and owns a plain loop in `main`. The empty-window loop waits for
-events instead of polling continuously. Closing the window ends the loop; RAII
-releases the window on exit, including failure or exception unwinding. Creation
-and event errors are logged and return a failing process exit status.
+The example creates a local Window without an OpenGL context, then a Vulkan
+Context borrowing that window. Its loop polls events, clears and presents a
+diagnostic frame, and waits for an event while the framebuffer is suspended.
+Closing the window ends the loop; destruction releases the Context before the
+Window, including failure or exception unwinding. Creation, event and frame
+errors are logged and return a failing process exit status.
 
 When `PANDA_BUILD_CUDA=ON`, the same example switch also builds
 [`cuda_connection`](../../examples/cuda_connection/README.md). It links
@@ -134,6 +135,10 @@ examples.
 
 Core has no dependency on Tools or a display. GLFW is discovered and linked only
 when Tools is enabled, so a core-only build needs no window-system packages.
+The source build now requires Vulkan development headers and the loader link library;
+`Panda::Panda` exposes the C headers needed by the separate `WindowSurface` interface,
+while Vulkan-Hpp remains private. A release executable needs the Vulkan loader and
+driver at runtime, not the development SDK.
 Rendering and image encoding are not implemented; future offscreen applications
 need not create a window. No common application-lifetime interface is imposed.
 

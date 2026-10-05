@@ -42,7 +42,7 @@ public:
 TEST(FunctionName, HandlesCompilerSignatures)
 {
     static constexpr auto examples = std::array {
-        Example {.signature = "static std::expected<panda::tools::Window, panda::tools::WindowError> "
+        Example {.signature = "static std::expected<panda::tools::Window, panda::Error> "
                               "panda::tools::Window::create(glm::uvec2, const char*)",                 .display = "Window::create"           },
         Example {.signature = "std::expected<void, panda::Error> panda::Application::run()",
                  .display = "Application::run"                                                                                                                },

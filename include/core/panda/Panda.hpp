@@ -1,8 +1,9 @@
 #pragma once
 
 /// @file
-/// Core package version query.
+/// Core package entry point and version query.
 
+#include <panda/Context.hpp>
 #include <string_view>
 
 namespace panda

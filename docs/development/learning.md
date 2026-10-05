@@ -1,14 +1,28 @@
 # Learning from implementation
 
-The maintainer should be able to explain, debug and extend Panda. Each delivery
-includes a short explanation of one important invariant, the chosen tradeoff and
-one failure case. Use the smallest complete example or experiment that demonstrates
-it; avoid a transcript of implementation steps or a list of unexplained links.
+The contributor is responsible for helping the maintainer understand Panda well
+enough to explain, debug and extend it. For each delivery, explain the purpose of
+the change, how one important invariant works, why the chosen approach was used
+and what happens in a representative failure case. Use the smallest complete
+example or experiment that demonstrates these points; avoid a transcript of
+implementation steps or a list of unexplained links.
+
+Check the maintainer's understanding through a guided conversation, not an isolated
+quiz. Start with the change's purpose and the main ownership or data flow. Walk one
+normal path from beginning to end, then explain the important invariant where it
+matters and trace a representative failure or recovery path. Pause at natural steps
+so the maintainer can question or restate what is happening. After that context,
+ask them to predict or explain the next relevant step, and say why that step matters.
+Use their answer to find the next unclear connection and explain it before checking
+again. A sudden question detached from the walkthrough, a one-way explanation or
+silence does not establish understanding. Keep the conversation proportionate to
+the change; it is part of the learning handoff, not a request to approve routine coding.
 
 Before coding a new concept, identify the question and a relevant authoritative
 source section. After coding, connect the answer to actual code and observed results.
-A proposed experiment is not completed evidence; maintainer acceptance remains
-separate from supplying an explanation.
+A proposed experiment is not completed evidence. The contributor reports when
+understanding has not yet been checked; only the maintainer can confirm that the
+learning handoff is clear and accept the task.
 
 | Area | Useful experiment or question |
 | --- | --- |
@@ -24,6 +38,10 @@ separate from supplying an explanation.
 
 API comments belong at declarations, usage examples in compiled examples, and
 rationale in the owning specification. Follow the [quality policy](quality.md#public-api-and-learning).
+Examples evolve with the project: when a task changes the available capabilities
+or the normal way to use them, update a relevant runnable example or add one in
+that task. An old example that still compiles but teaches an obsolete workflow is
+not a completed learning handoff.
 
 Primary references: [Vulkan Guide](https://docs.vulkan.org/guide/latest/),
 [synchronization examples](https://docs.vulkan.org/guide/latest/synchronization_examples.html),

@@ -31,10 +31,13 @@ reported line. Do not weaken checks to make a result pass.
 ## Maintenance and handoff
 
 Use [panda-project-maintenance](.agents/skills/panda-project-maintenance/SKILL.md).
+For local Windows and WSL builds, follow
+[panda-dual-platform-build](.agents/skills/panda-dual-platform-build/SKILL.md).
 Documentation describes the current project and intended behavior, not a release
 log or conversation history. Replace or delete obsolete text and update its links;
 do not append a correction while retaining the stale rule.
 
 Run `python .agents/skills/panda-project-maintenance/scripts/check_docs.py`.
-Report actual checks, omissions, remaining issues and one useful explanation of the
-implementation. A passing build is neither maintainer acceptance nor GPU proof.
+Report actual checks, omissions and remaining issues. Explain the implementation
+and check the maintainer's understanding following [the learning guide](docs/development/learning.md).
+A passing build is neither maintainer acceptance nor GPU proof.

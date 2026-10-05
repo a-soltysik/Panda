@@ -42,7 +42,15 @@ Test-only CMake aliases describe their role: `PandaTest::Support` exposes the
 generic mock fixture, `PandaTest::LogCapture` observes the real logger, and
 `PandaTest::GlfwMock` replaces GLFW. Log capture is an observer/helper, not a
 replacement logger. `PandaTest::MockHeaders` exposes mock declarations, including
-`mocks/panda/common/SinkMock.hpp`, without selecting stub implementations.
+`mocks/panda/common/SinkMock.hpp` and `mocks/panda/core/WindowSurfaceMock.hpp`,
+without selecting stub implementations. `PandaTest::VulkanMock` is the shared
+Vulkan boundary for Core unit tests; its stub forwards the entry points used by
+current scenarios to one strict mock and fails on any other Vulkan call used by
+Core. `Context`, `DeviceSelection` and
+`Presentation` tests use it without a native window. Swapchain configuration
+policy has separate CPU unit tests. The `Context` executable substitutes the
+`SwapchainGeneration` archive member; its tests cannot create a real swapchain,
+while the `SwapchainGeneration` tests link that member unchanged.
 With CUDA enabled, `PandaTest::CudaRuntimeMock` replaces only the external
 `cudaGetDeviceCount` function while `CudaAdapter.cpp` remains real.
 Tests list the production module explicitly alongside these
@@ -82,6 +90,29 @@ evidence.
 GoogleTest death tests assert both process termination and the originating
 diagnostic. GoogleTest owns subprocess handling and platform differences; test
 files need no separate fatal executable, custom main or conditional process code.
+
+## Windows and WSL
+
+Use the Windows checkout as the only editable source tree. Windows builds run
+directly there with the `msvc-*` presets. WSL builds use
+[`scripts/build-wsl.ps1`](../../scripts/build-wsl.ps1), which synchronizes source
+changes into a managed mirror under the WSL Linux filesystem before configuring
+or building with an existing `gcc-*` or `clang-tests` preset. The mirror is
+disposable and must not be edited directly. Its build directories and CPM cache
+stay on the Linux filesystem; `ccache` is enabled when installed.
+
+```powershell
+cmake --preset msvc-development
+cmake --build --preset msvc-development --parallel
+
+.\scripts\build-wsl.ps1 -Preset gcc-development -Target simple_scene
+.\scripts\build-wsl.ps1 -Preset gcc-tests -RunTests
+```
+
+CTest presets exclude tests labelled `system`. Add `-IncludeSystemTests` to run
+all registered tests, including native smoke tests. Use `-Jobs` to override the
+WSL helper's memory-aware parallel job count or `-SyncOnly` to refresh the mirror
+without configuring a build.
 
 The real GLFW null-platform integration check needs no display. The native smoke
 uses real native windows in a bounded test. It reports an unavailable

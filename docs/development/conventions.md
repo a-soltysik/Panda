@@ -36,6 +36,14 @@ refactors separately rather than mixing them into unrelated work.
   when constructing values on the right-hand side and initializing data members.
   Assignment, default arguments and designated initializers also use `=`.
   Avoid braces when they would select an unintended `initializer_list` overload.
+- Prefer designated initializers whenever an aggregate's members can be named,
+  including Vulkan-Hpp structures. Follow declaration order. Panda's Vulkan-Hpp
+  implementation enables `VULKAN_HPP_NO_CONSTRUCTORS` privately so those
+  structures support this syntax without imposing the setting on consumers.
+- Prefer Vulkan-Hpp's typed constants and enum values over Vulkan C macros when
+  an equivalent exists, such as `vk::True`, `vk::Result::eSuccess` and
+  `vk::ApiVersion13`. Keep C API types and declarations where an external C API
+  requires them.
 - Always use `auto` for local variables, including loop variables and declarations
   in conditions. Use `const` unless mutation is required. When a specific type is
   needed for representation or an API, express it through the initializer.
@@ -47,6 +55,17 @@ refactors separately rather than mixing them into unrelated work.
   auto width = std::uint32_t{1280};
   const auto& entry = entries[index];
   ```
+- Prefer class template argument deduction (CTAD) when constructing an object if
+  its template arguments can be inferred clearly from the constructor arguments.
+  Avoid repeating a type the compiler can deduce, for example:
+
+  ```cpp
+  const auto values = std::vector{1, 2, 3};
+  ```
+
+  Spell template arguments explicitly when deduction is impossible, such as for
+  an empty container, or when doing so makes a materially different or ambiguous
+  type choice clear.
 - Prefer `static constexpr` for constant variables where permitted, except where
   `static` is redundant, such as in an anonymous namespace. This does not change
   the use of `constexpr` functions or `if constexpr`.
@@ -80,6 +99,9 @@ refactors separately rather than mixing them into unrelated work.
 - Keep standalone implementation classes in their own matching files when this
   improves readability; do not spread a nested class definition across files
   merely to simulate a standalone class.
+- Keep all out-of-line member definitions for a class in one matching `.cpp` file.
+  If separate implementation files are needed, move a cohesive responsibility
+  behind a collaborator class instead of splitting one class by phase or feature.
 - Use `#pragma once` for owned headers and PascalCase names for C++ files that
   represent types, such as `Window.hpp` and `Window.cpp`. Conventional entry points
   such as `main.cpp` retain their names.
@@ -91,6 +113,12 @@ refactors separately rather than mixing them into unrelated work.
 
 ## Functions and control flow
 
+- Keep each function body to at most 30 nonblank, non-comment source lines. This
+  length limit applies independently of cyclomatic or cognitive complexity. When
+  a function exceeds it, split the work at meaningful responsibility or phase
+  boundaries; avoid arbitrary extraction that makes the flow harder to follow.
+  Inline lambda lines count toward the enclosing function's limit, and each
+  lambda body must also fit within the same limit.
 - Prefer default arguments for straightforward defaults. When callers must
   deliberately choose absence, require an explicit argument such as
   `std::optional<T>` with no default. Prefer a separately named operation when

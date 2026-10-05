@@ -7,8 +7,9 @@
 TEST(ApplicationStartupSystem, NativeStartupEventsAndTeardown)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda native smoke");
-    if (!window && window.error().code == panda::tools::WindowError::Code::InitializationFailed &&
-        (window.error().nativeCode == GLFW_PLATFORM_UNAVAILABLE || window.error().nativeCode == GLFW_PLATFORM_ERROR))
+    if (!window && window.error().native && window.error().native->api == "GLFW" &&
+        (window.error().native->code == GLFW_PLATFORM_UNAVAILABLE ||
+         window.error().native->code == GLFW_PLATFORM_ERROR))
     {
         GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
     }
