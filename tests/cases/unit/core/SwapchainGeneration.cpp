@@ -10,7 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <limits>
-#include <panda/Context.hpp>
+#include <panda/Error.hpp>
 
 namespace
 {

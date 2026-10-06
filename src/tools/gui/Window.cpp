@@ -8,6 +8,7 @@
 
 #include <bit>
 #include <cstdint>
+#include <expected>
 #include <glm/ext/vector_uint2.hpp>
 #include <limits>
 #include <memory>
@@ -162,7 +163,7 @@ auto Window::isMinimized() const -> Result<bool>
     const auto extent = getFramebufferExtent();
     if (!extent)
     {
-        return std::unexpected {std::move(extent.error())};
+        return std::unexpected {extent.error()};
     }
     return extent->width == 0 || extent->height == 0;
 }

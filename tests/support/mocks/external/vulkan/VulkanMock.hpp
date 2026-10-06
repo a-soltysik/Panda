@@ -126,8 +126,3 @@ public:
     // NOLINTEND(modernize-use-trailing-return-type)
 };
 }
-
-extern "C" {
-VKAPI_ATTR auto VKAPI_CALL vkReleaseSwapchainImagesKHR(VkDevice device,
-                                                       const VkReleaseSwapchainImagesInfoKHR* releaseInfo) -> VkResult;
-}

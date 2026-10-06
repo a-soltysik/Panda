@@ -73,7 +73,7 @@ private:
     [[nodiscard]] auto resolveReleaseFunction() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeSlot(FrameSlot& slot) const -> std::expected<void, Error>;
     [[nodiscard]] auto recreate(FramebufferExtent requested) -> std::expected<void, Error>;
-    [[nodiscard]] auto recordClear(FrameSlot& slot, SwapchainImage& image) -> std::expected<void, Error>;
+    [[nodiscard]] auto recordClear(FrameSlot& slot, const SwapchainImage& image) -> std::expected<void, Error>;
     [[nodiscard]] auto waitCompletion(std::uint64_t value) const -> std::expected<void, Error>;
     [[nodiscard]] auto waitPresentation() -> std::expected<void, Error>;
     [[nodiscard]] auto activeGeneration() -> SwapchainGeneration&;
@@ -92,7 +92,7 @@ private:
                                     std::uint32_t index,
                                     std::uint64_t completion,
                                     bool acquireSuboptimal) -> std::expected<FrameResult, Error>;
-    [[nodiscard]] auto queuePresent(SwapchainImage& image, std::uint32_t index) -> vk::Result;
+    [[nodiscard]] auto queuePresent(const SwapchainImage& image, std::uint32_t index) -> vk::Result;
     [[nodiscard]] auto recoverPresentFailure(SwapchainImage& image,
                                              std::uint32_t index,
                                              vk::Result result,

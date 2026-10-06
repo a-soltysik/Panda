@@ -1,9 +1,12 @@
 #include "VulkanError.hpp"
 
 #include <cstdint>
+#include <panda/Error.hpp>
 #include <source_location>
 #include <string>
 #include <utility>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_to_string.hpp>
 
 namespace panda
 {
@@ -118,8 +121,8 @@ auto makeVulkanError(vk::Result result, std::source_location source) -> Error
 }
 }
 
-auto makeVulkanError(std::int32_t nativeCode, std::source_location source) -> Error
+auto makeVulkanError(std::int32_t result, std::source_location source) -> Error
 {
-    return detail::makeVulkanError(static_cast<vk::Result>(nativeCode), source);
+    return detail::makeVulkanError(static_cast<vk::Result>(result), source);
 }
 }

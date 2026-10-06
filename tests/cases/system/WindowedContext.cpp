@@ -1,14 +1,15 @@
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
 
 #include <expected>
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <string>
 #include <vector>
+
+#include "GlfwTestSupport.hpp"
 
 namespace
 {
@@ -93,9 +94,7 @@ private:
 TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda Vulkan window smoke");
-    if (!window && window.error().native && window.error().native->api == "GLFW" &&
-        (window.error().native->code == GLFW_PLATFORM_UNAVAILABLE ||
-         window.error().native->code == GLFW_PLATFORM_ERROR))
+    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
     {
         GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
     }
@@ -142,9 +141,7 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
 TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda surface error smoke");
-    if (!window && window.error().native && window.error().native->api == "GLFW" &&
-        (window.error().native->code == GLFW_PLATFORM_UNAVAILABLE ||
-         window.error().native->code == GLFW_PLATFORM_ERROR))
+    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
     {
         GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
     }
@@ -154,8 +151,9 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     ASSERT_FALSE(failed.has_value());
     EXPECT_EQ(failed.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(failed.error().native.has_value());
-    EXPECT_EQ(failed.error().native->api, "test surface");
-    EXPECT_EQ(failed.error().native->code, 17);
+    const auto native = failed.error().native.value_or(panda::NativeError {});
+    EXPECT_EQ(native.api, "test surface");
+    EXPECT_EQ(native.code, 17);
 
     auto nullSurface = FailingSurface {*window, true};
     const auto empty = panda::Context::createWithSurface(nullSurface);

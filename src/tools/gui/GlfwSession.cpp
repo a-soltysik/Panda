@@ -2,6 +2,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include <expected>
 #include <memory>
 #include <optional>
 #include <panda/Assert.hpp>

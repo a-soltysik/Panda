@@ -7,6 +7,7 @@
 
 #include <expected>
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 
 #include "ScopedMock.hpp"

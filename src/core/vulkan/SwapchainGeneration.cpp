@@ -9,13 +9,13 @@
 #include <expected>
 #include <limits>
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 #include <span>
 #include <string>
 #include <utility>
 #include <vector>
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_to_string.hpp>
 
 #include "VulkanError.hpp"
 #include "VulkanHpp.hpp"  // IWYU pragma: keep

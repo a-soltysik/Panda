@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include <vulkan/vulkan_core.h>
 
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
 #include <string>
 #include <thread>
 #include <utility>

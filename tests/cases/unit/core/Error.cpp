@@ -27,8 +27,9 @@ TEST(Error, OwnsMessageAndNativeStatusAndPreservesExplicitSource)
     EXPECT_EQ(error.code, panda::ErrorCode::BackendFailure);
     EXPECT_EQ(error.message, "backend unavailable");
     ASSERT_TRUE(error.native.has_value());
-    EXPECT_EQ(error.native->api, "test API");
-    EXPECT_EQ(error.native->code, -17);
+    const auto native = error.native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.api, "test API");
+    EXPECT_EQ(native.code, -17);
     EXPECT_EQ(error.source.file_name(), source.file_name());
     EXPECT_EQ(error.source.line(), source.line());
 }
@@ -59,10 +60,12 @@ TEST(Error, VulkanStatusesMapToCallerRecoveryActionsAndRetainNativeCodes)
     for (const auto* error : errors)
     {
         ASSERT_TRUE(error->native.has_value());
-        EXPECT_EQ(error->native->api, "Vulkan");
+        const auto native = error->native.value_or(panda::NativeError {.api = {}, .code = 0});
+        EXPECT_EQ(native.api, "Vulkan");
         EXPECT_FALSE(error->message.empty());
     }
-    EXPECT_EQ(lostSurface.native->code, std::to_underlying(vk::Result::eErrorSurfaceLostKHR));
+    const auto native = lostSurface.native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, std::to_underlying(vk::Result::eErrorSurfaceLostKHR));
 }
 
 TEST(Error, DefaultsUnrecognizedVulkanStatusToBackendFailure)
@@ -73,5 +76,6 @@ TEST(Error, DefaultsUnrecognizedVulkanStatusToBackendFailure)
     EXPECT_EQ(error.code, panda::ErrorCode::BackendFailure);
     EXPECT_NE(error.message.find("Vulkan operation failed"), std::string::npos);
     ASSERT_TRUE(error.native.has_value());
-    EXPECT_EQ(error.native->code, unknownStatus);
+    const auto native = error.native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, unknownStatus);
 }

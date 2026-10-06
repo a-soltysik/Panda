@@ -8,13 +8,16 @@
 #include <vulkan/vulkan_core.h>
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
+#include <panda/Logger.hpp>
 #include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 #include "LogCapture.hpp"
@@ -38,7 +41,10 @@ auto fakeHandle(std::uintptr_t value) -> Handle
 {
     if constexpr (std::is_pointer_v<Handle>)
     {
-        return reinterpret_cast<Handle>(value);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        static auto storage = std::array<std::max_align_t, 16> {};
+        // Opaque Vulkan pointers are identity-only tokens here and are never dereferenced.
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+        return reinterpret_cast<Handle>(&storage.at(value));
     }
     else
     {
@@ -78,7 +84,7 @@ void expectValidationPrerequisites(panda::test::VulkanMock& vulkan, bool debugUt
             *count = 1;
             if (properties != nullptr)
             {
-                properties[0] = validationLayer;
+                *properties = validationLayer;
             }
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
@@ -88,7 +94,7 @@ void expectValidationPrerequisites(panda::test::VulkanMock& vulkan, bool debugUt
                 *count = extensionCount;
                 if (properties != nullptr && extensionCount != 0)
                 {
-                    properties[0] = debugUtils;
+                    *properties = debugUtils;
                 }
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
@@ -130,12 +136,11 @@ void expectValidationInstanceCreated(panda::test::VulkanMock& vulkan, VkInstance
             }
             const auto* debugInfo = static_cast<const VkDebugUtilsMessengerCreateInfoEXT*>(createInfo->pNext);
             EXPECT_NE(debugInfo->pfnUserCallback, nullptr);
-            auto hasDebugUtils = false;
-            for (auto index = 0U; index < createInfo->enabledExtensionCount; ++index)
-            {
-                hasDebugUtils |=
-                    std::string_view {createInfo->ppEnabledExtensionNames[index]} == vk::EXTDebugUtilsExtensionName;
-            }
+            const auto extensionNames =
+                std::span {createInfo->ppEnabledExtensionNames, createInfo->enabledExtensionCount};
+            const auto hasDebugUtils = std::ranges::any_of(extensionNames, [](const char* extensionName) {
+                return std::string_view {extensionName} == vk::EXTDebugUtilsExtensionName;
+            });
             EXPECT_TRUE(hasDebugUtils);
             *output = instance;
             return static_cast<VkResult>(vk::Result::eSuccess);
@@ -162,6 +167,29 @@ void expectValidationMessengerCreated(panda::test::VulkanMock& vulkan,
             *output = messenger;
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
+}
+
+void expectValidationMessengerCreationFailure(panda::test::VulkanMock& vulkan,
+                                              VkInstance instance,
+                                              VkDebugUtilsMessengerEXT output)
+{
+    auto lookupOrder = Sequence {};
+    EXPECT_CALL(vulkan, vkGetInstanceProcAddr(instance, StrEq("vkCreateDebugUtilsMessengerEXT")))
+        .InSequence(lookupOrder)
+        .WillOnce(Return(genericVulkanProc(&vkCreateDebugUtilsMessengerEXT)));
+    EXPECT_CALL(vulkan, vkGetInstanceProcAddr(instance, StrEq("vkDestroyDebugUtilsMessengerEXT")))
+        .InSequence(lookupOrder)
+        .WillOnce(Return(genericVulkanProc(&vkDestroyDebugUtilsMessengerEXT)));
+    EXPECT_CALL(vulkan, vkCreateDebugUtilsMessengerEXT(instance, NotNull(), nullptr, NotNull()))
+        .WillOnce([output](VkInstance,
+                           const VkDebugUtilsMessengerCreateInfoEXT*,
+                           const VkAllocationCallbacks*,
+                           VkDebugUtilsMessengerEXT* handle) {
+            *handle = output;
+            return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
+        });
+    EXPECT_CALL(vulkan, vkDestroyDebugUtilsMessengerEXT(_, _, _)).Times(0);
+    EXPECT_CALL(vulkan, vkDestroyInstance(instance, nullptr));
 }
 
 void expectNoPhysicalDevices(panda::test::VulkanMock& vulkan, VkInstance instance, VkDebugUtilsMessengerEXT messenger)
@@ -202,8 +230,9 @@ TEST_F(ContextTest, PreservesLoaderVersionQueryFailure)
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(context.error().native.has_value());
-    EXPECT_EQ(context.error().native->api, "Vulkan");
-    EXPECT_EQ(context.error().native->code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
+    const auto native = context.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.api, "Vulkan");
+    EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
 }
 
 TEST_F(ContextTest, ReportsMissingRequestedValidationLayer)
@@ -236,8 +265,8 @@ TEST_F(ContextTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
 {
     auto logRecords = panda::test::LogRecords {};
     auto logSink = panda::test::ProcessSinkRegistration {logRecords};
-    const auto instance = fakeHandle<VkInstance>(1);
-    const auto messenger = fakeHandle<VkDebugUtilsMessengerEXT>(2);
+    auto* const instance = fakeHandle<VkInstance>(1);
+    auto* const messenger = fakeHandle<VkDebugUtilsMessengerEXT>(2);
     expectValidationPrerequisites(vulkan);
     expectValidationInstanceCreated(vulkan, instance);
     expectValidationMessengerCreated(vulkan, instance, messenger);
@@ -250,6 +279,20 @@ TEST_F(ContextTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
     ASSERT_EQ(logRecords.entries.size(), 1U);
     EXPECT_EQ(logRecords.entries.front().level, panda::log::Level::Warning);
     EXPECT_NE(logRecords.entries.front().message.find("mock validation warning"), std::string::npos);
+}
+
+TEST_F(ContextTest, DoesNotDestroyMessengerWhenCreationFails)
+{
+    auto* const instance = fakeHandle<VkInstance>(1);
+    auto* const output = fakeHandle<VkDebugUtilsMessengerEXT>(2);
+    expectValidationPrerequisites(vulkan);
+    expectValidationInstanceCreated(vulkan, instance);
+    expectValidationMessengerCreationFailure(vulkan, instance, output);
+
+    const auto context = panda::Context::create({.enableValidation = true});
+
+    ASSERT_FALSE(context.has_value());
+    EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
 }
 
 TEST_F(ContextTest, RejectsWindowWithoutSurfaceExtensionBeforeNativeCreation)

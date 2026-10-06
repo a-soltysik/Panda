@@ -1,15 +1,13 @@
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
 #include <gtest/gtest.h>
 
 #include <panda/tools/gui/Window.hpp>
 
+#include "GlfwTestSupport.hpp"
+
 TEST(ApplicationStartupSystem, NativeStartupEventsAndTeardown)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda native smoke");
-    if (!window && window.error().native && window.error().native->api == "GLFW" &&
-        (window.error().native->code == GLFW_PLATFORM_UNAVAILABLE ||
-         window.error().native->code == GLFW_PLATFORM_ERROR))
+    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
     {
         GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
     }

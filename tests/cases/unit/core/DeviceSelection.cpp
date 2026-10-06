@@ -9,9 +9,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <panda/Context.hpp>
+#include <panda/Error.hpp>
 #include <panda/Logger.hpp>
-#include <panda/WindowSurface.hpp>
 #include <span>
 #include <string>
 #include <string_view>
@@ -36,7 +35,10 @@ auto fakeHandle(std::uintptr_t value) -> Handle
 {
     if constexpr (std::is_pointer_v<Handle>)
     {
-        return reinterpret_cast<Handle>(value);
+        static auto storage = std::array<std::max_align_t, 16> {};
+        // Opaque Vulkan pointers are identity-only tokens here and are never dereferenced.
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+        return reinterpret_cast<Handle>(&storage.at(value));
     }
     else
     {
@@ -79,8 +81,8 @@ void expectPhysicalDevices(panda::test::VulkanMock& vulkan, const DeviceScenario
             *count = 2;
             if (devices != nullptr)
             {
-                devices[0] = scenario.brokenDevice;
-                devices[1] = scenario.usableDevice;
+                const auto physicalDevices = std::array {scenario.brokenDevice, scenario.usableDevice};
+                std::ranges::copy(physicalDevices, std::span {devices, physicalDevices.size()}.begin());
             }
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
@@ -139,10 +141,11 @@ void expectUsableQueueFamily(panda::test::VulkanMock& vulkan, const DeviceScenar
             *count = 1;
             if (families != nullptr)
             {
-                families[0] = VkQueueFamilyProperties {};
-                families[0].queueFlags =
+                auto& family = *families;
+                family = VkQueueFamilyProperties {};
+                family.queueFlags =
                     static_cast<VkQueueFlags>(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute);
-                families[0].queueCount = 1;
+                family.queueCount = 1;
             }
         });
 }
@@ -163,7 +166,7 @@ void expectUsableSurfaceFormats(panda::test::VulkanMock& vulkan, const DeviceSce
             *count = 1;
             if (formats != nullptr)
             {
-                formats[0] =
+                *formats =
                     VkSurfaceFormatKHR {.format = static_cast<VkFormat>(vk::Format::eR8G8B8A8Unorm),
                                         .colorSpace = static_cast<VkColorSpaceKHR>(vk::ColorSpaceKHR::eSrgbNonlinear)};
             }
@@ -179,7 +182,7 @@ void expectUsablePresentModes(panda::test::VulkanMock& vulkan, const DeviceScena
             *count = 1;
             if (modes != nullptr)
             {
-                modes[0] = static_cast<VkPresentModeKHR>(vk::PresentModeKHR::eFifo);
+                *modes = static_cast<VkPresentModeKHR>(vk::PresentModeKHR::eFifo);
             }
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
@@ -218,7 +221,7 @@ void expectSingleDeviceQueryFailure(panda::test::VulkanMock& vulkan, VkPhysicalD
             *count = 1;
             if (devices != nullptr)
             {
-                devices[0] = device;
+                *devices = device;
             }
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
@@ -247,8 +250,9 @@ TEST(DeviceSelection, PreservesWindowExtensionQueryFailure)
     ASSERT_FALSE(extensions.has_value());
     EXPECT_EQ(extensions.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(extensions.error().native.has_value());
-    EXPECT_EQ(extensions.error().native->api, "test window");
-    EXPECT_EQ(extensions.error().native->code, 17);
+    const auto native = extensions.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.api, "test window");
+    EXPECT_EQ(native.code, 17);
 }
 
 TEST(DeviceSelection, RejectsUnavailableWindowExtension)
@@ -322,9 +326,9 @@ TEST(DeviceSelection, LogsAndSkipsDeviceInspectionFailureWhenAnotherDeviceIsUsab
 TEST(DeviceSelection, PreservesInspectionErrorWhenNoDeviceCanBeSelected)
 {
     auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
-    const auto brokenDevice = fakeHandle<VkPhysicalDevice>(1);
-    const auto instance = fakeHandle<VkInstance>(2);
-    const auto surface = fakeHandle<VkSurfaceKHR>(3);
+    auto* const brokenDevice = fakeHandle<VkPhysicalDevice>(1);
+    auto* const instance = fakeHandle<VkInstance>(2);
+    auto* const surface = fakeHandle<VkSurfaceKHR>(3);
     expectSingleDeviceQueryFailure(vulkan, brokenDevice);
 
     const auto selected = panda::detail::selectDevice(
@@ -335,5 +339,6 @@ TEST(DeviceSelection, PreservesInspectionErrorWhenNoDeviceCanBeSelected)
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(selected.error().native.has_value());
-    EXPECT_EQ(selected.error().native->code, std::to_underlying(vk::Result::eErrorUnknown));
+    const auto native = selected.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, std::to_underlying(vk::Result::eErrorUnknown));
 }

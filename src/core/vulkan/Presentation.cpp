@@ -10,6 +10,7 @@
 #include <numeric>
 #include <panda/Assert.hpp>
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 #include <string>
 #include <utility>
@@ -281,7 +282,7 @@ auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
     return presentFrame(image, acquired->index, *completion, acquired->suboptimal);
 }
 
-auto Presentation::recordClear(FrameSlot& slot, SwapchainImage& image) -> std::expected<void, Error>
+auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image) -> std::expected<void, Error>
 {
     const auto reset = _device.resetCommandPool(*slot.pool);
     if (reset != vk::Result::eSuccess)
@@ -488,7 +489,7 @@ auto Presentation::recoverPresentFailure(SwapchainImage& image,
     return std::unexpected {makeVulkanError(result)};
 }
 
-auto Presentation::queuePresent(SwapchainImage& image, std::uint32_t index) -> vk::Result
+auto Presentation::queuePresent(const SwapchainImage& image, std::uint32_t index) -> vk::Result
 {
     const auto swapchain = *activeGeneration().swapchain;
     const auto finished = *image.renderFinished;

@@ -10,16 +10,22 @@
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <memory>
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
+#include <panda/WindowSurface.hpp>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "ScopedMock.hpp"
+#include "SwapchainGeneration.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
@@ -38,7 +44,11 @@ auto fakeHandle(std::uintptr_t value) -> Handle
 {
     if constexpr (std::is_pointer_v<Handle>)
     {
-        return reinterpret_cast<Handle>(value);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        // Test IDs range through 901; each aligned slot supplies a distinct opaque handle identity.
+        static auto storage = std::array<std::max_align_t, 1024> {};
+        // Opaque Vulkan pointers are identity-only tokens here and are never dereferenced.
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+        return reinterpret_cast<Handle>(&storage.at(value));
     }
     else
     {
@@ -48,14 +58,16 @@ auto fakeHandle(std::uintptr_t value) -> Handle
 
 auto releaseProcAddress() -> PFN_vkVoidFunction
 {
-    return reinterpret_cast<PFN_vkVoidFunction>(
-        &vkReleaseSwapchainImagesKHR);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    // Vulkan specifies this loader-provided function-pointer conversion.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    return reinterpret_cast<PFN_vkVoidFunction>(&vkReleaseSwapchainImagesKHR);
 }
 
 void expectTransitionToColorAttachment(const VkDependencyInfo* dependency)
 {
     ASSERT_EQ(dependency->imageMemoryBarrierCount, 1U);
-    const auto& barrier = dependency->pImageMemoryBarriers[0];
+    ASSERT_NE(dependency->pImageMemoryBarriers, nullptr);
+    const auto& barrier = *dependency->pImageMemoryBarriers;
     EXPECT_EQ(barrier.srcStageMask,
               static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eColorAttachmentOutput));
     EXPECT_EQ(barrier.srcAccessMask, static_cast<VkAccessFlags2>(vk::AccessFlagBits2::eNone));
@@ -69,7 +81,8 @@ void expectTransitionToColorAttachment(const VkDependencyInfo* dependency)
 void expectTransitionToPresent(const VkDependencyInfo* dependency)
 {
     ASSERT_EQ(dependency->imageMemoryBarrierCount, 1U);
-    const auto& barrier = dependency->pImageMemoryBarriers[0];
+    ASSERT_NE(dependency->pImageMemoryBarriers, nullptr);
+    const auto& barrier = *dependency->pImageMemoryBarriers;
     EXPECT_EQ(barrier.srcStageMask,
               static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eColorAttachmentOutput));
     EXPECT_EQ(barrier.srcAccessMask, static_cast<VkAccessFlags2>(vk::AccessFlagBits2::eColorAttachmentWrite));
@@ -101,6 +114,12 @@ auto makeGeneration(vk::Device device, std::uintptr_t handle)
 class PresentationTest : public testing::Test
 {
 protected:
+    struct ResourceDestructionCounts
+    {
+        std::size_t semaphores {};
+        std::size_t swapchains {};
+    };
+
     void expectQueueLookup()
     {
         EXPECT_CALL(vulkan, vkGetDeviceQueue(_, _, _, NotNull()))
@@ -113,7 +132,10 @@ protected:
     void expectReleaseEntryPoint()
     {
         EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesKHR")))
-            .WillOnce(Return(releaseProcAddress()));
+            .Times(1)
+            .WillRepeatedly([](VkDevice, const char*) {
+                return releaseProcAddress();
+            });
     }
 
     void expectFrameResources(std::size_t semaphoreCount)
@@ -140,11 +162,11 @@ protected:
             });
     }
 
-    void expectResourceDestruction(std::size_t semaphoreCount, std::size_t swapchainCount)
+    void expectResourceDestruction(ResourceDestructionCounts counts)
     {
-        EXPECT_CALL(vulkan, vkDestroySemaphore(_, _, _)).Times(static_cast<int>(semaphoreCount));
+        EXPECT_CALL(vulkan, vkDestroySemaphore(_, _, _)).Times(static_cast<int>(counts.semaphores));
         EXPECT_CALL(vulkan, vkDestroyCommandPool(_, _, _)).Times(2);
-        EXPECT_CALL(vulkan, vkDestroySwapchainKHR(_, _, _)).Times(static_cast<int>(swapchainCount));
+        EXPECT_CALL(vulkan, vkDestroySwapchainKHR(_, _, _)).Times(static_cast<int>(counts.swapchains));
     }
 
     void expectExtentReads(std::size_t count)
@@ -220,7 +242,12 @@ protected:
                 EXPECT_EQ(submits->waitSemaphoreInfoCount, 1U);
                 EXPECT_EQ(submits->commandBufferInfoCount, 0U);
                 EXPECT_EQ(submits->signalSemaphoreInfoCount, 1U);
-                EXPECT_EQ(submits->pSignalSemaphoreInfos[0].value, 1U);
+                if (submits->signalSemaphoreInfoCount != 1U || submits->pSignalSemaphoreInfos == nullptr)
+                {
+                    ADD_FAILURE() << "Retirement submit must signal one timeline semaphore";
+                    return static_cast<VkResult>(vk::Result::eErrorUnknown);
+                }
+                EXPECT_EQ(submits->pSignalSemaphoreInfos->value, 1U);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
     }
@@ -231,11 +258,17 @@ protected:
             .InSequence(flow)
             .WillOnce([](VkQueue, std::uint32_t, const VkSubmitInfo2* submits, VkFence) {
                 EXPECT_EQ(submits->waitSemaphoreInfoCount, 1U);
-                EXPECT_EQ(submits->pWaitSemaphoreInfos[0].stageMask,
+                if (submits->waitSemaphoreInfoCount != 1U || submits->pWaitSemaphoreInfos == nullptr ||
+                    submits->signalSemaphoreInfoCount != 2U || submits->pSignalSemaphoreInfos == nullptr)
+                {
+                    ADD_FAILURE() << "Frame submit must wait once and signal twice";
+                    return static_cast<VkResult>(vk::Result::eErrorUnknown);
+                }
+                const auto signals = std::span {submits->pSignalSemaphoreInfos, submits->signalSemaphoreInfoCount};
+                EXPECT_EQ(submits->pWaitSemaphoreInfos->stageMask,
                           static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eColorAttachmentOutput));
                 EXPECT_EQ(submits->commandBufferInfoCount, 1U);
-                EXPECT_EQ(submits->signalSemaphoreInfoCount, 2U);
-                EXPECT_EQ(submits->pSignalSemaphoreInfos[1].value, 1U);
+                EXPECT_EQ(signals.subspan(1).front().value, 1U);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
     }
@@ -253,7 +286,12 @@ protected:
             .InSequence(flow)
             .WillOnce([](VkDevice, const VkSemaphoreWaitInfo* waitInfo, std::uint64_t) {
                 EXPECT_EQ(waitInfo->semaphoreCount, 1U);
-                EXPECT_EQ(waitInfo->pValues[0], 1U);
+                if (waitInfo->semaphoreCount != 1U || waitInfo->pValues == nullptr)
+                {
+                    ADD_FAILURE() << "Timeline wait must contain one value";
+                    return static_cast<VkResult>(vk::Result::eErrorUnknown);
+                }
+                EXPECT_EQ(*waitInfo->pValues, 1U);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
     }
@@ -264,7 +302,12 @@ protected:
             .InSequence(flow)
             .WillOnce([](VkDevice, const VkReleaseSwapchainImagesInfoKHR* releaseInfo) {
                 EXPECT_EQ(releaseInfo->imageIndexCount, 1U);
-                EXPECT_EQ(releaseInfo->pImageIndices[0], 0U);
+                if (releaseInfo->imageIndexCount != 1U || releaseInfo->pImageIndices == nullptr)
+                {
+                    ADD_FAILURE() << "Image release must contain one index";
+                    return static_cast<VkResult>(vk::Result::eErrorUnknown);
+                }
+                EXPECT_EQ(*releaseInfo->pImageIndices, 0U);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
     }
@@ -364,8 +407,7 @@ TEST_F(PresentationTest, ReportsUnavailableExtReleaseFunction)
 TEST_F(PresentationTest, PreservesTimelineSemaphoreCreationFailure)
 {
     expectQueueLookup();
-    EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesKHR")))
-        .WillOnce(Return(releaseProcAddress()));
+    expectReleaseEntryPoint();
     EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
     const auto presentation = panda::detail::Presentation::create(
@@ -381,8 +423,9 @@ TEST_F(PresentationTest, PreservesTimelineSemaphoreCreationFailure)
     ASSERT_FALSE(presentation.has_value());
     EXPECT_EQ(presentation.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(presentation.error().native.has_value());
-    EXPECT_EQ(presentation.error().native->api, "Vulkan");
-    EXPECT_EQ(presentation.error().native->code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
+    const auto native = presentation.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.api, "Vulkan");
+    EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
 }
 
 TEST_F(PresentationTest, RetiresAcquiredImageWhenCommandRecordingCannotStart)
@@ -390,7 +433,7 @@ TEST_F(PresentationTest, RetiresAcquiredImageWhenCommandRecordingCannotStart)
     expectQueueLookup();
     expectReleaseEntryPoint();
     expectFrameResources(3);
-    expectResourceDestruction(3, 1);
+    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 3, .swapchains = 1});
     expectExtentReads(2);
     expectInitialGeneration(500);
     auto flow = Sequence {};
@@ -406,7 +449,8 @@ TEST_F(PresentationTest, RetiresAcquiredImageWhenCommandRecordingCannotStart)
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(result.error().native.has_value());
-    EXPECT_EQ(result.error().native->code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
+    const auto native = result.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
 }
 
 TEST_F(PresentationTest, PresentAndRecreationFailuresReleaseThenRetryWithoutRetiredSwapchain)
@@ -414,7 +458,7 @@ TEST_F(PresentationTest, PresentAndRecreationFailuresReleaseThenRetryWithoutReti
     expectQueueLookup();
     expectReleaseEntryPoint();
     expectFrameResources(4);
-    expectResourceDestruction(4, 2);
+    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 4, .swapchains = 2});
     expectExtentReads(4);
     expectInitialGeneration(700);
     EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));

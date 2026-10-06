@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_to_string.hpp>
 // clang-format on
 
 #include "DeviceSelection.hpp"
@@ -15,6 +14,7 @@
 #include <iterator>
 #include <optional>
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/WindowSurface.hpp>
 #include <string>
@@ -129,6 +129,26 @@ auto appendValidationExtension(InstanceExtensions& chosen,
     return {};
 }
 
+auto makeWindowInstanceExtensions(const WindowSurface* surface,
+                                  std::vector<std::string> required,
+                                  const std::vector<vk::ExtensionProperties>& available) -> Result<InstanceExtensions>
+{
+    auto chosen = InstanceExtensions {.names = std::move(required)};
+    if (surface == nullptr)
+    {
+        return chosen;
+    }
+    if (const auto checked = checkWindowExtensions(chosen.names, available); !checked)
+    {
+        return std::unexpected {checked.error()};
+    }
+    if (const auto appended = appendMaintenanceExtensions(chosen, available); !appended)
+    {
+        return std::unexpected {appended.error()};
+    }
+    return chosen;
+}
+
 }
 
 auto instanceExtensions(const WindowSurface* surface, bool enableValidation) -> Result<InstanceExtensions>
@@ -147,22 +167,12 @@ auto instanceExtensions(const WindowSurface* surface, bool enableValidation) -> 
     {
         return std::unexpected {std::move(available.error())};
     }
-    if (surface != nullptr)
+    auto chosen = makeWindowInstanceExtensions(surface, std::move(*required), *available);
+    if (!chosen)
     {
-        if (const auto checked = checkWindowExtensions(*required, *available); !checked)
-        {
-            return std::unexpected {checked.error()};
-        }
+        return std::unexpected {chosen.error()};
     }
-    auto chosen = InstanceExtensions {.names = std::move(*required)};
-    if (surface != nullptr)
-    {
-        if (const auto appended = appendMaintenanceExtensions(chosen, *available); !appended)
-        {
-            return std::unexpected {appended.error()};
-        }
-    }
-    if (const auto appended = appendValidationExtension(chosen, enableValidation, *available); !appended)
+    if (const auto appended = appendValidationExtension(*chosen, enableValidation, *available); !appended)
     {
         return std::unexpected {appended.error()};
     }
@@ -362,7 +372,7 @@ auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surfac
         return std::nullopt;
     }
     return std::optional {
-        DeviceProfile {.properties = std::move(properties), .maintenance = **variant}
+        DeviceProfile {.properties = properties, .maintenance = **variant}
     };
 }
 
@@ -378,11 +388,12 @@ auto inspectPresentation(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface
     {
         return std::nullopt;
     }
-    if (const auto formats = supportsSurfaceFormats(physicalDevice, surface); !formats)
+    const auto formats = supportsSurfaceFormats(physicalDevice, surface);
+    if (!formats)
     {
         return std::unexpected {formats.error()};
     }
-    else if (!*formats)
+    if (!*formats)
     {
         return std::nullopt;
     }

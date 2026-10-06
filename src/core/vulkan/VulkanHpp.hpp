@@ -3,8 +3,13 @@
 #include <panda/Assert.hpp>
 
 // Vulkan-Hpp checks both internal invariants and VkResult values with assertions.
-// Preserve the former; callers inspect VkResult, including recoverable WSI statuses.
-#define VULKAN_HPP_ASSERT(condition) ::panda::expect((condition), #condition)
+// Preserve internal checks in debug builds; callers inspect VkResult, including
+// recoverable WSI statuses. Its release dispatcher omits assertion helpers.
+#ifndef NDEBUG
+#    define VULKAN_HPP_ASSERT(condition) ::panda::expect((condition), #condition)
+#else
+#    define VULKAN_HPP_ASSERT(condition) static_cast<void>(0)
+#endif
 #define VULKAN_HPP_ASSERT_ON_RESULT(condition) static_cast<void>(condition)  // NOLINT(cppcoreguidelines-macro-usage)
 
 #include <functional>

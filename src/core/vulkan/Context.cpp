@@ -1,9 +1,9 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_to_string.hpp>
 // clang-format on
 
+#include <vulkan/vk_platform.h>
 #include <vulkan/vulkan_core.h>
 
 #include <algorithm>
@@ -14,6 +14,7 @@
 #include <memory>
 #include <panda/Assert.hpp>
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/WindowSurface.hpp>
 #include <string>
@@ -27,6 +28,54 @@
 
 namespace panda
 {
+// This owner type is stored in Context::Impl; external linkage avoids GCC's
+// -Wsubobject-linkage error when the source is compiled as part of a unity build.
+// NOLINTNEXTLINE(misc-use-internal-linkage)
+class ContextDebugMessengerOwner final
+{
+public:
+    [[nodiscard]] static auto create(VkInstance instance,
+                                     PFN_vkCreateDebugUtilsMessengerEXT createFunction,
+                                     PFN_vkDestroyDebugUtilsMessengerEXT destroyFunction,
+                                     const VkDebugUtilsMessengerCreateInfoEXT& createInfo)
+        -> Result<std::unique_ptr<ContextDebugMessengerOwner>>
+    {
+        auto owner = std::make_unique<ContextDebugMessengerOwner>(instance, destroyFunction);
+        auto* messenger = VkDebugUtilsMessengerEXT {};
+        const auto result = createFunction(instance, &createInfo, nullptr, &messenger);
+        if (result != static_cast<VkResult>(vk::Result::eSuccess))
+        {
+            return std::unexpected {detail::makeVulkanError(static_cast<vk::Result>(result))};
+        }
+        owner->_messenger = messenger;
+        return owner;
+    }
+
+    ContextDebugMessengerOwner(VkInstance instance, PFN_vkDestroyDebugUtilsMessengerEXT destroy) noexcept
+        : _instance {instance},
+          _destroy {destroy}
+    {
+    }
+
+    ContextDebugMessengerOwner(const ContextDebugMessengerOwner&) = delete;
+    auto operator=(const ContextDebugMessengerOwner&) -> ContextDebugMessengerOwner& = delete;
+    ContextDebugMessengerOwner(ContextDebugMessengerOwner&&) = delete;
+    auto operator=(ContextDebugMessengerOwner&&) -> ContextDebugMessengerOwner& = delete;
+
+    ~ContextDebugMessengerOwner() noexcept
+    {
+        if (_messenger != VkDebugUtilsMessengerEXT {} && _destroy != nullptr)
+        {
+            _destroy(_instance, _messenger, nullptr);
+        }
+    }
+
+private:
+    VkInstance _instance {};
+    PFN_vkDestroyDebugUtilsMessengerEXT _destroy {};
+    VkDebugUtilsMessengerEXT _messenger {};
+};
+
 namespace
 {
 auto validationLogLevel(vk::DebugUtilsMessageSeverityFlagBitsEXT severity) noexcept -> log::Level
@@ -50,7 +99,7 @@ VKAPI_ATTR auto VKAPI_CALL validationCallback(vk::DebugUtilsMessageSeverityFlagB
                                               const vk::DebugUtilsMessengerCallbackDataEXT* data,
                                               [[maybe_unused]] void* userData) noexcept -> vk::Bool32
 {
-    const auto message =
+    const auto* const message =
         data != nullptr && data->pMessage != nullptr ? data->pMessage : "Vulkan diagnostic without text";
     try
     {
@@ -59,6 +108,7 @@ VKAPI_ATTR auto VKAPI_CALL validationCallback(vk::DebugUtilsMessageSeverityFlagB
     catch (...)
     {
         // Exceptions must not cross Vulkan's C callback boundary.
+        return vk::False;
     }
     return vk::False;
 }
@@ -81,26 +131,13 @@ struct DebugUtilsFunctions
     PFN_vkDestroyDebugUtilsMessengerEXT destroy {};
 };
 
-struct DebugMessengerOwner
-{
-    VkInstance instance {};
-    VkDebugUtilsMessengerEXT messenger {};
-    PFN_vkDestroyDebugUtilsMessengerEXT destroy {};
-
-    ~DebugMessengerOwner() noexcept
-    {
-        if (messenger != VkDebugUtilsMessengerEXT {} && destroy != nullptr)
-        {
-            destroy(instance, messenger, nullptr);
-        }
-    }
-};
-
 auto loadDebugUtilsFunctions(vk::Instance instance) -> Result<DebugUtilsFunctions>
 {
     // Vulkan exposes extension commands through vkGetInstanceProcAddr, not linked exports.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
     const auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
         instance.getProcAddr("vkCreateDebugUtilsMessengerEXT"));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
     const auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(instance.getProcAddr(
         "vkDestroyDebugUtilsMessengerEXT"));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
     if (create == nullptr || destroy == nullptr)
@@ -180,29 +217,21 @@ auto makeInstance(const ContextOptions& options, const detail::InstanceExtension
     return std::move(created.value);
 }
 
-auto makeDebugMessenger(vk::Instance instance, bool enableValidation) -> Result<std::unique_ptr<DebugMessengerOwner>>
+auto makeDebugMessenger(vk::Instance instance, bool enableValidation)
+    -> Result<std::unique_ptr<ContextDebugMessengerOwner>>
 {
     if (!enableValidation)
     {
-        return std::unique_ptr<DebugMessengerOwner> {};
+        return std::unique_ptr<ContextDebugMessengerOwner> {};
     }
     auto functions = loadDebugUtilsFunctions(instance);
     if (!functions)
     {
         return std::unexpected {std::move(functions.error())};
     }
-    auto owner = std::make_unique<DebugMessengerOwner>();
     const auto createInfo = validationMessengerCreateInfo();
-    const auto& nativeCreateInfo = static_cast<const VkDebugUtilsMessengerCreateInfoEXT&>(createInfo);
-    const auto nativeInstance = static_cast<VkInstance>(instance);
-    const auto result = functions->create(nativeInstance, &nativeCreateInfo, nullptr, &owner->messenger);
-    if (result != static_cast<VkResult>(vk::Result::eSuccess))
-    {
-        return std::unexpected {detail::makeVulkanError(static_cast<vk::Result>(result))};
-    }
-    owner->instance = nativeInstance;
-    owner->destroy = functions->destroy;
-    return owner;
+    auto* const nativeInstance = static_cast<VkInstance>(instance);
+    return ContextDebugMessengerOwner::create(nativeInstance, functions->create, functions->destroy, createInfo);
 }
 
 auto makeWindowSurface(const WindowSurface* surface, vk::Instance instance) -> Result<vk::UniqueSurfaceKHR>
@@ -268,7 +297,7 @@ auto makeDevice(const detail::SelectedDevice& selected, bool windowed) -> Result
 struct Context::Impl
 {
     vk::UniqueInstance instance;
-    std::unique_ptr<DebugMessengerOwner> debugMessenger;
+    std::unique_ptr<ContextDebugMessengerOwner> debugMessenger;
     vk::UniqueSurfaceKHR surface;
     vk::UniqueDevice device;
     std::unique_ptr<detail::Presentation> presentation;
@@ -332,7 +361,7 @@ auto Context::createInternal(WindowSurface* surface, const ContextOptions& optio
     {
         return std::unexpected {std::move(ownedSurface.error())};
     }
-    const auto nativeSurface = static_cast<VkSurfaceKHR>(ownedSurface->get());
+    auto* const nativeSurface = static_cast<VkSurfaceKHR>(ownedSurface->get());
     auto selected = detail::selectDevice(**instance, nativeSurface, *extensions);
     if (!selected)
     {

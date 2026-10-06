@@ -3,6 +3,7 @@
 #include <exception>
 #include <glm/ext/vector_uint2.hpp>
 #include <panda/Context.hpp>
+#include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <tuple>
@@ -35,7 +36,7 @@ auto waitForRestoredWindow() -> bool
     return true;
 }
 
-auto run(panda::tools::Window& window, panda::Context& context) -> int
+auto run(panda::tools::Window& window, const panda::Context& context) -> int
 {
     panda::log::info("Application loop started");
     while (!window.shouldClose())
