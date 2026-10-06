@@ -28,6 +28,11 @@ target_include_directories(panda_test_swapchain_generation_mock PRIVATE "${PROJE
 target_compile_definitions(panda_test_swapchain_generation_mock PRIVATE
     VULKAN_HPP_NO_CONSTRUCTORS
     VULKAN_HPP_NO_EXCEPTIONS)
+if(MSVC AND PANDA_ENABLE_SANITIZER_ADDRESS AND PANDA_WARNINGS_AS_ERRORS)
+    # gMock's unreachable default-action fallback triggers C4702 in this mock
+    # under MSVC ASan; keep warnings-as-errors enabled for every other warning.
+    target_compile_options(panda_test_swapchain_generation_mock PRIVATE /wd4702)
+endif()
 add_library(PandaTest::SwapchainGenerationMock ALIAS panda_test_swapchain_generation_mock)
 
 panda_add_mock(panda_test_core_version_mock
