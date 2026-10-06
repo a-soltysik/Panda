@@ -2,15 +2,19 @@
 #include <GLFW/glfw3.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <vulkan/vulkan_core.h>
 
+#include <array>
 #include <cstdint>
 #include <glm/ext/vector_uint2.hpp>
 #include <limits>
+#include <panda/Error.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <string>
 #include <thread>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "ScopedMock.hpp"
 #include "external/glfw/GlfwMock.hpp"
@@ -18,9 +22,9 @@
 namespace
 {
 using panda::tools::Window;
-using panda::tools::WindowError;
 using testing::_;
 using testing::DoAll;
+using testing::HasSubstr;
 using testing::NotNull;
 using testing::Return;
 using testing::SetArgPointee;
@@ -114,7 +118,7 @@ TEST_F(WindowTest, ValidatesRequestsBeforeCallingGlfw)
     EXPECT_CALL(_glfw, glfwCreateWindow(_, _, _, _, _)).Times(0);
     const auto zero = Window::create({0, 80}, "test");
     ASSERT_FALSE(zero.has_value());
-    EXPECT_EQ(zero.error().code, WindowError::Code::InvalidArgument);
+    EXPECT_EQ(zero.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_FALSE(Window::create({std::numeric_limits<std::uint32_t>::max(), 80}, "test").has_value());
     EXPECT_FALSE(Window::create(size, nullptr).has_value());
 }
@@ -131,9 +135,12 @@ TEST_F(WindowTest, InitializationFailureOwnsDiagnosticAndRestoresCallback)
     ASSERT_FALSE(failure.has_value());
     description = "Changed backend text";
     EXPECT_NE(failure.error().message, description);
-    EXPECT_EQ(failure.error().code, WindowError::Code::InitializationFailed);
-    EXPECT_EQ(failure.error().operation, "glfwInit");
-    EXPECT_EQ(failure.error().nativeCode, GLFW_PLATFORM_UNAVAILABLE);
+    EXPECT_EQ(failure.error().code, panda::ErrorCode::Unsupported);
+    ASSERT_TRUE(failure.error().native.has_value());
+    const auto native = failure.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.api, "GLFW");
+    EXPECT_EQ(native.code, GLFW_PLATFORM_UNAVAILABLE);
+    EXPECT_THAT(failure.error().source.function_name(), HasSubstr("Window::create"));
     EXPECT_EQ(failure.error().message, "Initialization failed");
     ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(&_glfw));
 
@@ -158,9 +165,11 @@ TEST_F(WindowTest, CreationFailureReleasesSessionAndAllowsRetry)
         .RetiresOnSaturation();
     const auto failure = Window::create(size, "test");
     ASSERT_FALSE(failure.has_value());
-    EXPECT_EQ(failure.error().code, WindowError::Code::CreationFailed);
-    EXPECT_EQ(failure.error().nativeCode, GLFW_PLATFORM_ERROR);
-    EXPECT_EQ(failure.error().operation, "glfwCreateWindow");
+    EXPECT_EQ(failure.error().code, panda::ErrorCode::BackendFailure);
+    ASSERT_TRUE(failure.error().native.has_value());
+    const auto native = failure.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, GLFW_PLATFORM_ERROR);
+    EXPECT_THAT(failure.error().source.function_name(), HasSubstr("Window::create"));
     expectInitialization();
     expectCreation(getFirst(), "retry");
     expectDestruction(getFirst());
@@ -227,6 +236,70 @@ TEST_F(WindowTest, QueriesCurrentDimensionsMinimizationAndCloseFlag)
     EXPECT_EQ(window->shouldClose(), true);
 }
 
+TEST_F(WindowTest, ResizeAndMinimizeReportBackendFailures)
+{
+    expectInitialization();
+    expectCreation(getFirst());
+    expectDestruction(getFirst());
+    expectSessionRelease();
+    auto window = Window::create(size, "test");
+    ASSERT_TRUE(window.has_value());
+
+    EXPECT_CALL(_glfw, glfwSetWindowSize(getFirst(), 160, 120)).Times(2);
+    const auto invalid = window->setSize({0, 80});
+    ASSERT_FALSE(invalid.has_value());
+    EXPECT_EQ(invalid.error().code, panda::ErrorCode::InvalidArgument);
+
+    expectError(GLFW_PLATFORM_ERROR, "Resize failed");
+    const auto failed = window->setSize({160, 120});
+    ASSERT_FALSE(failed.has_value());
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::BackendFailure);
+    ASSERT_TRUE(failed.error().native.has_value());
+    const auto native = failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, GLFW_PLATFORM_ERROR);
+    EXPECT_THAT(failed.error().source.function_name(), HasSubstr("Window::setSize"));
+    EXPECT_TRUE(window->setSize({160, 120}).has_value());
+
+    EXPECT_CALL(_glfw, glfwIconifyWindow(getFirst()));
+    EXPECT_CALL(_glfw, glfwRestoreWindow(getFirst()));
+    EXPECT_TRUE(window->setMinimized(true).has_value());
+    EXPECT_TRUE(window->setMinimized(false).has_value());
+}
+
+TEST_F(WindowTest, CopiesRequiredExtensionsAndRejectsMissingSurfaceInputs)
+{
+    expectInitialization();
+    expectCreation(getFirst());
+    expectDestruction(getFirst());
+    expectSessionRelease();
+    auto window = Window::create(size, "test");
+    ASSERT_TRUE(window.has_value());
+
+    auto extension = std::string {"VK_KHR_surface"};
+    auto names = std::array {extension.c_str()};
+    EXPECT_CALL(_glfw, glfwGetRequiredInstanceExtensions(NotNull()))
+        .WillOnce(DoAll(SetArgPointee<0>(1U), Return(names.data())))
+        .WillOnce(Return(nullptr));
+    const auto copied = window->getRequiredInstanceExtensions();
+    ASSERT_TRUE(copied.has_value());
+    extension.clear();
+    EXPECT_EQ(*copied, (std::vector<std::string> {"VK_KHR_surface"}));
+
+    expectError(GLFW_API_UNAVAILABLE, "Vulkan unavailable");
+    const auto missing = window->getRequiredInstanceExtensions();
+    ASSERT_FALSE(missing.has_value());
+    EXPECT_EQ(missing.error().code, panda::ErrorCode::Unsupported);
+    ASSERT_TRUE(missing.error().native.has_value());
+    const auto native = missing.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, GLFW_API_UNAVAILABLE);
+    EXPECT_THAT(missing.error().source.function_name(), HasSubstr("Window::getRequiredInstanceExtensions"));
+
+    EXPECT_CALL(_glfw, glfwCreateWindowSurface(_, _, _, _)).Times(0);
+    const auto nullInstance = window->createSurface(VkInstance {});
+    ASSERT_FALSE(nullInstance.has_value());
+    EXPECT_EQ(nullInstance.error().code, panda::ErrorCode::InvalidArgument);
+}
+
 TEST_F(WindowTest, QueryErrorsRemainDistinctFromZeroExtent)
 {
     expectInitialization();
@@ -239,13 +312,16 @@ TEST_F(WindowTest, QueryErrorsRemainDistinctFromZeroExtent)
     expectError(GLFW_PLATFORM_ERROR, "Size query failed");
     const auto dimensions = window->getSize();
     ASSERT_FALSE(dimensions.has_value());
-    EXPECT_EQ(dimensions.error().operation, "glfwGetWindowSize");
-    EXPECT_EQ(dimensions.error().nativeCode, GLFW_PLATFORM_ERROR);
+    EXPECT_EQ(dimensions.error().code, panda::ErrorCode::BackendFailure);
+    ASSERT_TRUE(dimensions.error().native.has_value());
+    const auto native = dimensions.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, GLFW_PLATFORM_ERROR);
+    EXPECT_THAT(dimensions.error().source.function_name(), HasSubstr("Window::getSize"));
     EXPECT_CALL(_glfw, glfwGetFramebufferSize(getFirst(), _, _));
     expectError(GLFW_PLATFORM_ERROR, "Framebuffer query failed");
     const auto minimized = window->isMinimized();
     ASSERT_FALSE(minimized.has_value());
-    EXPECT_EQ(minimized.error().operation, "glfwGetFramebufferSize");
+    EXPECT_EQ(minimized.error().code, panda::ErrorCode::BackendFailure);
 }
 
 TEST_F(WindowTest, NegativeDimensionsAreRecoverableBackendErrors)

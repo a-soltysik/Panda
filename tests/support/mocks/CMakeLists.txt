@@ -10,6 +10,31 @@ panda_add_mock(panda_test_glfw_mock
     LIBRARIES PandaTest::MockHeaders)
 add_library(PandaTest::GlfwMock ALIAS panda_test_glfw_mock)
 
+# The unit boundary is Vulkan as a library, not an individual entry point.
+# The stub provides the calls controlled by current Core unit scenarios.
+panda_add_mock(panda_test_vulkan_mock
+    REPLACES Vulkan::Vulkan
+    API_LIBRARY Vulkan::Headers
+    SOURCES external/vulkan/VulkanStub.cpp
+    LIBRARIES PandaTest::MockHeaders)
+add_library(PandaTest::VulkanMock ALIAS panda_test_vulkan_mock)
+
+panda_add_mock(panda_test_swapchain_generation_mock
+    REPLACES panda::detail::createSwapchainGeneration
+    API_LIBRARY Panda::Panda
+    SOURCES panda/core/SwapchainGenerationStub.cpp
+    LIBRARIES PandaTest::MockHeaders)
+target_include_directories(panda_test_swapchain_generation_mock PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan")
+target_compile_definitions(panda_test_swapchain_generation_mock PRIVATE
+    VULKAN_HPP_NO_CONSTRUCTORS
+    VULKAN_HPP_NO_EXCEPTIONS)
+if(MSVC AND PANDA_ENABLE_SANITIZER_ADDRESS AND PANDA_WARNINGS_AS_ERRORS)
+    # gMock's unreachable default-action fallback triggers C4702 in this mock
+    # under MSVC ASan; keep warnings-as-errors enabled for every other warning.
+    target_compile_options(panda_test_swapchain_generation_mock PRIVATE /wd4702)
+endif()
+add_library(PandaTest::SwapchainGenerationMock ALIAS panda_test_swapchain_generation_mock)
+
 panda_add_mock(panda_test_core_version_mock
     REPLACES panda::version
     API_LIBRARY Panda::Panda

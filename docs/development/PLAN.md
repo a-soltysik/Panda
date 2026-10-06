@@ -19,7 +19,7 @@ criteria and concise current evidence.
 | [GLFW window wrapper](tasks/window-wrapper.md) | Build foundation | Accepted | Accepted design; explicitly requested wrapper scope |
 | [C++ and CUDA toolchain compatibility](tasks/toolchain-compatibility.md) | Build foundation | Accepted | [Build foundation](tasks/build-foundation.md) |
 | [Tests and API documentation](tasks/tests-and-api-docs.md) | Build foundation | Accepted | [Build foundation](tasks/build-foundation.md) |
-| [Vulkan context and window lifecycle](tasks/vulkan-context.md) | GPU resources | Planned | [Build foundation](tasks/build-foundation.md), [C++ and CUDA toolchain compatibility](tasks/toolchain-compatibility.md), [Tests and API documentation](tasks/tests-and-api-docs.md) |
+| [Vulkan context and window lifecycle](tasks/vulkan-context.md) | GPU resources | Accepted | [Build foundation](tasks/build-foundation.md), [C++ and CUDA toolchain compatibility](tasks/toolchain-compatibility.md), [Tests and API documentation](tasks/tests-and-api-docs.md) |
 | [Allocation, uploads and resource lifetimes](tasks/resource-lifetimes.md) | GPU resources | Planned | [Vulkan context and window lifecycle](tasks/vulkan-context.md) |
 | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) | GPU resources | Planned | [Allocation, uploads and resource lifetimes](tasks/resource-lifetimes.md) |
 | [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) | CUDA interoperability | Planned | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) |
@@ -38,7 +38,7 @@ criteria and concise current evidence.
 
 ## Phase reviews
 
-Only the build foundation is authorized. All later phases await maintainer review
+The build foundation and GPU resources phase are authorized. Later phases await maintainer review
 of the preceding phase's evidence; passing checks alone does not authorize them.
 Keep existing task dependencies when working in smaller implementation slices.
 

@@ -1,9 +1,16 @@
-# Empty-window example
+# Vulkan window example
 
-`simple_scene` uses `Panda::Tools` to create a GLFW window without an OpenGL
-context. It waits for input and closes when the user closes the window. The
-window owner releases GLFW resources on exit, including error and exception
-paths. The example does not render a scene yet.
+`simple_scene` creates a GLFW window through `Panda::Tools`, then passes that
+window to `panda::Context::createWithSurface` to create a Vulkan 1.3 context. It clears and presents
+frames, processes window events and waits for input while the framebuffer has
+zero size. The context is destroyed before the window, including error and
+exception paths. This is a diagnostic frame; scene geometry is not available yet.
+
+Errors share `panda::Error`: the example logs the message and source location, and
+includes native status when one exists. Applications can simply display the message
+or inspect the recovery category and native status for a response. Context creation
+reports an unsupported capability when the device lacks swapchain maintenance1.
+A visible display and a Vulkan-capable device are needed.
 
 From the repository root, build and run on Windows with MSVC:
 
@@ -21,10 +28,8 @@ cmake --build --preset gcc-development
 ./build-gcc-development-Linux/examples/simple_scene/simple_scene
 ```
 
-An X11 display (or XWayland) is needed on Linux. An empty Wayland surface is
-not mapped until it presents a buffer, so this example selects X11. Core
-applications that do not need a window can omit `PANDA_BUILD_TOOLS`.
+GLFW selects the available window platform on Linux. Core applications that do
+not need a window can omit `PANDA_BUILD_TOOLS`.
 
-The development presets run Panda's analysis and formatting checks; the
-[root README](../../README.md#build-and-run) lists how to disable them when
-those tools are unavailable. CUDA is not needed for this example.
+The development presets enable compiler warnings; quality presets add static
+analysis and formatting. CUDA is not needed for this example.

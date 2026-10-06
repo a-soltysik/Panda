@@ -1,5 +1,8 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#include <vulkan/vulkan_core.h>
+
+#include <cstdint>
 
 #include "GlfwMock.hpp"
 #include "ScopedMock.hpp"
@@ -59,6 +62,21 @@ void glfwGetWindowSize(GLFWwindow* window, int* width, int* height)
     panda::test::ScopedMock<panda::test::GlfwMock>::getActiveMock().glfwGetWindowSize(window, width, height);
 }
 
+void glfwSetWindowSize(GLFWwindow* window, int width, int height)
+{
+    panda::test::ScopedMock<panda::test::GlfwMock>::getActiveMock().glfwSetWindowSize(window, width, height);
+}
+
+void glfwIconifyWindow(GLFWwindow* window)
+{
+    panda::test::ScopedMock<panda::test::GlfwMock>::getActiveMock().glfwIconifyWindow(window);
+}
+
+void glfwRestoreWindow(GLFWwindow* window)
+{
+    panda::test::ScopedMock<panda::test::GlfwMock>::getActiveMock().glfwRestoreWindow(window);
+}
+
 void glfwGetFramebufferSize(GLFWwindow* window, int* width, int* height)
 {
     panda::test::ScopedMock<panda::test::GlfwMock>::getActiveMock().glfwGetFramebufferSize(window, width, height);
@@ -77,5 +95,21 @@ void glfwPollEvents()
 void glfwWaitEvents()
 {
     panda::test::ScopedMock<panda::test::GlfwMock>::getActiveMock().glfwWaitEvents();
+}
+
+auto glfwGetRequiredInstanceExtensions(std::uint32_t* count) -> const char**
+{
+    return panda::test::ScopedMock<panda::test::GlfwMock>::getActiveMock().glfwGetRequiredInstanceExtensions(count);
+}
+
+auto glfwCreateWindowSurface(VkInstance instance,
+                             GLFWwindow* window,
+                             const VkAllocationCallbacks* allocator,
+                             VkSurfaceKHR* surface) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::GlfwMock>::getActiveMock().glfwCreateWindowSurface(instance,
+                                                                                                   window,
+                                                                                                   allocator,
+                                                                                                   surface);
 }
 }

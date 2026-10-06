@@ -56,8 +56,8 @@ Keep one concise current verification record in the task: commands, relevant
 versions/environment, results, unavailable checks and remaining work. Replace stale
 results after changes; retain only evidence that still supports the current result.
 Keep raw logs and large captures outside source control. Do not invent measurements.
-End with a short walkthrough of one invariant or failure case, following
-[the learning guide](learning.md).
+Explain the key behavior and check the maintainer's understanding before treating
+the learning handoff as complete, following [the learning guide](learning.md).
 
 ## Maintain the documentation
 

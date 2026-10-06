@@ -71,9 +71,25 @@ Use `std::expected<T, Error>` for recoverable operation failure. Use `std::optio
 when absence is an ordinary result, not to hide a diagnostic. Fallible construction
 uses factories; recoverable result types are `[[nodiscard]]` where appropriate.
 
-Errors carry actionable operation context and relevant backend status. Do not throw
-exceptions for Panda error propagation. Catch exceptions from dependencies at a
-meaningful adapter boundary and convert them once into the public error model.
+Use one `Error` and `Result<T>` model across Panda components. `ErrorCode` groups
+failures by a useful caller response rather than by native operation: correct an
+`InvalidArgument`, change a request or environment for `Unsupported`, release
+resources before retrying `ResourceExhausted`, adjust or retry a `Timeout`, recreate
+a lost `Surface`, or stop using/rebuild a lost `Device`. `BackendFailure` means the
+engine has no general recovery action; inspect its message and diagnostics.
+`Error` owns its message, carries an optional `{api, code}` native status, and stores
+the `std::source_location` where it was formed. It does not need a separate operation
+string or per-operation enum. Callers that only need simple handling can check
+`if (!result)` and display `result.error().message`; callers that can recover can
+inspect `Error::code`, and detailed logs can include `native` and `source`.
+The Vulkan adapter explicitly classifies statuses with known recovery actions;
+unknown native status defaults to `BackendFailure` while preserving its raw code.
+The Vulkan result switch is exhaustive under `-Wswitch-enum`, so adding a distinct
+SDK result requires a deliberate recovery-category decision.
+
+Do not throw exceptions for Panda error propagation. Catch exceptions from
+dependencies at a meaningful adapter boundary and convert them once into the public
+error model.
 
 Do not wrap every `std::vector::push_back` or allocation in a catch block. Catastrophic
 allocation failure and broken fundamental invariants may terminate with a useful
@@ -122,11 +138,13 @@ must still avoid an infinite wait on work that was never submitted or signaled.
 
 ## Handles and API boundary
 
-The following are accepted design signatures, not implemented declarations.
+The following are design signatures; implemented declarations are documented in
+their public headers. Remaining entries describe planned resource APIs.
 
 | Type/operation | Semantics |
 | --- | --- |
-| `Context::create(ContextOptions) -> Result<Context>` | Move-only owner with stable, heap-owned internal state; main-thread operations |
+| `Context::create(ContextOptions) -> Result<Context>` | Move-only owner with stable, heap-owned internal state; operations on one context are serialized |
+| `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
 | `Buffer`, `Texture`, `Mesh`, `Material` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
 | `Context::create_buffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an allocation behind a borrowed native handle |
 | `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates size, alignment and usage |
@@ -135,12 +153,17 @@ The following are accepted design signatures, not implemented declarations.
 | `Context::wait(CompletionPoint, timeout) -> Result<WaitStatus>` | Explicit administrative wait; timeout is distinct from completion and backend failure |
 | `Context::close(timeout) -> Result<void>` | Stops new work, drains known submissions/presentation, then closes only when dependent owners are gone |
 
+`ContextOptions::enableValidation` enables the installed Khronos validation layer and
+registers a `VK_EXT_debug_utils` callback that routes diagnostics to the Panda logger.
+It does not depend on Vulkan-layer environment variables. Requesting validation when
+the layer or debug-utils extension is unavailable returns an `Unsupported` error.
+
 `Result<T>` means `std::expected<T, Error>`, not another result framework.
 `CompletionPoint` is an opaque context identity plus committed Vulkan timeline
 value, comparable only within that context. Value zero means no submitted work.
 No public API lets a caller signal it, fabricate future values, or use it after
-context destruction. Errors contain a category, operation, message, optional resource/
-stage label, and native backend code; they do not hold references to temporary strings.
+context destruction. `Error` has an action category, owned message, optional native
+backend status and source location; it does not retain references to temporary strings.
 
 Keep `BufferDesc` small: byte size, usage flags, memory intent, external-sharing
 intent, initialization policy, and debug label. The ordinary native extension uses
@@ -166,10 +189,13 @@ initially 10 seconds; a slow application may explicitly increase it.
 
 Use standard `shared_ptr` for resource state, not a public smart-pointer hierarchy.
 Capture strong handles and callback state in each submitted work packet. The last
-CPU release schedules native destruction on the owning context thread, never calls
+CPU release schedules native destruction on the current context execution thread, never calls
 device idle. Reclamation requires both no owners and completion of all submitted
 uses. Reference counting does not authorize concurrent resource mutation; version one
-requires creation, mutation, native access, and final release on the context thread.
+requires creation, mutation, native access, and final release on the serialized
+context execution thread. A quiescent context may move to another thread; windowed
+operations still follow the window provider's thread requirements (GLFW uses the
+main thread).
 
 ## Allocation, uploads, and descriptors
 
