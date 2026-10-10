@@ -26,47 +26,29 @@ namespace
 {
 struct FrameCommands
 {
-    vk::UniqueCommandPool pool;
+    vk::raii::CommandPool pool;
     vk::CommandBuffer command;
 };
 
-auto createFrameCommands(vk::Device device, std::uint32_t queueFamily) -> std::expected<FrameCommands, Error>
+auto createFrameCommands(const vk::raii::Device& device, std::uint32_t queueFamily)
+    -> std::expected<FrameCommands, Error>
 {
     const auto poolInfo = vk::CommandPoolCreateInfo {.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
                                                      .queueFamilyIndex = queueFamily};
-    auto pool = createOwned<vk::CommandPool>(
-        [&](vk::CommandPool* output) {
-            return device.createCommandPool(&poolInfo, nullptr, output);
-        },
-        deviceDeleter(device));
-    if (pool.result != vk::Result::eSuccess)
+    auto pool = checkedCreation(device.createCommandPool(poolInfo));
+    if (!pool)
     {
-        return std::unexpected {makeVulkanError(pool.result)};
+        return std::unexpected {std::move(pool.error())};
     }
-    const auto allocateInfo = vk::CommandBufferAllocateInfo {.commandPool = *pool.value,
+    const auto allocateInfo = vk::CommandBufferAllocateInfo {.commandPool = **pool,
                                                              .level = vk::CommandBufferLevel::ePrimary,
                                                              .commandBufferCount = 1};
-    auto commands = device.allocateCommandBuffers(allocateInfo);
+    auto commands = (*device).allocateCommandBuffers(allocateInfo, *device.getDispatcher());
     if (commands.result != vk::Result::eSuccess)
     {
         return std::unexpected {makeVulkanError(commands.result)};
     }
-    return FrameCommands {.pool = std::move(pool.value), .command = commands.value.front()};
-}
-
-auto createUniqueSemaphore(vk::Device device, const vk::SemaphoreCreateInfo& info)
-    -> std::expected<vk::UniqueSemaphore, Error>
-{
-    auto semaphore = createOwned<vk::Semaphore>(
-        [&](vk::Semaphore* output) {
-            return device.createSemaphore(&info, nullptr, output);
-        },
-        deviceDeleter(device));
-    if (semaphore.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(semaphore.result)};
-    }
-    return std::move(semaphore.value);
+    return FrameCommands {.pool = std::move(*pool), .command = commands.value.front()};
 }
 
 auto makeImageBarrier(const SwapchainImage& image,
@@ -141,7 +123,7 @@ void transitionToPresent(vk::CommandBuffer command, const SwapchainImage& image)
     recordImageBarrier(command, barrier);
 }
 
-auto submitAcquireForRetirement(vk::Queue queue,
+auto submitAcquireForRetirement(const vk::raii::Queue& queue,
                                 vk::Semaphore acquire,
                                 vk::Semaphore timeline,
                                 std::uint64_t completion) -> vk::Result
@@ -160,7 +142,7 @@ auto submitAcquireForRetirement(vk::Queue queue,
 }
 
 Presentation::Presentation(vk::PhysicalDevice physicalDevice,
-                           vk::Device device,
+                           const vk::raii::Device& device,
                            VkSurfaceKHR surface,
                            WindowSurface& window,
                            const ContextDeviceInfo& deviceInfo)
@@ -177,7 +159,7 @@ Presentation::Presentation(vk::PhysicalDevice physicalDevice,
 Presentation::~Presentation() = default;
 
 auto Presentation::create(vk::PhysicalDevice physicalDevice,
-                          vk::Device device,
+                          const vk::raii::Device& device,
                           VkSurfaceKHR surface,
                           WindowSurface& window,
                           const ContextDeviceInfo& deviceInfo) -> std::expected<std::unique_ptr<Presentation>, Error>
@@ -284,7 +266,7 @@ auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
 
 auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image) -> std::expected<void, Error>
 {
-    const auto reset = _device.resetCommandPool(*slot.pool);
+    const auto reset = slot.pool.reset();
     if (reset != vk::Result::eSuccess)
     {
         return std::unexpected {makeVulkanError(reset)};
@@ -307,17 +289,15 @@ auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image) -> 
 
 auto Presentation::releaseImage(std::uint32_t index) const -> std::expected<void, Error>
 {
-    const auto info = VkReleaseSwapchainImagesInfoKHR {
-        .sType = static_cast<VkStructureType>(vk::StructureType::eReleaseSwapchainImagesInfoKHR),
-        .pNext = nullptr,
-        .swapchain = static_cast<VkSwapchainKHR>(*activeGeneration().swapchain),
-        .imageIndexCount = 1,
-        .pImageIndices = &index};
-    const auto result = _releaseKhr != nullptr ? _releaseKhr(static_cast<VkDevice>(_device), &info)
-                                               : _releaseExt(static_cast<VkDevice>(_device), &info);
-    if (static_cast<vk::Result>(result) != vk::Result::eSuccess)
+    const auto info = vk::ReleaseSwapchainImagesInfoKHR {.swapchain = *activeGeneration().swapchain,
+                                                         .imageIndexCount = 1,
+                                                         .pImageIndices = &index};
+    const auto result = _deviceInfo.swapchainMaintenance == ContextDeviceInfo::SwapchainMaintenance::Khr
+                            ? _device.releaseSwapchainImagesKHR(info)
+                            : _device.releaseSwapchainImagesEXT(info);
+    if (result != vk::Result::eSuccess)
     {
-        return std::unexpected {makeVulkanError(static_cast<vk::Result>(result))};
+        return std::unexpected {makeVulkanError(result)};
     }
     return {};
 }
@@ -353,7 +333,7 @@ auto Presentation::acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage,
         return std::unexpected {waited.error()};
     }
     static constexpr auto timeoutNanoseconds = std::uint64_t {1'000'000'000};
-    const auto acquired = _device.acquireNextImageKHR(*activeGeneration().swapchain, timeoutNanoseconds, *slot.acquire);
+    const auto acquired = activeGeneration().swapchain.acquireNextImage(timeoutNanoseconds, *slot.acquire);
     return interpretAcquiredImage(acquired.result, acquired.value);
 }
 
@@ -409,7 +389,7 @@ auto Presentation::waitImage(FrameSlot& slot, std::uint32_t index) -> std::expec
     return {};
 }
 
-auto Presentation::submitRecordedFrame(FrameSlot& slot, const SwapchainImage& image, std::uint64_t completion)
+auto Presentation::submitRecordedFrame(FrameSlot& slot, const SwapchainImage& image, std::uint64_t completion) const
     -> vk::Result
 {
     const auto acquireWait = vk::SemaphoreSubmitInfo {.semaphore = *slot.acquire,
@@ -469,17 +449,13 @@ auto Presentation::recoverPresentFailure(SwapchainImage& image,
         return std::unexpected {waited.error()};
     }
     const auto replacementInfo = vk::SemaphoreCreateInfo {};
-    auto replacement = createOwned<vk::Semaphore>(
-        [&](vk::Semaphore* output) {
-            return _device.createSemaphore(&replacementInfo, nullptr, output);
-        },
-        deviceDeleter(_device));
-    if (replacement.result != vk::Result::eSuccess)
+    auto replacement = checkedCreation(_device.createSemaphore(replacementInfo));
+    if (!replacement)
     {
         _faulted = true;
-        return std::unexpected {makeVulkanError(replacement.result)};
+        return std::unexpected {std::move(replacement.error())};
     }
-    image.renderFinished = std::move(replacement.value);
+    image.renderFinished = std::move(*replacement);
     if (const auto released = releaseImage(index); !released)
     {
         _faulted = true;
@@ -534,29 +510,17 @@ auto Presentation::presentFrame(SwapchainImage& image,
     return recoverPresentFailure(image, index, presented, completion);
 }
 
-auto Presentation::resolveReleaseFunction() -> std::expected<void, Error>
+auto Presentation::verifyReleaseFunction() const -> std::expected<void, Error>
 {
-    if (_deviceInfo.swapchainMaintenance == ContextDeviceInfo::SwapchainMaintenance::Khr)
+    const auto* const dispatcher = _device.getDispatcher();
+    const auto khr = _deviceInfo.swapchainMaintenance == ContextDeviceInfo::SwapchainMaintenance::Khr;
+    const auto available =
+        khr ? dispatcher->vkReleaseSwapchainImagesKHR != nullptr : dispatcher->vkReleaseSwapchainImagesEXT != nullptr;
+    if (!available)
     {
-        _releaseKhr =
-            reinterpret_cast<PFN_vkReleaseSwapchainImagesKHR>(  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-                vkGetDeviceProcAddr(_device, "vkReleaseSwapchainImagesKHR"));
-        if (_releaseKhr == nullptr)
-        {
-            return std::unexpected {
-                makeError(ErrorCode::Unsupported, "VK_KHR_swapchain_maintenance1 release function is unavailable")};
-        }
-    }
-    else
-    {
-        _releaseExt =
-            reinterpret_cast<PFN_vkReleaseSwapchainImagesEXT>(  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-                vkGetDeviceProcAddr(_device, "vkReleaseSwapchainImagesEXT"));
-        if (_releaseExt == nullptr)
-        {
-            return std::unexpected {
-                makeError(ErrorCode::Unsupported, "VK_EXT_swapchain_maintenance1 release function is unavailable")};
-        }
+        return std::unexpected {makeError(ErrorCode::Unsupported,
+                                          khr ? "VK_KHR_swapchain_maintenance1 release function is unavailable"
+                                              : "VK_EXT_swapchain_maintenance1 release function is unavailable")};
     }
     return {};
 }
@@ -571,7 +535,7 @@ auto Presentation::initializeSlot(FrameSlot& slot) const -> std::expected<void, 
     slot.pool = std::move(commands->pool);
     slot.command = commands->command;
     static constexpr auto acquireInfo = vk::SemaphoreCreateInfo {};
-    auto acquire = createUniqueSemaphore(_device, acquireInfo);
+    auto acquire = checkedCreation(_device.createSemaphore(acquireInfo));
     if (!acquire)
     {
         return std::unexpected {acquire.error()};
@@ -591,13 +555,13 @@ auto Presentation::initialize() -> std::expected<void, Error>
 
 auto Presentation::initializeFrameResources() -> std::expected<void, Error>
 {
-    if (const auto resolved = resolveReleaseFunction(); !resolved)
+    if (const auto resolved = verifyReleaseFunction(); !resolved)
     {
         return std::unexpected {resolved.error()};
     }
     static constexpr auto timelineInfo = vk::SemaphoreTypeCreateInfo {.semaphoreType = vk::SemaphoreType::eTimeline};
     static constexpr auto semaphoreInfo = vk::SemaphoreCreateInfo {.pNext = &timelineInfo};
-    auto timeline = createUniqueSemaphore(_device, semaphoreInfo);
+    auto timeline = checkedCreation(_device.createSemaphore(semaphoreInfo));
     if (!timeline)
     {
         return std::unexpected {timeline.error()};

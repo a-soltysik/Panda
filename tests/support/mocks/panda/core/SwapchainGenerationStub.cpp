@@ -17,7 +17,7 @@
 namespace panda::detail
 {
 auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
-                               vk::Device device,
+                               const vk::raii::Device& device,
                                VkSurfaceKHR surface,
                                FramebufferExtent requested,
                                vk::SwapchainKHR oldSwapchain,

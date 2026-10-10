@@ -8,8 +8,6 @@
 #include <vulkan/vulkan_core.h>
 
 #include <algorithm>
-#include <array>
-#include <cstddef>
 #include <cstdint>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
@@ -17,17 +15,18 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <vector>
 
 #include "LogCapture.hpp"
 #include "ScopedMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
 
 namespace
 {
+using panda::test::fakeVulkanHandle;
 using testing::_;
 using testing::DoAll;
 using testing::NotNull;
@@ -35,22 +34,6 @@ using testing::Return;
 using testing::Sequence;
 using testing::SetArgPointee;
 using testing::StrEq;
-
-template <typename Handle>
-auto fakeHandle(std::uintptr_t value) -> Handle
-{
-    if constexpr (std::is_pointer_v<Handle>)
-    {
-        static auto storage = std::array<std::max_align_t, 16> {};
-        // Opaque Vulkan pointers are identity-only tokens here and are never dereferenced.
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-        return reinterpret_cast<Handle>(&storage.at(value));
-    }
-    else
-    {
-        return static_cast<Handle>(value);
-    }
-}
 
 auto makeLayer(std::string_view name) -> VkLayerProperties
 {
@@ -235,6 +218,24 @@ TEST_F(ContextTest, PreservesLoaderVersionQueryFailure)
     EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
 }
 
+TEST_F(ContextTest, DoesNotDestroyInstanceWhenCreationFails)
+{
+    EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
+        .WillOnce(DoAll(SetArgPointee<0>(vk::ApiVersion13), Return(static_cast<VkResult>(vk::Result::eSuccess))));
+    EXPECT_CALL(vulkan, vkCreateInstance(NotNull(), nullptr, NotNull()))
+        .WillOnce([](const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance* output) {
+            *output = fakeVulkanHandle<VkInstance>(1);
+            return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
+        });
+    EXPECT_CALL(vulkan, vkDestroyInstance(_, _)).Times(0);
+    EXPECT_CALL(vulkan, vkGetInstanceProcAddr(fakeVulkanHandle<VkInstance>(1), _)).Times(0);
+
+    const auto context = panda::Context::create();
+
+    ASSERT_FALSE(context.has_value());
+    EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
+}
+
 TEST_F(ContextTest, ReportsMissingRequestedValidationLayer)
 {
     EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
@@ -265,8 +266,8 @@ TEST_F(ContextTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
 {
     auto logRecords = panda::test::LogRecords {};
     auto logSink = panda::test::ProcessSinkRegistration {logRecords};
-    auto* const instance = fakeHandle<VkInstance>(1);
-    auto* const messenger = fakeHandle<VkDebugUtilsMessengerEXT>(2);
+    auto* const instance = fakeVulkanHandle<VkInstance>(1);
+    auto* const messenger = fakeVulkanHandle<VkDebugUtilsMessengerEXT>(2);
     expectValidationPrerequisites(vulkan);
     expectValidationInstanceCreated(vulkan, instance);
     expectValidationMessengerCreated(vulkan, instance, messenger);
@@ -283,8 +284,8 @@ TEST_F(ContextTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
 
 TEST_F(ContextTest, DoesNotDestroyMessengerWhenCreationFails)
 {
-    auto* const instance = fakeHandle<VkInstance>(1);
-    auto* const output = fakeHandle<VkDebugUtilsMessengerEXT>(2);
+    auto* const instance = fakeVulkanHandle<VkInstance>(1);
+    auto* const output = fakeVulkanHandle<VkDebugUtilsMessengerEXT>(2);
     expectValidationPrerequisites(vulkan);
     expectValidationInstanceCreated(vulkan, instance);
     expectValidationMessengerCreationFailure(vulkan, instance, output);
@@ -293,6 +294,23 @@ TEST_F(ContextTest, DoesNotDestroyMessengerWhenCreationFails)
 
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
+}
+
+TEST_F(ContextTest, ReportsMissingDebugMessengerEntryPointBeforeCreation)
+{
+    auto* const instance = fakeVulkanHandle<VkInstance>(1);
+    expectValidationPrerequisites(vulkan);
+    expectValidationInstanceCreated(vulkan, instance);
+    EXPECT_CALL(vulkan, vkGetInstanceProcAddr(instance, StrEq("vkCreateDebugUtilsMessengerEXT")))
+        .WillOnce(Return(nullptr));
+    EXPECT_CALL(vulkan, vkCreateDebugUtilsMessengerEXT(_, _, _, _)).Times(0);
+    EXPECT_CALL(vulkan, vkDestroyInstance(instance, nullptr));
+
+    const auto context = panda::Context::create({.enableValidation = true});
+
+    ASSERT_FALSE(context.has_value());
+    EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
+    EXPECT_NE(context.error().message.find("VK_EXT_debug_utils"), std::string::npos);
 }
 
 TEST_F(ContextTest, RejectsWindowWithoutSurfaceExtensionBeforeNativeCreation)

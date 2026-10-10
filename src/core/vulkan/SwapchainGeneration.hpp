@@ -18,16 +18,16 @@ namespace panda::detail
 struct SwapchainImage
 {
     vk::Image image;
-    vk::UniqueImageView view;
-    vk::UniqueSemaphore renderFinished;
-    vk::UniqueFence presentFence;
+    vk::raii::ImageView view {nullptr};
+    vk::raii::Semaphore renderFinished {nullptr};
+    vk::raii::Fence presentFence {nullptr};
     bool presentPending {false};
     bool initialized {false};
 };
 
 struct SwapchainGeneration
 {
-    vk::UniqueSwapchainKHR swapchain;
+    vk::raii::SwapchainKHR swapchain {nullptr};
     std::vector<SwapchainImage> images;
     vk::Extent2D extent;
     vk::Format format {vk::Format::eUndefined};
@@ -46,7 +46,7 @@ struct SurfaceConfig
                                        FramebufferExtent requested) -> std::expected<SurfaceConfig, Error>;
 
 [[nodiscard]] auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
-                                             vk::Device device,
+                                             const vk::raii::Device& device,
                                              VkSurfaceKHR surface,
                                              FramebufferExtent requested,
                                              vk::SwapchainKHR oldSwapchain,
