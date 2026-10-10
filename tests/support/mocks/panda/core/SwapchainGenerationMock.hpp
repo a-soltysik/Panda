@@ -19,11 +19,15 @@ class SwapchainGenerationMock
 public:
     // gMock cannot generate trailing-return declarations.
     // NOLINTBEGIN(modernize-use-trailing-return-type)
-    MOCK_METHOD(
-        (std::expected<detail::SwapchainGeneration, Error>),
-        createSwapchainGeneration,
-        (vk::PhysicalDevice, vk::Device, VkSurfaceKHR, FramebufferExtent, vk::SwapchainKHR, const ContextDeviceInfo&),
-        ());
+    MOCK_METHOD((std::expected<detail::SwapchainGeneration, Error>),
+                createSwapchainGeneration,
+                (vk::PhysicalDevice,
+                 const vk::raii::Device&,
+                 VkSurfaceKHR,
+                 FramebufferExtent,
+                 vk::SwapchainKHR,
+                 const ContextDeviceInfo&),
+                ());
 
     MOCK_METHOD(vk::ClearColorValue, encodedClear, (vk::Format), ());
     // NOLINTEND(modernize-use-trailing-return-type)

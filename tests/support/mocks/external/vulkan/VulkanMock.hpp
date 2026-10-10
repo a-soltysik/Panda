@@ -10,6 +10,8 @@ namespace panda::test
 class VulkanMock
 {
 public:
+    VulkanMock();
+
     // gMock cannot generate trailing-return declarations.
     // NOLINTBEGIN(modernize-use-trailing-return-type)
     MOCK_METHOD(VkResult, vkEnumerateInstanceVersion, (std::uint32_t*), ());
@@ -75,6 +77,34 @@ public:
                 ());
 
     MOCK_METHOD(void, vkGetDeviceQueue, (VkDevice, std::uint32_t, std::uint32_t, VkQueue*), ());
+
+    MOCK_METHOD(VkResult,
+                vkCreateDevice,
+                (VkPhysicalDevice, const VkDeviceCreateInfo*, const VkAllocationCallbacks*, VkDevice*),
+                ());
+    MOCK_METHOD(void, vkDestroyDevice, (VkDevice, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(void, vkDestroySurfaceKHR, (VkInstance, VkSurfaceKHR, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(VkResult,
+                vkGetPhysicalDeviceSurfaceCapabilitiesKHR,
+                (VkPhysicalDevice, VkSurfaceKHR, VkSurfaceCapabilitiesKHR*),
+                ());
+    MOCK_METHOD(VkResult,
+                vkCreateSwapchainKHR,
+                (VkDevice, const VkSwapchainCreateInfoKHR*, const VkAllocationCallbacks*, VkSwapchainKHR*),
+                ());
+    MOCK_METHOD(VkResult, vkGetSwapchainImagesKHR, (VkDevice, VkSwapchainKHR, std::uint32_t*, VkImage*), ());
+    MOCK_METHOD(VkResult,
+                vkCreateImageView,
+                (VkDevice, const VkImageViewCreateInfo*, const VkAllocationCallbacks*, VkImageView*),
+                ());
+    MOCK_METHOD(void, vkDestroyImageView, (VkDevice, VkImageView, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(VkResult,
+                vkCreateFence,
+                (VkDevice, const VkFenceCreateInfo*, const VkAllocationCallbacks*, VkFence*),
+                ());
+    MOCK_METHOD(void, vkDestroyFence, (VkDevice, VkFence, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(VkResult, vkResetFences, (VkDevice, std::uint32_t, const VkFence*), ());
+    MOCK_METHOD(VkResult, vkWaitForFences, (VkDevice, std::uint32_t, const VkFence*, VkBool32, std::uint64_t), ());
 
     MOCK_METHOD(PFN_vkVoidFunction, vkGetDeviceProcAddr, (VkDevice, const char*), ());
 

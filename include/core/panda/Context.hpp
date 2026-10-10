@@ -108,7 +108,8 @@ public:
     [[nodiscard]] auto presentClearFrame() const -> Result<FrameResult>;
 
 private:
-    struct Impl;
+    struct InstanceServices;
+    class Impl;
 
     [[nodiscard]] static auto createInternal(WindowSurface* surface, const ContextOptions& options) -> Result<Context>;
 

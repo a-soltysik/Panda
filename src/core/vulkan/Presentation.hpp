@@ -23,7 +23,7 @@ class Presentation final
 {
 public:
     [[nodiscard]] static auto create(vk::PhysicalDevice physicalDevice,
-                                     vk::Device device,
+                                     const vk::raii::Device& device,
                                      VkSurfaceKHR surface,
                                      WindowSurface& window,
                                      const ContextDeviceInfo& deviceInfo)
@@ -41,9 +41,9 @@ public:
 private:
     struct FrameSlot
     {
-        vk::UniqueCommandPool pool;
+        vk::raii::CommandPool pool {nullptr};
         vk::CommandBuffer command;
-        vk::UniqueSemaphore acquire;
+        vk::raii::Semaphore acquire {nullptr};
         std::uint64_t lastCompletion {0};
     };
 
@@ -62,7 +62,7 @@ private:
     };
 
     Presentation(vk::PhysicalDevice physicalDevice,
-                 vk::Device device,
+                 const vk::raii::Device& device,
                  VkSurfaceKHR surface,
                  WindowSurface& window,
                  const ContextDeviceInfo& deviceInfo);
@@ -70,7 +70,7 @@ private:
     [[nodiscard]] auto initialize() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeFrameResources() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeWindowPresentation() -> std::expected<void, Error>;
-    [[nodiscard]] auto resolveReleaseFunction() -> std::expected<void, Error>;
+    [[nodiscard]] auto verifyReleaseFunction() const -> std::expected<void, Error>;
     [[nodiscard]] auto initializeSlot(FrameSlot& slot) const -> std::expected<void, Error>;
     [[nodiscard]] auto recreate(FramebufferExtent requested) -> std::expected<void, Error>;
     [[nodiscard]] auto recordClear(FrameSlot& slot, const SwapchainImage& image) -> std::expected<void, Error>;
@@ -84,7 +84,7 @@ private:
     [[nodiscard]] auto interpretAcquiredImage(vk::Result result, std::uint32_t index)
         -> std::expected<AcquiredImage, Error>;
     [[nodiscard]] auto waitImage(FrameSlot& slot, std::uint32_t index) -> std::expected<void, Error>;
-    [[nodiscard]] auto submitRecordedFrame(FrameSlot& slot, const SwapchainImage& image, std::uint64_t completion)
+    [[nodiscard]] auto submitRecordedFrame(FrameSlot& slot, const SwapchainImage& image, std::uint64_t completion) const
         -> vk::Result;
     [[nodiscard]] auto submitFrame(FrameSlot& slot, SwapchainImage& image, std::uint32_t index)
         -> std::expected<std::uint64_t, Error>;
@@ -101,17 +101,15 @@ private:
     [[nodiscard]] auto abortAcquire(FrameSlot& slot, std::uint32_t index) -> std::expected<void, Error>;
 
     vk::PhysicalDevice _physicalDevice;
-    vk::Device _device;
-    vk::Queue _graphicsQueue;
-    vk::Queue _presentQueue;
+    const vk::raii::Device& _device;
+    vk::raii::Queue _graphicsQueue;
+    vk::raii::Queue _presentQueue;
     VkSurfaceKHR _surface {};
     WindowSurface& _window;
     ContextDeviceInfo _deviceInfo;
-    vk::UniqueSemaphore _timeline;
+    vk::raii::Semaphore _timeline {nullptr};
     std::array<FrameSlot, 2> _slots;
     std::optional<SwapchainGeneration> _generation;
-    PFN_vkReleaseSwapchainImagesKHR _releaseKhr {nullptr};
-    PFN_vkReleaseSwapchainImagesEXT _releaseExt {nullptr};
     std::uint64_t _nextCompletion {1};
     std::size_t _nextSlot {0};
     bool _recreatePending {false};

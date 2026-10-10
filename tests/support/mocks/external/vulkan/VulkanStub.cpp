@@ -1,8 +1,12 @@
+#include <gmock/gmock.h>
 #include <vulkan/vk_platform.h>
 #include <vulkan/vulkan_core.h>
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
-#include <panda/Assert.hpp>
+#include <memory>
+#include <string_view>
 
 #include "ScopedMock.hpp"
 #include "VulkanMock.hpp"
@@ -220,65 +224,74 @@ VKAPI_ATTR auto VKAPI_CALL vkReleaseSwapchainImagesKHR(VkDevice device,
                                                                                                          releaseInfo);
 }
 
-// All other Vulkan entry points used by Core terminate a unit test if reached.
-// Extend VulkanMock and replace the corresponding stub when a scenario needs one.
-VKAPI_ATTR auto VKAPI_CALL vkCreateDevice([[maybe_unused]] VkPhysicalDevice physicalDevice,
-                                          [[maybe_unused]] const VkDeviceCreateInfo* pCreateInfo,
-                                          [[maybe_unused]] const VkAllocationCallbacks* pAllocator,
-                                          [[maybe_unused]] VkDevice* pDevice) -> VkResult
+VKAPI_ATTR auto VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice,
+                                          const VkDeviceCreateInfo* pCreateInfo,
+                                          const VkAllocationCallbacks* pAllocator,
+                                          VkDevice* pDevice) -> VkResult
 {
-    panda::panic("Unexpected Vulkan call: vkCreateDevice");
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateDevice(physicalDevice,
+                                                                                            pCreateInfo,
+                                                                                            pAllocator,
+                                                                                            pDevice);
 }
 
-VKAPI_ATTR auto VKAPI_CALL vkCreateFence([[maybe_unused]] VkDevice device,
-                                         [[maybe_unused]] const VkFenceCreateInfo* pCreateInfo,
-                                         [[maybe_unused]] const VkAllocationCallbacks* pAllocator,
-                                         [[maybe_unused]] VkFence* pFence) -> VkResult
+VKAPI_ATTR auto VKAPI_CALL vkCreateFence(VkDevice device,
+                                         const VkFenceCreateInfo* pCreateInfo,
+                                         const VkAllocationCallbacks* pAllocator,
+                                         VkFence* pFence) -> VkResult
 {
-    panda::panic("Unexpected Vulkan call: vkCreateFence");
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateFence(device,
+                                                                                           pCreateInfo,
+                                                                                           pAllocator,
+                                                                                           pFence);
 }
 
-VKAPI_ATTR auto VKAPI_CALL vkCreateImageView([[maybe_unused]] VkDevice device,
-                                             [[maybe_unused]] const VkImageViewCreateInfo* pCreateInfo,
-                                             [[maybe_unused]] const VkAllocationCallbacks* pAllocator,
-                                             [[maybe_unused]] VkImageView* pView) -> VkResult
+VKAPI_ATTR auto VKAPI_CALL vkCreateImageView(VkDevice device,
+                                             const VkImageViewCreateInfo* pCreateInfo,
+                                             const VkAllocationCallbacks* pAllocator,
+                                             VkImageView* pView) -> VkResult
 {
-    panda::panic("Unexpected Vulkan call: vkCreateImageView");
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateImageView(device,
+                                                                                               pCreateInfo,
+                                                                                               pAllocator,
+                                                                                               pView);
 }
 
-VKAPI_ATTR auto VKAPI_CALL vkCreateSwapchainKHR([[maybe_unused]] VkDevice device,
-                                                [[maybe_unused]] const VkSwapchainCreateInfoKHR* pCreateInfo,
-                                                [[maybe_unused]] const VkAllocationCallbacks* pAllocator,
-                                                [[maybe_unused]] VkSwapchainKHR* pSwapchain) -> VkResult
+VKAPI_ATTR auto VKAPI_CALL vkCreateSwapchainKHR(VkDevice device,
+                                                const VkSwapchainCreateInfoKHR* pCreateInfo,
+                                                const VkAllocationCallbacks* pAllocator,
+                                                VkSwapchainKHR* pSwapchain) -> VkResult
 {
-    panda::panic("Unexpected Vulkan call: vkCreateSwapchainKHR");
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateSwapchainKHR(device,
+                                                                                                  pCreateInfo,
+                                                                                                  pAllocator,
+                                                                                                  pSwapchain);
 }
 
-VKAPI_ATTR void VKAPI_CALL vkDestroyDevice([[maybe_unused]] VkDevice device,
-                                           [[maybe_unused]] const VkAllocationCallbacks* pAllocator)
+VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator)
 {
-    panda::panic("Unexpected Vulkan call: vkDestroyDevice");
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyDevice(device, pAllocator);
 }
 
-VKAPI_ATTR void VKAPI_CALL vkDestroyFence([[maybe_unused]] VkDevice device,
-                                          [[maybe_unused]] VkFence fence,
-                                          [[maybe_unused]] const VkAllocationCallbacks* pAllocator)
+VKAPI_ATTR void VKAPI_CALL vkDestroyFence(VkDevice device, VkFence fence, const VkAllocationCallbacks* pAllocator)
 {
-    panda::panic("Unexpected Vulkan call: vkDestroyFence");
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyFence(device, fence, pAllocator);
 }
 
-VKAPI_ATTR void VKAPI_CALL vkDestroyImageView([[maybe_unused]] VkDevice device,
-                                              [[maybe_unused]] VkImageView imageView,
-                                              [[maybe_unused]] const VkAllocationCallbacks* pAllocator)
+VKAPI_ATTR void VKAPI_CALL vkDestroyImageView(VkDevice device,
+                                              VkImageView imageView,
+                                              const VkAllocationCallbacks* pAllocator)
 {
-    panda::panic("Unexpected Vulkan call: vkDestroyImageView");
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyImageView(device, imageView, pAllocator);
 }
 
-VKAPI_ATTR void VKAPI_CALL vkDestroySurfaceKHR([[maybe_unused]] VkInstance instance,
-                                               [[maybe_unused]] VkSurfaceKHR surface,
-                                               [[maybe_unused]] const VkAllocationCallbacks* pAllocator)
+VKAPI_ATTR void VKAPI_CALL vkDestroySurfaceKHR(VkInstance instance,
+                                               VkSurfaceKHR surface,
+                                               const VkAllocationCallbacks* pAllocator)
 {
-    panda::panic("Unexpected Vulkan call: vkDestroySurfaceKHR");
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroySurfaceKHR(instance,
+                                                                                          surface,
+                                                                                          pAllocator);
 }
 
 VKAPI_ATTR auto VKAPI_CALL vkEnumerateDeviceExtensionProperties([[maybe_unused]] VkPhysicalDevice physicalDevice,
@@ -324,12 +337,15 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceQueueFamilyProperties(VkPhysicalDe
         pQueueFamilyProperties);
 }
 
-VKAPI_ATTR auto VKAPI_CALL
-vkGetPhysicalDeviceSurfaceCapabilitiesKHR([[maybe_unused]] VkPhysicalDevice physicalDevice,
-                                          [[maybe_unused]] VkSurfaceKHR surface,
-                                          [[maybe_unused]] VkSurfaceCapabilitiesKHR* pSurfaceCapabilities) -> VkResult
+VKAPI_ATTR auto VKAPI_CALL vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice physicalDevice,
+                                                                     VkSurfaceKHR surface,
+                                                                     VkSurfaceCapabilitiesKHR* pSurfaceCapabilities)
+    -> VkResult
 {
-    panda::panic("Unexpected Vulkan call: vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+        physicalDevice,
+        surface,
+        pSurfaceCapabilities);
 }
 
 VKAPI_ATTR auto VKAPI_CALL vkGetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice physicalDevice,
@@ -359,27 +375,121 @@ VKAPI_ATTR auto VKAPI_CALL vkGetPhysicalDeviceSurfaceSupportKHR(VkPhysicalDevice
         .vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, queueFamilyIndex, surface, pSupported);
 }
 
-VKAPI_ATTR auto VKAPI_CALL vkGetSwapchainImagesKHR([[maybe_unused]] VkDevice device,
-                                                   [[maybe_unused]] VkSwapchainKHR swapchain,
-                                                   [[maybe_unused]] uint32_t* pSwapchainImageCount,
-                                                   [[maybe_unused]] VkImage* pSwapchainImages) -> VkResult
+VKAPI_ATTR auto VKAPI_CALL vkGetSwapchainImagesKHR(VkDevice device,
+                                                   VkSwapchainKHR swapchain,
+                                                   uint32_t* pSwapchainImageCount,
+                                                   VkImage* pSwapchainImages) -> VkResult
 {
-    panda::panic("Unexpected Vulkan call: vkGetSwapchainImagesKHR");
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock()
+        .vkGetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
 }
 
-VKAPI_ATTR auto VKAPI_CALL vkResetFences([[maybe_unused]] VkDevice device,
-                                         [[maybe_unused]] uint32_t fenceCount,
-                                         [[maybe_unused]] const VkFence* pFences) -> VkResult
+VKAPI_ATTR auto VKAPI_CALL vkResetFences(VkDevice device, uint32_t fenceCount, const VkFence* pFences) -> VkResult
 {
-    panda::panic("Unexpected Vulkan call: vkResetFences");
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkResetFences(device, fenceCount, pFences);
 }
 
-VKAPI_ATTR auto VKAPI_CALL vkWaitForFences([[maybe_unused]] VkDevice device,
-                                           [[maybe_unused]] uint32_t fenceCount,
-                                           [[maybe_unused]] const VkFence* pFences,
-                                           [[maybe_unused]] VkBool32 waitAll,
-                                           [[maybe_unused]] uint64_t timeout) -> VkResult
+VKAPI_ATTR auto VKAPI_CALL vkWaitForFences(
+    VkDevice device, uint32_t fenceCount, const VkFence* pFences, VkBool32 waitAll, uint64_t timeout) -> VkResult
 {
-    panda::panic("Unexpected Vulkan call: vkWaitForFences");
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkWaitForFences(device,
+                                                                                             fenceCount,
+                                                                                             pFences,
+                                                                                             waitAll,
+                                                                                             timeout);
+}
+}
+
+namespace panda::test
+{
+namespace
+{
+template <typename Function>
+auto genericProc(Function function) noexcept -> PFN_vkVoidFunction
+{
+    // Vulkan specifies conversion between its entry-point pointer types.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    return reinterpret_cast<PFN_vkVoidFunction>(function);
+}
+
+struct EntryPoint
+{
+    std::string_view name;
+    PFN_vkVoidFunction function;
+};
+
+const auto entryPoints = std::to_array<EntryPoint>({
+    {.name = "vkEnumerateInstanceVersion",                .function = genericProc(&vkEnumerateInstanceVersion)          },
+    {.name = "vkEnumerateInstanceLayerProperties",        .function = genericProc(&vkEnumerateInstanceLayerProperties)  },
+    {.name = "vkEnumerateInstanceExtensionProperties",
+     .function = genericProc(&vkEnumerateInstanceExtensionProperties)                                                   },
+    {.name = "vkCreateInstance",                          .function = genericProc(&vkCreateInstance)                    },
+    {.name = "vkDestroyInstance",                         .function = genericProc(&vkDestroyInstance)                   },
+    {.name = "vkGetInstanceProcAddr",                     .function = genericProc(&vkGetInstanceProcAddr)               },
+    {.name = "vkCreateDebugUtilsMessengerEXT",            .function = genericProc(&vkCreateDebugUtilsMessengerEXT)      },
+    {.name = "vkDestroyDebugUtilsMessengerEXT",           .function = genericProc(&vkDestroyDebugUtilsMessengerEXT)     },
+    {.name = "vkGetDeviceQueue",                          .function = genericProc(&vkGetDeviceQueue)                    },
+    {.name = "vkGetDeviceProcAddr",                       .function = genericProc(&vkGetDeviceProcAddr)                 },
+    {.name = "vkCreateSemaphore",                         .function = genericProc(&vkCreateSemaphore)                   },
+    {.name = "vkCreateCommandPool",                       .function = genericProc(&vkCreateCommandPool)                 },
+    {.name = "vkAllocateCommandBuffers",                  .function = genericProc(&vkAllocateCommandBuffers)            },
+    {.name = "vkDestroySemaphore",                        .function = genericProc(&vkDestroySemaphore)                  },
+    {.name = "vkDestroyCommandPool",                      .function = genericProc(&vkDestroyCommandPool)                },
+    {.name = "vkDestroySwapchainKHR",                     .function = genericProc(&vkDestroySwapchainKHR)               },
+    {.name = "vkResetCommandPool",                        .function = genericProc(&vkResetCommandPool)                  },
+    {.name = "vkAcquireNextImageKHR",                     .function = genericProc(&vkAcquireNextImageKHR)               },
+    {.name = "vkBeginCommandBuffer",                      .function = genericProc(&vkBeginCommandBuffer)                },
+    {.name = "vkCmdPipelineBarrier2",                     .function = genericProc(&vkCmdPipelineBarrier2)               },
+    {.name = "vkCmdBeginRendering",                       .function = genericProc(&vkCmdBeginRendering)                 },
+    {.name = "vkCmdEndRendering",                         .function = genericProc(&vkCmdEndRendering)                   },
+    {.name = "vkEndCommandBuffer",                        .function = genericProc(&vkEndCommandBuffer)                  },
+    {.name = "vkQueueSubmit2",                            .function = genericProc(&vkQueueSubmit2)                      },
+    {.name = "vkQueuePresentKHR",                         .function = genericProc(&vkQueuePresentKHR)                   },
+    {.name = "vkWaitSemaphores",                          .function = genericProc(&vkWaitSemaphores)                    },
+    {.name = "vkReleaseSwapchainImagesKHR",               .function = genericProc(&vkReleaseSwapchainImagesKHR)         },
+    {.name = "vkCreateDevice",                            .function = genericProc(&vkCreateDevice)                      },
+    {.name = "vkCreateFence",                             .function = genericProc(&vkCreateFence)                       },
+    {.name = "vkCreateImageView",                         .function = genericProc(&vkCreateImageView)                   },
+    {.name = "vkCreateSwapchainKHR",                      .function = genericProc(&vkCreateSwapchainKHR)                },
+    {.name = "vkDestroyDevice",                           .function = genericProc(&vkDestroyDevice)                     },
+    {.name = "vkDestroyFence",                            .function = genericProc(&vkDestroyFence)                      },
+    {.name = "vkDestroyImageView",                        .function = genericProc(&vkDestroyImageView)                  },
+    {.name = "vkDestroySurfaceKHR",                       .function = genericProc(&vkDestroySurfaceKHR)                 },
+    {.name = "vkEnumerateDeviceExtensionProperties",      .function = genericProc(&vkEnumerateDeviceExtensionProperties)},
+    {.name = "vkEnumeratePhysicalDevices",                .function = genericProc(&vkEnumeratePhysicalDevices)          },
+    {.name = "vkGetPhysicalDeviceFeatures2",              .function = genericProc(&vkGetPhysicalDeviceFeatures2)        },
+    {.name = "vkGetPhysicalDeviceProperties",             .function = genericProc(&vkGetPhysicalDeviceProperties)       },
+    {.name = "vkGetPhysicalDeviceQueueFamilyProperties",
+     .function = genericProc(&vkGetPhysicalDeviceQueueFamilyProperties)                                                 },
+    {.name = "vkGetPhysicalDeviceSurfaceCapabilitiesKHR",
+     .function = genericProc(&vkGetPhysicalDeviceSurfaceCapabilitiesKHR)                                                },
+    {.name = "vkGetPhysicalDeviceSurfaceFormatsKHR",      .function = genericProc(&vkGetPhysicalDeviceSurfaceFormatsKHR)},
+    {.name = "vkGetPhysicalDeviceSurfacePresentModesKHR",
+     .function = genericProc(&vkGetPhysicalDeviceSurfacePresentModesKHR)                                                },
+    {.name = "vkGetPhysicalDeviceSurfaceSupportKHR",      .function = genericProc(&vkGetPhysicalDeviceSurfaceSupportKHR)},
+    {.name = "vkGetSwapchainImagesKHR",                   .function = genericProc(&vkGetSwapchainImagesKHR)             },
+    {.name = "vkResetFences",                             .function = genericProc(&vkResetFences)                       },
+    {.name = "vkWaitForFences",                           .function = genericProc(&vkWaitForFences)                     }
+});
+
+auto resolveEntryPoint(std::string_view name) -> PFN_vkVoidFunction
+{
+    const auto* const found = std::to_address(std::ranges::find(entryPoints, name, &EntryPoint::name));
+    return found == std::to_address(entryPoints.end()) ? nullptr : found->function;
+}
+}
+
+VulkanMock::VulkanMock()
+{
+    EXPECT_CALL(*this, vkGetInstanceProcAddr(testing::_, testing::_))
+        .Times(testing::AnyNumber())
+        .WillRepeatedly([](VkInstance, const char* name) {
+            return resolveEntryPoint(name);
+        });
+    EXPECT_CALL(*this, vkGetDeviceProcAddr(testing::_, testing::_))
+        .Times(testing::AnyNumber())
+        .WillRepeatedly([](VkDevice, const char* name) {
+            return resolveEntryPoint(name);
+        });
 }
 }

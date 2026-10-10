@@ -15,6 +15,7 @@
 #include <panda/Assert.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -178,13 +179,7 @@ auto Window::getRequiredInstanceExtensions() const -> Result<std::vector<std::st
     {
         return std::unexpected {GlfwSession::takeError()};
     }
-    auto extensions = std::vector<std::string> {};
-    extensions.reserve(count);
-    for (const auto* name : std::span {names, count})
-    {
-        extensions.emplace_back(name);
-    }
-    return extensions;
+    return std::span {names, count} | std::ranges::to<std::vector<std::string>>();
 }
 
 auto Window::createSurface(VkInstance instance) const -> Result<VkSurfaceKHR>
