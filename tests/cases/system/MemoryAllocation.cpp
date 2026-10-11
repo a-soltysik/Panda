@@ -4,6 +4,8 @@
 #include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
+#include "MemoryAllocation.hpp"
+
 #include <gtest/gtest.h>
 #include <vulkan/vk_platform.h>
 #include <vulkan/vulkan_core.h>
@@ -24,6 +26,7 @@
 #include <utility>
 
 #include "MemoryBlock.hpp"
+#include "MemoryPool.hpp"
 #include "RangeAllocator.hpp"
 #include "VulkanError.hpp"
 
@@ -208,6 +211,88 @@ void verifyBufferBindings(panda::detail::MemoryBlock& block,
     ASSERT_TRUE(block.release(*first));
     ASSERT_TRUE(block.release(*second));
 }
+
+auto allocateForBuffer(panda::detail::MemoryPool& pool,
+                       const vk::raii::Device& device,
+                       const vk::raii::Buffer& buffer,
+                       std::uint32_t type,
+                       bool forceDedicated = false) -> panda::Result<panda::detail::MemoryAllocation>
+{
+    const auto queried = device.getBufferMemoryRequirements2<vk::MemoryRequirements2, vk::MemoryDedicatedRequirements>(
+        vk::BufferMemoryRequirementsInfo2 {.buffer = *buffer});
+    auto request =
+        panda::detail::MemoryRequest {.requirements = queried.get<vk::MemoryRequirements2>().memoryRequirements,
+                                      .dedicated = queried.get<vk::MemoryDedicatedRequirements>(),
+                                      .resource = {.buffer = *buffer},
+                                      .requiredProperties = vk::MemoryPropertyFlagBits::eHostVisible,
+                                      .preferredProperties = {}};
+    request.requirements.memoryTypeBits &= std::uint32_t {1} << type;
+    if (forceDedicated)
+    {
+        request.dedicated.requiresDedicatedAllocation = vk::True;
+    }
+    auto allocation = pool.allocate(request);
+    if (!allocation)
+    {
+        return allocation;
+    }
+    const auto bound = buffer.bindMemory(allocation->getMemory(), allocation->getRange().offset);
+    if (bound != vk::Result::eSuccess)
+    {
+        return std::unexpected {panda::detail::makeVulkanError(bound)};
+    }
+    return allocation;
+}
+
+auto requiresDedicated(const vk::raii::Device& device, const vk::raii::Buffer& buffer) -> bool
+{
+    const auto queried = device.getBufferMemoryRequirements2<vk::MemoryRequirements2, vk::MemoryDedicatedRequirements>(
+        vk::BufferMemoryRequirementsInfo2 {.buffer = *buffer});
+    const auto dedicated = queried.get<vk::MemoryDedicatedRequirements>();
+    return dedicated.requiresDedicatedAllocation == vk::True || dedicated.prefersDedicatedAllocation == vk::True;
+}
+
+void verifyPooledSharing(const panda::detail::MemoryPool& pool,
+                         const vk::raii::Device& device,
+                         const vk::raii::Buffer& firstBuffer,
+                         const vk::raii::Buffer& secondBuffer,
+                         const panda::detail::MemoryAllocation& first,
+                         const panda::detail::MemoryAllocation& second)
+{
+    if (!requiresDedicated(device, firstBuffer) && !requiresDedicated(device, secondBuffer))
+    {
+        EXPECT_EQ(first.getMemory(), second.getMemory());
+        EXPECT_EQ(pool.getStats().allocationCount, 1);
+        EXPECT_LE(first.getRange().offset + first.getRange().size, second.getRange().offset);
+    }
+}
+
+void verifyPoolBindings(panda::detail::MemoryPool& pool,
+                        const vk::raii::Device& device,
+                        vk::raii::Buffer& firstBuffer,
+                        vk::raii::Buffer& secondBuffer,
+                        std::uint32_t type)
+{
+    auto first = allocateForBuffer(pool, device, firstBuffer, type);
+    auto second = allocateForBuffer(pool, device, secondBuffer, type);
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    verifyPooledSharing(pool, device, firstBuffer, secondBuffer, *first, *second);
+    const auto committed = pool.getStats().committedBytes;
+    const auto bytes = first->getMappedBytes();
+    ASSERT_TRUE(bytes);
+    std::ranges::fill(*bytes, std::byte {0x2A});
+    ASSERT_TRUE(first->flush(0, first->getRange().size));
+    ASSERT_TRUE(first->invalidate(0, first->getRange().size));
+    EXPECT_EQ(bytes->front(), std::byte {0x2A});
+    firstBuffer.clear();
+    secondBuffer.clear();
+    first->reset();
+    second->reset();
+    EXPECT_EQ(pool.getStats().liveBytes, 0);
+    EXPECT_LE(pool.getStats().allocationCount, 1);
+    EXPECT_LE(pool.getStats().committedBytes, committed);
+}
 }
 
 TEST_P(MemoryAllocationSystem, BindsTwoBuffersToOneMappedBlockWithoutValidationErrors)
@@ -246,3 +331,44 @@ INSTANTIATE_TEST_SUITE_P(MemoryTypes,
                          [](const testing::TestParamInfo<bool>& parameterInfo) {
                              return parameterInfo.param ? std::string {"Coherent"} : std::string {"Noncoherent"};
                          });
+
+TEST_P(MemoryAllocationSystem, PoolSharesMemoryAndReleasesRangesWithValidation)
+{
+    auto firstBuffer = makeTestBuffer(device);
+    auto secondBuffer = makeTestBuffer(device);
+    ASSERT_TRUE(firstBuffer);
+    ASSERT_TRUE(secondBuffer);
+    const auto requirements = firstBuffer->getMemoryRequirements();
+    const auto type = findHostMemory(requirements.memoryTypeBits);
+    if (!type)
+    {
+        GTEST_SKIP() << "No host-visible buffer memory type with the requested coherence";
+    }
+    auto pool = panda::detail::MemoryPool::create(physical, device);
+    EXPECT_EQ(pool->getStats().allocationCount, 0);
+    verifyPoolBindings(*pool, device, *firstBuffer, *secondBuffer, *type);
+    std::cout << "Pool device: " << physical.getProperties().deviceName.data() << "; memory type: " << *type << '\n';
+}
+
+TEST_P(MemoryAllocationSystem, DedicatedMemoryHasZeroOffsetAndIsFreedOnReset)
+{
+    auto buffer = makeTestBuffer(device);
+    ASSERT_TRUE(buffer);
+    const auto requirements = buffer->getMemoryRequirements();
+    const auto type = findHostMemory(requirements.memoryTypeBits);
+    if (!type)
+    {
+        GTEST_SKIP() << "No host-visible buffer memory type with the requested coherence";
+    }
+    auto pool = panda::detail::MemoryPool::create(physical, device);
+    auto allocation = allocateForBuffer(*pool, device, *buffer, *type, true);
+    ASSERT_TRUE(allocation);
+    EXPECT_EQ(allocation->getRange().offset, 0);
+    EXPECT_EQ(pool->getStats().allocationCount, 1);
+    EXPECT_EQ(pool->getStats().committedBytes, requirements.size);
+    ASSERT_TRUE(allocation->flush(0, requirements.size));
+    buffer->clear();
+    allocation->reset();
+    EXPECT_EQ(pool->getStats().allocationCount, 0);
+    EXPECT_EQ(pool->getStats().committedBytes, 0);
+}

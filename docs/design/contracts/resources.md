@@ -206,14 +206,24 @@ resources, defragmenter, residency manager, or allocator plugin API in version o
 - Separate pools by Vulkan memory type and by buffers versus optimal-tiled images.
   Do not support linear-tiled images initially; this avoids mixed-resource granularity
   bookkeeping without ignoring Vulkan alignment requirements.
-- Lazily allocate 64 MiB device-local blocks and 8 MiB host-visible blocks, capped
-  against the selected heap size. Requests larger than half a block use a dedicated
+- Lazily allocate 8 MiB host-visible blocks (including host-visible device-local
+  types) and 64 MiB other ordinary blocks, capped against the selected heap size
+  and maximum single-allocation size. Requests larger than half a block use a dedicated
   allocation. Honor required or preferred dedicated allocations reported by Vulkan.
   If a new pool block cannot be allocated, try one exact-size dedicated allocation;
-  then return the allocation error. No eviction or repeated allocation guessing.
+  then return the allocation error. Failed mapping of a large host-visible block
+  permits the same single smaller attempt; device loss stops immediately.
+  No live-resource eviction or repeated allocation guessing.
 - Keep allocation count and committed/live/pending-retirement bytes visible in
   diagnostics. Check reported limits and integer/alignment overflow. Retain at most
   one empty ordinary block per pool; release other empty blocks after retirement.
+  Empty cached blocks may also be released to satisfy allocation-count or heap
+  budgets. Counters report committed blocks and reserved live/retiring ranges,
+  including alignment padding, rather than only application payload sizes.
+  The submission layer retains resource owners until their use completes;
+  releasing the retained owners triggers ordinary resource/allocator RAII cleanup.
+  Pending-retirement accounting belongs to that layer, not an allocation-owner
+  state that ordinary callers must manage.
 - Persistently map host-visible blocks. Prefer coherent memory, but support explicit
   flush/invalidate. Separate independently reusable slices on non-coherent atom
   boundaries and keep rounded operations inside the mapped allocation.

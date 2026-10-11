@@ -286,10 +286,11 @@ TEST_F(MemoryBlockTest, RejectsEmptyBlockBeforeAllocation)
     EXPECT_EQ(created.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-TEST_F(MemoryBlockTest, RejectsProtectedAndLazyMemoryForOrdinaryBlocks)
+TEST_F(MemoryBlockTest, RejectsMemoryRequiringUnsupportedFeatures)
 {
-    const auto flags =
-        std::array {vk::MemoryPropertyFlagBits::eProtected, vk::MemoryPropertyFlagBits::eLazilyAllocated};
+    const auto flags = std::array {vk::MemoryPropertyFlagBits::eProtected,
+                                   vk::MemoryPropertyFlagBits::eLazilyAllocated,
+                                   vk::MemoryPropertyFlagBits::eDeviceCoherentAMD};
     for (const auto flag : flags)
     {
         expectMemoryTypes(flag);
@@ -322,6 +323,62 @@ TEST_F(MemoryBlockTest, NoncoherentRoundingDoesNotEscapeMappedBlockTail)
     ASSERT_FALSE(invalidated);
     EXPECT_EQ(invalidated.error().code, panda::ErrorCode::ResourceExhausted);
     ASSERT_TRUE(block.release(*slice));
+}
+
+TEST_F(MemoryBlockTest, DedicatedFactoryRejectsMissingAmbiguousOrChainedResources)
+{
+    const auto buffer = vk::Buffer {fakeVulkanHandle<VkBuffer>(20)};
+    const auto valid = vk::MemoryDedicatedAllocateInfo {.buffer = buffer};
+    const auto requests = std::array {
+        vk::MemoryDedicatedAllocateInfo {},
+        vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeVulkanHandle<VkImage>(21)}, .buffer = buffer},
+        vk::MemoryDedicatedAllocateInfo {.pNext = &valid, .buffer = buffer}
+    };
+    for (const auto& resource : requests)
+    {
+        const auto created = MemoryBlock::createDedicated(physical, device, 128, 0, resource);
+        ASSERT_FALSE(created);
+        EXPECT_EQ(created.error().code, panda::ErrorCode::InvalidArgument);
+    }
+}
+
+TEST_F(MemoryBlockTest, DedicatedBlockRejectsSubdivisionWithoutConsumingSpace)
+{
+    expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
+    expectLimits();
+    const auto resource = vk::MemoryDedicatedAllocateInfo {.buffer = vk::Buffer {fakeVulkanHandle<VkBuffer>(20)}};
+    EXPECT_CALL(vulkan, vkAllocateMemory(_, NotNull(), nullptr, NotNull()))
+        .WillOnce(
+            [this](VkDevice, const VkMemoryAllocateInfo* info, const VkAllocationCallbacks*, VkDeviceMemory* output) {
+                EXPECT_EQ(info->allocationSize, 128);
+                EXPECT_NE(info->pNext, nullptr);
+                *output = memory;
+                return success;
+            });
+    EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
+    auto created = MemoryBlock::createDedicated(physical, device, 128, 0, resource);
+    ASSERT_TRUE(created);
+    const auto partial = (*created)->allocate(64, 1);
+    ASSERT_FALSE(partial);
+    EXPECT_EQ(partial.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ((*created)->getFreeSize(), 128);
+    const auto whole = (*created)->allocate(128, 16);
+    ASSERT_TRUE(whole);
+    EXPECT_EQ(whole->offset, 0);
+    EXPECT_EQ(whole->size, 128);
+    ASSERT_TRUE((*created)->release(*whole));
+}
+
+TEST_F(MemoryBlockTest, InvalidNoncoherentAtomIsRejectedBeforeNativeAllocation)
+{
+    for (const auto atom : std::array {0U, 3U})
+    {
+        expectMemoryTypes(vk::MemoryPropertyFlagBits::eHostVisible);
+        expectLimits(atom);
+        const auto created = MemoryBlock::create(physical, device, 128, 0);
+        ASSERT_FALSE(created);
+        EXPECT_EQ(created.error().code, panda::ErrorCode::Unsupported);
+    }
 }
 
 using MemoryBlockDeathTest = MemoryBlockTest;

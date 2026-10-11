@@ -47,7 +47,7 @@ without selecting stub implementations. `PandaTest::VulkanMock` is the shared
 Vulkan boundary for Core unit tests; its stub forwards the entry points used by
 current scenarios to one strict mock and fails on any other Vulkan call used by
 Core. `Context`, `DeviceSelection` and
-`Presentation` and `MemoryBlock` tests use it without a native window. Swapchain configuration
+`Presentation`, `MemoryBlock` and `MemoryPool` tests use it without a native window. Swapchain configuration
 policy has separate CPU unit tests. The `Context` executable substitutes the
 `SwapchainGeneration` archive member; its tests cannot create a real swapchain,
 while the `SwapchainGeneration` tests link that member unchanged.
@@ -123,6 +123,8 @@ Rendering-test policy remains deferred.
 `MemoryAllocationSystem` exercises ordinary memory blocks with the real Vulkan
 loader and Khronos validation layer. It binds two buffers to separate mapped
 slices, verifies host access, then destroys buffers before releasing their ranges.
+Pool scenarios verify ordinary sharing, reserved-byte accounting and dedicated
+allocation/reset through the same real Vulkan boundary.
 Coherent and noncoherent variants skip only unavailable prerequisites or memory
 types; allocation, binding and cache-operation errors remain failures. The scenario
 submits no GPU work, so it does not prove upload ordering or in-flight lifetimes.
