@@ -10,6 +10,7 @@ panda_add_component(panda_core
         vulkan/SwapchainGeneration.cpp
         vulkan/VulkanError.cpp
         vulkan/resources/RangeAllocator.cpp
+        vulkan/resources/MemoryBlock.cpp
     LIBRARIES PUBLIC panda_common glm::glm Vulkan::Headers PRIVATE Vulkan::Vulkan)
 
 set_target_properties(panda_core PROPERTIES OUTPUT_NAME panda)

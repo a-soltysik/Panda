@@ -19,6 +19,8 @@ TEST(RangeAllocator, ExactFitExhaustsAndReleaseRestoresBlock)
     auto allocator = RangeAllocator {64};
     const auto allocation = allocator.allocate(64, 1);
     ASSERT_TRUE(allocation);
+    EXPECT_TRUE(allocator.isLive(*allocation));
+    EXPECT_FALSE(allocator.isLive(MemoryRange {.offset = 0, .size = 63}));
     EXPECT_EQ(*allocation, (MemoryRange {.offset = 0, .size = 64}));
     EXPECT_EQ(allocator.getCapacity(), 64);
     EXPECT_EQ(allocator.getFreeSize(), 0);
@@ -26,6 +28,7 @@ TEST(RangeAllocator, ExactFitExhaustsAndReleaseRestoresBlock)
     ASSERT_FALSE(exhausted);
     EXPECT_EQ(exhausted.error().code, panda::ErrorCode::ResourceExhausted);
     ASSERT_TRUE(allocator.release(*allocation));
+    EXPECT_FALSE(allocator.isLive(*allocation));
     EXPECT_EQ(allocator.getFreeSize(), 64);
     const auto reused = allocator.allocate(64, 1);
     ASSERT_TRUE(reused);

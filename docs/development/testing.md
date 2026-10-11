@@ -5,7 +5,7 @@ selects cases discovered by GoogleTest. Dependencies are pinned through
 CPM only when `PANDA_BUILD_TESTS` is enabled. Tests do not introduce virtual functions
 or mock configuration into production interfaces.
 
-`PANDA_BUILD_TESTS=ON` enables the implemented CPU-only modules and builds every
+`PANDA_BUILD_TESTS=ON` enables the implemented modules and builds every
 test level, including Tools tests when `PANDA_BUILD_TOOLS` is OFF in the cache.
 CUDA remains selected explicitly with `PANDA_BUILD_CUDA` so an ordinary test
 build needs no toolkit. The CUDA connection is a runnable example, not a CTest
@@ -21,7 +21,7 @@ through CTest labels; building system tests does not require running them.
 |--------------|------------------------------|--------------------------------------------------------------------------------|---------------|
 | Unit         | `tests/cases/unit/<module>`        | Test real Panda implementation with controlled dependencies, or pure CPU logic | `unit`        |
 | Integration  | `tests/cases/integration/<module>` | Test real components and dependencies together                                 | `integration` |
-| System smoke | `tests/cases/system`               | Exercise bounded native startup, event processing and teardown                 | `system`      |
+| System smoke | `tests/cases/system`               | Exercise bounded native startup, resource allocation, event processing and teardown | `system`      |
 
 Test executables are grouped by level and compatible dependency selections, not
 necessarily by a whole module. Their
@@ -47,7 +47,7 @@ without selecting stub implementations. `PandaTest::VulkanMock` is the shared
 Vulkan boundary for Core unit tests; its stub forwards the entry points used by
 current scenarios to one strict mock and fails on any other Vulkan call used by
 Core. `Context`, `DeviceSelection` and
-`Presentation` tests use it without a native window. Swapchain configuration
+`Presentation` and `MemoryBlock` tests use it without a native window. Swapchain configuration
 policy has separate CPU unit tests. The `Context` executable substitutes the
 `SwapchainGeneration` archive member; its tests cannot create a real swapchain,
 while the `SwapchainGeneration` tests link that member unchanged.
@@ -119,6 +119,13 @@ uses real native windows in a bounded test. It reports an unavailable
 platform as a skip; creation and later operation failures remain failures. This
 does not establish that the interactive example or a rendered image was inspected.
 Rendering-test policy remains deferred.
+
+`MemoryAllocationSystem` exercises ordinary memory blocks with the real Vulkan
+loader and Khronos validation layer. It binds two buffers to separate mapped
+slices, verifies host access, then destroys buffers before releasing their ranges.
+Coherent and noncoherent variants skip only unavailable prerequisites or memory
+types; allocation, binding and cache-operation errors remain failures. The scenario
+submits no GPU work, so it does not prove upload ordering or in-flight lifetimes.
 
 ## Controlled dependencies
 

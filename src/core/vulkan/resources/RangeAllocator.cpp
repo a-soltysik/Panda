@@ -77,6 +77,12 @@ auto RangeAllocator::release(MemoryRange range) -> Result<void>
     return {};
 }
 
+auto RangeAllocator::isLive(MemoryRange range) const -> bool
+{
+    const auto position = _liveRanges.find(range.offset);
+    return position != _liveRanges.end() && position->second == range.size;
+}
+
 void RangeAllocator::coalesce(MemoryRange range)
 {
     auto next = _freeRanges.lower_bound(range.offset);

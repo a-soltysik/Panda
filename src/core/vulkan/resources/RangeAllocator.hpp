@@ -31,6 +31,7 @@ public:
     [[nodiscard]] auto allocate(std::uint64_t size, std::uint64_t alignment) -> Result<MemoryRange>;
     // Requires an exact live range from this block, once only. No device wait.
     [[nodiscard]] auto release(MemoryRange range) -> Result<void>;
+    [[nodiscard]] auto isLive(MemoryRange range) const -> bool;
     [[nodiscard]] auto getCapacity() const -> std::uint64_t;
     [[nodiscard]] auto getFreeSize() const -> std::uint64_t;
 
