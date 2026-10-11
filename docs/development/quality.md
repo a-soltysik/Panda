@@ -247,6 +247,10 @@ Keep guides and rationale in Markdown; generated API pages are build artifacts.
 Enforce useful Doxygen warnings through the documentation harness and compile public
 examples. Each handoff explains one invariant, a failure case and the main tradeoff;
 see [learning](learning.md). Performance evidence follows [benchmarking](benchmarking.md).
+Introductory examples show one capability through a clear setup and application
+loop. Check recoverable results and report their messages; add detailed diagnostics
+or recovery only when that is the example's subject. Allocation-free fatal reporting
+belongs in the engine diagnostics, not in a generic example exception handler.
 `PANDA_BUILD_DOCS=ON` adds `panda_docs` for all current public headers. The `gcc-docs`
 preset selects it without requiring a window or CUDA toolkit. Doxygen warnings for
 undocumented public members and documentation errors fail the target; generated HTML

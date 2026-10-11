@@ -126,8 +126,10 @@ refactors separately rather than mixing them into unrelated work.
 - Use lambdas to pass callable behavior to another function, for example a
   predicate or callback. Do not use named local lambdas or immediately invoked
   lambdas as ordinary helper functions; extract a regular function instead.
-- Use modern C++ when it simplifies the result. Prefer direct branching for
-  recoverable errors; use `expected`'s monadic operations when the chain is clearer.
+- Use modern C++ when it simplifies the result. Prefer `expected`'s monadic
+  operations for sequential fallible work, passing successful values to the next
+  operation and handling failure once at the end. Use direct branching when steps
+  need different recovery or when it makes a loop clearer.
   A straightforward loop is preferable to a complicated ranges pipeline. Choose
   clarity for the actual operation rather than novelty or minimum line count.
 
