@@ -63,12 +63,15 @@ auto selectSurfaceConfig(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface
     {
         return std::unexpected {makeVulkanError(capabilities.result)};
     }
-    const auto listedFormats = physicalDevice.getSurfaceFormatsKHR(vk::SurfaceKHR {surface});
-    if (listedFormats.result != vk::Result::eSuccess)
+    const auto listedFormats =
+        enumerateVulkan<vk::SurfaceFormatKHR>([&](std::uint32_t* count, vk::SurfaceFormatKHR* output) {
+            return physicalDevice.getSurfaceFormatsKHR(vk::SurfaceKHR {surface}, count, output);
+        });
+    if (!listedFormats)
     {
-        return std::unexpected {makeVulkanError(listedFormats.result)};
+        return std::unexpected {listedFormats.error()};
     }
-    return chooseSurfaceConfig(capabilities.value, listedFormats.value, requested);
+    return chooseSurfaceConfig(capabilities.value, *listedFormats, requested);
 }
 
 }
@@ -111,11 +114,11 @@ auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
 
 namespace
 {
-auto createSwapchain(vk::Device device,
+auto createSwapchain(const vk::raii::Device& device,
                      VkSurfaceKHR surface,
                      vk::SwapchainKHR oldSwapchain,
                      const SurfaceConfig& config,
-                     const ContextDeviceInfo& deviceInfo) -> std::expected<vk::UniqueSwapchainKHR, Error>
+                     const ContextDeviceInfo& deviceInfo) -> std::expected<vk::raii::SwapchainKHR, Error>
 {
     const auto familyIndices = std::array {deviceInfo.queueFamily, deviceInfo.presentQueueFamily};
     const auto separateFamilies = familyIndices.front() != familyIndices.back();
@@ -135,19 +138,11 @@ auto createSwapchain(vk::Device device,
         .presentMode = vk::PresentModeKHR::eFifo,
         .clipped = vk::True,
         .oldSwapchain = oldSwapchain};
-    auto created = createOwned<vk::SwapchainKHR>(
-        [&](vk::SwapchainKHR* output) {
-            return device.createSwapchainKHR(&info, nullptr, output);
-        },
-        deviceDeleter(device));
-    if (created.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(created.result)};
-    }
-    return std::move(created.value);
+    return checkedCreation(device.createSwapchainKHR(info));
 }
 
-auto createSwapchainImage(vk::Device device, vk::Image image, vk::Format format) -> std::expected<SwapchainImage, Error>
+auto createImageView(const vk::raii::Device& device, vk::Image image, vk::Format format)
+    -> std::expected<vk::raii::ImageView, Error>
 {
     const auto viewInfo = vk::ImageViewCreateInfo {
         .image = image,
@@ -157,50 +152,46 @@ auto createSwapchainImage(vk::Device device, vk::Image image, vk::Format format)
                                                        .levelCount = 1,
                                                        .layerCount = 1}
     };
-    auto view = createOwned<vk::ImageView>(
-        [&](vk::ImageView* output) {
-            return device.createImageView(&viewInfo, nullptr, output);
-        },
-        deviceDeleter(device));
-    if (view.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(view.result)};
-    }
-    static constexpr auto semaphoreInfo = vk::SemaphoreCreateInfo {};
-    auto finished = createOwned<vk::Semaphore>(
-        [&](vk::Semaphore* output) {
-            return device.createSemaphore(&semaphoreInfo, nullptr, output);
-        },
-        deviceDeleter(device));
-    if (finished.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(finished.result)};
-    }
-    static constexpr auto fenceInfo = vk::FenceCreateInfo {};
-    auto fence = createOwned<vk::Fence>(
-        [&](vk::Fence* output) {
-            return device.createFence(&fenceInfo, nullptr, output);
-        },
-        deviceDeleter(device));
-    if (fence.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(fence.result)};
-    }
-    return SwapchainImage {.image = image,
-                           .view = std::move(view.value),
-                           .renderFinished = std::move(finished.value),
-                           .presentFence = std::move(fence.value)};
+    return checkedCreation(device.createImageView(viewInfo));
 }
 
-auto populateImages(vk::Device device, SwapchainGeneration& generation) -> std::expected<void, Error>
+auto createSwapchainImage(const vk::raii::Device& device, vk::Image image, vk::Format format)
+    -> std::expected<SwapchainImage, Error>
 {
-    const auto images = device.getSwapchainImagesKHR(*generation.swapchain);
-    if (images.result != vk::Result::eSuccess)
+    auto view = createImageView(device, image, format);
+    if (!view)
     {
-        return std::unexpected {makeVulkanError(images.result)};
+        return std::unexpected {std::move(view.error())};
     }
-    generation.images.reserve(images.value.size());
-    for (const auto image : images.value)
+    static constexpr auto semaphoreInfo = vk::SemaphoreCreateInfo {};
+    auto finished = checkedCreation(device.createSemaphore(semaphoreInfo));
+    if (!finished)
+    {
+        return std::unexpected {std::move(finished.error())};
+    }
+    static constexpr auto fenceInfo = vk::FenceCreateInfo {};
+    auto fence = checkedCreation(device.createFence(fenceInfo));
+    if (!fence)
+    {
+        return std::unexpected {std::move(fence.error())};
+    }
+    return SwapchainImage {.image = image,
+                           .view = std::move(*view),
+                           .renderFinished = std::move(*finished),
+                           .presentFence = std::move(*fence)};
+}
+
+auto populateImages(const vk::raii::Device& device, SwapchainGeneration& generation) -> std::expected<void, Error>
+{
+    const auto images = enumerateVulkan<vk::Image>([&](std::uint32_t* count, vk::Image* output) {
+        return (*device).getSwapchainImagesKHR(*generation.swapchain, count, output, *device.getDispatcher());
+    });
+    if (!images)
+    {
+        return std::unexpected {images.error()};
+    }
+    generation.images.reserve(images->size());
+    for (const auto image : *images)
     {
         auto created = createSwapchainImage(device, image, generation.format);
         if (!created)
@@ -237,7 +228,7 @@ auto encodedClear(vk::Format format) -> vk::ClearColorValue
 }
 
 auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
-                               vk::Device device,
+                               const vk::raii::Device& device,
                                VkSurfaceKHR surface,
                                FramebufferExtent requested,
                                vk::SwapchainKHR oldSwapchain,

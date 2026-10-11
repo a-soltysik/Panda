@@ -7,6 +7,7 @@
 #include <panda/WindowSurface.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "GlfwTestSupport.hpp"
@@ -107,18 +108,20 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
         GTEST_SKIP() << context.error().message;
     }
     ASSERT_TRUE(context.has_value()) << context.error().message;
-    EXPECT_NE(context->getDeviceInfo().swapchainMaintenance, panda::ContextDeviceInfo::SwapchainMaintenance::None);
+    auto movedContext = std::move(*context);
+    EXPECT_FALSE(context->isValid());
+    EXPECT_NE(movedContext.getDeviceInfo().swapchainMaintenance, panda::ContextDeviceInfo::SwapchainMaintenance::None);
     for (auto index = 0; index < 3; ++index)
     {
         ASSERT_TRUE(window->processInput().has_value());
-        const auto frame = context->presentClearFrame();
+        const auto frame = movedContext.presentClearFrame();
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
         EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
         EXPECT_NE(frame->completionValue, 0U);
     }
     ASSERT_TRUE(window->setSize({240, 180}).has_value());
     ASSERT_TRUE(window->processInput().has_value());
-    const auto resized = context->presentClearFrame();
+    const auto resized = movedContext.presentClearFrame();
     ASSERT_TRUE(resized.has_value()) << resized.error().message;
     EXPECT_EQ(resized->status, panda::FrameResult::Status::Presented);
     EXPECT_NE(resized->completionValue, 0U);
@@ -126,13 +129,13 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
     // Native iconification is asynchronous and may be ignored by a window manager.
     // The surface reports the same zero framebuffer state deterministically.
     surface.setSuspended(true);
-    const auto suspended = context->presentClearFrame();
+    const auto suspended = movedContext.presentClearFrame();
     ASSERT_TRUE(suspended.has_value());
     EXPECT_EQ(suspended->status, panda::FrameResult::Status::Suspended);
     EXPECT_EQ(suspended->completionValue, 0U);
 
     surface.setSuspended(false);
-    const auto restored = context->presentClearFrame();
+    const auto restored = movedContext.presentClearFrame();
     ASSERT_TRUE(restored.has_value()) << restored.error().message;
     EXPECT_EQ(restored->status, panda::FrameResult::Status::Presented);
     EXPECT_NE(restored->completionValue, 0U);

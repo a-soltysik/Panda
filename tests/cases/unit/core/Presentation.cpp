@@ -10,51 +10,35 @@
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 #include <span>
 #include <string>
-#include <type_traits>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "ScopedMock.hpp"
 #include "SwapchainGeneration.hpp"
+#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
 
 namespace
 {
+using panda::test::fakeVulkanHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
 using testing::Sequence;
 using testing::StrEq;
-
-// These mock-only handle tokens pass through the stub dispatcher and are never dereferenced.
-template <typename Handle>
-auto fakeHandle(std::uintptr_t value) -> Handle
-{
-    if constexpr (std::is_pointer_v<Handle>)
-    {
-        // Test IDs range through 901; each aligned slot supplies a distinct opaque handle identity.
-        static auto storage = std::array<std::max_align_t, 1024> {};
-        // Opaque Vulkan pointers are identity-only tokens here and are never dereferenced.
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-        return reinterpret_cast<Handle>(&storage.at(value));
-    }
-    else
-    {
-        return static_cast<Handle>(value);
-    }
-}
 
 auto releaseProcAddress() -> PFN_vkVoidFunction
 {
@@ -92,21 +76,20 @@ void expectTransitionToPresent(const VkDependencyInfo* dependency)
     EXPECT_EQ(barrier.newLayout, static_cast<VkImageLayout>(vk::ImageLayout::ePresentSrcKHR));
 }
 
-auto makeGeneration(vk::Device device, std::uintptr_t handle)
+auto makeGeneration(const vk::raii::Device& device, std::uintptr_t handle)
     -> std::expected<panda::detail::SwapchainGeneration, panda::Error>
 {
     auto images = std::vector<panda::detail::SwapchainImage> {};
-    images.emplace_back(panda::detail::SwapchainImage {.image = vk::Image {fakeHandle<VkImage>(handle + 1U)},
-                                                       .view = {},
-                                                       .renderFinished = {},
-                                                       .presentFence = {},
+    images.emplace_back(panda::detail::SwapchainImage {.image = vk::Image {fakeVulkanHandle<VkImage>(handle + 1U)},
+                                                       .view = {nullptr},
+                                                       .renderFinished = {nullptr},
+                                                       .presentFence = {nullptr},
                                                        .presentPending = false,
                                                        .initialized = false});
     return panda::detail::SwapchainGeneration {
-        .swapchain = vk::UniqueSwapchainKHR {vk::SwapchainKHR {fakeHandle<VkSwapchainKHR>(handle)},
-                                             panda::detail::deviceDeleter(device)                                },
+        .swapchain = vk::raii::SwapchainKHR {device,       fakeVulkanHandle<VkSwapchainKHR>(handle)},
         .images = std::move(images),
-        .extent = vk::Extent2D {.width = 640,                                          .height = 480},
+        .extent = vk::Extent2D {.width = 640, .height = 480                           },
         .format = vk::Format::eB8G8R8A8Srgb
     };
 }
@@ -114,6 +97,26 @@ auto makeGeneration(vk::Device device, std::uintptr_t handle)
 class PresentationTest : public testing::Test
 {
 protected:
+    void TearDown() override
+    {
+        // These adopted tokens represent borrowed test identities, not created objects.
+        if (_device)
+        {
+            std::ignore = _device->release();
+        }
+        std::ignore = _instance.release();
+    }
+
+    auto getDevice() -> const vk::raii::Device&
+    {
+        if (!_device)
+        {
+            const auto physicalDevice = vk::raii::PhysicalDevice {_instance, fakeVulkanHandle<VkPhysicalDevice>(1)};
+            _device.emplace(physicalDevice, fakeVulkanHandle<VkDevice>(1));
+        }
+        return *_device;
+    }
+
     struct ResourceDestructionCounts
     {
         std::size_t semaphores {};
@@ -144,20 +147,20 @@ protected:
             .Times(static_cast<int>(semaphoreCount))
             .WillRepeatedly(
                 [this](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* out) {
-                    *out = fakeHandle<VkSemaphore>(_nextHandle++);
+                    *out = fakeVulkanHandle<VkSemaphore>(_nextHandle++);
                     return static_cast<VkResult>(vk::Result::eSuccess);
                 });
         EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
             .Times(2)
             .WillRepeatedly(
                 [this](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* out) {
-                    *out = fakeHandle<VkCommandPool>(_nextHandle++);
+                    *out = fakeVulkanHandle<VkCommandPool>(_nextHandle++);
                     return static_cast<VkResult>(vk::Result::eSuccess);
                 });
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull()))
             .Times(2)
             .WillRepeatedly([this](VkDevice, const VkCommandBufferAllocateInfo*, VkCommandBuffer* out) {
-                *out = fakeHandle<VkCommandBuffer>(_nextHandle++);
+                *out = fakeVulkanHandle<VkCommandBuffer>(_nextHandle++);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
     }
@@ -169,7 +172,7 @@ protected:
         EXPECT_CALL(vulkan, vkDestroySwapchainKHR(_, _, _)).Times(static_cast<int>(counts.swapchains));
     }
 
-    void expectExtentReads(std::size_t count)
+    void expectExtentReads(std::size_t count) const
     {
         EXPECT_CALL(window, getFramebufferExtent()).Times(static_cast<int>(count)).WillRepeatedly([] {
             return panda::test::WindowSurfaceMock::ExtentResult {
@@ -182,7 +185,7 @@ protected:
     {
         EXPECT_CALL(swapchains, createSwapchainGeneration(_, _, _, _, _, _))
             .WillOnce([handle](vk::PhysicalDevice,
-                               vk::Device device,
+                               const vk::raii::Device& device,
                                VkSurfaceKHR,
                                panda::FramebufferExtent,
                                vk::SwapchainKHR oldSwapchain,
@@ -296,7 +299,7 @@ protected:
             });
     }
 
-    void expectImageRelease(Sequence& flow)
+    void expectImageRelease(const Sequence& flow)
     {
         EXPECT_CALL(vulkan, vkReleaseSwapchainImagesKHR(_, NotNull()))
             .InSequence(flow)
@@ -312,18 +315,18 @@ protected:
             });
     }
 
-    void expectFailedRecreation(Sequence& flow, std::uintptr_t oldHandle)
+    void expectFailedRecreation(const Sequence& flow, std::uintptr_t oldHandle)
     {
         EXPECT_CALL(swapchains, createSwapchainGeneration(_, _, _, _, _, _))
             .InSequence(flow)
             .WillOnce([oldHandle](vk::PhysicalDevice,
-                                  vk::Device,
+                                  const vk::raii::Device&,
                                   VkSurfaceKHR,
                                   panda::FramebufferExtent,
                                   vk::SwapchainKHR oldSwapchain,
                                   const panda::ContextDeviceInfo&)
                           -> std::expected<panda::detail::SwapchainGeneration, panda::Error> {
-                EXPECT_EQ(oldSwapchain, vk::SwapchainKHR {fakeHandle<VkSwapchainKHR>(oldHandle)});
+                EXPECT_EQ(oldSwapchain, vk::SwapchainKHR {fakeVulkanHandle<VkSwapchainKHR>(oldHandle)});
                 return std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "replacement failed")};
             });
     }
@@ -333,7 +336,7 @@ protected:
         EXPECT_CALL(swapchains, createSwapchainGeneration(_, _, _, _, _, _))
             .InSequence(flow)
             .WillOnce([handle](vk::PhysicalDevice,
-                               vk::Device device,
+                               const vk::raii::Device& device,
                                VkSurfaceKHR,
                                panda::FramebufferExtent,
                                vk::SwapchainKHR oldSwapchain,
@@ -343,18 +346,19 @@ protected:
             });
     }
 
-    auto createPresentation() -> std::expected<std::unique_ptr<panda::detail::Presentation>, panda::Error>
+    auto createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance maintenance =
+                                panda::ContextDeviceInfo::SwapchainMaintenance::Khr)
+        -> std::expected<std::unique_ptr<panda::detail::Presentation>, panda::Error>
     {
-        return panda::detail::Presentation::create(
-            vk::PhysicalDevice {},
-            vk::Device {fakeHandle<VkDevice>(1)},
-            VkSurfaceKHR {},
-            window,
-            {.name = {},
-             .apiVersion = 0,
-             .queueFamily = 0,
-             .presentQueueFamily = 0,
-             .swapchainMaintenance = panda::ContextDeviceInfo::SwapchainMaintenance::Khr});
+        return panda::detail::Presentation::create(vk::PhysicalDevice {},
+                                                   getDevice(),
+                                                   VkSurfaceKHR {},
+                                                   window,
+                                                   {.name = {},
+                                                    .apiVersion = 0,
+                                                    .queueFamily = 0,
+                                                    .presentQueueFamily = 0,
+                                                    .swapchainMaintenance = maintenance});
     }
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
@@ -362,6 +366,9 @@ protected:
     panda::test::ScopedMock<panda::test::SwapchainGenerationMock> swapchains;
 
 private:
+    vk::raii::Context _loader {vkGetInstanceProcAddr};
+    vk::raii::Instance _instance {_loader, fakeVulkanHandle<VkInstance>(1)};
+    std::optional<vk::raii::Device> _device;
     std::uintptr_t _nextHandle {100};
 };
 }
@@ -370,16 +377,7 @@ TEST_F(PresentationTest, ReportsUnavailableKhrReleaseFunction)
 {
     expectQueueLookup();
     EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesKHR"))).WillOnce(Return(nullptr));
-    const auto presentation = panda::detail::Presentation::create(
-        vk::PhysicalDevice {},
-        vk::Device {},
-        VkSurfaceKHR {},
-        window,
-        {.name = {},
-         .apiVersion = 0,
-         .queueFamily = 0,
-         .presentQueueFamily = 0,
-         .swapchainMaintenance = panda::ContextDeviceInfo::SwapchainMaintenance::Khr});
+    const auto presentation = createPresentation();
     ASSERT_FALSE(presentation.has_value());
     EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(presentation.error().message.find("VK_KHR_swapchain_maintenance1"), std::string::npos);
@@ -389,16 +387,7 @@ TEST_F(PresentationTest, ReportsUnavailableExtReleaseFunction)
 {
     expectQueueLookup();
     EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesEXT"))).WillOnce(Return(nullptr));
-    const auto presentation = panda::detail::Presentation::create(
-        vk::PhysicalDevice {},
-        vk::Device {},
-        VkSurfaceKHR {},
-        window,
-        {.name = {},
-         .apiVersion = 0,
-         .queueFamily = 0,
-         .presentQueueFamily = 0,
-         .swapchainMaintenance = panda::ContextDeviceInfo::SwapchainMaintenance::Ext});
+    const auto presentation = createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance::Ext);
     ASSERT_FALSE(presentation.has_value());
     EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(presentation.error().message.find("VK_EXT_swapchain_maintenance1"), std::string::npos);
@@ -409,23 +398,41 @@ TEST_F(PresentationTest, PreservesTimelineSemaphoreCreationFailure)
     expectQueueLookup();
     expectReleaseEntryPoint();
     EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
-        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
-    const auto presentation = panda::detail::Presentation::create(
-        vk::PhysicalDevice {},
-        vk::Device {},
-        VkSurfaceKHR {},
-        window,
-        {.name = {},
-         .apiVersion = 0,
-         .queueFamily = 0,
-         .presentQueueFamily = 0,
-         .swapchainMaintenance = panda::ContextDeviceInfo::SwapchainMaintenance::Khr});
+        .WillOnce([](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* output) {
+            *output = fakeVulkanHandle<VkSemaphore>(2);
+            return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
+        });
+    EXPECT_CALL(vulkan, vkDestroySemaphore(_, _, _)).Times(0);
+    const auto presentation = createPresentation();
     ASSERT_FALSE(presentation.has_value());
     EXPECT_EQ(presentation.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(presentation.error().native.has_value());
     const auto native = presentation.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
     EXPECT_EQ(native.api, "Vulkan");
     EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
+}
+
+TEST_F(PresentationTest, FailedCommandPoolCreationReleasesOnlyTheCreatedSemaphore)
+{
+    expectQueueLookup();
+    expectReleaseEntryPoint();
+    EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
+        .WillOnce([](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* output) {
+            *output = fakeVulkanHandle<VkSemaphore>(2);
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
+    EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
+        .WillOnce([](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* output) {
+            *output = fakeVulkanHandle<VkCommandPool>(3);
+            return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
+        });
+    EXPECT_CALL(vulkan, vkDestroyCommandPool(_, _, _)).Times(0);
+    EXPECT_CALL(vulkan, vkDestroySemaphore(_, fakeVulkanHandle<VkSemaphore>(2), nullptr));
+
+    const auto presentation = createPresentation();
+
+    ASSERT_FALSE(presentation.has_value());
+    EXPECT_EQ(presentation.error().code, panda::ErrorCode::BackendFailure);
 }
 
 TEST_F(PresentationTest, RetiresAcquiredImageWhenCommandRecordingCannotStart)

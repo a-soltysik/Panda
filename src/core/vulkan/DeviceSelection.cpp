@@ -59,12 +59,15 @@ auto checkWindowExtensions(const std::vector<std::string>& required,
 
 auto availableInstanceExtensions() -> Result<std::vector<vk::ExtensionProperties>>
 {
-    const auto available = vk::enumerateInstanceExtensionProperties();
-    if (available.result != vk::Result::eSuccess)
+    const auto available =
+        enumerateVulkan<vk::ExtensionProperties>([&](std::uint32_t* count, vk::ExtensionProperties* output) {
+            return vk::enumerateInstanceExtensionProperties(nullptr, count, output);
+        });
+    if (!available)
     {
-        return std::unexpected {makeVulkanError(available.result)};
+        return std::unexpected {available.error()};
     }
-    return available.value;
+    return *available;
 }
 
 auto appendMaintenanceExtensions(InstanceExtensions& chosen, const std::vector<vk::ExtensionProperties>& available)
@@ -190,20 +193,23 @@ auto maintenanceVariant(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface,
     {
         return std::optional {Maintenance::None};
     }
-    const auto listed = physicalDevice.enumerateDeviceExtensionProperties();
-    if (listed.result != vk::Result::eSuccess)
+    const auto listed =
+        enumerateVulkan<vk::ExtensionProperties>([&](std::uint32_t* count, vk::ExtensionProperties* output) {
+            return physicalDevice.enumerateDeviceExtensionProperties(nullptr, count, output);
+        });
+    if (!listed)
     {
-        return std::unexpected {makeVulkanError(listed.result)};
+        return std::unexpected {listed.error()};
     }
-    if (!hasExtension(listed.value, vk::KHRSwapchainExtensionName))
+    if (!hasExtension(*listed, vk::KHRSwapchainExtensionName))
     {
         return std::nullopt;
     }
-    if (extensions.hasKhrMaintenance && hasExtension(listed.value, vk::KHRSwapchainMaintenance1ExtensionName))
+    if (extensions.hasKhrMaintenance && hasExtension(*listed, vk::KHRSwapchainMaintenance1ExtensionName))
     {
         return std::optional {Maintenance::Khr};
     }
-    if (extensions.hasExtMaintenance && hasExtension(listed.value, vk::EXTSwapchainMaintenance1ExtensionName))
+    if (extensions.hasExtMaintenance && hasExtension(*listed, vk::EXTSwapchainMaintenance1ExtensionName))
     {
         return std::optional {Maintenance::Ext};
     }
@@ -335,17 +341,21 @@ auto supportsSurfaceFormats(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surf
     {
         return true;
     }
-    const auto formats = physicalDevice.getSurfaceFormatsKHR(vk::SurfaceKHR {surface});
-    if (formats.result != vk::Result::eSuccess)
+    const auto formats = enumerateVulkan<vk::SurfaceFormatKHR>([&](std::uint32_t* count, vk::SurfaceFormatKHR* output) {
+        return physicalDevice.getSurfaceFormatsKHR(vk::SurfaceKHR {surface}, count, output);
+    });
+    if (!formats)
     {
-        return std::unexpected {makeVulkanError(formats.result)};
+        return std::unexpected {formats.error()};
     }
-    const auto modes = physicalDevice.getSurfacePresentModesKHR(vk::SurfaceKHR {surface});
-    if (modes.result != vk::Result::eSuccess)
+    const auto modes = enumerateVulkan<vk::PresentModeKHR>([&](std::uint32_t* count, vk::PresentModeKHR* output) {
+        return physicalDevice.getSurfacePresentModesKHR(vk::SurfaceKHR {surface}, count, output);
+    });
+    if (!modes)
     {
-        return std::unexpected {makeVulkanError(modes.result)};
+        return std::unexpected {modes.error()};
     }
-    return !formats.value.empty() && !modes.value.empty();
+    return !(formats->empty()) && !(modes->empty());
 }
 
 struct DeviceProfile
@@ -503,12 +513,14 @@ auto inspectDevices(const std::vector<vk::PhysicalDevice>& devices,
 auto selectDevice(vk::Instance instance, VkSurfaceKHR surface, const InstanceExtensions& extensions)
     -> std::expected<SelectedDevice, Error>
 {
-    const auto listed = instance.enumeratePhysicalDevices();
-    if (listed.result != vk::Result::eSuccess)
+    const auto listed = enumerateVulkan<vk::PhysicalDevice>([&](std::uint32_t* count, vk::PhysicalDevice* output) {
+        return instance.enumeratePhysicalDevices(count, output);
+    });
+    if (!listed)
     {
-        return std::unexpected {makeVulkanError(listed.result)};
+        return std::unexpected {listed.error()};
     }
-    auto candidates = inspectDevices(listed.value, surface, extensions);
+    auto candidates = inspectDevices(*listed, surface, extensions);
     if (!candidates)
     {
         return std::unexpected {std::move(candidates.error())};

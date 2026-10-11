@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <panda/Error.hpp>
@@ -14,37 +13,22 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
 #include "LogCapture.hpp"
 #include "ScopedMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
 
 namespace
 {
+using panda::test::fakeVulkanHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
-
-template <typename Handle>
-auto fakeHandle(std::uintptr_t value) -> Handle
-{
-    if constexpr (std::is_pointer_v<Handle>)
-    {
-        static auto storage = std::array<std::max_align_t, 16> {};
-        // Opaque Vulkan pointers are identity-only tokens here and are never dereferenced.
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-        return reinterpret_cast<Handle>(&storage.at(value));
-    }
-    else
-    {
-        return static_cast<Handle>(value);
-    }
-}
 
 auto makeExtension(std::string_view name) -> VkExtensionProperties
 {
@@ -65,10 +49,10 @@ struct DeviceScenario
 auto makeDeviceScenario() -> DeviceScenario
 {
     return DeviceScenario {
-        .brokenDevice = fakeHandle<VkPhysicalDevice>(1),
-        .usableDevice = fakeHandle<VkPhysicalDevice>(2),
-        .instance = fakeHandle<VkInstance>(3),
-        .surface = fakeHandle<VkSurfaceKHR>(4),
+        .brokenDevice = fakeVulkanHandle<VkPhysicalDevice>(1),
+        .usableDevice = fakeVulkanHandle<VkPhysicalDevice>(2),
+        .instance = fakeVulkanHandle<VkInstance>(3),
+        .surface = fakeVulkanHandle<VkSurfaceKHR>(4),
         .extensions = {makeExtension(vk::KHRSwapchainExtensionName),
                        makeExtension(vk::KHRSwapchainMaintenance1ExtensionName)}
     };
@@ -326,9 +310,9 @@ TEST(DeviceSelection, LogsAndSkipsDeviceInspectionFailureWhenAnotherDeviceIsUsab
 TEST(DeviceSelection, PreservesInspectionErrorWhenNoDeviceCanBeSelected)
 {
     auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
-    auto* const brokenDevice = fakeHandle<VkPhysicalDevice>(1);
-    auto* const instance = fakeHandle<VkInstance>(2);
-    auto* const surface = fakeHandle<VkSurfaceKHR>(3);
+    auto* const brokenDevice = fakeVulkanHandle<VkPhysicalDevice>(1);
+    auto* const instance = fakeVulkanHandle<VkInstance>(2);
+    auto* const surface = fakeVulkanHandle<VkSurfaceKHR>(3);
     expectSingleDeviceQueryFailure(vulkan, brokenDevice);
 
     const auto selected = panda::detail::selectDevice(

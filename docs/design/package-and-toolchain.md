@@ -171,7 +171,7 @@ destruction. This wrapper does not create Vulkan surfaces or implement rendering
 
 | Role | Accepted choice | Exposure |
 | --- | --- | --- |
-| Vulkan binding | Vulkan-Hpp | Private implementation; native public API uses Vulkan C handles |
+| Vulkan binding | Vulkan-Hpp RAII | Private implementation; native public API uses Vulkan C handles |
 | Shader metadata | SPIRV-Reflect | Private shader-load validation |
 | Windowing | GLFW | Private window/input implementation |
 | Math | GLM | Public value types with a documented layout/configuration contract |
@@ -201,11 +201,32 @@ borrowed `VkCommandBuffer`; the application may use Vulkan C or wrap the handle 
 its own non-owning Hpp object. The native extension header is separate from the
 core umbrella; its required SDK headers/link dependencies are supplied by the target.
 
-Use Vulkan-Hpp's default `vk` namespace and configuration in Panda implementation
-files. Do not define Hpp configuration macros for consumers or expose Hpp types
-through Panda public headers. A consumer using a different Hpp configuration
-needs a specific compatibility check before support is claimed; change the
-internal configuration only in response to a demonstrated requirement.
+Use `vk::raii` for Vulkan object owners in Panda implementation files. Keep plain
+`vk` handles for borrowed swapchain images and command buffers whose pool owns
+their allocation. RAII device children borrow their parent's dispatcher; borrowed
+command buffers use Hpp's default static dispatcher to record commands through the
+linked Vulkan loader. The device and instance must outlive their children.
+GPU completion and presentation retirement remain
+explicit prerequisites for destruction, as defined by the resource contract.
+
+Configure Vulkan-Hpp privately with `VULKAN_HPP_NO_EXCEPTIONS` and
+`VULKAN_HPP_NO_CONSTRUCTORS`. The RAII context uses the linked loader's
+`vkGetInstanceProcAddr`, with `VULKAN_HPP_ENABLE_DYNAMIC_LOADER_TOOL=0`, so library
+substitution also controls dynamically dispatched calls in unit tests. Factory
+results remain `vk::ResultValue` internally: the creation adapter converts them
+to Panda's `Result<T>` and detaches failed outputs before a wrapper can destroy
+them. Instance and device creation check the native result before adoption,
+because adopting those handles also loads a dispatcher. Optional instance
+services use `std::optional` to distinguish absence from a live owner. Do not
+enable Hpp's expected-return mode without checking that failure ownership
+guarantee against the selected headers. Count/fill enumeration checks each native
+result before reading output counts or entries, retries `eIncomplete`, and checks
+the returned size against capacity only after success. This avoids Hpp's
+nonthrowing enhanced enumerators inspecting undefined outputs after an error.
+
+Do not define Hpp configuration macros for consumers or expose Hpp types through
+Panda public headers. A consumer using a different Hpp configuration needs a
+specific compatibility check before support is claimed.
 
 GLM is consciously exposed. Use explicit projection conventions rather than forcing
 global handedness/depth macros. The accepted

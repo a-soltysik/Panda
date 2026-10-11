@@ -1,5 +1,5 @@
 panda_add_test(panda_unit_core unit
-    SOURCES Version.cpp DeviceSelection.cpp SwapchainGeneration.cpp
+    SOURCES Version.cpp DeviceSelection.cpp SwapchainGeneration.cpp SwapchainCreation.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock)
 target_compile_definitions(panda_unit_core PRIVATE
@@ -9,7 +9,7 @@ target_compile_definitions(panda_unit_core PRIVATE
 target_include_directories(panda_unit_core PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan")
 
 panda_add_test(panda_unit_context unit
-    SOURCES Context.cpp
+    SOURCES Context.cpp ContextLifecycle.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock PandaTest::SwapchainGenerationMock)
 target_include_directories(panda_unit_context PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan")

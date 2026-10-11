@@ -10,13 +10,14 @@
 #include <array>
 #include <cstdint>
 #include <expected>
-#include <iterator>
 #include <memory>
+#include <optional>
 #include <panda/Assert.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/WindowSurface.hpp>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -28,52 +29,16 @@
 
 namespace panda
 {
-// This owner type is stored in Context::Impl; external linkage avoids GCC's
-// -Wsubobject-linkage error when the source is compiled as part of a unity build.
-// NOLINTNEXTLINE(misc-use-internal-linkage)
-class ContextDebugMessengerOwner final
+struct Context::InstanceServices
 {
-public:
-    [[nodiscard]] static auto create(VkInstance instance,
-                                     PFN_vkCreateDebugUtilsMessengerEXT createFunction,
-                                     PFN_vkDestroyDebugUtilsMessengerEXT destroyFunction,
-                                     const VkDebugUtilsMessengerCreateInfoEXT& createInfo)
-        -> Result<std::unique_ptr<ContextDebugMessengerOwner>>
-    {
-        auto owner = std::make_unique<ContextDebugMessengerOwner>(instance, destroyFunction);
-        auto* messenger = VkDebugUtilsMessengerEXT {};
-        const auto result = createFunction(instance, &createInfo, nullptr, &messenger);
-        if (result != static_cast<VkResult>(vk::Result::eSuccess))
-        {
-            return std::unexpected {detail::makeVulkanError(static_cast<vk::Result>(result))};
-        }
-        owner->_messenger = messenger;
-        return owner;
-    }
+    [[nodiscard]] static auto create(const vk::raii::Context& loader,
+                                     const WindowSurface* surface,
+                                     const ContextOptions& options) -> Result<InstanceServices>;
 
-    ContextDebugMessengerOwner(VkInstance instance, PFN_vkDestroyDebugUtilsMessengerEXT destroy) noexcept
-        : _instance {instance},
-          _destroy {destroy}
-    {
-    }
-
-    ContextDebugMessengerOwner(const ContextDebugMessengerOwner&) = delete;
-    auto operator=(const ContextDebugMessengerOwner&) -> ContextDebugMessengerOwner& = delete;
-    ContextDebugMessengerOwner(ContextDebugMessengerOwner&&) = delete;
-    auto operator=(ContextDebugMessengerOwner&&) -> ContextDebugMessengerOwner& = delete;
-
-    ~ContextDebugMessengerOwner() noexcept
-    {
-        if (_messenger != VkDebugUtilsMessengerEXT {} && _destroy != nullptr)
-        {
-            _destroy(_instance, _messenger, nullptr);
-        }
-    }
-
-private:
-    VkInstance _instance {};
-    PFN_vkDestroyDebugUtilsMessengerEXT _destroy {};
-    VkDebugUtilsMessengerEXT _messenger {};
+    detail::InstanceExtensions extensions;
+    vk::raii::Instance instance {nullptr};
+    std::optional<vk::raii::DebugUtilsMessengerEXT> debugMessenger;
+    std::optional<vk::raii::SurfaceKHR> surface;
 };
 
 namespace
@@ -125,43 +90,24 @@ auto validationMessengerCreateInfo() noexcept -> vk::DebugUtilsMessengerCreateIn
     return {.messageSeverity = severityMask, .messageType = typeMask, .pfnUserCallback = validationCallback};
 }
 
-struct DebugUtilsFunctions
+auto hasValidationLayer(const vk::raii::Context& loader) -> Result<bool>
 {
-    PFN_vkCreateDebugUtilsMessengerEXT create {};
-    PFN_vkDestroyDebugUtilsMessengerEXT destroy {};
-};
-
-auto loadDebugUtilsFunctions(vk::Instance instance) -> Result<DebugUtilsFunctions>
-{
-    // Vulkan exposes extension commands through vkGetInstanceProcAddr, not linked exports.
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    const auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-        instance.getProcAddr("vkCreateDebugUtilsMessengerEXT"));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    const auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(instance.getProcAddr(
-        "vkDestroyDebugUtilsMessengerEXT"));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-    if (create == nullptr || destroy == nullptr)
+    const auto listed =
+        detail::enumerateVulkan<vk::LayerProperties>([&](std::uint32_t* count, vk::LayerProperties* output) {
+            return vk::enumerateInstanceLayerProperties(count, output, *loader.getDispatcher());
+        });
+    if (!listed)
     {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "Vulkan loader does not expose VK_EXT_debug_utils")};
+        return std::unexpected {listed.error()};
     }
-    return DebugUtilsFunctions {.create = create, .destroy = destroy};
-}
-
-auto hasValidationLayer() -> Result<bool>
-{
-    const auto listed = vk::enumerateInstanceLayerProperties();
-    if (listed.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {detail::makeVulkanError(listed.result)};
-    }
-    return std::ranges::any_of(listed.value, [](const auto& layer) {
+    return std::ranges::any_of(*listed, [](const auto& layer) {
         return std::string_view {layer.layerName.data()} == "VK_LAYER_KHRONOS_validation";
     });
 }
 
-auto verifyPrerequisites(const ContextOptions& options) -> Result<void>
+auto verifyPrerequisites(const vk::raii::Context& loader, const ContextOptions& options) -> Result<void>
 {
-    const auto version = vk::enumerateInstanceVersion();
+    const auto version = loader.enumerateInstanceVersion();
     if (version.result != vk::Result::eSuccess)
     {
         return std::unexpected {detail::makeVulkanError(version.result)};
@@ -172,7 +118,7 @@ auto verifyPrerequisites(const ContextOptions& options) -> Result<void>
     }
     if (options.enableValidation)
     {
-        const auto available = hasValidationLayer();
+        const auto available = hasValidationLayer(loader);
         if (!available)
         {
             return std::unexpected {available.error()};
@@ -185,14 +131,25 @@ auto verifyPrerequisites(const ContextOptions& options) -> Result<void>
     return {};
 }
 
-auto makeInstance(const ContextOptions& options, const detail::InstanceExtensions& extensions)
-    -> Result<vk::UniqueInstance>
+auto createInstance(const vk::raii::Context& loader, const vk::InstanceCreateInfo& info) -> Result<vk::raii::Instance>
 {
-    auto extensionNames = std::vector<const char*> {};
-    extensionNames.reserve(extensions.names.size());
-    std::ranges::transform(extensions.names, std::back_inserter(extensionNames), [](const auto& name) {
-        return name.c_str();
-    });
+    auto instance = vk::Instance {};
+    const auto result = vk::createInstance(&info, nullptr, &instance, *loader.getDispatcher());
+    if (result != vk::Result::eSuccess)
+    {
+        return std::unexpected {detail::makeVulkanError(result)};
+    }
+    // Unlike leaf objects, Instance construction uses the handle immediately
+    // to load Vulkan functions, so check the result before creating the RAII wrapper.
+    return vk::raii::Instance {loader, static_cast<VkInstance>(instance)};
+}
+
+auto makeInstance(const vk::raii::Context& loader,
+                  const ContextOptions& options,
+                  const detail::InstanceExtensions& extensions) -> Result<vk::raii::Instance>
+{
+    const auto extensionNames =
+        extensions.names | std::views::transform(&std::string::c_str) | std::ranges::to<std::vector<const char*>>();
     static constexpr auto validationName = "VK_LAYER_KHRONOS_validation";
     const auto debugInfo = validationMessengerCreateInfo();
     const auto applicationInfo = vk::ApplicationInfo {.pApplicationName = options.applicationName.c_str(),
@@ -205,42 +162,32 @@ auto makeInstance(const ContextOptions& options, const detail::InstanceExtension
                                 .ppEnabledLayerNames = options.enableValidation ? &validationName : nullptr,
                                 .enabledExtensionCount = static_cast<std::uint32_t>(extensionNames.size()),
                                 .ppEnabledExtensionNames = extensionNames.data()};
-    auto created = detail::createOwned<vk::Instance>(
-        [&](vk::Instance* output) {
-            return vk::createInstance(&instanceInfo, nullptr, output);
-        },
-        detail::parentlessDeleter());
-    if (created.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {detail::makeVulkanError(created.result)};
-    }
-    return std::move(created.value);
+    return createInstance(loader, instanceInfo);
 }
 
-auto makeDebugMessenger(vk::Instance instance, bool enableValidation)
-    -> Result<std::unique_ptr<ContextDebugMessengerOwner>>
+auto makeDebugMessenger(const vk::raii::Instance& instance, bool enableValidation)
+    -> Result<std::optional<vk::raii::DebugUtilsMessengerEXT>>
 {
     if (!enableValidation)
     {
-        return std::unique_ptr<ContextDebugMessengerOwner> {};
+        return std::nullopt;
     }
-    auto functions = loadDebugUtilsFunctions(instance);
-    if (!functions)
+    const auto* const dispatcher = instance.getDispatcher();
+    if (dispatcher->vkCreateDebugUtilsMessengerEXT == nullptr || dispatcher->vkDestroyDebugUtilsMessengerEXT == nullptr)
     {
-        return std::unexpected {std::move(functions.error())};
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Vulkan loader does not expose VK_EXT_debug_utils")};
     }
-    const auto createInfo = validationMessengerCreateInfo();
-    auto* const nativeInstance = static_cast<VkInstance>(instance);
-    return ContextDebugMessengerOwner::create(nativeInstance, functions->create, functions->destroy, createInfo);
+    return detail::checkedCreation(instance.createDebugUtilsMessengerEXT(validationMessengerCreateInfo()));
 }
 
-auto makeWindowSurface(const WindowSurface* surface, vk::Instance instance) -> Result<vk::UniqueSurfaceKHR>
+auto makeWindowSurface(const WindowSurface* surface, const vk::raii::Instance& instance)
+    -> Result<std::optional<vk::raii::SurfaceKHR>>
 {
     if (surface == nullptr)
     {
-        return vk::UniqueSurfaceKHR {};
+        return std::nullopt;
     }
-    auto created = surface->createSurface(instance);
+    auto created = surface->createSurface(*instance);
     if (!created)
     {
         return std::unexpected {std::move(created.error())};
@@ -249,17 +196,28 @@ auto makeWindowSurface(const WindowSurface* surface, vk::Instance instance) -> R
     {
         return std::unexpected {makeError(ErrorCode::BackendFailure, "WindowSurface returned a null Vulkan surface")};
     }
-    return vk::UniqueSurfaceKHR {vk::SurfaceKHR {*created}, detail::instanceDeleter(instance)};
+    return vk::raii::SurfaceKHR {instance, *created};
 }
 
-auto makeDevice(const detail::SelectedDevice& selected, bool windowed) -> Result<vk::UniqueDevice>
+auto createLogicalDevice(const vk::raii::PhysicalDevice& physicalDevice, const vk::DeviceCreateInfo& info)
+    -> Result<vk::raii::Device>
 {
-    auto maintenance = vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR {.swapchainMaintenance1 = vk::True};
-    auto vulkan13 = vk::PhysicalDeviceVulkan13Features {.pNext = windowed ? &maintenance : nullptr,
-                                                        .synchronization2 = vk::True,
-                                                        .dynamicRendering = vk::True};
-    auto vulkan12 = vk::PhysicalDeviceVulkan12Features {.pNext = &vulkan13, .timelineSemaphore = vk::True};
-    const auto features = vk::PhysicalDeviceFeatures2 {.pNext = &vulkan12};
+    auto device = vk::Device {};
+    const auto result = (*physicalDevice).createDevice(&info, nullptr, &device, *physicalDevice.getDispatcher());
+    if (result != vk::Result::eSuccess)
+    {
+        return std::unexpected {detail::makeVulkanError(result)};
+    }
+    // Unlike leaf objects, Device construction uses the handle immediately
+    // to load Vulkan functions, so check the result before creating the RAII wrapper.
+    return vk::raii::Device {physicalDevice, static_cast<VkDevice>(device)};
+}
+
+auto createDevice(const vk::raii::Instance& instance,
+                  const detail::SelectedDevice& selected,
+                  bool windowed,
+                  const vk::PhysicalDeviceFeatures2& features) -> Result<vk::raii::Device>
+{
     static constexpr auto priority = 1.0F;
     const auto queueInfos = std::array {
         vk::DeviceQueueCreateInfo {.queueFamilyIndex = selected.info.queueFamily,
@@ -281,28 +239,108 @@ auto makeDevice(const detail::SelectedDevice& selected, bool windowed) -> Result
                               .pQueueCreateInfos = queueInfos.data(),
                               .enabledExtensionCount = windowed ? 2U : 0U,
                               .ppEnabledExtensionNames = windowed ? deviceExtensions.data() : nullptr};
-    auto created = detail::createOwned<vk::Device>(
-        [&](vk::Device* output) {
-            return selected.physicalDevice.createDevice(&deviceInfo, nullptr, output);
-        },
-        detail::parentlessDeleter());
-    if (created.result != vk::Result::eSuccess)
+    const auto physicalDevice =
+        vk::raii::PhysicalDevice {instance, static_cast<VkPhysicalDevice>(selected.physicalDevice)};
+    return createLogicalDevice(physicalDevice, deviceInfo);
+}
+
+auto makeDevice(const vk::raii::Instance& instance, const detail::SelectedDevice& selected, bool windowed)
+    -> Result<vk::raii::Device>
+{
+    auto maintenance = vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR {.swapchainMaintenance1 = vk::True};
+    auto vulkan13 = vk::PhysicalDeviceVulkan13Features {.pNext = windowed ? &maintenance : nullptr,
+                                                        .synchronization2 = vk::True,
+                                                        .dynamicRendering = vk::True};
+    auto vulkan12 = vk::PhysicalDeviceVulkan12Features {.pNext = &vulkan13, .timelineSemaphore = vk::True};
+    const auto features = vk::PhysicalDeviceFeatures2 {.pNext = &vulkan12};
+    return createDevice(instance, selected, windowed, features);
+}
+
+}
+
+auto Context::InstanceServices::create(const vk::raii::Context& loader,
+                                       const WindowSurface* surface,
+                                       const ContextOptions& options) -> Result<InstanceServices>
+{
+    auto extensions = detail::instanceExtensions(surface, options.enableValidation);
+    if (!extensions)
     {
-        return std::unexpected {detail::makeVulkanError(created.result)};
+        return std::unexpected {std::move(extensions.error())};
     }
-    return std::move(created.value);
+    auto instance = makeInstance(loader, options, *extensions);
+    if (!instance)
+    {
+        return std::unexpected {std::move(instance.error())};
+    }
+    auto debugMessenger = makeDebugMessenger(*instance, options.enableValidation);
+    if (!debugMessenger)
+    {
+        return std::unexpected {std::move(debugMessenger.error())};
+    }
+    auto ownedSurface = makeWindowSurface(surface, *instance);
+    if (!ownedSurface)
+    {
+        return std::unexpected {std::move(ownedSurface.error())};
+    }
+    return InstanceServices {.extensions = std::move(*extensions),
+                             .instance = std::move(*instance),
+                             .debugMessenger = std::move(*debugMessenger),
+                             .surface = std::move(*ownedSurface)};
+}
+
+namespace
+{
+auto makePresentation(WindowSurface* surface,
+                      const detail::SelectedDevice& selected,
+                      const vk::raii::Device& device,
+                      vk::SurfaceKHR nativeSurface) -> Result<std::unique_ptr<detail::Presentation>>
+{
+    if (surface == nullptr)
+    {
+        return std::unique_ptr<detail::Presentation> {};
+    }
+    return detail::Presentation::create(selected.physicalDevice, device, nativeSurface, *surface, selected.info);
 }
 }
 
-struct Context::Impl
+class Context::Impl
 {
-    vk::UniqueInstance instance;
-    std::unique_ptr<ContextDebugMessengerOwner> debugMessenger;
-    vk::UniqueSurfaceKHR surface;
-    vk::UniqueDevice device;
-    std::unique_ptr<detail::Presentation> presentation;
-    ContextDeviceInfo info;
+public:
+    [[nodiscard]] auto initializeDevice(WindowSurface* surface) -> Result<void>;
+
+private:
+    friend class Context;
+
+    vk::raii::Context _loader {vkGetInstanceProcAddr};
+    InstanceServices _services;
+    vk::raii::Device _device {nullptr};
+    std::unique_ptr<detail::Presentation> _presentation;
+    ContextDeviceInfo _info;
 };
+
+auto Context::Impl::initializeDevice(WindowSurface* surface) -> Result<void>
+{
+    const auto nativeSurface = _services.surface ? **_services.surface : vk::SurfaceKHR {};
+    auto selected = detail::selectDevice(*_services.instance, nativeSurface, _services.extensions);
+    if (!selected)
+    {
+        return std::unexpected {std::move(selected.error())};
+    }
+    auto createdDevice = makeDevice(_services.instance, *selected, surface != nullptr);
+    if (!createdDevice)
+    {
+        return std::unexpected {std::move(createdDevice.error())};
+    }
+    _device = std::move(*createdDevice);
+    auto createdPresentation = makePresentation(surface, *selected, _device, nativeSurface);
+    if (!createdPresentation)
+    {
+        return std::unexpected {std::move(createdPresentation.error())};
+    }
+    _presentation = std::move(*createdPresentation);
+    _info = std::move(selected->info);
+    return {};
+}
 
 Context::Context(std::unique_ptr<Impl> implementation) noexcept
     : _implementation {std::move(implementation)}
@@ -318,9 +356,9 @@ Context::~Context() noexcept
 {
     if (_implementation)
     {
-        if (_implementation->presentation)
+        if (_implementation->_presentation)
         {
-            expect(_implementation->presentation->drain(), "Cannot safely drain window presentation");
+            expect(_implementation->_presentation->drain(), "Cannot safely drain window presentation");
         }
     }
 }
@@ -337,59 +375,20 @@ auto Context::createWithSurface(WindowSurface& surface, const ContextOptions& op
 
 auto Context::createInternal(WindowSurface* surface, const ContextOptions& options) -> Result<Context>
 {
-    if (const auto checked = verifyPrerequisites(options); !checked)
+    auto implementation = std::make_unique<Impl>();
+    if (const auto checked = verifyPrerequisites(implementation->_loader, options); !checked)
     {
         return std::unexpected {checked.error()};
     }
-    auto extensions = detail::instanceExtensions(surface, options.enableValidation);
-    if (!extensions)
+    auto services = InstanceServices::create(implementation->_loader, surface, options);
+    if (!services)
     {
-        return std::unexpected {std::move(extensions.error())};
+        return std::unexpected {std::move(services.error())};
     }
-    auto instance = makeInstance(options, *extensions);
-    if (!instance)
+    implementation->_services = std::move(*services);
+    if (const auto initialized = implementation->initializeDevice(surface); !initialized)
     {
-        return std::unexpected {std::move(instance.error())};
-    }
-    auto debugMessenger = makeDebugMessenger(**instance, options.enableValidation);
-    if (!debugMessenger)
-    {
-        return std::unexpected {std::move(debugMessenger.error())};
-    }
-    auto ownedSurface = makeWindowSurface(surface, **instance);
-    if (!ownedSurface)
-    {
-        return std::unexpected {std::move(ownedSurface.error())};
-    }
-    auto* const nativeSurface = static_cast<VkSurfaceKHR>(ownedSurface->get());
-    auto selected = detail::selectDevice(**instance, nativeSurface, *extensions);
-    if (!selected)
-    {
-        return std::unexpected {std::move(selected.error())};
-    }
-    auto device = makeDevice(*selected, surface != nullptr);
-    if (!device)
-    {
-        return std::unexpected {std::move(device.error())};
-    }
-    auto implementation = std::make_unique<Impl>();
-    implementation->instance = std::move(*instance);
-    implementation->debugMessenger = std::move(*debugMessenger);
-    implementation->surface = std::move(*ownedSurface);
-    implementation->device = std::move(*device);
-    implementation->info = std::move(selected->info);
-    if (surface != nullptr)
-    {
-        auto presentation = detail::Presentation::create(selected->physicalDevice,
-                                                         *implementation->device,
-                                                         nativeSurface,
-                                                         *surface,
-                                                         implementation->info);
-        if (!presentation)
-        {
-            return std::unexpected {std::move(presentation.error())};
-        }
-        implementation->presentation = std::move(*presentation);
+        return std::unexpected {initialized.error()};
     }
     return Context {std::move(implementation)};
 }
@@ -402,17 +401,17 @@ auto Context::isValid() const noexcept -> bool
 auto Context::getDeviceInfo() const -> ContextDeviceInfo
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    return _implementation->info;
+    return _implementation->_info;
 }
 
 auto Context::presentClearFrame() const -> Result<FrameResult>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    if (!_implementation->presentation)
+    if (!_implementation->_presentation)
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to present a frame")};
     }
-    return _implementation->presentation->presentClearFrame();
+    return _implementation->_presentation->presentClearFrame();
 }
 
 }
