@@ -1,3 +1,8 @@
+panda_add_test(panda_unit_range_allocator unit
+    SOURCES RangeAllocator.cpp
+    LIBRARIES Panda::Panda)
+target_include_directories(panda_unit_range_allocator PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources")
+
 panda_add_test(panda_unit_core unit
     SOURCES Version.cpp DeviceSelection.cpp SwapchainGeneration.cpp SwapchainCreation.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
