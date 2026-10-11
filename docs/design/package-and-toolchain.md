@@ -121,8 +121,8 @@ the build directory when replacing its recorded toolchain/SDK installation.
 [`simple_scene`](../../examples/simple_scene/README.md) executable and
 requires Tools, enabled by `PANDA_BUILD_TOOLS=ON` or `PANDA_BUILD_TESTS=ON`.
 The example creates a local Window without an OpenGL context, then a Vulkan
-Context borrowing that window. Its loop polls events, clears and presents a
-diagnostic frame, and waits for an event while the framebuffer is suspended.
+Context borrowing that window. Its loop clears and presents a diagnostic frame,
+then polls events or waits for an event while the framebuffer is suspended.
 Closing the window ends the loop; destruction releases the Context before the
 Window, including failure or exception unwinding. Creation, event and frame
 errors are logged and return a failing process exit status.

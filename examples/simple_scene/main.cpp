@@ -1,70 +1,47 @@
-#include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <expected>
 #include <glm/ext/vector_uint2.hpp>
+#include <panda/Assert.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/tools/gui/Window.hpp>
-#include <tuple>
+#include <string_view>
 
 namespace
 {
-void logError(const panda::Error& error)
+auto fail(std::string_view message) noexcept -> int
 {
-    if (error.native)
+    try
     {
-        panda::log::error("{}:{}: {} ({} status {})",
-                          error.source.file_name(),
-                          error.source.line(),
-                          error.message,
-                          error.native->api,
-                          error.native->code);
-        return;
+        panda::log::error("{}", message);
     }
-    panda::log::error("{}:{}: {}", error.source.file_name(), error.source.line(), error.message);
+    catch (...)
+    {
+        panda::panic(message);
+    }
+    return EXIT_FAILURE;
 }
 
-auto waitForRestoredWindow() -> bool
+auto run(panda::tools::Window& window, const panda::Context& context) -> panda::Result<void>
 {
-    if (auto waited = panda::tools::Window::waitForInput(); !waited)
-    {
-        const auto& error = waited.error();
-        logError(error);
-        return false;
-    }
-    return true;
-}
-
-auto run(panda::tools::Window& window, const panda::Context& context) -> int
-{
-    panda::log::info("Application loop started");
     while (!window.shouldClose())
     {
-        if (auto processed = window.processInput(); !processed)
-        {
-            const auto& error = processed.error();
-            logError(error);
-            return EXIT_FAILURE;
-        }
-        if (window.shouldClose())
-        {
-            break;
-        }
         const auto frame = context.presentClearFrame();
         if (!frame)
         {
-            const auto& error = frame.error();
-            logError(error);
-            return EXIT_FAILURE;
+            return std::unexpected {frame.error()};
         }
-        if (frame->status == panda::FrameResult::Status::Suspended && !waitForRestoredWindow())
+        // Sleep while minimized; otherwise poll without blocking.
+        const auto input = frame->status == panda::FrameResult::Status::Suspended ? panda::tools::Window::waitForInput()
+                                                                                  : window.processInput();
+        if (!input)
         {
-            return EXIT_FAILURE;
+            return input;
         }
     }
-    panda::log::info("Application loop stopped");
-    return EXIT_SUCCESS;
+    return {};
 }
 }
 
@@ -73,37 +50,23 @@ auto main() -> int
     try
     {
         static constexpr auto windowSize = glm::uvec2 {1280, 720};
-        auto window = panda::tools::Window::create(windowSize, "Panda - Simple scene");
-        if (!window)
-        {
-            const auto& error = window.error();
-            logError(error);
-            return EXIT_FAILURE;
-        }
-
-        auto context =
-            panda::Context::createWithSurface(*window,
-                                              {.applicationName = "Panda simple scene", .enableValidation = true});
-        if (!context)
-        {
-            const auto& error = context.error();
-            logError(error);
-            return EXIT_FAILURE;
-        }
-        panda::log::info("Using Vulkan device '{}'", context->getDeviceInfo().name);
-
-        return run(*window, *context);
+        const auto result =
+            panda::tools::Window::create(windowSize, "Panda - Simple scene").and_then([](panda::tools::Window window) {
+                return panda::Context::createWithSurface(
+                           window,
+                           {.applicationName = "Panda simple scene", .enableValidation = true})
+                    .and_then([&window](const panda::Context& context) {
+                        return run(window, context);
+                    });
+            });
+        return result ? EXIT_SUCCESS : fail(result.error().message);
     }
     catch (const std::exception& error)
     {
-        std::ignore = std::fputs("Unexpected application failure: ", stderr);
-        std::ignore = std::fputs(error.what(), stderr);
-        std::ignore = std::fputc('\n', stderr);
-        return EXIT_FAILURE;
+        return fail(error.what());
     }
     catch (...)
     {
-        std::ignore = std::fputs("Unexpected application failure\n", stderr);
-        return EXIT_FAILURE;
+        return fail("Unexpected application failure");
     }
 }

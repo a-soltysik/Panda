@@ -1,22 +1,46 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
-#include <panda/Panda.hpp>
+#include <panda/Assert.hpp>
+#include <panda/Logger.hpp>
 #include <panda/cuda/Cuda.hpp>
 #include <print>
-#include <tuple>
+#include <string_view>
 
 #include "ProducerBoundary.hpp"
+
+namespace
+{
+auto fail(std::string_view message) noexcept -> int
+{
+    try
+    {
+        panda::log::error("{}", message);
+    }
+    catch (...)
+    {
+        panda::panic(message);
+    }
+    return EXIT_FAILURE;
+}
+
+auto runKernel() -> int
+{
+    const auto result = runProducer();
+    if (result.nativeCode != 0 || result.value != producedValue)
+    {
+        std::println(stderr, "CUDA producer failed (native status {}, value {})", result.nativeCode, result.value);
+        return EXIT_FAILURE;
+    }
+    std::println("CUDA producer returned {}", result.value);
+    return EXIT_SUCCESS;
+}
+}
 
 auto main() -> int
 {
     try
     {
-        if (panda::version().empty())
-        {
-            return EXIT_FAILURE;
-        }
-
         const auto availability = panda::cuda::queryAvailability();
         if (!availability)
         {
@@ -34,25 +58,14 @@ auto main() -> int
             return EXIT_SUCCESS;
         }
 
-        const auto result = runProducer();
-        if (result.nativeCode != 0 || result.value != producedValue)
-        {
-            std::println(stderr, "CUDA producer failed (native status {}, value {})", result.nativeCode, result.value);
-            return EXIT_FAILURE;
-        }
-        std::println("CUDA producer returned {}", result.value);
-        return EXIT_SUCCESS;
+        return runKernel();
     }
     catch (const std::exception& error)
     {
-        std::ignore = std::fputs("Unexpected application failure: ", stderr);
-        std::ignore = std::fputs(error.what(), stderr);
-        std::ignore = std::fputc('\n', stderr);
-        return EXIT_FAILURE;
+        return fail(error.what());
     }
     catch (...)
     {
-        std::ignore = std::fputs("Unexpected application failure\n", stderr);
-        return EXIT_FAILURE;
+        return fail("Unexpected application failure");
     }
 }
