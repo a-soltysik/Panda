@@ -1,9 +1,9 @@
 #pragma once
 
+#include <vulkan/vulkan.hpp>
+
 /// @file
 /// Window-system boundary used by the Vulkan context.
-
-#include <vulkan/vulkan_core.h>
 
 #include <cstdint>
 #include <panda/Error.hpp>
@@ -43,7 +43,7 @@ public:
     /// @brief Creates a surface for a live instance and transfers its ownership.
     /// @param instance Instance supplied by Context; valid only during this call.
     /// @return A surface destroyed by Context or a native failure.
-    [[nodiscard]] virtual auto createSurface(VkInstance instance) const -> Result<VkSurfaceKHR> = 0;
+    [[nodiscard]] virtual auto createSurface(vk::Instance instance) const -> Result<vk::SurfaceKHR> = 0;
 
     /// @brief Queries the actual framebuffer size, including zero while minimized.
     /// @return Pixel extent or a window-system failure.

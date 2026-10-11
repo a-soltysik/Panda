@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <panda/Assert.hpp>
+#include <panda/Buffer.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
@@ -26,6 +27,8 @@
 #include "DeviceSelection.hpp"
 #include "Presentation.hpp"
 #include "VulkanError.hpp"
+#include "resources/BufferResource.hpp"
+#include "resources/MemoryPool.hpp"
 
 namespace panda
 {
@@ -141,7 +144,7 @@ auto createInstance(const vk::raii::Context& loader, const vk::InstanceCreateInf
     }
     // Unlike leaf objects, Instance construction uses the handle immediately
     // to load Vulkan functions, so check the result before creating the RAII wrapper.
-    return vk::raii::Instance {loader, static_cast<VkInstance>(instance)};
+    return vk::raii::Instance {loader, instance};
 }
 
 auto makeInstance(const vk::raii::Context& loader,
@@ -192,7 +195,7 @@ auto makeWindowSurface(const WindowSurface* surface, const vk::raii::Instance& i
     {
         return std::unexpected {std::move(created.error())};
     }
-    if (*created == VkSurfaceKHR {})
+    if (!*created)
     {
         return std::unexpected {makeError(ErrorCode::BackendFailure, "WindowSurface returned a null Vulkan surface")};
     }
@@ -210,10 +213,10 @@ auto createLogicalDevice(const vk::raii::PhysicalDevice& physicalDevice, const v
     }
     // Unlike leaf objects, Device construction uses the handle immediately
     // to load Vulkan functions, so check the result before creating the RAII wrapper.
-    return vk::raii::Device {physicalDevice, static_cast<VkDevice>(device)};
+    return vk::raii::Device {physicalDevice, device};
 }
 
-auto createDevice(const vk::raii::Instance& instance,
+auto createDevice(const vk::raii::PhysicalDevice& physicalDevice,
                   const detail::SelectedDevice& selected,
                   bool windowed,
                   const vk::PhysicalDeviceFeatures2& features) -> Result<vk::raii::Device>
@@ -239,12 +242,10 @@ auto createDevice(const vk::raii::Instance& instance,
                               .pQueueCreateInfos = queueInfos.data(),
                               .enabledExtensionCount = windowed ? 2U : 0U,
                               .ppEnabledExtensionNames = windowed ? deviceExtensions.data() : nullptr};
-    const auto physicalDevice =
-        vk::raii::PhysicalDevice {instance, static_cast<VkPhysicalDevice>(selected.physicalDevice)};
     return createLogicalDevice(physicalDevice, deviceInfo);
 }
 
-auto makeDevice(const vk::raii::Instance& instance, const detail::SelectedDevice& selected, bool windowed)
+auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice, const detail::SelectedDevice& selected, bool windowed)
     -> Result<vk::raii::Device>
 {
     auto maintenance = vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR {.swapchainMaintenance1 = vk::True};
@@ -253,7 +254,7 @@ auto makeDevice(const vk::raii::Instance& instance, const detail::SelectedDevice
                                                         .dynamicRendering = vk::True};
     auto vulkan12 = vk::PhysicalDeviceVulkan12Features {.pNext = &vulkan13, .timelineSemaphore = vk::True};
     const auto features = vk::PhysicalDeviceFeatures2 {.pNext = &vulkan12};
-    return createDevice(instance, selected, windowed, features);
+    return createDevice(physicalDevice, selected, windowed, features);
 }
 
 }
@@ -313,7 +314,9 @@ private:
 
     vk::raii::Context _loader {vkGetInstanceProcAddr};
     InstanceServices _services;
+    vk::raii::PhysicalDevice _physicalDevice {nullptr};
     vk::raii::Device _device {nullptr};
+    std::unique_ptr<detail::MemoryPool> _memoryPool;
     std::unique_ptr<detail::Presentation> _presentation;
     ContextDeviceInfo _info;
 };
@@ -326,12 +329,14 @@ auto Context::Impl::initializeDevice(WindowSurface* surface) -> Result<void>
     {
         return std::unexpected {std::move(selected.error())};
     }
-    auto createdDevice = makeDevice(_services.instance, *selected, surface != nullptr);
+    _physicalDevice = vk::raii::PhysicalDevice {_services.instance, selected->physicalDevice};
+    auto createdDevice = makeDevice(_physicalDevice, *selected, surface != nullptr);
     if (!createdDevice)
     {
         return std::unexpected {std::move(createdDevice.error())};
     }
     _device = std::move(*createdDevice);
+    _memoryPool = detail::MemoryPool::create(_physicalDevice, _device);
     auto createdPresentation = makePresentation(surface, *selected, _device, nativeSurface);
     if (!createdPresentation)
     {
@@ -356,6 +361,7 @@ Context::~Context() noexcept
 {
     if (_implementation)
     {
+        expect(_implementation->_memoryPool->getStats().liveBytes == 0, "Context destroyed with live Buffer owners");
         if (_implementation->_presentation)
         {
             expect(_implementation->_presentation->drain(), "Cannot safely drain window presentation");
@@ -412,6 +418,15 @@ auto Context::presentClearFrame() const -> Result<FrameResult>
         return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to present a frame")};
     }
     return _implementation->_presentation->presentClearFrame();
+}
+
+auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer>
+{
+    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    return detail::BufferResource::create(_implementation->_device, *_implementation->_memoryPool, description)
+        .transform([](std::shared_ptr<detail::BufferResource> resource) {
+            return Buffer {std::move(resource)};
+        });
 }
 
 }

@@ -6,6 +6,10 @@ panda_add_test(panda_system_vulkan_context system
     SOURCES VulkanContext.cpp
     LIBRARIES Panda::Panda Vulkan::Headers)
 
+panda_add_test(panda_system_buffer system
+    SOURCES Buffer.cpp
+    LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture)
+
 panda_add_test(panda_system_memory_allocation system
     SOURCES MemoryAllocation.cpp
     LIBRARIES Panda::Panda Vulkan::Headers)

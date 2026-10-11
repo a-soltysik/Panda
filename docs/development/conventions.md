@@ -12,6 +12,10 @@ relevant section here as conventions are agreed; do not duplicate rules elsewher
 Apply agreed conventions to the code being changed. Schedule broader consistency
 refactors separately rather than mixing them into unrelated work.
 
+Public build/run guides use Windows and Linux sections with native commands for
+each platform. Environment-specific contributor helpers belong in `.agents/`;
+verification records still identify the environment that actually ran a check.
+
 ## Names and declarations
 
 - Use `_window`-style names for private data members. Access members without

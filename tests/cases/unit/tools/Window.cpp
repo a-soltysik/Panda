@@ -15,8 +15,10 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+#include <vulkan/vulkan.hpp>
 
 #include "ScopedMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "external/glfw/GlfwMock.hpp"
 
 namespace
@@ -295,9 +297,49 @@ TEST_F(WindowTest, CopiesRequiredExtensionsAndRejectsMissingSurfaceInputs)
     EXPECT_THAT(missing.error().source.function_name(), HasSubstr("Window::getRequiredInstanceExtensions"));
 
     EXPECT_CALL(_glfw, glfwCreateWindowSurface(_, _, _, _)).Times(0);
-    const auto nullInstance = window->createSurface(VkInstance {});
+    const auto nullInstance = window->createSurface(vk::Instance {});
     ASSERT_FALSE(nullInstance.has_value());
     EXPECT_EQ(nullInstance.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(WindowTest, CreatesBorrowedHppSurfaceThroughTheGlfwAbi)
+{
+    expectInitialization();
+    expectCreation(getFirst());
+    expectDestruction(getFirst());
+    expectSessionRelease();
+    auto window = Window::create(size, "test");
+    ASSERT_TRUE(window);
+    auto* const instance = panda::test::fakeVulkanHandle<VkInstance>(60);
+    auto* const nativeSurface = panda::test::fakeVulkanHandle<VkSurfaceKHR>(61);
+    EXPECT_CALL(_glfw, glfwCreateWindowSurface(instance, getFirst(), nullptr, NotNull()))
+        .WillOnce(DoAll(SetArgPointee<3>(nativeSurface), Return(VK_SUCCESS)));
+    const auto surface = window->createSurface(vk::Instance {instance});
+    ASSERT_TRUE(surface);
+    EXPECT_EQ(*surface, vk::SurfaceKHR {nativeSurface});
+    EXPECT_TRUE(window->isValid());
+}
+
+TEST_F(WindowTest, SurfaceFailurePreservesNativeErrorAndDoesNotPublishTheFailedOutput)
+{
+    expectInitialization();
+    expectCreation(getFirst());
+    expectDestruction(getFirst());
+    expectSessionRelease();
+    auto window = Window::create(size, "test");
+    ASSERT_TRUE(window);
+    auto* const instance = panda::test::fakeVulkanHandle<VkInstance>(60);
+    auto* const failedOutput = panda::test::fakeVulkanHandle<VkSurfaceKHR>(61);
+    EXPECT_CALL(_glfw, glfwCreateWindowSurface(instance, getFirst(), nullptr, NotNull()))
+        .WillOnce(DoAll(SetArgPointee<3>(failedOutput), Return(VK_ERROR_SURFACE_LOST_KHR)));
+    const auto surface = window->createSurface(vk::Instance {instance});
+    ASSERT_FALSE(surface);
+    EXPECT_EQ(surface.error().code, panda::ErrorCode::SurfaceLost);
+    ASSERT_TRUE(surface.error().native);
+    const auto native = surface.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.api, "Vulkan");
+    EXPECT_EQ(native.code, VK_ERROR_SURFACE_LOST_KHR);
+    EXPECT_TRUE(window->isValid());
 }
 
 TEST_F(WindowTest, QueryErrorsRemainDistinctFromZeroExtent)

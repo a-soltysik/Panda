@@ -146,7 +146,7 @@ their public headers. Remaining entries describe planned resource APIs.
 | `Context::create(ContextOptions) -> Result<Context>` | Move-only owner with stable, heap-owned internal state; operations on one context are serialized |
 | `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
 | `Buffer`, `Texture`, `Mesh`, `Material` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
-| `Context::create_buffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an allocation behind a borrowed native handle |
+| `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an allocation behind a borrowed native handle |
 | `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates size, alignment and usage |
 | `UploadBatch::submit() -> Result<CompletionPoint>` | Submits on the same graphics/compute queue; no CPU wait for completion |
 | `Context::poll(CompletionPoint) -> Result<bool>` | Reports GPU completion or failure; not a presentation/display timestamp |
@@ -167,12 +167,29 @@ backend status and source location; it does not retain references to temporary s
 
 Keep `BufferDesc` small: byte size, usage flags, memory intent, external-sharing
 intent, initialization policy, and debug label. The ordinary native extension uses
-Vulkan usage flags rather than inventing a complete mirror of Vulkan. Meshes and
+Vulkan-Hpp usage flags rather than inventing a complete mirror of Vulkan. Meshes and
 textures provide higher-level factories. No public general-purpose memory mapper
 is needed initially: uploads handle CPU writes; a test/readback helper can explicitly
 wait, invalidate, and copy results. CUDA-shared buffers are never CPU-mapped.
 
-`panda/NativeVulkan.hpp` exposes borrowed device/physical-device handles, enabled
+The implemented `BufferDesc` currently provides byte size, `vk::BufferUsageFlags` and
+`BufferMemory` intent. Buffers are ordinary, non-exportable and initially contain
+undefined bytes. Explicit initialization, debug labels and external-sharing options
+remain planned with uploads and interoperability. Supported usages are transfer,
+vertex, index, indirect, uniform/storage and texel buffers; feature-dependent usages
+such as device addresses are rejected before calling Vulkan. `Device` requires
+device-local memory; `Upload` requires host visibility and prefers coherence;
+`Readback` requires host visibility and prefers caching. These intents grant no
+CPU mapping or GPU access permission.
+
+`Context::createBuffer` creates the native buffer, queries its ordinary and
+dedicated requirements, allocates from the Context's pool and binds at that range's
+offset. Failure publishes no handle. A last `Buffer` release destroys the native
+buffer before returning its range. The pool and device remain stable when Context
+moves; destroying Context with live Buffer owners is a checked fatal violation.
+Recoverable `close` and submission retention remain planned.
+
+The planned `panda/NativeVulkan.hpp` extension exposes borrowed device/physical-device handles, enabled
 feature information and buffer views for native pipeline/descriptor setup. It
 does not expose Panda's queue submission or semaphore ownership. Native handles
 remain tied to their owning Context/resource; recording accesses to Panda buffers

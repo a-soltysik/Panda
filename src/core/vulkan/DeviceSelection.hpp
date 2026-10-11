@@ -30,7 +30,7 @@ struct SelectedDevice
 [[nodiscard]] auto instanceExtensions(const WindowSurface* surface, bool enableValidation = false)
     -> std::expected<InstanceExtensions, Error>;
 
-[[nodiscard]] auto selectDevice(vk::Instance instance, VkSurfaceKHR surface, const InstanceExtensions& extensions)
+[[nodiscard]] auto selectDevice(vk::Instance instance, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
     -> std::expected<SelectedDevice, Error>;
 
 }

@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include <vulkan/vulkan_core.h>
 
 #include <expected>
 #include <panda/Context.hpp>
@@ -9,6 +8,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <vulkan/vulkan.hpp>
 
 #include "GlfwTestSupport.hpp"
 
@@ -34,7 +34,8 @@ public:
         return _window.getRequiredInstanceExtensions();
     }
 
-    [[nodiscard]] auto createSurface(VkInstance instance) const -> std::expected<VkSurfaceKHR, panda::Error> override
+    [[nodiscard]] auto createSurface(vk::Instance instance) const
+        -> std::expected<vk::SurfaceKHR, panda::Error> override
     {
         return _window.createSurface(instance);
     }
@@ -68,12 +69,12 @@ public:
         return _window.getRequiredInstanceExtensions();
     }
 
-    [[nodiscard]] auto createSurface([[maybe_unused]] VkInstance instance) const
-        -> std::expected<VkSurfaceKHR, panda::Error> override
+    [[nodiscard]] auto createSurface([[maybe_unused]] vk::Instance instance) const
+        -> std::expected<vk::SurfaceKHR, panda::Error> override
     {
         if (_returnNull)
         {
-            return VkSurfaceKHR {};
+            return vk::SurfaceKHR {};
         }
         return std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure,
                                                  "native surface unavailable",

@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <string>
 
@@ -67,6 +68,7 @@ struct FrameResult
 /// Calls on one Context must be serialized. A quiescent Context may move between
 /// threads. A borrowed WindowSurface and its native window must outlive this Context;
 /// windowed calls follow that surface's thread requirements.
+/// Context outlives every Buffer owner created from it, including copied handles.
 class Context final
 {
 public:
@@ -91,7 +93,8 @@ public:
 
     auto operator=(Context&&) -> Context& = delete;
 
-    /// @brief Drains known presentation work and releases owned Vulkan objects.
+    /// @brief Rejects live Buffer owners, drains presentation and releases Vulkan objects.
+    /// An ownership violation is fatal; recoverable close is not implemented yet.
     ~Context() noexcept;
 
     /// @brief Reports ownership; safe on a moved-from object.
@@ -100,6 +103,11 @@ public:
     /// @brief Copies selected device diagnostics.
     /// @return Device information. Moved-from use is a fatal contract error.
     [[nodiscard]] auto getDeviceInfo() const -> ContextDeviceInfo;
+
+    /// @brief Creates an ordinary fixed-size buffer with undefined initial bytes.
+    /// @return A shared resource owner or a validation/allocation/backend error.
+    /// Context outlives all copies. May allocate; submits no work and does not wait.
+    [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
 
     /// @brief Clears and presents one diagnostic frame, or reports why it was skipped.
     /// @return Checked frame result or a backend/window failure. A nonzero

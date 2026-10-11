@@ -1,5 +1,7 @@
 function(panda_configure_target target)
     set_target_properties(${target} PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+    # Template-heavy Vulkan/gMock code can exceed the ordinary COFF section limit.
+    target_compile_options(${target} PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/bigobj>")
     panda_apply_warnings(${target})
     panda_enable_coverage(${target})
     panda_enable_sanitizers(${target})

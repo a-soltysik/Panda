@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vulkan/vulkan.hpp>
+
 /// @file
 /// GLFW window ownership and event processing.
 
@@ -76,7 +78,7 @@ public:
     [[nodiscard]] auto getRequiredInstanceExtensions() const -> Result<std::vector<std::string>> override;
 
     /// @brief Creates a GLFW Vulkan surface and transfers it to the caller.
-    [[nodiscard]] auto createSurface(VkInstance instance) const -> Result<VkSurfaceKHR> override;
+    [[nodiscard]] auto createSurface(vk::Instance instance) const -> Result<vk::SurfaceKHR> override;
 
     /// @brief Returns pixel dimensions, including zero while minimized.
     [[nodiscard]] auto getFramebufferExtent() const -> Result<FramebufferExtent> override;

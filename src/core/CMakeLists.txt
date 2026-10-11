@@ -4,6 +4,7 @@ panda_add_component(panda_core
     SOURCES
         Panda.cpp
         Error.cpp
+        Buffer.cpp
         vulkan/Context.cpp
         vulkan/DeviceSelection.cpp
         vulkan/Presentation.cpp
@@ -13,6 +14,7 @@ panda_add_component(panda_core
         vulkan/resources/MemoryBlock.cpp
         vulkan/resources/MemoryAllocation.cpp
         vulkan/resources/MemoryPool.cpp
+        vulkan/resources/BufferResource.cpp
     LIBRARIES PUBLIC panda_common glm::glm Vulkan::Headers PRIVATE Vulkan::Vulkan)
 
 set_target_properties(panda_core PROPERTIES OUTPUT_NAME panda)

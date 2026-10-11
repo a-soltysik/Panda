@@ -42,21 +42,24 @@ TEST(Error, DefaultSourceLocationPointsToTheCallingFunction)
 
 TEST(Error, VulkanStatusesMapToCallerRecoveryActionsAndRetainNativeCodes)
 {
-    const auto unsupported = panda::makeVulkanError(std::to_underlying(vk::Result::eErrorFeatureNotPresent));
-    const auto exhausted = panda::makeVulkanError(std::to_underlying(vk::Result::eErrorOutOfDeviceMemory));
-    const auto timeout = panda::makeVulkanError(std::to_underlying(vk::Result::eTimeout));
-    const auto lostSurface = panda::makeVulkanError(std::to_underlying(vk::Result::eErrorSurfaceLostKHR));
-    const auto lostDevice = panda::makeVulkanError(std::to_underlying(vk::Result::eErrorDeviceLost));
-    const auto backendFailure = panda::makeVulkanError(std::to_underlying(vk::Result::eErrorInitializationFailed));
+    const auto unsupported = panda::makeVulkanError(vk::Result::eErrorFeatureNotPresent);
+    const auto invalidArgument = panda::makeVulkanError(vk::Result::eErrorInvalidExternalHandle);
+    const auto exhausted = panda::makeVulkanError(vk::Result::eErrorOutOfDeviceMemory);
+    const auto timeout = panda::makeVulkanError(vk::Result::eTimeout);
+    const auto lostSurface = panda::makeVulkanError(vk::Result::eErrorSurfaceLostKHR);
+    const auto lostDevice = panda::makeVulkanError(vk::Result::eErrorDeviceLost);
+    const auto backendFailure = panda::makeVulkanError(vk::Result::eErrorInitializationFailed);
 
     EXPECT_EQ(unsupported.code, panda::ErrorCode::Unsupported);
+    EXPECT_EQ(invalidArgument.code, panda::ErrorCode::InvalidArgument);
     EXPECT_EQ(exhausted.code, panda::ErrorCode::ResourceExhausted);
     EXPECT_EQ(timeout.code, panda::ErrorCode::Timeout);
     EXPECT_EQ(lostSurface.code, panda::ErrorCode::SurfaceLost);
     EXPECT_EQ(lostDevice.code, panda::ErrorCode::DeviceLost);
     EXPECT_EQ(backendFailure.code, panda::ErrorCode::BackendFailure);
 
-    const auto errors = {&unsupported, &exhausted, &timeout, &lostSurface, &lostDevice, &backendFailure};
+    const auto errors =
+        {&unsupported, &invalidArgument, &exhausted, &timeout, &lostSurface, &lostDevice, &backendFailure};
     for (const auto* error : errors)
     {
         ASSERT_TRUE(error->native.has_value());
@@ -71,7 +74,9 @@ TEST(Error, VulkanStatusesMapToCallerRecoveryActionsAndRetainNativeCodes)
 TEST(Error, DefaultsUnrecognizedVulkanStatusToBackendFailure)
 {
     static constexpr auto unknownStatus = std::int32_t {123456789};
-    const auto error = panda::makeVulkanError(unknownStatus);
+    // Deliberate unknown backend status verifies the recovery fallback.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    const auto error = panda::makeVulkanError(static_cast<vk::Result>(unknownStatus));
 
     EXPECT_EQ(error.code, panda::ErrorCode::BackendFailure);
     EXPECT_NE(error.message.find("Vulkan operation failed"), std::string::npos);

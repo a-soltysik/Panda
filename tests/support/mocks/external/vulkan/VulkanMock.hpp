@@ -58,6 +58,16 @@ public:
     MOCK_METHOD(void, vkGetPhysicalDeviceProperties2, (VkPhysicalDevice, VkPhysicalDeviceProperties2*), ());
     MOCK_METHOD(void, vkGetPhysicalDeviceMemoryProperties, (VkPhysicalDevice, VkPhysicalDeviceMemoryProperties*), ());
     MOCK_METHOD(VkResult,
+                vkCreateBuffer,
+                (VkDevice, const VkBufferCreateInfo*, const VkAllocationCallbacks*, VkBuffer*),
+                ());
+    MOCK_METHOD(void, vkDestroyBuffer, (VkDevice, VkBuffer, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(void,
+                vkGetBufferMemoryRequirements2,
+                (VkDevice, const VkBufferMemoryRequirementsInfo2*, VkMemoryRequirements2*),
+                ());
+    MOCK_METHOD(VkResult, vkBindBufferMemory2, (VkDevice, std::uint32_t, const VkBindBufferMemoryInfo*), ());
+    MOCK_METHOD(VkResult,
                 vkAllocateMemory,
                 (VkDevice, const VkMemoryAllocateInfo*, const VkAllocationCallbacks*, VkDeviceMemory*),
                 ());

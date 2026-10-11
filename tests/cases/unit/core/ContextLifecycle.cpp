@@ -9,8 +9,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <memory>
+#include <panda/Buffer.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
@@ -36,6 +39,13 @@ using testing::Return;
 
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
 constexpr auto exhausted = static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory);
+
+auto invalidMemoryIntent() -> panda::BufferMemory
+{
+    // Deliberate invalid input to verify validation before native creation.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    return static_cast<panda::BufferMemory>(255);
+}
 
 auto extension(std::string_view name) -> VkExtensionProperties
 {
@@ -243,13 +253,17 @@ protected:
                 }
                 return success;
             });
-        EXPECT_CALL(window, createSurface(instance))
+        EXPECT_CALL(window, createSurface(vk::Instance {instance}))
             .WillOnce(
                 testing::Action<panda::test::WindowSurfaceMock::SurfaceResult(VkInstance)> {Return(std::move(result))});
     }
 
     void expectDevice(bool windowed, VkResult result = success, bool separateQueues = false)
     {
+        if (result == success)
+        {
+            expectMemoryPool();
+        }
         EXPECT_CALL(vulkan, vkCreateDevice(physical, NotNull(), nullptr, NotNull()))
             .WillOnce(testing::Action<decltype(vkCreateDevice)> {
                 [this, windowed, result, separateQueues](VkPhysicalDevice,
@@ -275,7 +289,7 @@ protected:
         auto parents = testing::ExpectationSet {};
         if (hasDevice)
         {
-            parents += EXPECT_CALL(vulkan, vkDestroyDevice(device, nullptr)).After(frameCleanup);
+            parents += EXPECT_CALL(vulkan, vkDestroyDevice(device, nullptr)).After(frameCleanup).After(memoryCleanup);
         }
         if (hasSurface)
         {
@@ -330,6 +344,114 @@ protected:
         expectParentsDestroyed(true, true);
     }
 
+    void expectMemoryPool()
+    {
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(physical, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
+                *output = VkPhysicalDeviceMemoryProperties {};
+                output->memoryTypeCount = 3;
+                output->memoryTypes[0].propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+                output->memoryTypes[1].propertyFlags = static_cast<VkMemoryPropertyFlags>(
+                    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+                output->memoryTypes[2].propertyFlags = static_cast<VkMemoryPropertyFlags>(
+                    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCached);
+                output->memoryHeapCount = 1;
+                output->memoryHeaps[0].size = std::uint64_t {128} * 1024 * 1024;
+            });
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(physical, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                output->properties.limits.maxMemoryAllocationCount = 16;
+                output->properties.limits.nonCoherentAtomSize = 64;
+                auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
+                ASSERT_NE(maintenance, nullptr);
+                maintenance->maxMemoryAllocationSize = std::uint64_t {128} * 1024 * 1024;
+            });
+    }
+
+    void expectHeadless()
+    {
+        expectInstance();
+        expectAdapter(false);
+        expectDevice(false);
+    }
+
+    void expectBuffer(VkBuffer buffer,
+                      std::uint64_t size = 65,
+                      bool dedicated = false,
+                      const testing::ExpectationSet& ownerReleased = {})
+    {
+        EXPECT_CALL(vulkan, vkCreateBuffer(device, NotNull(), nullptr, NotNull()))
+            .InSequence(bufferCreationOrder)
+            .WillOnce([buffer,
+                       size](VkDevice, const VkBufferCreateInfo* info, const VkAllocationCallbacks*, VkBuffer* output) {
+                EXPECT_EQ(info->size, size);
+                EXPECT_EQ(info->usage, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                EXPECT_EQ(info->sharingMode, VK_SHARING_MODE_EXCLUSIVE);
+                EXPECT_EQ(info->flags, 0);
+                EXPECT_EQ(info->pNext, nullptr);
+                *output = buffer;
+                return success;
+            });
+        EXPECT_CALL(vulkan, vkGetBufferMemoryRequirements2(device, NotNull(), NotNull()))
+            .InSequence(bufferCreationOrder)
+            .WillOnce([buffer, dedicated](VkDevice,
+                                          const VkBufferMemoryRequirementsInfo2* info,
+                                          VkMemoryRequirements2* output) {
+                EXPECT_EQ(info->buffer, buffer);
+                output->memoryRequirements = {.size = 128, .alignment = 64, .memoryTypeBits = 7};
+                auto* requirement = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
+                ASSERT_NE(requirement, nullptr);
+                requirement->requiresDedicatedAllocation = dedicated ? vk::True : vk::False;
+            });
+        bufferCleanup += EXPECT_CALL(vulkan, vkDestroyBuffer(device, buffer, nullptr)).After(ownerReleased);
+    }
+
+    void expectBufferAllocation(VkDeviceMemory memory, std::uint32_t type = 0, bool dedicated = false)
+    {
+        EXPECT_CALL(vulkan, vkAllocateMemory(device, NotNull(), nullptr, NotNull()))
+            .InSequence(allocationOrder)
+            .WillOnce([memory, type, dedicated](VkDevice,
+                                                const VkMemoryAllocateInfo* info,
+                                                const VkAllocationCallbacks*,
+                                                VkDeviceMemory* output) {
+                EXPECT_EQ(info->memoryTypeIndex, type);
+                EXPECT_EQ(info->allocationSize, dedicated ? 128 : (type == 0 ? 64 : 8) * 1024 * 1024);
+                EXPECT_EQ(info->pNext != nullptr, dedicated);
+                *output = memory;
+                return success;
+            });
+        if (type == 0)
+        {
+            memoryCleanup += EXPECT_CALL(vulkan, vkFreeMemory(device, memory, nullptr)).After(bufferCleanup);
+        }
+    }
+
+    void expectBinding(VkBuffer buffer, VkDeviceMemory memory, std::uint64_t offset = 0, VkResult result = success)
+    {
+        EXPECT_CALL(vulkan, vkBindBufferMemory2(device, 1, NotNull()))
+            .InSequence(bindingOrder)
+            .WillOnce([buffer, memory, offset, result](VkDevice, std::uint32_t, const VkBindBufferMemoryInfo* info) {
+                EXPECT_EQ(info->buffer, buffer);
+                EXPECT_EQ(info->memory, memory);
+                EXPECT_EQ(info->memoryOffset, offset);
+                return result;
+            });
+    }
+
+    void expectHostMapping(VkDeviceMemory memory)
+    {
+        EXPECT_CALL(vulkan, vkMapMemory(device, memory, 0, std::uint64_t {8} * 1024 * 1024, 0, NotNull()))
+            .WillOnce([this](VkDevice, VkDeviceMemory, VkDeviceSize, VkDeviceSize, VkMemoryMapFlags, void** output) {
+                *output = hostStorage.data();
+                return success;
+            });
+        const auto unmapped =
+            testing::Expectation {EXPECT_CALL(vulkan, vkUnmapMemory(device, memory)).After(bufferCleanup)};
+        memoryCleanup += EXPECT_CALL(vulkan, vkFreeMemory(device, memory, nullptr)).After(unmapped);
+    }
+
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::SwapchainGenerationMock> generations;
     testing::StrictMock<panda::test::WindowSurfaceMock> window;
@@ -338,6 +460,12 @@ protected:
     VkDevice device {fakeVulkanHandle<VkDevice>(3)};
     VkSurfaceKHR surface {fakeVulkanHandle<VkSurfaceKHR>(4)};
     testing::ExpectationSet frameCleanup;
+    testing::ExpectationSet bufferCleanup;
+    testing::ExpectationSet memoryCleanup;
+    std::array<std::byte, 128> hostStorage {};
+    testing::Sequence bufferCreationOrder;
+    testing::Sequence bindingOrder;
+    testing::Sequence allocationOrder;
 };
 }
 
@@ -356,6 +484,273 @@ TEST_F(ContextLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOr
     const auto frame = moved.presentClearFrame();
     ASSERT_FALSE(frame.has_value());
     EXPECT_EQ(frame.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(ContextLifecycleTest, EmptyBufferAndInvalidDescriptionsNeverCreateNativeResources)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto empty = panda::Buffer {};
+    EXPECT_FALSE(empty.isValid());
+    EXPECT_EQ(empty.getSize(), 0);
+    empty.reset();
+    for (const auto description : std::array {
+             panda::BufferDesc {},
+             panda::BufferDesc {.size = 1, .usage = {}},
+             panda::BufferDesc {.usage = vk::BufferUsageFlagBits::eStorageBuffer},
+             panda::BufferDesc {.size = 1,
+                                .usage = vk::BufferUsageFlagBits::eStorageBuffer,
+                                .memory = invalidMemoryIntent()}
+    })
+    {
+        const auto buffer = context->createBuffer(description);
+        ASSERT_FALSE(buffer);
+        EXPECT_EQ(buffer.error().code, panda::ErrorCode::InvalidArgument);
+    }
+    const auto unsupported = context->createBuffer({.size = 1, .usage = vk::BufferUsageFlagBits::eShaderDeviceAddress});
+    ASSERT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(ContextLifecycleTest, SharedBuffersRetainNativeStateAndReuseReleasedRanges)
+{
+    expectHeadless();
+    auto* const first = fakeVulkanHandle<VkBuffer>(40);
+    auto* const second = fakeVulkanHandle<VkBuffer>(41);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectBuffer(first);
+    expectBuffer(second);
+    expectBufferAllocation(memory);
+    expectBinding(first, memory);
+    expectBinding(second, memory);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto buffer = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(buffer);
+    auto copy = *buffer;
+    buffer->reset();
+    EXPECT_TRUE(copy.isValid());
+    EXPECT_EQ(copy.getSize(), 65);
+    copy.reset();
+    auto replacement = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(replacement);
+    EXPECT_EQ(replacement->getSize(), 65);
+}
+
+TEST_F(ContextLifecycleTest, LiveBuffersRemainBoundAcrossContextAndHandleMoves)
+{
+    expectHeadless();
+    auto* const native = fakeVulkanHandle<VkBuffer>(40);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectBuffer(native);
+    expectBufferAllocation(memory);
+    expectBinding(native, memory);
+    expectParentsDestroyed(true, false);
+    auto created = panda::Context::create();
+    ASSERT_TRUE(created);
+    auto buffer = created->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(buffer);
+    auto context = std::move(*created);
+    auto moved = std::move(*buffer);
+    EXPECT_FALSE(buffer->isValid());
+    EXPECT_EQ(buffer->getSize(), 0);
+    EXPECT_TRUE(context.isValid());
+    EXPECT_EQ(moved.getSize(), 65);
+    moved.reset();
+}
+
+TEST_F(ContextLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutput)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    EXPECT_CALL(vulkan, vkCreateBuffer(device, NotNull(), nullptr, NotNull()))
+        .WillOnce([](VkDevice, const VkBufferCreateInfo*, const VkAllocationCallbacks*, VkBuffer* output) {
+            *output = fakeVulkanHandle<VkBuffer>(40);
+            return exhausted;
+        });
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto buffer = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_FALSE(buffer);
+    EXPECT_EQ(buffer.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_EQ(buffer.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
+}
+
+TEST_F(ContextLifecycleTest, FailedBindingReleasesTheRangeAndPreservesTheNativeError)
+{
+    expectHeadless();
+    auto* const first = fakeVulkanHandle<VkBuffer>(40);
+    auto* const second = fakeVulkanHandle<VkBuffer>(41);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectBuffer(first);
+    expectBuffer(second);
+    expectBufferAllocation(memory);
+    expectBinding(first, memory, 0, exhausted);
+    expectBinding(second, memory);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto failed = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_EQ(failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
+    const auto retry = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(retry);
+}
+
+TEST_F(ContextLifecycleTest, RequiredDedicatedBufferIsDestroyedBeforeItsExactAllocation)
+{
+    expectHeadless();
+    auto* const native = fakeVulkanHandle<VkBuffer>(40);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectBuffer(native, 65, true);
+    expectBufferAllocation(memory, 0, true);
+    expectBinding(native, memory);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto buffer = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(buffer);
+    buffer->reset();
+    EXPECT_FALSE(buffer->isValid());
+}
+
+TEST_F(ContextLifecycleTest, LastSharedOwnerControlsNativeDestruction)
+{
+    expectHeadless();
+    auto* const native = fakeVulkanHandle<VkBuffer>(40);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto lastRelease = testing::MockFunction<void()> {};
+    const auto ownerReleased = testing::Expectation {EXPECT_CALL(lastRelease, Call())};
+    expectBuffer(native, 65, true, testing::ExpectationSet {ownerReleased});
+    expectBufferAllocation(memory, 0, true);
+    expectBinding(native, memory);
+    expectParentsDestroyed(true, false);
+    auto resetComplete = testing::MockFunction<void()> {};
+    EXPECT_CALL(resetComplete, Call()).After(memoryCleanup);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto original = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(original);
+    auto retained = *original;
+    original->reset();
+    EXPECT_EQ(original->getSize(), 0);
+    EXPECT_EQ(retained.getSize(), 65);
+    lastRelease.Call();
+    retained.reset();
+    resetComplete.Call();
+    EXPECT_FALSE(retained.isValid());
+    EXPECT_EQ(retained.getSize(), 0);
+}
+
+TEST_F(ContextLifecycleTest, DedicatedBindingFailureDestroysBufferBeforeFreeingItsAllocation)
+{
+    expectHeadless();
+    auto* const native = fakeVulkanHandle<VkBuffer>(40);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectBuffer(native, 65, true);
+    expectBufferAllocation(memory, 0, true);
+    expectBinding(native, memory, 0, exhausted);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto failed = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
+    ASSERT_TRUE(failed.error().native);
+    EXPECT_EQ(failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
+}
+
+TEST_F(ContextLifecycleTest, AllocationFailureDestroysTheUnboundBuffer)
+{
+    expectHeadless();
+    expectBuffer(fakeVulkanHandle<VkBuffer>(40));
+    EXPECT_CALL(vulkan, vkAllocateMemory(device, NotNull(), nullptr, NotNull()))
+        .Times(2)
+        .WillRepeatedly(Return(exhausted));
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto failed = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(ContextLifecycleTest, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
+{
+    expectHeadless();
+    auto* const first = fakeVulkanHandle<VkBuffer>(40);
+    auto* const second = fakeVulkanHandle<VkBuffer>(41);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectBuffer(first);
+    expectBuffer(second);
+    expectBufferAllocation(memory);
+    expectBinding(first, memory);
+    expectBinding(second, memory, 128);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto source = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto target = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(source);
+    ASSERT_TRUE(target);
+    *target = *source;
+    source->reset();
+    auto assigned = panda::Buffer {};
+    assigned = std::move(*target);
+    EXPECT_FALSE(target->isValid());
+    EXPECT_TRUE(assigned.isValid());
+    EXPECT_EQ(assigned.getSize(), 65);
+}
+
+TEST_F(ContextLifecycleTest, HostMemoryIntentsSelectCoherenceForUploadsAndCachingForReadback)
+{
+    expectHeadless();
+    auto* const upload = fakeVulkanHandle<VkBuffer>(40);
+    auto* const readback = fakeVulkanHandle<VkBuffer>(41);
+    auto* const uploadMemory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const readbackMemory = fakeVulkanHandle<VkDeviceMemory>(51);
+    expectBuffer(upload);
+    expectBuffer(readback);
+    expectBufferAllocation(uploadMemory, 1);
+    expectBufferAllocation(readbackMemory, 2);
+    expectHostMapping(uploadMemory);
+    expectHostMapping(readbackMemory);
+    expectBinding(upload, uploadMemory);
+    expectBinding(readback, readbackMemory);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto first = context->createBuffer(
+        {.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Upload});
+    const auto second = context->createBuffer(
+        {.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Readback});
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+}
+
+using ContextLifecycleDeathTest = ContextLifecycleTest;
+
+TEST_F(ContextLifecycleDeathTest, ContextRejectsDestructionBeforeTheLastBufferOwner)
+{
+    expectHeadless();
+    auto* const native = fakeVulkanHandle<VkBuffer>(40);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectBuffer(native);
+    expectBufferAllocation(memory);
+    expectBinding(native, memory);
+    expectParentsDestroyed(true, false);
+    auto context = panda::Context::create().transform([](panda::Context owner) {
+        return std::make_unique<panda::Context>(std::move(owner));
+    });
+    ASSERT_TRUE(context);
+    auto buffer = (*context)->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(buffer);
+    EXPECT_DEATH(context->reset(), "Context destroyed with live Buffer owners");
+    buffer->reset();
 }
 
 TEST_F(ContextLifecycleTest, DeviceCreationFailurePreservesNativeErrorWithoutAdoptingTheOutput)

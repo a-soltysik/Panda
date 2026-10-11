@@ -15,8 +15,7 @@
 namespace panda::detail
 {
 
-[[nodiscard]] auto makeVulkanError(vk::Result result, std::source_location source = std::source_location::current())
-    -> Error;
+using ::panda::makeVulkanError;
 
 // Hpp's nonthrowing RAII factories wrap the output even on failure. Vulkan does
 // not guarantee that failed output is a valid owned object; detach it before

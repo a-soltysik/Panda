@@ -47,7 +47,7 @@ without selecting stub implementations. `PandaTest::VulkanMock` is the shared
 Vulkan boundary for Core unit tests; its stub forwards the entry points used by
 current scenarios to one strict mock and fails on any other Vulkan call used by
 Core. `Context`, `DeviceSelection` and
-`Presentation`, `MemoryBlock` and `MemoryPool` tests use it without a native window. Swapchain configuration
+`Presentation`, `MemoryBlock`, `MemoryPool` and Context/Buffer lifecycle tests use it without a native window. Swapchain configuration
 policy has separate CPU unit tests. The `Context` executable substitutes the
 `SwapchainGeneration` archive member; its tests cannot create a real swapchain,
 while the `SwapchainGeneration` tests link that member unchanged.
@@ -91,28 +91,34 @@ GoogleTest death tests assert both process termination and the originating
 diagnostic. GoogleTest owns subprocess handling and platform differences; test
 files need no separate fatal executable, custom main or conditional process code.
 
-## Windows and WSL
+## Windows and Linux
 
-Use the Windows checkout as the only editable source tree. Windows builds run
-directly there with the `msvc-*` presets. WSL builds use
-[`scripts/build-wsl.ps1`](../../scripts/build-wsl.ps1), which synchronizes source
-changes into a managed mirror under the WSL Linux filesystem before configuring
-or building with an existing `gcc-*` or `clang-tests` preset. The mirror is
-disposable and must not be edited directly. Its build directories and CPM cache
-stay on the Linux filesystem; `ccache` is enabled when installed.
+Use the `msvc-*` presets on Windows and the `gcc-*` or `clang-tests` presets on
+Linux. Run commands directly from the checkout on the corresponding platform.
+
+Windows:
 
 ```powershell
 cmake --preset msvc-development
 cmake --build --preset msvc-development --parallel
 
-.\scripts\build-wsl.ps1 -Preset gcc-development -Target simple_scene
-.\scripts\build-wsl.ps1 -Preset gcc-tests -RunTests
+cmake --preset msvc-tests
+cmake --build --preset msvc-tests --parallel
+ctest --preset msvc-tests
 ```
 
-CTest presets exclude tests labelled `system`. Add `-IncludeSystemTests` to run
-all registered tests, including native smoke tests. Use `-Jobs` to override the
-WSL helper's memory-aware parallel job count or `-SyncOnly` to refresh the mirror
-without configuring a build.
+Linux:
+
+```sh
+cmake --preset gcc-development
+cmake --build --preset gcc-development --target simple_scene
+cmake --preset gcc-tests
+cmake --build --preset gcc-tests --parallel
+ctest --preset gcc-tests
+```
+
+CTest presets exclude tests labelled `system`. Run native smoke cases explicitly
+with `ctest --test-dir <build-directory> -L system --output-on-failure`.
 
 The real GLFW null-platform integration check needs no display. The native smoke
 uses real native windows in a bounded test. It reports an unavailable

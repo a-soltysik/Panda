@@ -24,7 +24,7 @@ class Presentation final
 public:
     [[nodiscard]] static auto create(vk::PhysicalDevice physicalDevice,
                                      const vk::raii::Device& device,
-                                     VkSurfaceKHR surface,
+                                     vk::SurfaceKHR surface,
                                      WindowSurface& window,
                                      const ContextDeviceInfo& deviceInfo)
         -> std::expected<std::unique_ptr<Presentation>, Error>;
@@ -63,7 +63,7 @@ private:
 
     Presentation(vk::PhysicalDevice physicalDevice,
                  const vk::raii::Device& device,
-                 VkSurfaceKHR surface,
+                 vk::SurfaceKHR surface,
                  WindowSurface& window,
                  const ContextDeviceInfo& deviceInfo);
 
@@ -104,7 +104,7 @@ private:
     const vk::raii::Device& _device;
     vk::raii::Queue _graphicsQueue;
     vk::raii::Queue _presentQueue;
-    VkSurfaceKHR _surface {};
+    vk::SurfaceKHR _surface {};
     WindowSurface& _window;
     ContextDeviceInfo _deviceInfo;
     vk::raii::Semaphore _timeline {nullptr};

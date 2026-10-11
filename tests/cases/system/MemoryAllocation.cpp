@@ -43,7 +43,7 @@ auto makeTestBuffer(const vk::raii::Device& device) -> panda::Result<vk::raii::B
     {
         return std::unexpected {panda::detail::makeVulkanError(result)};
     }
-    return panda::Result<vk::raii::Buffer> {std::in_place, device, static_cast<VkBuffer>(native)};
+    return panda::Result<vk::raii::Buffer> {std::in_place, device, native};
 }
 
 VKAPI_ATTR auto VKAPI_CALL countValidation(vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -103,7 +103,7 @@ protected:
                                                   .ppEnabledExtensionNames = &extension};
         auto native = vk::Instance {};
         ASSERT_EQ(vk::createInstance(&info, nullptr, &native, *loader.getDispatcher()), vk::Result::eSuccess);
-        instance = vk::raii::Instance {loader, static_cast<VkInstance>(native)};
+        instance = vk::raii::Instance {loader, native};
         createMessenger();
     }
 
@@ -118,7 +118,7 @@ protected:
         auto native = vk::DebugUtilsMessengerEXT {};
         ASSERT_EQ((*instance).createDebugUtilsMessengerEXT(&info, nullptr, &native, *instance.getDispatcher()),
                   vk::Result::eSuccess);
-        messenger = vk::raii::DebugUtilsMessengerEXT {instance, static_cast<VkDebugUtilsMessengerEXT>(native)};
+        messenger = vk::raii::DebugUtilsMessengerEXT {instance, native};
     }
 
     void selectDevice()
