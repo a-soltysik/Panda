@@ -5,8 +5,6 @@
 
 #include "DeviceSelection.hpp"
 
-#include <vulkan/vulkan_core.h>
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -186,10 +184,10 @@ namespace
 {
 using Maintenance = ContextDeviceInfo::SwapchainMaintenance;
 
-auto maintenanceVariant(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface, const InstanceExtensions& extensions)
+auto maintenanceVariant(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
     -> std::expected<std::optional<Maintenance>, Error>
 {
-    if (surface == VkSurfaceKHR {})
+    if (!surface)
     {
         return std::optional {Maintenance::None};
     }
@@ -233,10 +231,10 @@ auto graphicsCompute(vk::QueueFamilyProperties family) -> bool
     return family.queueCount != 0 && (family.queueFlags & required) == required;
 }
 
-auto presentSupport(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface, std::uint32_t family)
+auto presentSupport(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, std::uint32_t family)
     -> std::expected<bool, Error>
 {
-    const auto supported = physicalDevice.getSurfaceSupportKHR(family, vk::SurfaceKHR {surface});
+    const auto supported = physicalDevice.getSurfaceSupportKHR(family, surface);
     if (supported.result != vk::Result::eSuccess)
     {
         return std::unexpected {makeVulkanError(supported.result)};
@@ -268,7 +266,7 @@ struct QueueCandidates
 };
 
 auto inspectWindowQueue(vk::PhysicalDevice physicalDevice,
-                        VkSurfaceKHR surface,
+                        vk::SurfaceKHR surface,
                         vk::QueueFamilyProperties family,
                         std::uint32_t index,
                         QueueCandidates& candidates) -> std::expected<bool, Error>
@@ -295,7 +293,7 @@ auto inspectWindowQueue(vk::PhysicalDevice physicalDevice,
 }
 
 auto selectWindowQueues(vk::PhysicalDevice physicalDevice,
-                        VkSurfaceKHR surface,
+                        vk::SurfaceKHR surface,
                         const std::vector<vk::QueueFamilyProperties>& families)
     -> std::expected<std::optional<QueueSelection>, Error>
 {
@@ -324,32 +322,32 @@ auto selectWindowQueues(vk::PhysicalDevice physicalDevice,
     };
 }
 
-auto selectQueues(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface)
+auto selectQueues(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface)
     -> std::expected<std::optional<QueueSelection>, Error>
 {
     const auto families = physicalDevice.getQueueFamilyProperties();
-    if (surface == VkSurfaceKHR {})
+    if (!surface)
     {
         return selectHeadlessQueue(families);
     }
     return selectWindowQueues(physicalDevice, surface, families);
 }
 
-auto supportsSurfaceFormats(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface) -> std::expected<bool, Error>
+auto supportsSurfaceFormats(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface) -> std::expected<bool, Error>
 {
-    if (surface == VkSurfaceKHR {})
+    if (!surface)
     {
         return true;
     }
     const auto formats = enumerateVulkan<vk::SurfaceFormatKHR>([&](std::uint32_t* count, vk::SurfaceFormatKHR* output) {
-        return physicalDevice.getSurfaceFormatsKHR(vk::SurfaceKHR {surface}, count, output);
+        return physicalDevice.getSurfaceFormatsKHR(surface, count, output);
     });
     if (!formats)
     {
         return std::unexpected {formats.error()};
     }
     const auto modes = enumerateVulkan<vk::PresentModeKHR>([&](std::uint32_t* count, vk::PresentModeKHR* output) {
-        return physicalDevice.getSurfacePresentModesKHR(vk::SurfaceKHR {surface}, count, output);
+        return physicalDevice.getSurfacePresentModesKHR(surface, count, output);
     });
     if (!modes)
     {
@@ -364,8 +362,9 @@ struct DeviceProfile
     Maintenance maintenance;
 };
 
-auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface, const InstanceExtensions& extensions)
-    -> std::expected<std::optional<DeviceProfile>, Error>
+auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice,
+                          vk::SurfaceKHR surface,
+                          const InstanceExtensions& extensions) -> std::expected<std::optional<DeviceProfile>, Error>
 {
     auto properties = physicalDevice.getProperties();
     if (properties.apiVersion < vk::ApiVersion13)
@@ -377,7 +376,7 @@ auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surfac
     {
         return std::unexpected {variant.error()};
     }
-    if (!*variant || !supportsRequiredFeatures(physicalDevice, surface != VkSurfaceKHR {}))
+    if (!*variant || !supportsRequiredFeatures(physicalDevice, surface != vk::SurfaceKHR {}))
     {
         return std::nullopt;
     }
@@ -386,7 +385,7 @@ auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surfac
     };
 }
 
-auto inspectPresentation(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface)
+auto inspectPresentation(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface)
     -> std::expected<std::optional<QueueSelection>, Error>
 {
     const auto queues = selectQueues(physicalDevice, surface);
@@ -410,7 +409,7 @@ auto inspectPresentation(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface
     return **queues;
 }
 
-auto inspectDevice(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface, const InstanceExtensions& extensions)
+auto inspectDevice(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
     -> std::expected<std::optional<SelectedDevice>, Error>
 {
     auto profile = inspectDeviceProfile(physicalDevice, surface, extensions);
@@ -479,7 +478,7 @@ auto handleInspectionFailure(vk::PhysicalDevice physicalDevice, Error error, std
 }
 
 auto inspectDevices(const std::vector<vk::PhysicalDevice>& devices,
-                    VkSurfaceKHR surface,
+                    vk::SurfaceKHR surface,
                     const InstanceExtensions& extensions) -> std::expected<std::vector<SelectedDevice>, Error>
 {
     auto candidates = std::vector<SelectedDevice> {};
@@ -510,7 +509,7 @@ auto inspectDevices(const std::vector<vk::PhysicalDevice>& devices,
 
 }
 
-auto selectDevice(vk::Instance instance, VkSurfaceKHR surface, const InstanceExtensions& extensions)
+auto selectDevice(vk::Instance instance, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
     -> std::expected<SelectedDevice, Error>
 {
     const auto listed = enumerateVulkan<vk::PhysicalDevice>([&](std::uint32_t* count, vk::PhysicalDevice* output) {
@@ -528,7 +527,7 @@ auto selectDevice(vk::Instance instance, VkSurfaceKHR surface, const InstanceExt
     if (candidates->empty())
     {
         return std::unexpected {makeError(ErrorCode::Unsupported,
-                                          surface == VkSurfaceKHR {}
+                                          !surface
                                               ? "No Vulkan 1.3 device supports graphics/compute, dynamic rendering, "
                                                 "synchronization2 and timeline semaphores"
                                               : "No Vulkan 1.3 device supports the window surface, swapchain "

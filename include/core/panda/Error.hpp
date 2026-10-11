@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vulkan/vulkan.hpp>
+
 /// @file
 /// Shared recoverable error and result types.
 
@@ -62,12 +64,12 @@ using Result = std::expected<Value, Error>;
                              std::source_location source = std::source_location::current()) -> Error;
 
 /// @brief Converts a Vulkan status into an application error.
-/// @param result Signed VkResult value; call only for a failed result.
+/// @param result Vulkan-Hpp result status; call only for a failed result.
 /// @param source Call site, captured automatically by default.
 /// @return Recovery category, readable message, raw Vulkan code and call site.
 /// Unknown values default to BackendFailure; the Vulkan result switch is kept
 /// exhaustive so SDK additions require a deliberate recovery-category decision.
-[[nodiscard]] auto makeVulkanError(std::int32_t result, std::source_location source = std::source_location::current())
+[[nodiscard]] auto makeVulkanError(vk::Result result, std::source_location source = std::source_location::current())
     -> Error;
 
 }

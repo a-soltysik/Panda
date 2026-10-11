@@ -71,6 +71,10 @@ settings, or consumer warnings. MSAA, anisotropy, and benchmark durations remain
 runtime settings, not CMake switches. No source copying or application-specific
 changes to Panda are required for a consumer.
 
+Owned C++ targets compiled by MSVC use `/bigobj` to accommodate template-generated
+COFF sections. This is a private build option shared by libraries, examples and
+tests; it is not propagated to consumers, dependencies, CUDA or GCC.
+
 ### Component declarations
 
 `cmake/Targets.cmake` provides `panda_add_component`. Components default to
@@ -117,6 +121,10 @@ the build directory when replacing its recorded toolchain/SDK installation.
 
 ### Examples
 
+[`buffer_allocation`](../../examples/buffer_allocation/README.md) demonstrates
+headless Context-owned allocation, Buffer diagnostics and RAII shutdown through the public
+API. It uses Core only and submits no GPU work.
+
 `PANDA_BUILD_EXAMPLES` (OFF by default) adds the
 [`simple_scene`](../../examples/simple_scene/README.md) executable and
 requires Tools, enabled by `PANDA_BUILD_TOOLS=ON` or `PANDA_BUILD_TESTS=ON`.
@@ -136,8 +144,8 @@ examples.
 Core has no dependency on Tools or a display. GLFW is discovered and linked only
 when Tools is enabled, so a core-only build needs no window-system packages.
 The source build now requires Vulkan development headers and the loader link library;
-`Panda::Panda` exposes the C headers needed by the separate `WindowSurface` interface,
-while Vulkan-Hpp remains private. A release executable needs the Vulkan loader and
+`Panda::Panda` exposes Vulkan-Hpp headers for public Vulkan values, flags and borrowed
+handles, including `WindowSurface` and `BufferDesc`. A release executable needs the Vulkan loader and
 driver at runtime, not the development SDK.
 Rendering and image encoding are not implemented; future offscreen applications
 need not create a window. No common application-lifetime interface is imposed.
@@ -171,7 +179,7 @@ destruction. This wrapper does not create Vulkan surfaces or implement rendering
 
 | Role | Accepted choice | Exposure |
 | --- | --- | --- |
-| Vulkan binding | Vulkan-Hpp RAII | Private implementation; native public API uses Vulkan C handles |
+| Vulkan binding | Vulkan-Hpp | Public values, flags and borrowed `vk` handles; private `vk::raii` owners |
 | Shader metadata | SPIRV-Reflect | Private shader-load validation |
 | Windowing | GLFW | Private window/input implementation |
 | Math | GLM | Public value types with a documented layout/configuration contract |
@@ -196,10 +204,11 @@ Dependency origins: [EnTT](https://github.com/skypjack/entt),
 
 ### Native graphics API without macro leakage
 
-Keep Hpp types out of public signatures. A native compute callback receives a
-borrowed `VkCommandBuffer`; the application may use Vulkan C or wrap the handle in
-its own non-owning Hpp object. The native extension header is separate from the
-core umbrella; its required SDK headers/link dependencies are supplied by the target.
+Use Vulkan-Hpp values, flags and borrowed `vk` handles in Panda signatures.
+The planned native compute callback receives a borrowed `vk::CommandBuffer`;
+ownership remains with Panda. Convert to Vulkan C types only at loader/GLFW ABI
+boundaries and their external stubs. Required SDK headers/link dependencies are
+supplied by the target. Vulkan-Hpp is included in the supported Vulkan SDK.
 
 Use `vk::raii` for Vulkan object owners in Panda implementation files. Keep plain
 `vk` handles for borrowed swapchain images and command buffers whose pool owns
@@ -224,9 +233,11 @@ result before reading output counts or entries, retries `eIncomplete`, and check
 the returned size against capacity only after success. This avoids Hpp's
 nonthrowing enhanced enumerators inspecting undefined outputs after an error.
 
-Do not define Hpp configuration macros for consumers or expose Hpp types through
-Panda public headers. A consumer using a different Hpp configuration needs a
-specific compatibility check before support is claimed.
+Do not define Panda's private Hpp configuration macros for consumers. Public
+headers use ordinary Vulkan-Hpp in the default `vk` namespace. A consumer using a
+different Hpp configuration needs a specific compatibility check before support
+is claimed. Public flags and borrowed handles do not transfer RAII ownership,
+enable optional device features or bypass Panda's resource-use validation.
 
 GLM is consciously exposed. Use explicit projection conventions rather than forcing
 global handedness/depth macros. The accepted

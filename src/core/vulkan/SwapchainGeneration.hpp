@@ -47,7 +47,7 @@ struct SurfaceConfig
 
 [[nodiscard]] auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
                                              const vk::raii::Device& device,
-                                             VkSurfaceKHR surface,
+                                             vk::SurfaceKHR surface,
                                              FramebufferExtent requested,
                                              vk::SwapchainKHR oldSwapchain,
                                              const ContextDeviceInfo& deviceInfo)

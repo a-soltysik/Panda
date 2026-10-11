@@ -6,7 +6,6 @@
 // clang-format on
 
 #include <gmock/gmock.h>
-#include <vulkan/vulkan_core.h>
 
 #include <expected>
 
@@ -23,7 +22,7 @@ public:
                 createSwapchainGeneration,
                 (vk::PhysicalDevice,
                  const vk::raii::Device&,
-                 VkSurfaceKHR,
+                 vk::SurfaceKHR,
                  FramebufferExtent,
                  vk::SwapchainKHR,
                  const ContextDeviceInfo&),

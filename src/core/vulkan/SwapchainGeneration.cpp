@@ -1,7 +1,5 @@
 #include "SwapchainGeneration.hpp"
 
-#include <vulkan/vulkan_core.h>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -55,17 +53,17 @@ auto chooseCompositeAlpha(vk::CompositeAlphaFlagsKHR supported) -> vk::Composite
     return vk::CompositeAlphaFlagBitsKHR::eOpaque;
 }
 
-auto selectSurfaceConfig(vk::PhysicalDevice physicalDevice, VkSurfaceKHR surface, FramebufferExtent requested)
+auto selectSurfaceConfig(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, FramebufferExtent requested)
     -> std::expected<SurfaceConfig, Error>
 {
-    const auto capabilities = physicalDevice.getSurfaceCapabilitiesKHR(vk::SurfaceKHR {surface});
+    const auto capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
     if (capabilities.result != vk::Result::eSuccess)
     {
         return std::unexpected {makeVulkanError(capabilities.result)};
     }
     const auto listedFormats =
         enumerateVulkan<vk::SurfaceFormatKHR>([&](std::uint32_t* count, vk::SurfaceFormatKHR* output) {
-            return physicalDevice.getSurfaceFormatsKHR(vk::SurfaceKHR {surface}, count, output);
+            return physicalDevice.getSurfaceFormatsKHR(surface, count, output);
         });
     if (!listedFormats)
     {
@@ -115,7 +113,7 @@ auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
 namespace
 {
 auto createSwapchain(const vk::raii::Device& device,
-                     VkSurfaceKHR surface,
+                     vk::SurfaceKHR surface,
                      vk::SwapchainKHR oldSwapchain,
                      const SurfaceConfig& config,
                      const ContextDeviceInfo& deviceInfo) -> std::expected<vk::raii::SwapchainKHR, Error>
@@ -123,7 +121,7 @@ auto createSwapchain(const vk::raii::Device& device,
     const auto familyIndices = std::array {deviceInfo.queueFamily, deviceInfo.presentQueueFamily};
     const auto separateFamilies = familyIndices.front() != familyIndices.back();
     const auto info = vk::SwapchainCreateInfoKHR {
-        .surface = vk::SurfaceKHR {surface},
+        .surface = surface,
         .minImageCount = config.imageCount,
         .imageFormat = config.format.format,
         .imageColorSpace = config.format.colorSpace,
@@ -229,7 +227,7 @@ auto encodedClear(vk::Format format) -> vk::ClearColorValue
 
 auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
                                const vk::raii::Device& device,
-                               VkSurfaceKHR surface,
+                               vk::SurfaceKHR surface,
                                FramebufferExtent requested,
                                vk::SwapchainKHR oldSwapchain,
                                const ContextDeviceInfo& deviceInfo) -> std::expected<SwapchainGeneration, Error>

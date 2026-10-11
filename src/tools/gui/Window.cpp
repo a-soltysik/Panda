@@ -182,17 +182,17 @@ auto Window::getRequiredInstanceExtensions() const -> Result<std::vector<std::st
     return std::span {names, count} | std::ranges::to<std::vector<std::string>>();
 }
 
-auto Window::createSurface(VkInstance instance) const -> Result<VkSurfaceKHR>
+auto Window::createSurface(vk::Instance instance) const -> Result<vk::SurfaceKHR>
 {
     checkUsable();
-    if (instance == VkInstance {})
+    if (!instance)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Vulkan instance is null")};
     }
     GlfwSession::clearError();
     auto* surface = VkSurfaceKHR {};
-    const auto result = glfwCreateWindowSurface(instance, _window, nullptr, &surface);
-    if (static_cast<vk::Result>(result) != vk::Result::eSuccess)
+    const auto result = static_cast<vk::Result>(glfwCreateWindowSurface(instance, _window, nullptr, &surface));
+    if (result != vk::Result::eSuccess)
     {
         return std::unexpected {panda::makeVulkanError(result)};
     }

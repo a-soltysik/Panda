@@ -1,3 +1,7 @@
+// clang-format off
+#include "VulkanHpp.hpp" // IWYU pragma: keep
+// clang-format on
+
 #include "panda/Panda.hpp"
 
 #include <string_view>

@@ -12,6 +12,41 @@
 #include "VulkanMock.hpp"
 
 extern "C" {
+VKAPI_ATTR auto VKAPI_CALL vkCreateBuffer(VkDevice device,
+                                          const VkBufferCreateInfo* pCreateInfo,
+                                          const VkAllocationCallbacks* pAllocator,
+                                          VkBuffer* pBuffer) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateBuffer(device,
+                                                                                            pCreateInfo,
+                                                                                            pAllocator,
+                                                                                            pBuffer);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* pAllocator)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyBuffer(device, buffer, pAllocator);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements2(VkDevice device,
+                                                          const VkBufferMemoryRequirementsInfo2* pInfo,
+                                                          VkMemoryRequirements2* pMemoryRequirements)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetBufferMemoryRequirements2(
+        device,
+        pInfo,
+        pMemoryRequirements);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkBindBufferMemory2(VkDevice device,
+                                               std::uint32_t bindInfoCount,
+                                               const VkBindBufferMemoryInfo* pBindInfos) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkBindBufferMemory2(device,
+                                                                                                 bindInfoCount,
+                                                                                                 pBindInfos);
+}
+
 VKAPI_ATTR auto VKAPI_CALL vkEnumerateInstanceVersion(std::uint32_t* version) -> VkResult
 {
     return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkEnumerateInstanceVersion(version);
@@ -480,6 +515,10 @@ struct EntryPoint
 };
 
 const auto entryPoints = std::array {
+    EntryPoint {.name = "vkCreateBuffer",                            .function = genericProc(&vkCreateBuffer)                 },
+    EntryPoint {.name = "vkDestroyBuffer",                           .function = genericProc(&vkDestroyBuffer)                },
+    EntryPoint {.name = "vkGetBufferMemoryRequirements2",            .function = genericProc(&vkGetBufferMemoryRequirements2) },
+    EntryPoint {.name = "vkBindBufferMemory2",                       .function = genericProc(&vkBindBufferMemory2)            },
     EntryPoint {.name = "vkAllocateMemory",                          .function = genericProc(&vkAllocateMemory)               },
     EntryPoint {.name = "vkFreeMemory",                              .function = genericProc(&vkFreeMemory)                   },
     EntryPoint {.name = "vkMapMemory",                               .function = genericProc(&vkMapMemory)                    },

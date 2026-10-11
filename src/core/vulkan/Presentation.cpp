@@ -1,7 +1,5 @@
 #include "Presentation.hpp"
 
-#include <vulkan/vulkan_core.h>
-
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -143,7 +141,7 @@ auto submitAcquireForRetirement(const vk::raii::Queue& queue,
 
 Presentation::Presentation(vk::PhysicalDevice physicalDevice,
                            const vk::raii::Device& device,
-                           VkSurfaceKHR surface,
+                           vk::SurfaceKHR surface,
                            WindowSurface& window,
                            const ContextDeviceInfo& deviceInfo)
     : _physicalDevice {physicalDevice},
@@ -160,7 +158,7 @@ Presentation::~Presentation() = default;
 
 auto Presentation::create(vk::PhysicalDevice physicalDevice,
                           const vk::raii::Device& device,
-                          VkSurfaceKHR surface,
+                          vk::SurfaceKHR surface,
                           WindowSurface& window,
                           const ContextDeviceInfo& deviceInfo) -> std::expected<std::unique_ptr<Presentation>, Error>
 {

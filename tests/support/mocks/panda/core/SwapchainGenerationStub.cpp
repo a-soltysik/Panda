@@ -3,8 +3,6 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include <vulkan/vulkan_core.h>
-
 #include <expected>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
@@ -18,7 +16,7 @@ namespace panda::detail
 {
 auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
                                const vk::raii::Device& device,
-                               VkSurfaceKHR surface,
+                               vk::SurfaceKHR surface,
                                FramebufferExtent requested,
                                vk::SwapchainKHR oldSwapchain,
                                const ContextDeviceInfo& deviceInfo) -> std::expected<SwapchainGeneration, Error>

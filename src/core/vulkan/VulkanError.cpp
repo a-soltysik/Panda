@@ -1,11 +1,12 @@
-#include "VulkanError.hpp"
+// clang-format off
+#include "VulkanHpp.hpp" // IWYU pragma: keep
+#include <vulkan/vulkan.hpp>
+// clang-format on
 
-#include <cstdint>
 #include <panda/Error.hpp>
 #include <source_location>
 #include <string>
 #include <utility>
-#include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_to_string.hpp>
 
 namespace panda
@@ -109,8 +110,6 @@ auto errorMessage(ErrorCode code, vk::Result result) -> std::string
 }
 }
 
-namespace detail
-{
 auto makeVulkanError(vk::Result result, std::source_location source) -> Error
 {
     const auto code = classify(result);
@@ -118,11 +117,5 @@ auto makeVulkanError(vk::Result result, std::source_location source) -> Error
                      errorMessage(code, result),
                      NativeError {.api = "Vulkan", .code = std::to_underlying(result)},
                      source);
-}
-}
-
-auto makeVulkanError(std::int32_t result, std::source_location source) -> Error
-{
-    return detail::makeVulkanError(static_cast<vk::Result>(result), source);
 }
 }
