@@ -24,6 +24,8 @@ refactors separately rather than mixing them into unrelated work.
   load or wait use verbs describing that action rather than a generic `get`.
 - Use full words in names rather than shortened spellings. Keep established API
   and domain acronyms, such as `GLFW`, where expanding them would obscure meaning.
+  Use `id` for an identifier, including `_id`, `allocationId` and `getId()`;
+  use the word identity in prose when discussing the concept.
 - Use PascalCase enumerators, such as `InvalidArgument`.
 - Use trailing return types for functions returning a value: `auto getSize() -> Size`.
   Declare void functions as `void flush()`. Constructors, destructors and conversion
@@ -84,6 +86,9 @@ refactors separately rather than mixing them into unrelated work.
 
 ## Class and file organization
 
+- Do not use parent-directory components (`..`) in C++ include paths. Configure
+  the required target include directories in CMake; implementation-only paths
+  remain private to their targets.
 - Structures must have only public members. Prefer `struct` for plain data bundles.
   Use `class` when a type encapsulates state, and prefer it for types that provide
   operations or manage behavior and lifetime.

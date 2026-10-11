@@ -1,5 +1,5 @@
 // clang-format off
-#include "../VulkanHpp.hpp" // IWYU pragma: keep
+#include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 // clang-format on
@@ -18,8 +18,9 @@
 #include <span>
 #include <utility>
 
-#include "../VulkanError.hpp"
+#include "MemoryProperties.hpp"
 #include "RangeAllocator.hpp"
+#include "VulkanError.hpp"
 
 namespace panda::detail
 {
@@ -35,11 +36,10 @@ struct BlockConfiguration
 auto configureMapping(vk::MemoryPropertyFlags flags, std::uint64_t size, std::uint64_t nonCoherentAtomSize)
     -> Result<BlockConfiguration>
 {
-    const auto unsupported = vk::MemoryPropertyFlagBits::eProtected | vk::MemoryPropertyFlagBits::eLazilyAllocated;
-    if (flags & unsupported)
+    if (flags & unsupportedMemoryProperties)
     {
         return std::unexpected {
-            makeError(ErrorCode::Unsupported, "Ordinary blocks require unprotected, non-lazy memory")};
+            makeError(ErrorCode::Unsupported, "Memory property requires an unsupported allocation feature")};
     }
     const auto hostVisible = static_cast<bool>(flags & vk::MemoryPropertyFlagBits::eHostVisible);
     const auto needsCache = hostVisible && !(flags & vk::MemoryPropertyFlagBits::eHostCoherent);
@@ -91,13 +91,39 @@ auto MemoryBlock::create(const vk::raii::PhysicalDevice& physicalDevice,
                          std::uint64_t size,
                          std::uint32_t memoryTypeIndex) -> Result<std::unique_ptr<MemoryBlock>>
 {
-    const auto configuration = configureBlock(physicalDevice, size, memoryTypeIndex);
+    return createInternal(physicalDevice,
+                          device,
+                          vk::MemoryAllocateInfo {.allocationSize = size, .memoryTypeIndex = memoryTypeIndex});
+}
+
+auto MemoryBlock::createDedicated(const vk::raii::PhysicalDevice& physicalDevice,
+                                  const vk::raii::Device& device,
+                                  std::uint64_t size,
+                                  std::uint32_t memoryTypeIndex,
+                                  const vk::MemoryDedicatedAllocateInfo& resource)
+    -> Result<std::unique_ptr<MemoryBlock>>
+{
+    if (static_cast<bool>(resource.buffer) == static_cast<bool>(resource.image) || resource.pNext != nullptr)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Dedicated memory requires exactly one resource")};
+    }
+    return createInternal(
+        physicalDevice,
+        device,
+        vk::MemoryAllocateInfo {.pNext = &resource, .allocationSize = size, .memoryTypeIndex = memoryTypeIndex});
+}
+
+auto MemoryBlock::createInternal(const vk::raii::PhysicalDevice& physicalDevice,
+                                 const vk::raii::Device& device,
+                                 const vk::MemoryAllocateInfo& info) -> Result<std::unique_ptr<MemoryBlock>>
+{
+    const auto configuration = configureBlock(physicalDevice, info.allocationSize, info.memoryTypeIndex);
     if (!configuration)
     {
         return std::unexpected {configuration.error()};
     }
-    auto memory = checkedCreation(
-        device.allocateMemory(vk::MemoryAllocateInfo {.allocationSize = size, .memoryTypeIndex = memoryTypeIndex}));
+    auto memory = checkedCreation(device.allocateMemory(info));
     if (!memory)
     {
         return std::unexpected {std::move(memory.error())};
@@ -105,8 +131,10 @@ auto MemoryBlock::create(const vk::raii::PhysicalDevice& physicalDevice,
     auto block = std::unique_ptr<MemoryBlock> {
         new MemoryBlock {device,
                          std::move(*memory),
-                         size, configuration->atomSize,
-                         configuration->needsCacheManagement}
+                         info.allocationSize,
+                         configuration->atomSize,
+                         configuration->needsCacheManagement,
+                         info.pNext != nullptr}
     };
     if (configuration->hostVisible)
     {
@@ -123,12 +151,14 @@ MemoryBlock::MemoryBlock(const vk::raii::Device& device,
                          vk::raii::DeviceMemory memory,
                          std::uint64_t size,
                          std::uint64_t atomSize,
-                         bool needsCacheManagement)
+                         bool needsCacheManagement,
+                         bool dedicated)
     : _device {device},
       _memory {std::move(memory)},
       _ranges {size},
       _atomSize {atomSize},
-      _needsCacheManagement {needsCacheManagement}
+      _needsCacheManagement {needsCacheManagement},
+      _dedicated {dedicated}
 {
 }
 
@@ -161,6 +191,14 @@ auto MemoryBlock::allocate(std::uint64_t size, std::uint64_t alignment) -> Resul
     if (size == 0 || !std::has_single_bit(alignment))
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid memory slice size or alignment")};
+    }
+    if (_dedicated)
+    {
+        if (size != _ranges.getCapacity())
+        {
+            return std::unexpected {makeError(ErrorCode::InvalidArgument, "Dedicated memory cannot be subdivided")};
+        }
+        return _ranges.allocate(size, alignment);
     }
     return roundSize(size, _atomSize).and_then([&](std::uint64_t rounded) {
         return _ranges.allocate(rounded, std::max(alignment, _atomSize));
@@ -198,10 +236,13 @@ auto MemoryBlock::mappedRange(MemoryRange range, std::uint64_t offset, std::uint
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cache operation exceeds the live memory slice")};
     }
     const auto begin = offset - (offset % _atomSize);
-    // Live noncoherent slices start and end on atom boundaries, so this fits.
-    const auto end = roundSize(offset + size, _atomSize);
-    expect(end.has_value() && *end <= range.size, "Cache operation rounding exceeds its reserved memory slice");
-    return vk::MappedMemoryRange {.memory = *_memory, .offset = range.offset + begin, .size = *end - begin};
+    // A dedicated allocation may end within an atom: Vulkan permits the final
+    // operation to end at the memory object's boundary instead of a full atom.
+    const auto finish = offset + size;
+    const auto padding = finish % _atomSize == 0 ? 0 : _atomSize - (finish % _atomSize);
+    const auto end = finish + std::min(padding, range.size - finish);
+    expect(_dedicated || end % _atomSize == 0, "Cache operation rounding exceeds its reserved memory slice");
+    return vk::MappedMemoryRange {.memory = *_memory, .offset = range.offset + begin, .size = end - begin};
 }
 
 auto MemoryBlock::flush(MemoryRange range, std::uint64_t offset, std::uint64_t size) const -> Result<void>
@@ -234,6 +275,11 @@ auto MemoryBlock::getMemory() const -> vk::DeviceMemory
 auto MemoryBlock::getFreeSize() const -> std::uint64_t
 {
     return _ranges.getFreeSize();
+}
+
+auto MemoryBlock::getCapacity() const -> std::uint64_t
+{
+    return _ranges.getCapacity();
 }
 
 }

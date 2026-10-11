@@ -26,9 +26,9 @@ HeaderFilterRegex: '(^|[/\\])(include|src|tests|examples)[/\\]'
 
 CheckOptions:
   - key: readability-identifier-length.IgnoredVariableNames
-    value: "x|y|z|u|v|w|it"
+    value: "x|y|z|u|v|w|it|id"
   - key: readability-identifier-length.IgnoredParameterNames
-    value: "x|y|z|u|v|w"
+    value: "x|y|z|u|v|w|id"
   - key: readability-function-cognitive-complexity.Threshold
     value: 10
   - key: readability-function-cognitive-complexity.IgnoreMacros
