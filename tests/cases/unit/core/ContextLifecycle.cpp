@@ -68,41 +68,46 @@ void verifyDeviceFeatures(const VkDeviceCreateInfo& info, bool windowed)
     }
 }
 
+// Explicit Action types avoid gMock's OnceAction ownership adapter, which
+// triggers a spurious leak diagnostic in clang-tidy with MSVC headers.
 class ContextLifecycleTest : public testing::Test
 {
 protected:
     void expectInstance()
     {
-        EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull())).WillOnce([](std::uint32_t* version) {
-            *version = vk::ApiVersion13;
-            return success;
-        });
-        EXPECT_CALL(vulkan, vkCreateInstance(NotNull(), nullptr, NotNull()))
-            .WillOnce([this](const VkInstanceCreateInfo* info, const VkAllocationCallbacks*, VkInstance* output) {
-                EXPECT_EQ(info->pApplicationInfo->apiVersion, vk::ApiVersion13);
-                EXPECT_EQ(info->enabledLayerCount, 0U);
-                *output = instance;
+        EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
+            .WillOnce(testing::Action<decltype(vkEnumerateInstanceVersion)> {[](std::uint32_t* version) {
+                *version = vk::ApiVersion13;
                 return success;
-            });
+            }});
+        EXPECT_CALL(vulkan, vkCreateInstance(NotNull(), nullptr, NotNull()))
+            .WillOnce(testing::Action<decltype(vkCreateInstance)> {
+                [this](const VkInstanceCreateInfo* info, const VkAllocationCallbacks*, VkInstance* output) {
+                    EXPECT_EQ(info->pApplicationInfo->apiVersion, vk::ApiVersion13);
+                    EXPECT_EQ(info->enabledLayerCount, 0U);
+                    *output = instance;
+                    return success;
+                }});
     }
 
     void expectAdapter(bool windowed, bool separateQueues = false)
     {
         expectEnumeration();
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFeatures2(physical, NotNull()))
-            .WillOnce([windowed](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
-                auto* const vulkan12 = static_cast<VkPhysicalDeviceVulkan12Features*>(features->pNext);
-                auto* const vulkan13 = static_cast<VkPhysicalDeviceVulkan13Features*>(vulkan12->pNext);
-                vulkan12->timelineSemaphore = vk::True;
-                vulkan13->dynamicRendering = vk::True;
-                vulkan13->synchronization2 = vk::True;
-                if (windowed)
-                {
-                    auto* const maintenance =
-                        static_cast<VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR*>(vulkan13->pNext);
-                    maintenance->swapchainMaintenance1 = vk::True;
-                }
-            });
+            .WillOnce(testing::Action<decltype(vkGetPhysicalDeviceFeatures2)> {
+                [windowed](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
+                    auto* const vulkan12 = static_cast<VkPhysicalDeviceVulkan12Features*>(features->pNext);
+                    auto* const vulkan13 = static_cast<VkPhysicalDeviceVulkan13Features*>(vulkan12->pNext);
+                    vulkan12->timelineSemaphore = vk::True;
+                    vulkan13->dynamicRendering = vk::True;
+                    vulkan13->synchronization2 = vk::True;
+                    if (windowed)
+                    {
+                        auto* const maintenance =
+                            static_cast<VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR*>(vulkan13->pNext);
+                        maintenance->swapchainMaintenance1 = vk::True;
+                    }
+                }});
         expectQueueFamilies(separateQueues);
         if (windowed)
         {
@@ -176,17 +181,19 @@ protected:
                 return success;
             });
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceSurfaceSupportKHR(physical, 0, surface, NotNull()))
-            .WillOnce([separate](VkPhysicalDevice, std::uint32_t, VkSurfaceKHR, VkBool32* supported) {
-                *supported = separate ? vk::False : vk::True;
-                return success;
-            });
+            .WillOnce(testing::Action<decltype(vkGetPhysicalDeviceSurfaceSupportKHR)> {
+                [separate](VkPhysicalDevice, std::uint32_t, VkSurfaceKHR, VkBool32* supported) {
+                    *supported = separate ? vk::False : vk::True;
+                    return success;
+                }});
         if (separate)
         {
             EXPECT_CALL(vulkan, vkGetPhysicalDeviceSurfaceSupportKHR(physical, 1, surface, NotNull()))
-                .WillOnce([](VkPhysicalDevice, std::uint32_t, VkSurfaceKHR, VkBool32* supported) {
-                    *supported = vk::True;
-                    return success;
-                });
+                .WillOnce(testing::Action<decltype(vkGetPhysicalDeviceSurfaceSupportKHR)> {
+                    [](VkPhysicalDevice, std::uint32_t, VkSurfaceKHR, VkBool32* supported) {
+                        *supported = vk::True;
+                        return success;
+                    }});
         }
         expectSurfaceFormats();
     }
@@ -220,8 +227,9 @@ protected:
     void expectWindow(panda::test::WindowSurfaceMock::SurfaceResult result)
     {
         EXPECT_CALL(window, getRequiredInstanceExtensions())
-            .WillOnce(Return(panda::test::WindowSurfaceMock::ExtensionResult {
-                std::vector<std::string> {vk::KHRSurfaceExtensionName}}));
+            .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtensionResult()> {
+                Return(panda::test::WindowSurfaceMock::ExtensionResult {
+                    std::vector<std::string> {vk::KHRSurfaceExtensionName}})});
         EXPECT_CALL(vulkan, vkEnumerateInstanceExtensionProperties(nullptr, NotNull(), _))
             .Times(2)
             .WillRepeatedly([](const char*, std::uint32_t* count, VkExtensionProperties* output) {
@@ -235,28 +243,31 @@ protected:
                 }
                 return success;
             });
-        EXPECT_CALL(window, createSurface(instance)).WillOnce(Return(std::move(result)));
+        EXPECT_CALL(window, createSurface(instance))
+            .WillOnce(
+                testing::Action<panda::test::WindowSurfaceMock::SurfaceResult(VkInstance)> {Return(std::move(result))});
     }
 
     void expectDevice(bool windowed, VkResult result = success, bool separateQueues = false)
     {
         EXPECT_CALL(vulkan, vkCreateDevice(physical, NotNull(), nullptr, NotNull()))
-            .WillOnce([this, windowed, result, separateQueues](VkPhysicalDevice,
-                                                               const VkDeviceCreateInfo* info,
-                                                               const VkAllocationCallbacks*,
-                                                               VkDevice* output) {
-                verifyDeviceFeatures(*info, windowed);
-                EXPECT_EQ(info->queueCreateInfoCount, separateQueues ? 2U : 1U);
-                EXPECT_EQ(info->enabledExtensionCount, windowed ? 2U : 0U);
-                if (windowed)
-                {
-                    const auto names = std::span {info->ppEnabledExtensionNames, info->enabledExtensionCount};
-                    EXPECT_EQ(std::string_view {names.front()}, vk::KHRSwapchainExtensionName);
-                    EXPECT_EQ(std::string_view {names.back()}, vk::KHRSwapchainMaintenance1ExtensionName);
-                }
-                *output = device;
-                return result;
-            });
+            .WillOnce(testing::Action<decltype(vkCreateDevice)> {
+                [this, windowed, result, separateQueues](VkPhysicalDevice,
+                                                         const VkDeviceCreateInfo* info,
+                                                         const VkAllocationCallbacks*,
+                                                         VkDevice* output) {
+                    verifyDeviceFeatures(*info, windowed);
+                    EXPECT_EQ(info->queueCreateInfoCount, separateQueues ? 2U : 1U);
+                    EXPECT_EQ(info->enabledExtensionCount, windowed ? 2U : 0U);
+                    if (windowed)
+                    {
+                        const auto names = std::span {info->ppEnabledExtensionNames, info->enabledExtensionCount};
+                        EXPECT_EQ(std::string_view {names.front()}, vk::KHRSwapchainExtensionName);
+                        EXPECT_EQ(std::string_view {names.back()}, vk::KHRSwapchainMaintenance1ExtensionName);
+                    }
+                    *output = device;
+                    return result;
+                }});
     }
 
     void expectParentsDestroyed(bool hasDevice, bool hasSurface)
@@ -281,16 +292,22 @@ protected:
                 *output = fakeVulkanHandle<VkQueue>(5);
             });
         EXPECT_CALL(vulkan, vkCreateSemaphore(device, NotNull(), nullptr, NotNull()))
-            .WillOnce(testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(10)), Return(success)))
-            .WillOnce(testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(11)), Return(success)))
-            .WillOnce(testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(12)), Return(success)));
+            .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
+                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(10)), Return(success))})
+            .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
+                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(11)), Return(success))})
+            .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
+                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(12)), Return(success))});
         EXPECT_CALL(vulkan, vkCreateCommandPool(device, NotNull(), nullptr, NotNull()))
-            .WillOnce(testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(20)), Return(success)))
-            .WillOnce(testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(21)), Return(success)));
+            .WillOnce(testing::Action<decltype(vkCreateCommandPool)> {
+                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(20)), Return(success))})
+            .WillOnce(testing::Action<decltype(vkCreateCommandPool)> {
+                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(21)), Return(success))});
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(device, NotNull(), NotNull()))
-            .WillOnce(testing::DoAll(testing::SetArgPointee<2>(fakeVulkanHandle<VkCommandBuffer>(30)), Return(success)))
-            .WillOnce(
-                testing::DoAll(testing::SetArgPointee<2>(fakeVulkanHandle<VkCommandBuffer>(31)), Return(success)));
+            .WillOnce(testing::Action<decltype(vkAllocateCommandBuffers)> {
+                testing::DoAll(testing::SetArgPointee<2>(fakeVulkanHandle<VkCommandBuffer>(30)), Return(success))})
+            .WillOnce(testing::Action<decltype(vkAllocateCommandBuffers)> {
+                testing::DoAll(testing::SetArgPointee<2>(fakeVulkanHandle<VkCommandBuffer>(31)), Return(success))});
     }
 
     void expectFramesDestroyed()
@@ -407,7 +424,8 @@ TEST_F(ContextLifecycleTest, SeparatePresentFamilyProducesTwoDeviceQueueRequests
 {
     expectWindowed(true);
     EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
+        .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
+            Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}})});
     const auto context = panda::Context::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
     EXPECT_EQ(context->getDeviceInfo().queueFamily, 0U);
@@ -418,8 +436,9 @@ TEST_F(ContextLifecycleTest, ExtentQueryFailureReleasesFrameResourcesAndAllParen
 {
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {
-            std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "extent failed")}}));
+        .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
+            Return(panda::test::WindowSurfaceMock::ExtentResult {
+                std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "extent failed")}})});
     const auto context = panda::Context::createWithSurface(window);
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().message, "extent failed");
@@ -429,12 +448,16 @@ TEST_F(ContextLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParent
 {
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {
-            panda::FramebufferExtent {.width = 640, .height = 480}
-    }));
+        .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
+            Return(panda::test::WindowSurfaceMock::ExtentResult {
+                                                                 panda::FramebufferExtent {.width = 640, .height = 480}}
+             )
+    });
     EXPECT_CALL(generations, createSwapchainGeneration(_, _, _, _, _, _))
-        .WillOnce(Return(panda::Result<panda::detail::SwapchainGeneration> {
-            std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "generation failed")}}));
+        .WillOnce(testing::Action<decltype(panda::detail::createSwapchainGeneration)> {
+            [](const auto&...) -> panda::Result<panda::detail::SwapchainGeneration> {
+                return std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "generation failed")};
+            }});
     const auto context = panda::Context::createWithSurface(window);
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().message, "generation failed");
