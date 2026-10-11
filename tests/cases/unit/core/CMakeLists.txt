@@ -3,6 +3,14 @@ panda_add_test(panda_unit_range_allocator unit
     LIBRARIES Panda::Panda)
 target_include_directories(panda_unit_range_allocator PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources")
 
+panda_add_test(panda_unit_memory_block unit
+    SOURCES MemoryBlock.cpp
+    LIBRARIES Panda::Panda PandaTest::Support
+    MOCKS PandaTest::VulkanMock)
+target_include_directories(panda_unit_memory_block PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan"
+    "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources")
+target_compile_definitions(panda_unit_memory_block PRIVATE VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
+
 panda_add_test(panda_unit_core unit
     SOURCES Version.cpp DeviceSelection.cpp SwapchainGeneration.cpp SwapchainCreation.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture

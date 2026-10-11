@@ -55,6 +55,20 @@ public:
     MOCK_METHOD(void, vkGetPhysicalDeviceFeatures2, (VkPhysicalDevice, VkPhysicalDeviceFeatures2*), ());
 
     MOCK_METHOD(void, vkGetPhysicalDeviceProperties, (VkPhysicalDevice, VkPhysicalDeviceProperties*), ());
+    MOCK_METHOD(void, vkGetPhysicalDeviceProperties2, (VkPhysicalDevice, VkPhysicalDeviceProperties2*), ());
+    MOCK_METHOD(void, vkGetPhysicalDeviceMemoryProperties, (VkPhysicalDevice, VkPhysicalDeviceMemoryProperties*), ());
+    MOCK_METHOD(VkResult,
+                vkAllocateMemory,
+                (VkDevice, const VkMemoryAllocateInfo*, const VkAllocationCallbacks*, VkDeviceMemory*),
+                ());
+    MOCK_METHOD(void, vkFreeMemory, (VkDevice, VkDeviceMemory, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(VkResult,
+                vkMapMemory,
+                (VkDevice, VkDeviceMemory, VkDeviceSize, VkDeviceSize, VkMemoryMapFlags, void**),
+                ());
+    MOCK_METHOD(void, vkUnmapMemory, (VkDevice, VkDeviceMemory), ());
+    MOCK_METHOD(VkResult, vkFlushMappedMemoryRanges, (VkDevice, std::uint32_t, const VkMappedMemoryRange*), ());
+    MOCK_METHOD(VkResult, vkInvalidateMappedMemoryRanges, (VkDevice, std::uint32_t, const VkMappedMemoryRange*), ());
 
     MOCK_METHOD(void,
                 vkGetPhysicalDeviceQueueFamilyProperties,

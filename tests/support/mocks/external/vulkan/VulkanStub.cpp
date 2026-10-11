@@ -400,6 +400,67 @@ VKAPI_ATTR auto VKAPI_CALL vkWaitForFences(
 }
 }
 
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceProperties2(VkPhysicalDevice device,
+                                                          VkPhysicalDeviceProperties2* properties)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetPhysicalDeviceProperties2(device,
+                                                                                                     properties);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties(VkPhysicalDevice device,
+                                                               VkPhysicalDeviceMemoryProperties* properties)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetPhysicalDeviceMemoryProperties(device,
+                                                                                                          properties);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkAllocateMemory(VkDevice device,
+                                            const VkMemoryAllocateInfo* info,
+                                            const VkAllocationCallbacks* allocator,
+                                            VkDeviceMemory* memory) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkAllocateMemory(device,
+                                                                                              info,
+                                                                                              allocator,
+                                                                                              memory);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkFreeMemory(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks* allocator)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkFreeMemory(device, memory, allocator);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkMapMemory(
+    VkDevice device, VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size, VkMemoryMapFlags flags, void** data)
+    -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock()
+        .vkMapMemory(device, memory, offset, size, flags, data);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkUnmapMemory(VkDevice device, VkDeviceMemory memory)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkUnmapMemory(device, memory);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkFlushMappedMemoryRanges(VkDevice device,
+                                                     std::uint32_t count,
+                                                     const VkMappedMemoryRange* ranges) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkFlushMappedMemoryRanges(device,
+                                                                                                       count,
+                                                                                                       ranges);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkInvalidateMappedMemoryRanges(VkDevice device,
+                                                          std::uint32_t count,
+                                                          const VkMappedMemoryRange* ranges) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkInvalidateMappedMemoryRanges(device,
+                                                                                                            count,
+                                                                                                            ranges);
+}
+
 namespace panda::test
 {
 namespace
@@ -419,6 +480,15 @@ struct EntryPoint
 };
 
 const auto entryPoints = std::array {
+    EntryPoint {.name = "vkAllocateMemory",                          .function = genericProc(&vkAllocateMemory)               },
+    EntryPoint {.name = "vkFreeMemory",                              .function = genericProc(&vkFreeMemory)                   },
+    EntryPoint {.name = "vkMapMemory",                               .function = genericProc(&vkMapMemory)                    },
+    EntryPoint {.name = "vkUnmapMemory",                             .function = genericProc(&vkUnmapMemory)                  },
+    EntryPoint {.name = "vkFlushMappedMemoryRanges",                 .function = genericProc(&vkFlushMappedMemoryRanges)      },
+    EntryPoint {.name = "vkInvalidateMappedMemoryRanges",            .function = genericProc(&vkInvalidateMappedMemoryRanges) },
+    EntryPoint {.name = "vkGetPhysicalDeviceProperties2",            .function = genericProc(&vkGetPhysicalDeviceProperties2) },
+    EntryPoint {.name = "vkGetPhysicalDeviceMemoryProperties",
+                .function = genericProc(&vkGetPhysicalDeviceMemoryProperties)                                                 },
     EntryPoint {.name = "vkEnumerateInstanceVersion",                .function = genericProc(&vkEnumerateInstanceVersion)     },
     EntryPoint {.name = "vkEnumerateInstanceLayerProperties",
                 .function = genericProc(&vkEnumerateInstanceLayerProperties)                                                  },
