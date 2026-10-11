@@ -233,6 +233,12 @@ result before reading output counts or entries, retries `eIncomplete`, and check
 the returned size against capacity only after success. This avoids Hpp's
 nonthrowing enhanced enumerators inspecting undefined outputs after an error.
 
+Every Core translation unit initializes `VulkanHpp.hpp` before a public Panda
+header can include Vulkan-Hpp. This also applies to CPU-only allocator sources
+using the shared Error header. Unity batches must begin with the same private
+configuration as ordinary translation units; include order must not select
+Vulkan-Hpp's default assertion or loader settings for part of Core.
+
 Do not define Panda's private Hpp configuration macros for consumers. Public
 headers use ordinary Vulkan-Hpp in the default `vk` namespace. A consumer using a
 different Hpp configuration needs a specific compatibility check before support

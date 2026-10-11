@@ -137,6 +137,11 @@ propagating the option to consumers or other compiler languages.
 
 The Hpp migration also passed the Tools, Error, surface/presentation, native
 memory/window targets and `all_verify_interface_header_sets` on Windows and Linux.
+`cmake --preset msvc-unity` with `cmake --build --preset msvc-unity --parallel 2`
+and the Linux `gcc-unity` preset both build Core, Tools and examples successfully.
+Core selects its private Vulkan-Hpp configuration before public headers in every
+translation unit, including the CPU range allocator. Ordinary quality builds and
+32 RangeAllocator/Context lifecycle behavior cases pass on each platform too.
 Focused quality runs passed 37 behavior cases on each platform; Windows additionally
 passed seven formatting cases. A consumer compile probe with ordinary Vulkan-Hpp
 configuration accepts buffer flags and rejects assigning image flags to BufferDesc.
