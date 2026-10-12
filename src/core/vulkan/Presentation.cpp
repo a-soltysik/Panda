@@ -7,6 +7,7 @@
 #include <memory>
 #include <numeric>
 #include <panda/Assert.hpp>
+#include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
@@ -14,6 +15,7 @@
 #include <utility>
 #include <vulkan/vulkan.hpp>
 
+#include "SubmissionQueue.hpp"
 #include "SwapchainGeneration.hpp"
 #include "VulkanError.hpp"
 #include "VulkanHpp.hpp"  // IWYU pragma: keep
@@ -121,22 +123,6 @@ void transitionToPresent(vk::CommandBuffer command, const SwapchainImage& image)
     recordImageBarrier(command, barrier);
 }
 
-auto submitAcquireForRetirement(const vk::raii::Queue& queue,
-                                vk::Semaphore acquire,
-                                vk::Semaphore timeline,
-                                std::uint64_t completion) -> vk::Result
-{
-    const auto wait =
-        vk::SemaphoreSubmitInfo {.semaphore = acquire, .stageMask = vk::PipelineStageFlagBits2::eAllCommands};
-    const auto signal = vk::SemaphoreSubmitInfo {.semaphore = timeline,
-                                                 .value = completion,
-                                                 .stageMask = vk::PipelineStageFlagBits2::eAllCommands};
-    const auto submission = vk::SubmitInfo2 {.waitSemaphoreInfoCount = 1,
-                                             .pWaitSemaphoreInfos = &wait,
-                                             .signalSemaphoreInfoCount = 1,
-                                             .pSignalSemaphoreInfos = &signal};
-    return queue.submit2(submission);
-}
 }
 
 Presentation::Presentation(vk::PhysicalDevice physicalDevice,
@@ -146,15 +132,20 @@ Presentation::Presentation(vk::PhysicalDevice physicalDevice,
                            const ContextDeviceInfo& deviceInfo)
     : _physicalDevice {physicalDevice},
       _device {device},
-      _graphicsQueue {device.getQueue(deviceInfo.queueFamily, 0)},
       _presentQueue {device.getQueue(deviceInfo.presentQueueFamily, 0)},
       _surface {surface},
       _window {window},
-      _deviceInfo {deviceInfo}
+      _deviceInfo {deviceInfo},
+      _submissions {std::make_unique<SubmissionQueue>(device, deviceInfo.queueFamily)}
 {
 }
 
 Presentation::~Presentation() = default;
+
+auto Presentation::getSubmissions() -> SubmissionQueue&
+{
+    return *_submissions;
+}
 
 auto Presentation::create(vk::PhysicalDevice physicalDevice,
                           const vk::raii::Device& device,
@@ -228,7 +219,7 @@ auto Presentation::presentClearFrame() -> std::expected<FrameResult, Error>
     }
     if (!*ready)
     {
-        return FrameResult {.status = FrameResult::Status::Suspended};
+        return FrameResult {.status = FrameResult::Status::Suspended, .completion = {}};
     }
     return executeAcquiredFrame();
 }
@@ -243,11 +234,11 @@ auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
     }
     if (acquired->status == AcquiredImage::Status::Skipped)
     {
-        return FrameResult {.status = FrameResult::Status::Skipped};
+        return FrameResult {.status = FrameResult::Status::Skipped, .completion = {}};
     }
     if (acquired->status == AcquiredImage::Status::RecreatePending)
     {
-        return FrameResult {.status = FrameResult::Status::RecreatePending};
+        return FrameResult {.status = FrameResult::Status::RecreatePending, .completion = {}};
     }
     auto& image = activeGeneration().images.at(acquired->index);
     if (const auto waited = waitImage(slot, acquired->index); !waited)
@@ -302,14 +293,14 @@ auto Presentation::releaseImage(std::uint32_t index) const -> std::expected<void
 
 auto Presentation::abortAcquire(FrameSlot& slot, std::uint32_t index) -> std::expected<void, Error>
 {
-    const auto completion = _nextCompletion;
-    const auto submitted = submitAcquireForRetirement(_graphicsQueue, *slot.acquire, *_timeline, completion);
-    if (submitted != vk::Result::eSuccess)
+    const auto submitted = _submissions->submit({}, *slot.acquire, {});
+    if (!submitted)
     {
         _faulted = true;
-        return std::unexpected {makeVulkanError(submitted)};
+        _acquireRetirementFailed = true;
+        return std::unexpected {submitted.error()};
     }
-    ++_nextCompletion;
+    const auto completion = *submitted;
     slot.lastCompletion = completion;
     if (const auto waited = waitCompletion(completion); !waited)
     {
@@ -329,6 +320,10 @@ auto Presentation::acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage,
     if (const auto waited = waitCompletion(slot.lastCompletion); !waited)
     {
         return std::unexpected {waited.error()};
+    }
+    if (const auto ready = _submissions->prepareSubmit(); !ready)
+    {
+        return std::unexpected {ready.error()};
     }
     static constexpr auto timeoutNanoseconds = std::uint64_t {1'000'000'000};
     const auto acquired = activeGeneration().swapchain.acquireNextImage(timeoutNanoseconds, *slot.acquire);
@@ -387,26 +382,9 @@ auto Presentation::waitImage(FrameSlot& slot, std::uint32_t index) -> std::expec
     return {};
 }
 
-auto Presentation::submitRecordedFrame(FrameSlot& slot, const SwapchainImage& image, std::uint64_t completion) const
-    -> vk::Result
+auto Presentation::submitRecordedFrame(const FrameSlot& slot, const SwapchainImage& image) -> Result<std::uint64_t>
 {
-    const auto acquireWait = vk::SemaphoreSubmitInfo {.semaphore = *slot.acquire,
-                                                      .stageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput};
-    const auto command = vk::CommandBufferSubmitInfo {.commandBuffer = slot.command};
-    const auto signals = std::array {
-        vk::SemaphoreSubmitInfo {.semaphore = *image.renderFinished,
-                                 .stageMask = vk::PipelineStageFlagBits2::eAllCommands},
-        vk::SemaphoreSubmitInfo {.semaphore = *_timeline,
-                                 .value = completion,
-                                 .stageMask = vk::PipelineStageFlagBits2::eAllCommands}
-    };
-    const auto submission = vk::SubmitInfo2 {.waitSemaphoreInfoCount = 1,
-                                             .pWaitSemaphoreInfos = &acquireWait,
-                                             .commandBufferInfoCount = 1,
-                                             .pCommandBufferInfos = &command,
-                                             .signalSemaphoreInfoCount = static_cast<std::uint32_t>(signals.size()),
-                                             .pSignalSemaphoreInfos = signals.data()};
-    return _graphicsQueue.submit2(submission);
+    return _submissions->submit(slot.command, *slot.acquire, *image.renderFinished);
 }
 
 auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, std::uint32_t index)
@@ -417,19 +395,18 @@ auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, std::uint
         const auto cleanup = abortAcquire(slot, index);
         return std::unexpected {cleanup ? recorded.error() : cleanup.error()};
     }
-    const auto completion = _nextCompletion;
-    const auto submitted = submitRecordedFrame(slot, image, completion);
-    if (submitted != vk::Result::eSuccess)
+    const auto submitted = submitRecordedFrame(slot, image);
+    if (!submitted)
     {
-        if (submitted == vk::Result::eErrorDeviceLost)
+        if (submitted.error().code == ErrorCode::DeviceLost)
         {
             _faulted = true;
-            return std::unexpected {makeVulkanError(submitted)};
+            return std::unexpected {submitted.error()};
         }
         const auto cleanup = abortAcquire(slot, index);
-        return std::unexpected {cleanup ? makeVulkanError(submitted) : cleanup.error()};
+        return std::unexpected {cleanup ? submitted.error() : cleanup.error()};
     }
-    ++_nextCompletion;
+    const auto completion = *submitted;
     slot.lastCompletion = completion;
     image.initialized = true;
     _nextSlot = (_nextSlot + 1) % _slots.size();
@@ -496,9 +473,10 @@ auto Presentation::presentFrame(SwapchainImage& image,
         if (presented == vk::Result::eSuboptimalKHR || presented == vk::Result::eErrorOutOfDateKHR || acquireSuboptimal)
         {
             _recreatePending = true;
-            return FrameResult {.status = FrameResult::Status::RecreatePending, .completionValue = completion};
+            return FrameResult {.status = FrameResult::Status::RecreatePending,
+                                .completion = _submissions->getPoint(completion)};
         }
-        return FrameResult {.status = FrameResult::Status::Presented, .completionValue = completion};
+        return FrameResult {.status = FrameResult::Status::Presented, .completion = _submissions->getPoint(completion)};
     }
     if (presented == vk::Result::eErrorDeviceLost)
     {
@@ -557,14 +535,10 @@ auto Presentation::initializeFrameResources() -> std::expected<void, Error>
     {
         return std::unexpected {resolved.error()};
     }
-    static constexpr auto timelineInfo = vk::SemaphoreTypeCreateInfo {.semaphoreType = vk::SemaphoreType::eTimeline};
-    static constexpr auto semaphoreInfo = vk::SemaphoreCreateInfo {.pNext = &timelineInfo};
-    auto timeline = checkedCreation(_device.createSemaphore(semaphoreInfo));
-    if (!timeline)
+    if (const auto initialized = _submissions->initialize(_physicalDevice); !initialized)
     {
-        return std::unexpected {timeline.error()};
+        return initialized;
     }
-    _timeline = std::move(*timeline);
     for (auto& slot : _slots)
     {
         if (const auto initialized = initializeSlot(slot); !initialized)
@@ -592,19 +566,14 @@ auto Presentation::initializeWindowPresentation() -> std::expected<void, Error>
 
 auto Presentation::waitCompletion(std::uint64_t value) const -> std::expected<void, Error>
 {
-    if (value == 0)
-    {
-        return {};
-    }
     static constexpr auto timeoutNanoseconds = std::uint64_t {10'000'000'000};
-    const auto semaphore = *_timeline;
-    const auto waitInfo = vk::SemaphoreWaitInfo {.semaphoreCount = 1, .pSemaphores = &semaphore, .pValues = &value};
-    const auto result = _device.waitSemaphores(waitInfo, timeoutNanoseconds);
-    if (result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(result)};
-    }
-    return {};
+    return _submissions->waitValue(value, timeoutNanoseconds).and_then([](WaitStatus status) -> Result<void> {
+        if (status == WaitStatus::Timeout)
+        {
+            return std::unexpected {makeError(ErrorCode::Timeout, "GPU completion wait timed out")};
+        }
+        return {};
+    });
 }
 
 auto Presentation::waitPresentation() -> std::expected<void, Error>
@@ -633,6 +602,10 @@ auto Presentation::waitPresentation() -> std::expected<void, Error>
 
 auto Presentation::drain() -> std::expected<void, Error>
 {
+    if (_acquireRetirementFailed)
+    {
+        return std::unexpected {makeError(ErrorCode::BackendFailure, "Acquired image has no committed retirement")};
+    }
     const auto lastCompletion =
         std::accumulate(_slots.begin(), _slots.end(), std::uint64_t {0}, [](std::uint64_t last, const FrameSlot& slot) {
             return std::max(last, slot.lastCompletion);

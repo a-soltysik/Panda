@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <panda/Context.hpp>
@@ -80,12 +81,14 @@ auto makeGeneration(const vk::raii::Device& device, std::uintptr_t handle)
     -> std::expected<panda::detail::SwapchainGeneration, panda::Error>
 {
     auto images = std::vector<panda::detail::SwapchainImage> {};
-    images.emplace_back(panda::detail::SwapchainImage {.image = vk::Image {fakeVulkanHandle<VkImage>(handle + 1U)},
-                                                       .view = {nullptr},
-                                                       .renderFinished = {nullptr},
-                                                       .presentFence = {nullptr},
-                                                       .presentPending = false,
-                                                       .initialized = false});
+    images.emplace_back(panda::detail::SwapchainImage {
+        .image = vk::Image {fakeVulkanHandle<VkImage>(handle + 1U)},
+        .view = {nullptr},
+        .renderFinished = vk::raii::Semaphore {device, fakeVulkanHandle<VkSemaphore>(handle + 2U)},
+        .presentFence = vk::raii::Fence {device, fakeVulkanHandle<VkFence>(handle + 3U)},
+        .presentPending = false,
+        .initialized = false
+    });
     return panda::detail::SwapchainGeneration {
         .swapchain = vk::raii::SwapchainKHR {device,       fakeVulkanHandle<VkSwapchainKHR>(handle)},
         .images = std::move(images),
@@ -97,6 +100,19 @@ auto makeGeneration(const vk::raii::Device& device, std::uintptr_t handle)
 class PresentationTest : public testing::Test
 {
 protected:
+    std::uint64_t maximumDifference {std::numeric_limits<std::uint64_t>::max()};
+
+    void SetUp() override
+    {
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([this](VkPhysicalDevice, VkPhysicalDeviceProperties2* properties) {
+                auto* timeline = static_cast<VkPhysicalDeviceTimelineSemaphoreProperties*>(properties->pNext);
+                ASSERT_NE(timeline, nullptr);
+                timeline->maxTimelineSemaphoreValueDifference = maximumDifference;
+            });
+    }
+
     void TearDown() override
     {
         // These adopted tokens represent borrowed test identities, not created objects.
@@ -170,6 +186,7 @@ protected:
         EXPECT_CALL(vulkan, vkDestroySemaphore(_, _, _)).Times(static_cast<int>(counts.semaphores));
         EXPECT_CALL(vulkan, vkDestroyCommandPool(_, _, _)).Times(2);
         EXPECT_CALL(vulkan, vkDestroySwapchainKHR(_, _, _)).Times(static_cast<int>(counts.swapchains));
+        EXPECT_CALL(vulkan, vkDestroyFence(_, _, _)).Times(static_cast<int>(counts.swapchains));
     }
 
     void expectExtentReads(std::size_t count) const
@@ -193,6 +210,16 @@ protected:
                 EXPECT_EQ(oldSwapchain, vk::SwapchainKHR {});
                 return makeGeneration(device, handle);
             });
+    }
+
+    void expectWindowFrame()
+    {
+        expectQueueLookup();
+        expectReleaseEntryPoint();
+        expectFrameResources(3);
+        expectResourceDestruction(ResourceDestructionCounts {.semaphores = 4, .swapchains = 1});
+        expectExtentReads(2);
+        expectInitialGeneration(700);
     }
 
     void expectAcquiredImage(Sequence& flow, vk::Result result)
@@ -237,11 +264,11 @@ protected:
             .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
     }
 
-    void expectRetirementSubmit(Sequence& flow)
+    void expectRetirementSubmit(Sequence& flow, vk::Result result = vk::Result::eSuccess)
     {
         EXPECT_CALL(vulkan, vkQueueSubmit2(_, 1, NotNull(), _))
             .InSequence(flow)
-            .WillOnce([](VkQueue, std::uint32_t, const VkSubmitInfo2* submits, VkFence) {
+            .WillOnce([result](VkQueue, std::uint32_t, const VkSubmitInfo2* submits, VkFence) {
                 EXPECT_EQ(submits->waitSemaphoreInfoCount, 1U);
                 EXPECT_EQ(submits->commandBufferInfoCount, 0U);
                 EXPECT_EQ(submits->signalSemaphoreInfoCount, 1U);
@@ -251,15 +278,15 @@ protected:
                     return static_cast<VkResult>(vk::Result::eErrorUnknown);
                 }
                 EXPECT_EQ(submits->pSignalSemaphoreInfos->value, 1U);
-                return static_cast<VkResult>(vk::Result::eSuccess);
+                return static_cast<VkResult>(result);
             });
     }
 
-    void expectFrameSubmit(Sequence& flow)
+    void expectFrameSubmit(Sequence& flow, vk::Result result = vk::Result::eSuccess)
     {
         EXPECT_CALL(vulkan, vkQueueSubmit2(_, 1, NotNull(), _))
             .InSequence(flow)
-            .WillOnce([](VkQueue, std::uint32_t, const VkSubmitInfo2* submits, VkFence) {
+            .WillOnce([result](VkQueue, std::uint32_t, const VkSubmitInfo2* submits, VkFence) {
                 EXPECT_EQ(submits->waitSemaphoreInfoCount, 1U);
                 if (submits->waitSemaphoreInfoCount != 1U || submits->pWaitSemaphoreInfos == nullptr ||
                     submits->signalSemaphoreInfoCount != 2U || submits->pSignalSemaphoreInfos == nullptr)
@@ -269,25 +296,35 @@ protected:
                 }
                 const auto signals = std::span {submits->pSignalSemaphoreInfos, submits->signalSemaphoreInfoCount};
                 EXPECT_EQ(submits->pWaitSemaphoreInfos->stageMask,
-                          static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eColorAttachmentOutput));
+                          static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eAllCommands));
                 EXPECT_EQ(submits->commandBufferInfoCount, 1U);
                 EXPECT_EQ(signals.subspan(1).front().value, 1U);
+                return static_cast<VkResult>(result);
+            });
+    }
+
+    void expectPresentFailure(Sequence& flow, vk::Result result = vk::Result::eErrorUnknown)
+    {
+        EXPECT_CALL(vulkan, vkQueuePresentKHR(_, NotNull()))
+            .InSequence(flow)
+            .WillOnce(Return(static_cast<VkResult>(result)));
+    }
+
+    void expectPendingCounter(Sequence& flow)
+    {
+        EXPECT_CALL(vulkan, vkGetSemaphoreCounterValue(_, _, NotNull()))
+            .InSequence(flow)
+            .WillOnce([](VkDevice, VkSemaphore, std::uint64_t* output) {
+                *output = 0;
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
     }
 
-    void expectPresentFailure(Sequence& flow)
-    {
-        EXPECT_CALL(vulkan, vkQueuePresentKHR(_, NotNull()))
-            .InSequence(flow)
-            .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorUnknown)));
-    }
-
-    void expectTimelineWait(Sequence& flow)
+    void expectTimelineWait(Sequence& flow, vk::Result result = vk::Result::eSuccess)
     {
         EXPECT_CALL(vulkan, vkWaitSemaphores(_, NotNull(), _))
             .InSequence(flow)
-            .WillOnce([](VkDevice, const VkSemaphoreWaitInfo* waitInfo, std::uint64_t) {
+            .WillOnce([result](VkDevice, const VkSemaphoreWaitInfo* waitInfo, std::uint64_t) {
                 EXPECT_EQ(waitInfo->semaphoreCount, 1U);
                 if (waitInfo->semaphoreCount != 1U || waitInfo->pValues == nullptr)
                 {
@@ -295,7 +332,7 @@ protected:
                     return static_cast<VkResult>(vk::Result::eErrorUnknown);
                 }
                 EXPECT_EQ(*waitInfo->pValues, 1U);
-                return static_cast<VkResult>(vk::Result::eSuccess);
+                return static_cast<VkResult>(result);
             });
     }
 
@@ -440,7 +477,7 @@ TEST_F(PresentationTest, RetiresAcquiredImageWhenCommandRecordingCannotStart)
     expectQueueLookup();
     expectReleaseEntryPoint();
     expectFrameResources(3);
-    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 3, .swapchains = 1});
+    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 4, .swapchains = 1});
     expectExtentReads(2);
     expectInitialGeneration(500);
     auto flow = Sequence {};
@@ -465,7 +502,7 @@ TEST_F(PresentationTest, PresentAndRecreationFailuresReleaseThenRetryWithoutReti
     expectQueueLookup();
     expectReleaseEntryPoint();
     expectFrameResources(4);
-    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 4, .swapchains = 2});
+    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 6, .swapchains = 2});
     expectExtentReads(4);
     expectInitialGeneration(700);
     EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
@@ -477,9 +514,7 @@ TEST_F(PresentationTest, PresentAndRecreationFailuresReleaseThenRetryWithoutReti
     expectPresentFailure(flow);
     expectTimelineWait(flow);
     expectImageRelease(flow);
-    expectTimelineWait(flow);
     expectFailedRecreation(flow, 700);
-    expectTimelineWait(flow);
     expectRetriedGeneration(flow, 900);
     expectAcquiredImage(flow, vk::Result::eTimeout);
 
@@ -494,4 +529,138 @@ TEST_F(PresentationTest, PresentAndRecreationFailuresReleaseThenRetryWithoutReti
     const auto retried = presentation->get()->presentClearFrame();
     ASSERT_TRUE(retried.has_value());
     EXPECT_EQ(retried->status, panda::FrameResult::Status::Skipped);
+}
+
+TEST_F(PresentationTest, TimelineLimitRejectsFrameBeforeAcquiringAnotherImage)
+{
+    maximumDifference = 1;
+    expectQueueLookup();
+    expectReleaseEntryPoint();
+    expectFrameResources(3);
+    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 4, .swapchains = 1});
+    expectExtentReads(3);
+    expectInitialGeneration(700);
+    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectCommandRecording(flow);
+    expectFrameSubmit(flow);
+    EXPECT_CALL(vulkan, vkQueuePresentKHR(_, NotNull()))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    expectPendingCounter(flow);
+    expectTimelineWait(flow);
+    EXPECT_CALL(vulkan, vkWaitForFences(_, 1, NotNull(), _, _))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    const auto first = presentation->get()->presentClearFrame();
+    ASSERT_TRUE(first);
+    const auto blocked = presentation->get()->presentClearFrame();
+    ASSERT_FALSE(blocked);
+    EXPECT_EQ(blocked.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_TRUE(presentation->get()->drain());
+}
+
+TEST_F(PresentationTest, FailedFrameSubmitRetiresAcquireWithoutConsumingTheCandidateValue)
+{
+    expectWindowFrame();
+    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectCommandRecording(flow);
+    expectFrameSubmit(flow, vk::Result::eErrorOutOfDeviceMemory);
+    expectRetirementSubmit(flow);
+    expectTimelineWait(flow);
+    expectImageRelease(flow);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    const auto failed = presentation->get()->presentClearFrame();
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(PresentationTest, DeviceLostSubmitDoesNotRetryAcquireRetirement)
+{
+    expectWindowFrame();
+    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectCommandRecording(flow);
+    expectFrameSubmit(flow, vk::Result::eErrorDeviceLost);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    const auto failed = presentation->get()->presentClearFrame();
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::DeviceLost);
+    EXPECT_FALSE(presentation->get()->presentClearFrame());
+}
+
+TEST_F(PresentationTest, FailedRetirementSubmitPreservesErrorWithoutWaitingOnUncommittedWork)
+{
+    expectWindowFrame();
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectCommandPoolResetFailure(flow);
+    expectRetirementSubmit(flow, vk::Result::eErrorOutOfDeviceMemory);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    const auto failed = presentation->get()->presentClearFrame();
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_FALSE(presentation->get()->presentClearFrame());
+    EXPECT_FALSE(presentation->get()->drain());
+}
+
+TEST_F(PresentationTest, RetirementTimeoutKeepsTheCommittedWorkForDrain)
+{
+    expectWindowFrame();
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectCommandPoolResetFailure(flow);
+    expectRetirementSubmit(flow);
+    expectTimelineWait(flow, vk::Result::eTimeout);
+    expectTimelineWait(flow);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    const auto failed = presentation->get()->presentClearFrame();
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::Timeout);
+    EXPECT_TRUE(presentation->get()->drain());
+}
+
+TEST_F(PresentationTest, OutOfDateAcquireReturnsNoCompletionPoint)
+{
+    expectWindowFrame();
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eErrorOutOfDateKHR);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    const auto frame = presentation->get()->presentClearFrame();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->status, panda::FrameResult::Status::RecreatePending);
+    EXPECT_FALSE(frame->completion.isValid());
+}
+
+TEST_F(PresentationTest, SuboptimalPresentReturnsTheCommittedCompletionPoint)
+{
+    expectWindowFrame();
+    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectCommandRecording(flow);
+    expectFrameSubmit(flow);
+    expectPresentFailure(flow, vk::Result::eSuboptimalKHR);
+    expectTimelineWait(flow);
+    EXPECT_CALL(vulkan, vkWaitForFences(_, 1, NotNull(), _, _))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    const auto frame = presentation->get()->presentClearFrame();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->status, panda::FrameResult::Status::RecreatePending);
+    EXPECT_TRUE(frame->completion.isValid());
+    EXPECT_TRUE(presentation->get()->drain());
 }

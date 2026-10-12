@@ -160,7 +160,8 @@ the layer or debug-utils extension is unavailable returns an `Unsupported` error
 
 `Result<T>` means `std::expected<T, Error>`, not another result framework.
 `CompletionPoint` is an opaque context identity plus committed Vulkan timeline
-value, comparable only within that context. Value zero means no submitted work.
+value. A default token means no submitted work; empty and foreign tokens are
+rejected by poll/wait. Moving Context preserves its issued tokens.
 No public API lets a caller signal it, fabricate future values, or use it after
 context destruction. `Error` has an action category, owned message, optional native
 backend status and source location; it does not retain references to temporary strings.

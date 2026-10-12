@@ -4,6 +4,11 @@
 not implemented yet. Requires a display, Vulkan 1.3 with swapchain maintenance1,
 and the Khronos validation layer. CUDA is not needed.
 
+The loop keeps the last committed frame completion point and explicitly waits
+for its GPU work at normal shutdown, with a ten-second timeout. It does not wait
+after every frame. This point does not track display completion; Context still
+drains presentation during destruction.
+
 Run from the repository root.
 
 Windows (MSVC):

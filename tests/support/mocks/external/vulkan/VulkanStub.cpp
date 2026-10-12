@@ -12,6 +12,14 @@
 #include "VulkanMock.hpp"
 
 extern "C" {
+VKAPI_ATTR auto VKAPI_CALL vkGetSemaphoreCounterValue(VkDevice device, VkSemaphore semaphore, std::uint64_t* pValue)
+    -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetSemaphoreCounterValue(device,
+                                                                                                        semaphore,
+                                                                                                        pValue);
+}
+
 VKAPI_ATTR auto VKAPI_CALL vkCreateBuffer(VkDevice device,
                                           const VkBufferCreateInfo* pCreateInfo,
                                           const VkAllocationCallbacks* pAllocator,
@@ -515,6 +523,7 @@ struct EntryPoint
 };
 
 const auto entryPoints = std::array {
+    EntryPoint {.name = "vkGetSemaphoreCounterValue",                .function = genericProc(&vkGetSemaphoreCounterValue)     },
     EntryPoint {.name = "vkCreateBuffer",                            .function = genericProc(&vkCreateBuffer)                 },
     EntryPoint {.name = "vkDestroyBuffer",                           .function = genericProc(&vkDestroyBuffer)                },
     EntryPoint {.name = "vkGetBufferMemoryRequirements2",            .function = genericProc(&vkGetBufferMemoryRequirements2) },

@@ -72,13 +72,31 @@ Shared resource state destroys `VkBuffer` before its `MemoryAllocation` releases
 the range. Context has stable heap-owned state; moving it preserves buffer owners.
 Context destruction rejects live owners before tearing down the device. Buffer
 memory intent selects device-local, upload or readback memory, without exposing
-CPU mapping. Native views and GPU submission remain planned.
+CPU mapping. Native buffer views and resource submission remain planned.
 
 Public Vulkan fields and window-surface signatures use Vulkan-Hpp flags and
 borrowed `vk` handles. `makeVulkanError` accepts `vk::Result`. Internally, surface
 queries and RAII adoption pass those handles directly; C types remain only at
 external ABI boundaries. Context initializes one stable physical-device wrapper
 before logical-device creation and shares it with its allocator.
+
+`CompletionPoint` identifies successfully committed work without retaining Context
+or resources. The presentation timeline is owned by an internal `SubmissionQueue`;
+frame and acquire-retirement submissions use its single monotonic clock. Failed
+submit does not consume a value. `FrameResult::completion` is empty for skipped
+or suspended frames. `Context::poll` queries GPU completion, and `Context::wait`
+takes a nonnegative nanosecond timeout with distinct Completed/Timeout outcomes.
+Empty and foreign points are rejected. Context moves preserve issued points;
+headless contexts currently issue no points. Device loss stops further submissions
+and waits. Outstanding values respect the physical device's timeline limit; presentation
+checks available capacity before acquiring a swapchain image. Failed acquire
+retirement without a committed value rejects drain; current Context destruction
+treats this unsafe teardown as a fatal contract failure. A timed-out committed
+retirement can be drained again.
+The window example keeps the last issued point and explicitly waits at normal
+shutdown without adding a CPU wait after each frame.
+This layer currently serves presentation; uploads and retained resource packets
+remain planned. Completion of this clock does not mean display completion.
 
 The [buffer allocation example](../../../examples/buffer_allocation/README.md)
 uses public creation, resource diagnostics and RAII shutdown without a window, uploads or submitted
@@ -99,133 +117,77 @@ by this scenario.
 
 ## Verification
 
-Context, buffer and allocator slice, with CUDA disabled. Windows used MSVC
-19.51.36260, Vulkan SDK 1.4.341.1, clang-tidy 22.1.8 and cppcheck 2.19. WSL Ubuntu
-used GCC 16.0.1, Vulkan 1.4.341, clang-tidy 22.1.2 and cppcheck 2.19.
+Current allocator, Buffer and completion infrastructure, with CUDA disabled.
+Windows used MSVC, Vulkan SDK 1.4.341.1, clang-tidy 22.1.8 and cppcheck 2.19;
+Linux used GCC 16.0.1, Vulkan 1.4.341, clang-tidy 22.1.2 and cppcheck 2.19
+in the managed Ubuntu WSL environment.
 
-- Windows: `cmake --preset msvc-quality`, then
-  `cmake --build --preset msvc-quality --target panda_unit_memory_pool panda_system_memory_allocation --parallel 2`
-  passed with warnings-as-errors, clang-tidy and cppcheck.
-  The memory-block and pool quality targets also passed both analyzers;
-  `ctest --preset msvc-quality -R 'MemoryPool|MemoryBlock'`
-  passed 52 unit cases. The memory-allocation system tests passed three coherent
-  cases on NVIDIA GeForce RTX 4070 Ti
-  (memory type 2), with no Vulkan validation errors. Noncoherent was skipped:
-  no compatible memory type.
-  A full `msvc-tests` build and `ctest --preset msvc-tests -LE system` passed 168/168.
-- WSL: `scripts/build-wsl.ps1 -Preset gcc-quality -Target panda_unit_memory_pool,panda_system_memory_allocation`
-  passed with the same quality checks. CTest in the managed mirror with
-  `-R 'MemoryPool|MemoryBlock'` passed 52 unit cases. The memory-allocation system
-  tests passed three coherent cases with no Vulkan validation errors, using
-  llvmpipe (LLVM 21.1.8, memory type 0). Noncoherent was skipped: no compatible type.
-  `scripts/build-wsl.ps1 -Preset gcc-sanitizers -RunTests` passed all 168
-  noninteractive cases under ASan/UBSan with no findings.
-- The naming-policy probe accepted `id` and rejected another short name through
-  the real MSVC quality build; the temporary violation was removed.
-- The four relevant CTest formatting cases passed in `msvc-quality`.
-- `py -3 .agents/skills/panda-project-maintenance/scripts/check_docs.py` and
-  `git diff --check` passed.
+- Windows: the complete `msvc-quality` build passed warnings-as-errors,
+  clang-tidy, cppcheck and formatting. `ctest --preset msvc-quality -LE system`
+  passed 217 cases: 189 CPU behavior cases and 28 formatting checks.
+- Linux: `scripts/build-wsl.ps1 -Preset gcc-quality -RunTests -Jobs 2`
+  built all quality targets and ran 230 cases without failures, including 189 CPU
+  behavior cases, formatting and 13 native cases. Three noncoherent allocation
+  variants were skipped because no compatible memory type was available.
+- `all_verify_interface_header_sets` passed on both platforms, including the new
+  CompletionPoint header. The `msvc-unity` and `gcc-unity` builds passed for Core,
+  Tools and examples. `gcc-docs` generated the Doxygen API without errors.
+- `gcc-sanitizers` passed all 189 noninteractive cases under ASan/UBSan, with no
+  findings. Windows ASan was not run for this slice.
+- `WindowedContextSystem` passed both cases on Windows RTX 4070 Ti and Linux
+  llvmpipe (LLVM 21.1.8). The scenario waits and polls real frame points, including
+  one issued before moving Context, and checks resize, suspension and teardown.
+  Verbose logs contain no Vulkan validation errors. Windows disabled only implicit
+  layers in the test process because the installed ReShade layer failed to load;
+  the explicitly requested Khronos validation remained enabled. Synchronization
+  validation and a physical Linux GPU were not verified.
+- The window example compiles on both platforms and waits for the last committed
+  frame at normal shutdown. The buffer example still creates and releases a
+  4096-byte storage buffer without submitting work that uses it.
+- The documentation checker and `git diff --check` passed.
 
-The Context/Buffer quality targets (`panda_unit_context`, `panda_system_buffer`,
-`buffer_allocation`, `panda_core_verify_interface_header_sets`) passed on Windows
-and WSL. Both platforms passed 21 Context lifecycle cases, including twelve cases
-for description validation, shared ownership, moved Context/Buffer state, native
-creation/allocation/binding rollback, dedicated teardown, intent selection and
-checked Context destruction with live owners. Windows also passed seven focused
-formatting cases. MSVC `/bigobj` is configured once for owned C++ targets without
-propagating the option to consumers or other compiler languages.
+CPU tests cover range alignment/coalescing/overflow, atom isolation and cache
+rounding, pool selection/budgets/fallback, shared Buffer ownership and rollback,
+and destruction order. The completion cases additionally cover successful commit,
+failed-value reuse, timeout and cached completion, empty/foreign points, moved
+Contexts, device loss, invalid counter reads and outstanding-value limits.
+Presentation tests check capacity before acquire, submit-failure retirement,
+failed retirement rejecting drain, timeout retry, and empty/committed points
+when swapchain recreation is required.
 
-The Hpp migration also passed the Tools, Error, surface/presentation, native
-memory/window targets and `all_verify_interface_header_sets` on Windows and Linux.
-`cmake --preset msvc-unity` with `cmake --build --preset msvc-unity --parallel 2`
-and the Linux `gcc-unity` preset both build Core, Tools and examples successfully.
-Core selects its private Vulkan-Hpp configuration before public headers in every
-translation unit, including the CPU range allocator. Ordinary quality builds and
-32 RangeAllocator/Context lifecycle behavior cases pass on each platform too.
-Focused quality runs passed 37 behavior cases on each platform; Windows additionally
-passed seven formatting cases. A consumer compile probe with ordinary Vulkan-Hpp
-configuration accepts buffer flags and rejects assigning image flags to BufferDesc.
-
-`ctest --test-dir <build> -R BufferSystem --verbose` (Windows `msvc-tests`, WSL
-`gcc-quality`) passed all three
-native memory-intent cases on Windows RTX 4070 Ti and WSL llvmpipe, without Vulkan
-validation errors. The Windows run used process-local
-`VK_LOADER_LAYERS_DISABLE=~implicit~` because an installed ReShade implicit layer
-failed to load; the explicitly requested Khronos validation remained enabled.
-The system assertion still checks every captured error diagnostic. The public
-`buffer_allocation` executable creates a 4096-byte storage buffer, reports payload
-size and device, and destroys the buffer before Context. Neither scenario submits
-GPU work. The example ran successfully on Windows and Linux.
-
-The combined native buffer, allocation and window checks passed eight available
-cases on each platform, with three noncoherent allocation variants skipped for
-unavailable memory types. Window checks additionally exercise clear-frame submission,
-resize, suspension and teardown; they submit no work using the new Buffer owners.
-Logs contain no Vulkan validation errors. The Linux evidence uses llvmpipe under
-WSL, not a physical Linux GPU.
-
-`scripts/build-wsl.ps1 -Preset gcc-docs -Target panda_docs -Jobs 2` passed the
-Doxygen 1.15.0 API checks, including the new public Buffer declarations.
-
-`scripts/build-wsl.ps1 -Preset gcc-coverage -RunTests -Jobs 2` passed 168/168 cases.
-gcovr 7.2 with `gcov-16` measured Buffer and the five resource implementation files
-(all 80 measured functions executed):
+`gcc-coverage` passed 189 CPU cases after clearing generated profiles. gcovr 7.2
+with `gcov-16` measured production `src/` coverage: 1896/2041 executable lines
+(92.9%), 276/279 functions (98.9%) and 1515/2359 raw compiler branches (64.2%).
+The local report is `.cache/delivery-coverage/`.
 
 | Implementation | Executable lines | Raw compiler branches |
 | --- | --- | --- |
-| Buffer | 16/16 (100%) | 2/2 (100%) |
-| BufferResource | 74/74 (100%) | 47/68 (69.1%) |
-| MemoryAllocation | 51/51 (100%) | 19/30 (63.3%) |
-| MemoryBlock | 128/128 (100%) | 146/208 (70.2%) |
-| MemoryPool | 156/158 (98.7%) | 170/238 (71.4%) |
-| RangeAllocator | 59/59 (100%) | 62/84 (73.8%) |
-| Total | 484/486 (99.6%) | 446/630 (70.8%) |
+| CompletionPoint | 3/3 | 3/4 |
+| SubmissionQueue | 114/115 | 87/124 |
+| Context | 192/204 | 147/213 |
+| Presentation | 305/349 | 231/420 |
 
-The reports are local artifacts in `.cache/buffer-coverage/`. Raw branches
-include compiler-generated exception edges; this is not source decision coverage.
-The two unexecuted pool lines guard exhausted 64-bit ids and propagate a
-non-exhaustion placement error from a previously validated existing block.
-Tests do not mutate private state to force those guards. Fatal death-test paths
-also cannot reliably flush child-process coverage counters.
+All 160 other executable added/modified production lines run; the one unexecuted
+line rejects an exhausted 64-bit submission counter. Tests do not mutate private
+state to force that guard. Raw branches include compiler-generated exception
+edges and are not source decision coverage. Fatal child-process paths cannot
+reliably flush coverage counters. Existing unexecuted presentation/capability paths
+remain visible in the whole-file report.
 
-A delivery audit also reports all instrumented production `src/` files from one
-168-case run after resetting generated `.gcda` profiles: lines 1758/1928 (91.2%),
-functions 257/260 (98.8%) and raw branches 1356/2179 (62.2%). All 129 executable
-added/modified production `.cpp` lines execute. Relevant whole-file results are:
-
-| Implementation | Executable lines |
-| --- | --- |
-| Context | 184/196 (93.9%) |
-| DeviceSelection | 237/273 (86.8%) |
-| Presentation | 292/362 (80.7%) |
-| SwapchainGeneration | 115/116 (99.1%) |
-| VulkanError | 45/46 (97.8%) |
-| Window | 132/134 (98.5%) |
-
-The complete report is a local artifact in `.cache/delivery-coverage/`. Unexecuted
-existing capability/presentation/logging failure paths remain visible; mechanical
-Hpp type changes do not establish coverage of those paths. Native smoke evidence
-is separate from this CPU measurement. Controlled GLFW tests cover successful
-Hpp surface conversion and native failure with a nonnull undefined output.
-Ownership checkpoints reject destruction while a copy remains and require both
-buffer destruction and dedicated memory freeing before the last reset completes.
-Dedicated bind-failure rollback and InvalidArgument Vulkan status mapping are
-also covered. No production hooks or weakened diagnostics were introduced.
-
-Native noncoherent flush/invalidate and physical-GPU Linux behavior remain
-unverified. Controlled Vulkan tests cover atom isolation/rounding, allocation/map
-failure cleanup, wrapper flush/invalidate success and native-error propagation,
-coherent request validation, preferred-type ranking and unsupported-type filtering,
-partition separation, dedicated buffer/image metadata and rejected dedicated requests,
-independent multi-heap budgets, empty-cache reclamation, and ownership/move/reset behavior.
-The atom-placement fallback test verifies that the unusable temporary block is
-unmapped and freed before the exact-size dedicated attempt.
-Windows ASan and synchronization validation were not run for this slice; the
-system scenario submits no GPU work and does not prove upload or retirement safety.
+Buffer and the five allocator/resource implementation files retain 484/486
+executed lines, with all 80 measured functions executed. The two pool guards
+cover exhausted ids and a non-exhaustion placement error from a previously
+validated existing block. Native allocation cases establish coherent mapping,
+binding and release; controlled callbacks cover noncoherent cache behavior.
+Native noncoherent flush/invalidate, resource upload visibility and in-flight
+Buffer replacement/release remain unverified. Passing frame completion checks
+establish no submitted use of Buffer owners. The completion/lifetime learning
+checkpoint is confirmed; upload/retirement learning and full task acceptance
+remain outstanding.
 
 ## Remaining work
 
-Implement Texture/Mesh handles and uploads, then frame arenas, completion points,
+Implement Texture/Mesh handles and uploads, then frame arenas,
 recoverable Context close and GPU retirement. Native noncoherent
 cache-operation validation, failed growth and in-flight replacement/release evidence,
 an upload/GPU-use example and the maintainer learning handoff remain

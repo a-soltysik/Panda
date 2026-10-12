@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <expected>
+#include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
@@ -91,6 +93,17 @@ private:
     bool _returnNull;
 };
 
+void verifyCompletion(const panda::Context& context, panda::CompletionPoint point)
+{
+    EXPECT_TRUE(point.isValid());
+    const auto completed = context.wait(point, std::chrono::seconds {10});
+    ASSERT_TRUE(completed);
+    EXPECT_EQ(*completed, panda::WaitStatus::Completed);
+    const auto polled = context.poll(point);
+    ASSERT_TRUE(polled);
+    EXPECT_TRUE(*polled);
+}
+
 }
 
 TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
@@ -109,7 +122,10 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
         GTEST_SKIP() << context.error().message;
     }
     ASSERT_TRUE(context.has_value()) << context.error().message;
+    const auto beforeMove = context->presentClearFrame();
+    ASSERT_TRUE(beforeMove);
     auto movedContext = std::move(*context);
+    verifyCompletion(movedContext, beforeMove->completion);
     EXPECT_FALSE(context->isValid());
     EXPECT_NE(movedContext.getDeviceInfo().swapchainMaintenance, panda::ContextDeviceInfo::SwapchainMaintenance::None);
     for (auto index = 0; index < 3; ++index)
@@ -118,14 +134,14 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
         const auto frame = movedContext.presentClearFrame();
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
         EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
-        EXPECT_NE(frame->completionValue, 0U);
+        verifyCompletion(movedContext, frame->completion);
     }
     ASSERT_TRUE(window->setSize({240, 180}).has_value());
     ASSERT_TRUE(window->processInput().has_value());
     const auto resized = movedContext.presentClearFrame();
     ASSERT_TRUE(resized.has_value()) << resized.error().message;
     EXPECT_EQ(resized->status, panda::FrameResult::Status::Presented);
-    EXPECT_NE(resized->completionValue, 0U);
+    EXPECT_TRUE(resized->completion.isValid());
 
     // Native iconification is asynchronous and may be ignored by a window manager.
     // The surface reports the same zero framebuffer state deterministically.
@@ -133,13 +149,13 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
     const auto suspended = movedContext.presentClearFrame();
     ASSERT_TRUE(suspended.has_value());
     EXPECT_EQ(suspended->status, panda::FrameResult::Status::Suspended);
-    EXPECT_EQ(suspended->completionValue, 0U);
+    EXPECT_FALSE(suspended->completion.isValid());
 
     surface.setSuspended(false);
     const auto restored = movedContext.presentClearFrame();
     ASSERT_TRUE(restored.has_value()) << restored.error().message;
     EXPECT_EQ(restored->status, panda::FrameResult::Status::Presented);
-    EXPECT_NE(restored->completionValue, 0U);
+    EXPECT_TRUE(restored->completion.isValid());
 }
 
 TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)

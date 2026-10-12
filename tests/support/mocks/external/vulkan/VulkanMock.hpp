@@ -175,6 +175,7 @@ public:
     MOCK_METHOD(VkResult, vkQueuePresentKHR, (VkQueue, const VkPresentInfoKHR*), ());
 
     MOCK_METHOD(VkResult, vkWaitSemaphores, (VkDevice, const VkSemaphoreWaitInfo*, std::uint64_t), ());
+    MOCK_METHOD(VkResult, vkGetSemaphoreCounterValue, (VkDevice, VkSemaphore, std::uint64_t*), ());
 
     MOCK_METHOD(VkResult, vkReleaseSwapchainImagesKHR, (VkDevice, const VkReleaseSwapchainImagesInfoKHR*), ());
     // NOLINTEND(modernize-use-trailing-return-type)
