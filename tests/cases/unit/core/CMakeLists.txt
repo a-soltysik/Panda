@@ -42,6 +42,13 @@ panda_add_test(panda_unit_error unit
     SOURCES Error.cpp
     LIBRARIES Panda::Panda)
 
+panda_add_test(panda_unit_submission_queue unit
+    SOURCES SubmissionQueue.cpp
+    LIBRARIES Panda::Panda PandaTest::Support
+    MOCKS PandaTest::VulkanMock)
+target_include_directories(panda_unit_submission_queue PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan")
+target_compile_definitions(panda_unit_submission_queue PRIVATE VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
+
 panda_add_test(panda_unit_presentation unit
     SOURCES Presentation.cpp
     LIBRARIES Panda::Panda PandaTest::Support

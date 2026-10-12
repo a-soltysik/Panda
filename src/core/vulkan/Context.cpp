@@ -8,12 +8,14 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <expected>
 #include <memory>
 #include <optional>
 #include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
+#include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
@@ -427,6 +429,24 @@ auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer
         .transform([](std::shared_ptr<detail::BufferResource> resource) {
             return Buffer {std::move(resource)};
         });
+}
+
+auto Context::poll(CompletionPoint point) const -> Result<bool>
+{
+    if (!_implementation || !_implementation->_presentation)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Context")};
+    }
+    return _implementation->_presentation->getSubmissions().poll(point);
+}
+
+auto Context::wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>
+{
+    if (timeout.count() < 0 || !_implementation || !_implementation->_presentation)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Context")};
+    }
+    return _implementation->_presentation->getSubmissions().wait(point, static_cast<std::uint64_t>(timeout.count()));
 }
 
 }

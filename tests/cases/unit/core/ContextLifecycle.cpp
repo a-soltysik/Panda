@@ -9,9 +9,11 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <memory>
 #include <panda/Buffer.hpp>
 #include <panda/Context.hpp>
@@ -362,6 +364,13 @@ protected:
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(physical, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                const auto* base = static_cast<const VkBaseOutStructure*>(output->pNext);
+                if (base->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_PROPERTIES)
+                {
+                    auto* timeline = static_cast<VkPhysicalDeviceTimelineSemaphoreProperties*>(output->pNext);
+                    timeline->maxTimelineSemaphoreValueDifference = std::numeric_limits<std::uint64_t>::max();
+                    return;
+                }
                 output->properties.limits.maxMemoryAllocationCount = 16;
                 output->properties.limits.nonCoherentAtomSize = 64;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
@@ -856,4 +865,39 @@ TEST_F(ContextLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParent
     const auto context = panda::Context::createWithSurface(window);
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().message, "generation failed");
+}
+
+TEST_F(ContextLifecycleTest, EmptyAndMovedFromContextsRejectCompletionOperations)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto moved = std::move(*context);
+    const auto empty = panda::CompletionPoint {};
+    const auto noWork = moved.poll(empty);
+    ASSERT_FALSE(noWork);
+    EXPECT_EQ(noWork.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_FALSE(moved.wait(empty, std::chrono::nanoseconds {0}));
+    EXPECT_FALSE(context->poll(empty));
+    EXPECT_FALSE(context->wait(empty, std::chrono::nanoseconds {0}));
+}
+
+TEST_F(ContextLifecycleTest, SuspendedContextRejectsEmptyPointsAndNegativeTimeout)
+{
+    expectWindowed();
+    EXPECT_CALL(window, getFramebufferExtent())
+        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
+    const auto context = panda::Context::createWithSurface(window);
+    ASSERT_TRUE(context);
+    const auto empty = panda::CompletionPoint {};
+    const auto polled = context->poll(empty);
+    ASSERT_FALSE(polled);
+    EXPECT_EQ(polled.error().code, panda::ErrorCode::InvalidArgument);
+    const auto waited = context->wait(empty, std::chrono::nanoseconds {0});
+    ASSERT_FALSE(waited);
+    EXPECT_EQ(waited.error().code, panda::ErrorCode::InvalidArgument);
+    const auto negative = context->wait(empty, std::chrono::nanoseconds {-1});
+    ASSERT_FALSE(negative);
+    EXPECT_EQ(negative.error().code, panda::ErrorCode::InvalidArgument);
 }

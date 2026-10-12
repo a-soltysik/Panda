@@ -1,8 +1,10 @@
+#include <chrono>
 #include <cstdlib>
 #include <exception>
 #include <expected>
 #include <glm/ext/vector_uint2.hpp>
 #include <panda/Assert.hpp>
+#include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
@@ -24,14 +26,34 @@ auto fail(std::string_view message) noexcept -> int
     return EXIT_FAILURE;
 }
 
+auto finishFrames(const panda::Context& context, panda::CompletionPoint last) -> panda::Result<void>
+{
+    if (!last.isValid())
+    {
+        return {};
+    }
+    return context.wait(last, std::chrono::seconds {10}).and_then([](panda::WaitStatus status) -> panda::Result<void> {
+        if (status == panda::WaitStatus::Timeout)
+        {
+            return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Last frame did not finish in time")};
+        }
+        return {};
+    });
+}
+
 auto run(panda::tools::Window& window, const panda::Context& context) -> panda::Result<void>
 {
+    auto last = panda::CompletionPoint {};
     while (!window.shouldClose())
     {
         const auto frame = context.presentClearFrame();
         if (!frame)
         {
             return std::unexpected {frame.error()};
+        }
+        if (frame->completion.isValid())
+        {
+            last = frame->completion;
         }
         // Sleep while minimized; otherwise poll without blocking.
         const auto input = frame->status == panda::FrameResult::Status::Suspended ? panda::tools::Window::waitForInput()
@@ -41,7 +63,7 @@ auto run(panda::tools::Window& window, const panda::Context& context) -> panda::
             return input;
         }
     }
-    return {};
+    return finishFrames(context, last);
 }
 }
 

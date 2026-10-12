@@ -5,9 +5,11 @@ panda_add_component(panda_core
         Panda.cpp
         Error.cpp
         Buffer.cpp
+        CompletionPoint.cpp
         vulkan/Context.cpp
         vulkan/DeviceSelection.cpp
         vulkan/Presentation.cpp
+        vulkan/SubmissionQueue.cpp
         vulkan/SwapchainGeneration.cpp
         vulkan/VulkanError.cpp
         vulkan/resources/RangeAllocator.cpp

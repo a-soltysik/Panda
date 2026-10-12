@@ -14,6 +14,7 @@
 #include <panda/Context.hpp>
 #include <panda/WindowSurface.hpp>
 
+#include "SubmissionQueue.hpp"
 #include "SwapchainGeneration.hpp"
 
 namespace panda::detail
@@ -37,6 +38,7 @@ public:
 
     [[nodiscard]] auto presentClearFrame() -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto drain() -> std::expected<void, Error>;
+    [[nodiscard]] auto getSubmissions() -> SubmissionQueue&;
 
 private:
     struct FrameSlot
@@ -84,8 +86,7 @@ private:
     [[nodiscard]] auto interpretAcquiredImage(vk::Result result, std::uint32_t index)
         -> std::expected<AcquiredImage, Error>;
     [[nodiscard]] auto waitImage(FrameSlot& slot, std::uint32_t index) -> std::expected<void, Error>;
-    [[nodiscard]] auto submitRecordedFrame(FrameSlot& slot, const SwapchainImage& image, std::uint64_t completion) const
-        -> vk::Result;
+    [[nodiscard]] auto submitRecordedFrame(const FrameSlot& slot, const SwapchainImage& image) -> Result<std::uint64_t>;
     [[nodiscard]] auto submitFrame(FrameSlot& slot, SwapchainImage& image, std::uint32_t index)
         -> std::expected<std::uint64_t, Error>;
     [[nodiscard]] auto presentFrame(SwapchainImage& image,
@@ -102,18 +103,17 @@ private:
 
     vk::PhysicalDevice _physicalDevice;
     const vk::raii::Device& _device;
-    vk::raii::Queue _graphicsQueue;
     vk::raii::Queue _presentQueue;
     vk::SurfaceKHR _surface {};
     WindowSurface& _window;
     ContextDeviceInfo _deviceInfo;
-    vk::raii::Semaphore _timeline {nullptr};
+    std::unique_ptr<SubmissionQueue> _submissions;
     std::array<FrameSlot, 2> _slots;
     std::optional<SwapchainGeneration> _generation;
-    std::uint64_t _nextCompletion {1};
     std::size_t _nextSlot {0};
     bool _recreatePending {false};
     bool _faulted {false};
+    bool _acquireRetirementFailed {false};
 };
 
 }

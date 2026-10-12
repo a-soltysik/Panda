@@ -3,9 +3,11 @@
 /// @file
 /// Vulkan context ownership and device capability diagnostics.
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <panda/Buffer.hpp>
+#include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
 #include <string>
 
@@ -60,8 +62,8 @@ struct FrameResult
 
     /// Outcome; RecreatePending can still carry an already submitted frame.
     Status status {Status::Skipped};
-    /// Committed graphics timeline value, or zero when no GPU work was submitted.
-    std::uint64_t completionValue {0};
+    /// Committed work; empty when no GPU work was submitted. Does not mean presentation completed.
+    CompletionPoint completion;
 };
 
 /// @brief Move-only owner of a Vulkan instance, device and optional swapchain.
@@ -109,9 +111,17 @@ public:
     /// Context outlives all copies. May allocate; submits no work and does not wait.
     [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
 
+    /// @brief Queries GPU completion without waiting; does not indicate display/presentation completion.
+    /// @return Completion state or a backend error; empty/foreign tokens are InvalidArgument.
+    [[nodiscard]] auto poll(CompletionPoint point) const -> Result<bool>;
+
+    /// @brief Explicitly waits for GPU work; timeout is in nanoseconds and must be nonnegative.
+    /// @return Completed, Timeout, or a backend error; rejects empty/foreign tokens.
+    [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>;
+
     /// @brief Clears and presents one diagnostic frame, or reports why it was skipped.
-    /// @return Checked frame result or a backend/window failure. A nonzero
-    /// completionValue means submitted work, not completed presentation.
+    /// @return Checked frame result or a backend/window failure. A valid
+    /// completion token means submitted work, not completed presentation.
     /// This temporary smoke path is replaced by scene rendering in the frame task.
     [[nodiscard]] auto presentClearFrame() const -> Result<FrameResult>;
 
