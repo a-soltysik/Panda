@@ -39,7 +39,7 @@ SubmissionQueue::SubmissionQueue(const vk::raii::Device& device, std::uint32_t f
 
 auto SubmissionQueue::initialize(vk::PhysicalDevice physicalDevice) -> Result<void>
 {
-    expect(!*_timeline, "Submission queue initialized twice");
+    expect(*_timeline == vk::Semaphore {}, "Submission queue initialized twice");
     const auto properties =
         physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceTimelineSemaphoreProperties>();
     _maximumDifference =
@@ -78,7 +78,7 @@ auto SubmissionQueue::refreshCompleted() -> Result<void>
 
 auto SubmissionQueue::prepareSubmit() -> Result<void>
 {
-    expect(*_timeline, "Submission queue has no timeline");
+    expect(*_timeline != vk::Semaphore {}, "Submission queue has no timeline");
     if (_deviceLost)
     {
         return std::unexpected {makeVulkanError(vk::Result::eErrorDeviceLost)};
