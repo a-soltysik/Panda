@@ -85,23 +85,27 @@ void expectDeviceProperties(panda::test::VulkanMock& vulkan, const DeviceScenari
         });
 }
 
-void expectDeviceExtensions(panda::test::VulkanMock& vulkan, const DeviceScenario& scenario)
+void expectDeviceExtensions(panda::test::VulkanMock& vulkan,
+                            const DeviceScenario& scenario,
+                            vk::Result brokenDeviceResult = vk::Result::eErrorUnknown)
 {
     EXPECT_CALL(vulkan, vkEnumerateDeviceExtensionProperties(_, nullptr, NotNull(), _))
-        .WillRepeatedly(
-            [&scenario](VkPhysicalDevice device, const char*, std::uint32_t* count, VkExtensionProperties* extensions) {
-                if (device == scenario.brokenDevice)
-                {
-                    *count = 0;
-                    return static_cast<VkResult>(vk::Result::eErrorUnknown);
-                }
-                *count = static_cast<std::uint32_t>(scenario.extensions.size());
-                if (extensions != nullptr)
-                {
-                    std::ranges::copy(scenario.extensions, extensions);
-                }
-                return static_cast<VkResult>(vk::Result::eSuccess);
-            });
+        .WillRepeatedly([&scenario, brokenDeviceResult](VkPhysicalDevice device,
+                                                        const char*,
+                                                        std::uint32_t* count,
+                                                        VkExtensionProperties* extensions) {
+            if (device == scenario.brokenDevice && brokenDeviceResult != vk::Result::eSuccess)
+            {
+                *count = 0;
+                return static_cast<VkResult>(brokenDeviceResult);
+            }
+            *count = static_cast<std::uint32_t>(scenario.extensions.size());
+            if (extensions != nullptr)
+            {
+                std::ranges::copy(scenario.extensions, extensions);
+            }
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
 }
 
 void expectUsableDeviceFeatures(panda::test::VulkanMock& vulkan, const DeviceScenario& scenario)
@@ -118,29 +122,53 @@ void expectUsableDeviceFeatures(panda::test::VulkanMock& vulkan, const DeviceSce
         });
 }
 
-void expectUsableQueueFamily(panda::test::VulkanMock& vulkan, const DeviceScenario& scenario)
+auto usableQueueFamilies() -> std::array<VkQueueFamilyProperties, 2>
 {
-    EXPECT_CALL(vulkan, vkGetPhysicalDeviceQueueFamilyProperties(scenario.usableDevice, NotNull(), _))
-        .WillRepeatedly([](VkPhysicalDevice, std::uint32_t* count, VkQueueFamilyProperties* families) {
-            *count = 1;
-            if (families != nullptr)
-            {
-                auto& family = *families;
-                family = VkQueueFamilyProperties {};
-                family.queueFlags =
-                    static_cast<VkQueueFlags>(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute);
-                family.queueCount = 1;
-            }
-        });
+    auto graphics = VkQueueFamilyProperties {};
+    graphics.queueFlags = static_cast<VkQueueFlags>(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute);
+    graphics.queueCount = 1;
+    auto present = VkQueueFamilyProperties {};
+    present.queueFlags = static_cast<VkQueueFlags>(vk::QueueFlagBits::eTransfer);
+    present.queueCount = 1;
+    return {graphics, present};
 }
 
-void expectUsableSurfaceSupport(panda::test::VulkanMock& vulkan, const DeviceScenario& scenario)
+void expectUsableQueueFamily(panda::test::VulkanMock& vulkan,
+                             const DeviceScenario& scenario,
+                             bool separateFamilies = false)
+{
+    const auto families = usableQueueFamilies();
+    const auto familyCount = separateFamilies ? 2U : 1U;
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceQueueFamilyProperties(scenario.usableDevice, NotNull(), _))
+        .WillRepeatedly(
+            [families, familyCount](VkPhysicalDevice, std::uint32_t* count, VkQueueFamilyProperties* output) {
+                *count = familyCount;
+                if (output != nullptr)
+                {
+                    std::ranges::copy(std::span {families}.first(familyCount), std::span {output, familyCount}.begin());
+                }
+            });
+}
+
+void expectUsableSurfaceSupport(panda::test::VulkanMock& vulkan,
+                                const DeviceScenario& scenario,
+                                vk::Result result = vk::Result::eSuccess,
+                                bool separateFamilies = false)
 {
     EXPECT_CALL(vulkan, vkGetPhysicalDeviceSurfaceSupportKHR(scenario.usableDevice, 0, scenario.surface, NotNull()))
-        .WillOnce([](VkPhysicalDevice, std::uint32_t, VkSurfaceKHR, VkBool32* supported) -> VkResult {
-            *supported = vk::True;
-            return static_cast<VkResult>(vk::Result::eSuccess);
-        });
+        .WillOnce(
+            [result, separateFamilies](VkPhysicalDevice, std::uint32_t, VkSurfaceKHR, VkBool32* supported) -> VkResult {
+                *supported = separateFamilies ? vk::False : vk::True;
+                return static_cast<VkResult>(result);
+            });
+    if (separateFamilies)
+    {
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceSurfaceSupportKHR(scenario.usableDevice, 1, scenario.surface, NotNull()))
+            .WillOnce([](VkPhysicalDevice, std::uint32_t, VkSurfaceKHR, VkBool32* supported) -> VkResult {
+                *supported = vk::True;
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
+    }
 }
 
 void expectUsableSurfaceFormats(panda::test::VulkanMock& vulkan, const DeviceScenario& scenario)
@@ -172,16 +200,22 @@ void expectUsablePresentModes(panda::test::VulkanMock& vulkan, const DeviceScena
         });
 }
 
-void expectTwoDeviceScenario(panda::test::VulkanMock& vulkan, const DeviceScenario& scenario)
+void expectTwoDeviceScenario(panda::test::VulkanMock& vulkan,
+                             const DeviceScenario& scenario,
+                             vk::Result surfaceSupportResult = vk::Result::eSuccess,
+                             bool separateQueueFamilies = false)
 {
     expectPhysicalDevices(vulkan, scenario);
     expectDeviceProperties(vulkan, scenario);
     expectDeviceExtensions(vulkan, scenario);
     expectUsableDeviceFeatures(vulkan, scenario);
-    expectUsableQueueFamily(vulkan, scenario);
-    expectUsableSurfaceSupport(vulkan, scenario);
-    expectUsableSurfaceFormats(vulkan, scenario);
-    expectUsablePresentModes(vulkan, scenario);
+    expectUsableQueueFamily(vulkan, scenario, separateQueueFamilies);
+    expectUsableSurfaceSupport(vulkan, scenario, surfaceSupportResult, separateQueueFamilies);
+    if (surfaceSupportResult == vk::Result::eSuccess)
+    {
+        expectUsableSurfaceFormats(vulkan, scenario);
+        expectUsablePresentModes(vulkan, scenario);
+    }
 }
 
 void expectAvailableInstanceExtensions(panda::test::VulkanMock& vulkan,
@@ -216,10 +250,9 @@ void expectSingleDeviceQueryFailure(panda::test::VulkanMock& vulkan, VkPhysicalD
             std::ranges::copy(std::string_view {"Broken GPU"}, std::span {properties->deviceName}.begin());
         });
     EXPECT_CALL(vulkan, vkEnumerateDeviceExtensionProperties(device, nullptr, NotNull(), _))
-        .WillOnce([](VkPhysicalDevice, const char*, std::uint32_t* count, VkExtensionProperties*) {
-            *count = 0;
-            return static_cast<VkResult>(vk::Result::eErrorUnknown);
-        });
+        .WillOnce(testing::Action<decltype(vkEnumerateDeviceExtensionProperties)> {
+            testing::DoAll(testing::SetArgPointee<2>(0U),
+                           testing::Return(static_cast<VkResult>(vk::Result::eErrorUnknown)))});
 }
 }
 
@@ -285,6 +318,56 @@ TEST(DeviceSelection, AddsAvailableMaintenanceExtensionsWithoutDuplicates)
     EXPECT_EQ(extensions->names.back(), vk::KHRSurfaceMaintenance1ExtensionName);
 }
 
+TEST(DeviceSelection, SelectsExtSwapchainMaintenanceWhenKhrVariantIsUnavailable)
+{
+    auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
+    auto scenario = makeDeviceScenario();
+    scenario.extensions.at(1) = makeExtension(vk::EXTSwapchainMaintenance1ExtensionName);
+    expectTwoDeviceScenario(vulkan, scenario);
+
+    const auto selected = panda::detail::selectDevice(
+        vk::Instance {scenario.instance},
+        scenario.surface,
+        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = false, .hasExtMaintenance = true});
+
+    ASSERT_TRUE(selected.has_value());
+    EXPECT_EQ(selected->info.swapchainMaintenance, panda::ContextDeviceInfo::SwapchainMaintenance::Ext);
+}
+
+TEST(DeviceSelection, SelectsSeparateGraphicsAndPresentQueueFamilies)
+{
+    auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
+    const auto scenario = makeDeviceScenario();
+    expectTwoDeviceScenario(vulkan, scenario, vk::Result::eSuccess, true);
+
+    const auto selected = panda::detail::selectDevice(
+        vk::Instance {scenario.instance},
+        scenario.surface,
+        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
+
+    ASSERT_TRUE(selected.has_value());
+    EXPECT_EQ(selected->info.queueFamily, 0U);
+    EXPECT_EQ(selected->info.presentQueueFamily, 1U);
+}
+
+TEST(DeviceSelection, RejectsWindowedDeviceWithoutMaintenanceExtensionVariant)
+{
+    auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
+    auto scenario = makeDeviceScenario();
+    scenario.extensions.at(1) = makeExtension("VK_EXT_unrelated");
+    expectPhysicalDevices(vulkan, scenario);
+    expectDeviceProperties(vulkan, scenario);
+    expectDeviceExtensions(vulkan, scenario, vk::Result::eSuccess);
+
+    const auto selected = panda::detail::selectDevice(
+        vk::Instance {scenario.instance},
+        scenario.surface,
+        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = true});
+
+    ASSERT_FALSE(selected.has_value());
+    EXPECT_EQ(selected.error().code, panda::ErrorCode::Unsupported);
+}
+
 TEST(DeviceSelection, LogsAndSkipsDeviceInspectionFailureWhenAnotherDeviceIsUsable)
 {
     auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
@@ -325,4 +408,19 @@ TEST(DeviceSelection, PreservesInspectionErrorWhenNoDeviceCanBeSelected)
     ASSERT_TRUE(selected.error().native.has_value());
     const auto native = selected.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
     EXPECT_EQ(native.code, std::to_underlying(vk::Result::eErrorUnknown));
+}
+
+TEST(DeviceSelection, PropagatesFatalSurfaceFailureInsteadOfSkippingDevice)
+{
+    auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
+    const auto scenario = makeDeviceScenario();
+    expectTwoDeviceScenario(vulkan, scenario, vk::Result::eErrorSurfaceLostKHR);
+
+    const auto selected = panda::detail::selectDevice(
+        vk::Instance {scenario.instance},
+        scenario.surface,
+        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
+
+    ASSERT_FALSE(selected.has_value());
+    EXPECT_EQ(selected.error().code, panda::ErrorCode::SurfaceLost);
 }

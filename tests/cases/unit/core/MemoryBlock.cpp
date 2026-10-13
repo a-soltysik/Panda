@@ -198,9 +198,7 @@ TEST_F(MemoryBlockTest, FailedMappingFreesMemoryWithoutUnmappingUndefinedOutput)
     expectLimits();
     expectAllocation(128);
     EXPECT_CALL(vulkan, vkMapMemory(_, memory, _, _, _, NotNull()))
-        .WillOnce([](VkDevice, VkDeviceMemory, VkDeviceSize, VkDeviceSize, VkMemoryMapFlags, void**) {
-            return static_cast<VkResult>(vk::Result::eErrorMemoryMapFailed);
-        });
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorMemoryMapFailed)));
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     const auto created = MemoryBlock::create(physical, device, 128, 0);
     ASSERT_FALSE(created);
@@ -334,7 +332,12 @@ TEST_F(MemoryBlockTest, DedicatedFactoryRejectsMissingAmbiguousOrChainedResource
         vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeVulkanHandle<VkImage>(21)}, .buffer = buffer},
         vk::MemoryDedicatedAllocateInfo {.pNext = &valid, .buffer = buffer}
     };
-    const auto allocation = vk::MemoryAllocateInfo {.allocationSize = 128, .memoryTypeIndex = 0};
+    static constexpr auto allocation = vk::MemoryAllocateInfo {.allocationSize = 128, .memoryTypeIndex = 0};
+    const auto chainedAllocation =
+        vk::MemoryAllocateInfo {.pNext = &valid, .allocationSize = 128, .memoryTypeIndex = 0};
+    const auto rejectedChain = MemoryBlock::createDedicated(physical, device, chainedAllocation, valid);
+    ASSERT_FALSE(rejectedChain.has_value());
+    EXPECT_EQ(rejectedChain.error().code, panda::ErrorCode::InvalidArgument);
     for (const auto& resource : requests)
     {
         const auto created = MemoryBlock::createDedicated(physical, device, allocation, resource);

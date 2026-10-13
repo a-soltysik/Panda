@@ -60,6 +60,18 @@ TEST(SwapchainGeneration, HonorsFixedExtentAndSupportedImageCount)
     EXPECT_EQ(selected->imageCount, 1U);
 }
 
+TEST(SwapchainGeneration, UsesMinimumImageCountWhenMaximumIsUnbounded)
+{
+    auto capabilities = variableExtentCapabilities();
+    capabilities.minImageCount = 4;
+    capabilities.maxImageCount = 0;
+
+    const auto selected = panda::detail::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
+
+    ASSERT_TRUE(selected.has_value());
+    EXPECT_EQ(selected->imageCount, 4U);
+}
+
 TEST(SwapchainGeneration, RejectsUnsupportedColorAttachmentAndFormat)
 {
     auto capabilities = variableExtentCapabilities();

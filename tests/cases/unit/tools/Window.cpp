@@ -121,7 +121,9 @@ TEST_F(WindowTest, ValidatesRequestsBeforeCallingGlfw)
     const auto zero = Window::create({0, 80}, "test");
     ASSERT_FALSE(zero.has_value());
     EXPECT_EQ(zero.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_FALSE(Window::create({100, 0}, "test").has_value());
     EXPECT_FALSE(Window::create({std::numeric_limits<std::uint32_t>::max(), 80}, "test").has_value());
+    EXPECT_FALSE(Window::create({80, std::numeric_limits<std::uint32_t>::max()}, "test").has_value());
     EXPECT_FALSE(Window::create(size, nullptr).has_value());
 }
 
@@ -178,6 +180,23 @@ TEST_F(WindowTest, CreationFailureReleasesSessionAndAllowsRetry)
     expectSessionRelease();
     const auto retry = Window::create(size, "retry");
     EXPECT_TRUE(retry.has_value());
+}
+
+TEST_F(WindowTest, HintConfigurationFailureReleasesSession)
+{
+    expectInitialization();
+    expectSessionRelease();
+    EXPECT_CALL(glfw, glfwDefaultWindowHints());
+    EXPECT_CALL(glfw, glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API));
+    expectError(GLFW_PLATFORM_ERROR, "Window hint failed");
+
+    const auto failure = Window::create(size, "test");
+
+    ASSERT_FALSE(failure.has_value());
+    EXPECT_EQ(failure.error().code, panda::ErrorCode::BackendFailure);
+    ASSERT_TRUE(failure.error().native.has_value());
+    const auto native = failure.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, GLFW_PLATFORM_ERROR);
 }
 
 TEST_F(WindowTest, MultipleWindowsShareSessionAndMoveWithoutDoubleDestruction)
@@ -374,7 +393,8 @@ TEST_F(WindowTest, NegativeDimensionsAreRecoverableBackendErrors)
     expectSessionRelease();
     EXPECT_CALL(glfw, glfwGetWindowSize(getFirst(), _, _)).WillOnce(DoAll(SetArgPointee<1>(-1), SetArgPointee<2>(80)));
     EXPECT_CALL(glfw, glfwGetFramebufferSize(getFirst(), _, _))
-        .WillOnce(DoAll(SetArgPointee<1>(100), SetArgPointee<2>(-1)));
+        .WillOnce(DoAll(SetArgPointee<1>(100), SetArgPointee<2>(-1)))
+        .WillOnce(DoAll(SetArgPointee<1>(-1), SetArgPointee<2>(80)));
     const auto window = Window::create(size, "test");
     ASSERT_TRUE(window.has_value());
     const auto dimensions = window->getSize();
@@ -383,6 +403,34 @@ TEST_F(WindowTest, NegativeDimensionsAreRecoverableBackendErrors)
     const auto minimized = window->isMinimized();
     ASSERT_FALSE(minimized.has_value());
     EXPECT_EQ(minimized.error().message, "GLFW reported negative framebuffer dimensions");
+    const auto negativeWidth = window->getFramebufferExtent();
+    ASSERT_FALSE(negativeWidth.has_value());
+    EXPECT_EQ(negativeWidth.error().message, "GLFW reported negative framebuffer dimensions");
+}
+
+TEST_F(WindowTest, FramebufferExtentPreservesIconifiedQueryFailure)
+{
+    expectInitialization();
+    expectCreation(getFirst());
+    expectDestruction(getFirst());
+    expectSessionRelease();
+    EXPECT_CALL(glfw, glfwGetFramebufferSize(getFirst(), _, _))
+        .WillOnce(DoAll(SetArgPointee<1>(100), SetArgPointee<2>(80)));
+    EXPECT_CALL(glfw, glfwGetWindowAttrib(getFirst(), GLFW_ICONIFIED)).WillOnce(Return(GLFW_FALSE));
+    EXPECT_CALL(glfw, glfwGetError(NotNull()))
+        .WillOnce(DoAll(SetArgPointee<0>(nullptr), Return(GLFW_NO_ERROR)))
+        .WillOnce(DoAll(SetArgPointee<0>(nullptr), Return(GLFW_NO_ERROR)))
+        .WillOnce(DoAll(SetArgPointee<0>("Iconified query failed"), Return(GLFW_PLATFORM_ERROR)));
+    const auto window = Window::create(size, "test");
+    ASSERT_TRUE(window.has_value());
+
+    const auto extent = window->getFramebufferExtent();
+
+    ASSERT_FALSE(extent.has_value());
+    EXPECT_EQ(extent.error().code, panda::ErrorCode::BackendFailure);
+    ASSERT_TRUE(extent.error().native.has_value());
+    const auto native = extent.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, GLFW_PLATFORM_ERROR);
 }
 
 TEST_F(WindowTest, EventFailuresAreRecoverableAndPermitRetry)
