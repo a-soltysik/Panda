@@ -20,14 +20,19 @@
 namespace panda::detail
 {
 
+struct PresentationCreateInfo
+{
+    vk::PhysicalDevice physicalDevice;
+    const vk::raii::Device& device;
+    vk::SurfaceKHR surface;
+    const WindowSurface& window;
+    ContextDeviceInfo deviceInfo;
+};
+
 class Presentation final
 {
 public:
-    [[nodiscard]] static auto create(vk::PhysicalDevice physicalDevice,
-                                     const vk::raii::Device& device,
-                                     vk::SurfaceKHR surface,
-                                     WindowSurface& window,
-                                     const ContextDeviceInfo& deviceInfo)
+    [[nodiscard]] static auto create(const PresentationCreateInfo& info)
         -> std::expected<std::unique_ptr<Presentation>, Error>;
 
     Presentation(const Presentation&) = delete;
@@ -63,11 +68,7 @@ private:
         bool suboptimal {false};
     };
 
-    Presentation(vk::PhysicalDevice physicalDevice,
-                 const vk::raii::Device& device,
-                 vk::SurfaceKHR surface,
-                 WindowSurface& window,
-                 const ContextDeviceInfo& deviceInfo);
+    explicit Presentation(const PresentationCreateInfo& info);
 
     [[nodiscard]] auto initialize() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeFrameResources() -> std::expected<void, Error>;
@@ -80,7 +81,9 @@ private:
     [[nodiscard]] auto waitPresentation() -> std::expected<void, Error>;
     [[nodiscard]] auto activeGeneration() -> SwapchainGeneration&;
     [[nodiscard]] auto activeGeneration() const -> const SwapchainGeneration&;
+    [[nodiscard]] auto ensureWindowGeneration(FramebufferExtent requested) -> std::expected<void, Error>;
     [[nodiscard]] auto prepareWindowFrame() -> std::expected<bool, Error>;
+    [[nodiscard]] static auto nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>;
     [[nodiscard]] auto executeAcquiredFrame() -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage, Error>;
     [[nodiscard]] auto interpretAcquiredImage(vk::Result result, std::uint32_t index)
@@ -105,7 +108,7 @@ private:
     const vk::raii::Device& _device;
     vk::raii::Queue _presentQueue;
     vk::SurfaceKHR _surface {};
-    WindowSurface& _window;
+    const WindowSurface& _window;
     ContextDeviceInfo _deviceInfo;
     std::unique_ptr<SubmissionQueue> _submissions;
     std::array<FrameSlot, 2> _slots;

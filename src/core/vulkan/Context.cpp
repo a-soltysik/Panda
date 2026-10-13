@@ -110,6 +110,24 @@ auto hasValidationLayer(const vk::raii::Context& loader) -> Result<bool>
     });
 }
 
+auto verifyValidationLayer(const vk::raii::Context& loader, bool enabled) -> Result<void>
+{
+    if (!enabled)
+    {
+        return {};
+    }
+    const auto available = hasValidationLayer(loader);
+    if (!available)
+    {
+        return std::unexpected {available.error()};
+    }
+    if (!*available)
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "VK_LAYER_KHRONOS_validation is unavailable")};
+    }
+    return {};
+}
+
 auto verifyPrerequisites(const vk::raii::Context& loader, const ContextOptions& options) -> Result<void>
 {
     const auto version = loader.enumerateInstanceVersion();
@@ -121,19 +139,7 @@ auto verifyPrerequisites(const vk::raii::Context& loader, const ContextOptions& 
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Vulkan loader does not support version 1.3")};
     }
-    if (options.enableValidation)
-    {
-        const auto available = hasValidationLayer(loader);
-        if (!available)
-        {
-            return std::unexpected {available.error()};
-        }
-        if (!*available)
-        {
-            return std::unexpected {makeError(ErrorCode::Unsupported, "VK_LAYER_KHRONOS_validation is unavailable")};
-        }
-    }
-    return {};
+    return verifyValidationLayer(loader, options.enableValidation);
 }
 
 auto createInstance(const vk::raii::Context& loader, const vk::InstanceCreateInfo& info) -> Result<vk::raii::Instance>
@@ -293,7 +299,7 @@ auto Context::InstanceServices::create(const vk::raii::Context& loader,
 
 namespace
 {
-auto makePresentation(WindowSurface* surface,
+auto makePresentation(const WindowSurface* surface,
                       const detail::SelectedDevice& selected,
                       const vk::raii::Device& device,
                       vk::SurfaceKHR nativeSurface) -> Result<std::unique_ptr<detail::Presentation>>
@@ -302,14 +308,18 @@ auto makePresentation(WindowSurface* surface,
     {
         return std::unique_ptr<detail::Presentation> {};
     }
-    return detail::Presentation::create(selected.physicalDevice, device, nativeSurface, *surface, selected.info);
+    return detail::Presentation::create({.physicalDevice = selected.physicalDevice,
+                                         .device = device,
+                                         .surface = nativeSurface,
+                                         .window = *surface,
+                                         .deviceInfo = selected.info});
 }
 }
 
 class Context::Impl
 {
 public:
-    [[nodiscard]] auto initializeDevice(WindowSurface* surface) -> Result<void>;
+    [[nodiscard]] auto initializeDevice(const WindowSurface* surface) -> Result<void>;
 
 private:
     friend class Context;
@@ -323,7 +333,7 @@ private:
     ContextDeviceInfo _info;
 };
 
-auto Context::Impl::initializeDevice(WindowSurface* surface) -> Result<void>
+auto Context::Impl::initializeDevice(const WindowSurface* surface) -> Result<void>
 {
     const auto nativeSurface = _services.surface ? **_services.surface : vk::SurfaceKHR {};
     auto selected = detail::selectDevice(*_services.instance, nativeSurface, _services.extensions);
@@ -376,12 +386,12 @@ auto Context::create(const ContextOptions& options) -> Result<Context>
     return createInternal(nullptr, options);
 }
 
-auto Context::createWithSurface(WindowSurface& surface, const ContextOptions& options) -> Result<Context>
+auto Context::createWithSurface(const WindowSurface& surface, const ContextOptions& options) -> Result<Context>
 {
     return createInternal(&surface, options);
 }
 
-auto Context::createInternal(WindowSurface* surface, const ContextOptions& options) -> Result<Context>
+auto Context::createInternal(const WindowSurface* surface, const ContextOptions& options) -> Result<Context>
 {
     auto implementation = std::make_unique<Impl>();
     if (const auto checked = verifyPrerequisites(implementation->_loader, options); !checked)

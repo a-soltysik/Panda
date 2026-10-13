@@ -334,9 +334,10 @@ TEST_F(MemoryBlockTest, DedicatedFactoryRejectsMissingAmbiguousOrChainedResource
         vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeVulkanHandle<VkImage>(21)}, .buffer = buffer},
         vk::MemoryDedicatedAllocateInfo {.pNext = &valid, .buffer = buffer}
     };
+    const auto allocation = vk::MemoryAllocateInfo {.allocationSize = 128, .memoryTypeIndex = 0};
     for (const auto& resource : requests)
     {
-        const auto created = MemoryBlock::createDedicated(physical, device, 128, 0, resource);
+        const auto created = MemoryBlock::createDedicated(physical, device, allocation, resource);
         ASSERT_FALSE(created);
         EXPECT_EQ(created.error().code, panda::ErrorCode::InvalidArgument);
     }
@@ -347,6 +348,7 @@ TEST_F(MemoryBlockTest, DedicatedBlockRejectsSubdivisionWithoutConsumingSpace)
     expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
     expectLimits();
     const auto resource = vk::MemoryDedicatedAllocateInfo {.buffer = vk::Buffer {fakeVulkanHandle<VkBuffer>(20)}};
+    const auto allocation = vk::MemoryAllocateInfo {.allocationSize = 128, .memoryTypeIndex = 0};
     EXPECT_CALL(vulkan, vkAllocateMemory(_, NotNull(), nullptr, NotNull()))
         .WillOnce(
             [this](VkDevice, const VkMemoryAllocateInfo* info, const VkAllocationCallbacks*, VkDeviceMemory* output) {
@@ -356,7 +358,7 @@ TEST_F(MemoryBlockTest, DedicatedBlockRejectsSubdivisionWithoutConsumingSpace)
                 return success;
             });
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
-    auto created = MemoryBlock::createDedicated(physical, device, 128, 0, resource);
+    auto created = MemoryBlock::createDedicated(physical, device, allocation, resource);
     ASSERT_TRUE(created);
     const auto partial = (*created)->allocate(64, 1);
     ASSERT_FALSE(partial);

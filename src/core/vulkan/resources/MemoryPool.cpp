@@ -204,7 +204,11 @@ auto MemoryPool::makeBlock(const MemoryRequest& request, std::uint32_t memoryTyp
     {
         return std::unexpected {budget.error()};
     }
-    auto memory = dedicated ? MemoryBlock::createDedicated(_physicalDevice, _device, size, memoryType, request.resource)
+    auto memory = dedicated ? MemoryBlock::createDedicated(
+                                  _physicalDevice,
+                                  _device,
+                                  vk::MemoryAllocateInfo {.allocationSize = size, .memoryTypeIndex = memoryType},
+                                  request.resource)
                             : MemoryBlock::create(_physicalDevice, _device, size, memoryType);
     if (!memory)
     {

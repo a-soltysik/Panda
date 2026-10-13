@@ -56,6 +56,21 @@ auto extension(std::string_view name) -> VkExtensionProperties
     return value;
 }
 
+void verifyCommonDeviceFeatures(const VkPhysicalDeviceVulkan12Features& vulkan12,
+                                const VkPhysicalDeviceVulkan13Features& vulkan13)
+{
+    EXPECT_EQ(vulkan12.timelineSemaphore, vk::True);
+    EXPECT_EQ(vulkan13.dynamicRendering, vk::True);
+    EXPECT_EQ(vulkan13.synchronization2, vk::True);
+}
+
+void verifySwapchainMaintenanceFeature(const VkPhysicalDeviceVulkan13Features& vulkan13)
+{
+    const auto* const maintenance =
+        static_cast<const VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR*>(vulkan13.pNext);
+    EXPECT_EQ(maintenance->swapchainMaintenance1, vk::True);
+}
+
 void verifyDeviceFeatures(const VkDeviceCreateInfo& info, bool windowed)
 {
     ASSERT_NE(info.pNext, nullptr);
@@ -64,15 +79,11 @@ void verifyDeviceFeatures(const VkDeviceCreateInfo& info, bool windowed)
     const auto* const vulkan12 = static_cast<const VkPhysicalDeviceVulkan12Features*>(features->pNext);
     ASSERT_NE(vulkan12->pNext, nullptr);
     const auto* const vulkan13 = static_cast<const VkPhysicalDeviceVulkan13Features*>(vulkan12->pNext);
-    EXPECT_EQ(vulkan12->timelineSemaphore, vk::True);
-    EXPECT_EQ(vulkan13->dynamicRendering, vk::True);
-    EXPECT_EQ(vulkan13->synchronization2, vk::True);
+    verifyCommonDeviceFeatures(*vulkan12, *vulkan13);
     if (windowed)
     {
         ASSERT_NE(vulkan13->pNext, nullptr);
-        const auto* const maintenance =
-            static_cast<const VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR*>(vulkan13->pNext);
-        EXPECT_EQ(maintenance->swapchainMaintenance1, vk::True);
+        verifySwapchainMaintenanceFeature(*vulkan13);
     }
     else
     {
@@ -155,25 +166,25 @@ protected:
             .Times(2)
             .WillRepeatedly([separate](VkPhysicalDevice, std::uint32_t* count, VkQueueFamilyProperties* output) {
                 *count = separate ? 2U : 1U;
-                if (output != nullptr)
+                if (output == nullptr)
                 {
-                    auto families = std::span {output, *count};
-                    families.front() = VkQueueFamilyProperties {
-                        .queueFlags =
-                            static_cast<VkQueueFlags>(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute),
+                    return;
+                }
+                auto families = std::span {output, *count};
+                families.front() = VkQueueFamilyProperties {
+                    .queueFlags = static_cast<VkQueueFlags>(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute),
+                    .queueCount = 1,
+                    .timestampValidBits = 0,
+                    .minImageTransferGranularity = {.width = 1, .height = 1, .depth = 1}
+                };
+                if (separate)
+                {
+                    families.back() = VkQueueFamilyProperties {
+                        .queueFlags = static_cast<VkQueueFlags>(vk::QueueFlagBits::eTransfer),
                         .queueCount = 1,
                         .timestampValidBits = 0,
                         .minImageTransferGranularity = {.width = 1, .height = 1, .depth = 1}
                     };
-                    if (separate)
-                    {
-                        families.back() = VkQueueFamilyProperties {
-                            .queueFlags = static_cast<VkQueueFlags>(vk::QueueFlagBits::eTransfer),
-                            .queueCount = 1,
-                            .timestampValidBits = 0,
-                            .minImageTransferGranularity = {.width = 1, .height = 1, .depth = 1}
-                        };
-                    }
                 }
             });
     }
@@ -857,7 +868,7 @@ TEST_F(ContextLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParent
                                                                  panda::FramebufferExtent {.width = 640, .height = 480}}
              )
     });
-    EXPECT_CALL(generations, createSwapchainGeneration(_, _, _, _, _, _))
+    EXPECT_CALL(generations, createSwapchainGeneration(_))
         .WillOnce(testing::Action<decltype(panda::detail::createSwapchainGeneration)> {
             [](const auto&...) -> panda::Result<panda::detail::SwapchainGeneration> {
                 return std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "generation failed")};

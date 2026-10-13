@@ -4,9 +4,7 @@
 // clang-format on
 
 #include <expected>
-#include <panda/Context.hpp>
 #include <panda/Error.hpp>
-#include <panda/WindowSurface.hpp>
 
 #include "ScopedMock.hpp"
 #include "SwapchainGeneration.hpp"
@@ -14,15 +12,9 @@
 
 namespace panda::detail
 {
-auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
-                               const vk::raii::Device& device,
-                               vk::SurfaceKHR surface,
-                               FramebufferExtent requested,
-                               vk::SwapchainKHR oldSwapchain,
-                               const ContextDeviceInfo& deviceInfo) -> std::expected<SwapchainGeneration, Error>
+auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std::expected<SwapchainGeneration, Error>
 {
-    return test::ScopedMock<test::SwapchainGenerationMock>::getActiveMock()
-        .createSwapchainGeneration(physicalDevice, device, surface, requested, oldSwapchain, deviceInfo);
+    return test::ScopedMock<test::SwapchainGenerationMock>::getActiveMock().createSwapchainGeneration(request);
 }
 
 auto encodedClear(vk::Format format) -> vk::ClearColorValue

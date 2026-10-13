@@ -6,6 +6,7 @@
 #include <expected>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <panda/Assert.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
@@ -30,6 +31,20 @@ struct FrameCommands
     vk::CommandBuffer command;
 };
 
+struct ImageAccessScope
+{
+    vk::PipelineStageFlags2 stage;
+    vk::AccessFlags2 access;
+};
+
+struct ImageTransition
+{
+    vk::ImageLayout oldLayout;
+    vk::ImageLayout newLayout;
+    ImageAccessScope source;
+    ImageAccessScope destination;
+};
+
 auto createFrameCommands(const vk::raii::Device& device, std::uint32_t queueFamily)
     -> std::expected<FrameCommands, Error>
 {
@@ -51,21 +66,15 @@ auto createFrameCommands(const vk::raii::Device& device, std::uint32_t queueFami
     return FrameCommands {.pool = std::move(*pool), .command = commands.value.front()};
 }
 
-auto makeImageBarrier(const SwapchainImage& image,
-                      vk::ImageLayout oldLayout,
-                      vk::ImageLayout newLayout,
-                      vk::PipelineStageFlags2 sourceStage,
-                      vk::AccessFlags2 sourceAccess,
-                      vk::PipelineStageFlags2 destinationStage,
-                      vk::AccessFlags2 destinationAccess) -> vk::ImageMemoryBarrier2
+auto makeImageBarrier(const SwapchainImage& image, ImageTransition transition) -> vk::ImageMemoryBarrier2
 {
     return vk::ImageMemoryBarrier2 {
-        .srcStageMask = sourceStage,
-        .srcAccessMask = sourceAccess,
-        .dstStageMask = destinationStage,
-        .dstAccessMask = destinationAccess,
-        .oldLayout = oldLayout,
-        .newLayout = newLayout,
+        .srcStageMask = transition.source.stage,
+        .srcAccessMask = transition.source.access,
+        .dstStageMask = transition.destination.stage,
+        .dstAccessMask = transition.destination.access,
+        .oldLayout = transition.oldLayout,
+        .newLayout = transition.newLayout,
         .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
         .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
         .image = image.image,
@@ -82,14 +91,14 @@ void recordImageBarrier(vk::CommandBuffer command, const vk::ImageMemoryBarrier2
 
 void transitionToColorAttachment(vk::CommandBuffer command, const SwapchainImage& image)
 {
-    const auto oldLayout = image.initialized ? vk::ImageLayout::ePresentSrcKHR : vk::ImageLayout::eUndefined;
-    const auto barrier = makeImageBarrier(image,
-                                          oldLayout,
-                                          vk::ImageLayout::eColorAttachmentOptimal,
-                                          vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-                                          vk::AccessFlagBits2::eNone,
-                                          vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-                                          vk::AccessFlagBits2::eColorAttachmentWrite);
+    const auto transition = ImageTransition {
+        .oldLayout = image.initialized ? vk::ImageLayout::ePresentSrcKHR : vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .source = {.stage = vk::PipelineStageFlagBits2::eColorAttachmentOutput, .access = vk::AccessFlagBits2::eNone},
+        .destination = {.stage = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                   .access = vk::AccessFlagBits2::eColorAttachmentWrite                                             }
+    };
+    const auto barrier = makeImageBarrier(image, transition);
     recordImageBarrier(command, barrier);
 }
 
@@ -113,30 +122,27 @@ void recordClearRendering(vk::CommandBuffer command,
 
 void transitionToPresent(vk::CommandBuffer command, const SwapchainImage& image)
 {
-    const auto barrier = makeImageBarrier(image,
-                                          vk::ImageLayout::eColorAttachmentOptimal,
-                                          vk::ImageLayout::ePresentSrcKHR,
-                                          vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-                                          vk::AccessFlagBits2::eColorAttachmentWrite,
-                                          vk::PipelineStageFlagBits2::eNone,
-                                          vk::AccessFlagBits2::eNone);
+    static constexpr auto transition = ImageTransition {
+        .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .newLayout = vk::ImageLayout::ePresentSrcKHR,
+        .source = {.stage = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                   .access = vk::AccessFlagBits2::eColorAttachmentWrite                                             },
+        .destination = {.stage = vk::PipelineStageFlagBits2::eNone,                  .access = vk::AccessFlagBits2::eNone}
+    };
+    const auto barrier = makeImageBarrier(image, transition);
     recordImageBarrier(command, barrier);
 }
 
 }
 
-Presentation::Presentation(vk::PhysicalDevice physicalDevice,
-                           const vk::raii::Device& device,
-                           vk::SurfaceKHR surface,
-                           WindowSurface& window,
-                           const ContextDeviceInfo& deviceInfo)
-    : _physicalDevice {physicalDevice},
-      _device {device},
-      _presentQueue {device.getQueue(deviceInfo.presentQueueFamily, 0)},
-      _surface {surface},
-      _window {window},
-      _deviceInfo {deviceInfo},
-      _submissions {std::make_unique<SubmissionQueue>(device, deviceInfo.queueFamily)}
+Presentation::Presentation(const PresentationCreateInfo& info)
+    : _physicalDevice {info.physicalDevice},
+      _device {info.device},
+      _presentQueue {info.device.getQueue(info.deviceInfo.presentQueueFamily, 0)},
+      _surface {info.surface},
+      _window {info.window},
+      _deviceInfo {info.deviceInfo},
+      _submissions {std::make_unique<SubmissionQueue>(info.device, info.deviceInfo.queueFamily)}
 {
 }
 
@@ -147,20 +153,24 @@ auto Presentation::getSubmissions() -> SubmissionQueue&
     return *_submissions;
 }
 
-auto Presentation::create(vk::PhysicalDevice physicalDevice,
-                          const vk::raii::Device& device,
-                          vk::SurfaceKHR surface,
-                          WindowSurface& window,
-                          const ContextDeviceInfo& deviceInfo) -> std::expected<std::unique_ptr<Presentation>, Error>
+auto Presentation::create(const PresentationCreateInfo& info) -> std::expected<std::unique_ptr<Presentation>, Error>
 {
-    auto result = std::unique_ptr<Presentation> {
-        new Presentation {physicalDevice, device, surface, window, deviceInfo}
-    };
+    auto result = std::unique_ptr<Presentation> {new Presentation {info}};
     if (const auto initialized = result->initialize(); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
     return result;
+}
+
+auto Presentation::ensureWindowGeneration(FramebufferExtent requested) -> std::expected<void, Error>
+{
+    if (!_generation || _recreatePending || requested.width != _generation->extent.width ||
+        requested.height != _generation->extent.height)
+    {
+        return recreate(requested);
+    }
+    return {};
 }
 
 auto Presentation::prepareWindowFrame() -> std::expected<bool, Error>
@@ -178,13 +188,9 @@ auto Presentation::prepareWindowFrame() -> std::expected<bool, Error>
     {
         return false;
     }
-    if (!_generation || _recreatePending || requested->width != _generation->extent.width ||
-        requested->height != _generation->extent.height)
+    if (const auto generation = ensureWindowGeneration(*requested); !generation)
     {
-        if (const auto recreated = recreate(*requested); !recreated)
-        {
-            return std::unexpected {recreated.error()};
-        }
+        return std::unexpected {generation.error()};
     }
     return _generation.has_value();
 }
@@ -196,8 +202,12 @@ auto Presentation::recreate(FramebufferExtent requested) -> std::expected<void, 
         return std::unexpected {drained.error()};
     }
     const auto oldSwapchain = _generation ? *_generation->swapchain : vk::SwapchainKHR {};
-    auto generation =
-        createSwapchainGeneration(_physicalDevice, _device, _surface, requested, oldSwapchain, _deviceInfo);
+    auto generation = createSwapchainGeneration({.physicalDevice = _physicalDevice,
+                                                 .device = _device,
+                                                 .surface = _surface,
+                                                 .requested = requested,
+                                                 .oldSwapchain = oldSwapchain,
+                                                 .deviceInfo = _deviceInfo});
     if (!generation)
     {
         // vkCreateSwapchainKHR may retire oldSwapchain even when replacement fails.
@@ -232,13 +242,9 @@ auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
     {
         return std::unexpected {acquired.error()};
     }
-    if (acquired->status == AcquiredImage::Status::Skipped)
+    if (const auto nonReady = nonReadyFrameResult(acquired->status); nonReady)
     {
-        return FrameResult {.status = FrameResult::Status::Skipped, .completion = {}};
-    }
-    if (acquired->status == AcquiredImage::Status::RecreatePending)
-    {
-        return FrameResult {.status = FrameResult::Status::RecreatePending, .completion = {}};
+        return *nonReady;
     }
     auto& image = activeGeneration().images.at(acquired->index);
     if (const auto waited = waitImage(slot, acquired->index); !waited)
@@ -251,6 +257,19 @@ auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
         return std::unexpected {completion.error()};
     }
     return presentFrame(image, acquired->index, *completion, acquired->suboptimal);
+}
+
+auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>
+{
+    if (status == AcquiredImage::Status::Skipped)
+    {
+        return FrameResult {.status = FrameResult::Status::Skipped, .completion = {}};
+    }
+    if (status == AcquiredImage::Status::RecreatePending)
+    {
+        return FrameResult {.status = FrameResult::Status::RecreatePending, .completion = {}};
+    }
+    return std::nullopt;
 }
 
 auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image) -> std::expected<void, Error>

@@ -19,6 +19,44 @@
 #include "LogCapture.hpp"
 #include "panda/common/SinkMock.hpp"
 
+namespace
+{
+void writeWorkerEntries(panda::log::Logger& logger, std::size_t worker, std::size_t entriesPerThread)
+{
+    for (auto index = std::size_t {0}; index < entriesPerThread; ++index)
+    {
+        panda::log::write(logger, panda::log::Level::Info, "{}:{}", worker, index);
+    }
+}
+
+void writeConcurrently(panda::log::Logger& logger, std::size_t threadCount, std::size_t entriesPerThread)
+{
+    auto workers = std::vector<std::jthread> {};
+    workers.reserve(threadCount);
+    for (auto worker = std::size_t {0}; worker < threadCount; ++worker)
+    {
+        workers.emplace_back([&logger, worker, entriesPerThread] {
+            writeWorkerEntries(logger, worker, entriesPerThread);
+        });
+    }
+}
+
+void expectConcurrentWrites(const panda::test::LogRecords& records,
+                            std::size_t threadCount,
+                            std::size_t entriesPerThread)
+{
+    EXPECT_EQ(records.entries.size(), 1 + (threadCount * entriesPerThread));
+    for (auto worker = std::size_t {0}; worker < threadCount; ++worker)
+    {
+        for (auto index = std::size_t {0}; index < entriesPerThread; ++index)
+        {
+            const auto message = std::format("{}:{}", worker, index);
+            EXPECT_EQ(std::ranges::count(records.entries, message, &panda::log::Entry::message), 1);
+        }
+    }
+}
+}
+
 TEST(Logger, FiltersSeverityAndPreservesCallerMetadata)
 {
     auto records = panda::test::LogRecords {};
@@ -65,28 +103,8 @@ TEST(Logger, SerializesConcurrentWritesAndToleratesFailingSink)
     EXPECT_TRUE(logger.removeSink(0));
     static constexpr auto threadCount = std::size_t {4};
     static constexpr auto entriesPerThread = std::size_t {40};
-    {
-        auto workers = std::vector<std::jthread> {};
-        workers.reserve(threadCount);
-        for (auto worker = std::size_t {0}; worker < threadCount; ++worker)
-        {
-            workers.emplace_back([&logger, worker] {
-                for (auto index = std::size_t {0}; index < entriesPerThread; ++index)
-                {
-                    panda::log::write(logger, panda::log::Level::Info, "{}:{}", worker, index);
-                }
-            });
-        }
-    }
-    EXPECT_EQ(records.entries.size(), 1 + (threadCount * entriesPerThread));
-    for (auto worker = std::size_t {0}; worker < threadCount; ++worker)
-    {
-        for (auto index = std::size_t {0}; index < entriesPerThread; ++index)
-        {
-            const auto message = std::format("{}:{}", worker, index);
-            EXPECT_EQ(std::ranges::count(records.entries, message, &panda::log::Entry::message), 1);
-        }
-    }
+    writeConcurrently(logger, threadCount, entriesPerThread);
+    expectConcurrentWrites(records, threadCount, entriesPerThread);
 }
 
 TEST(LoggerDeathTest, RejectsNullSink)

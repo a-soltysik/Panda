@@ -88,7 +88,7 @@ public:
 
     /// @brief Polls events for every GLFW window; callbacks run before return.
     /// @return Success or a GLFW event-processing error.
-    [[nodiscard]] auto processInput() -> Result<void>;
+    [[nodiscard]] auto processInput() const -> Result<void>;
 
     /// @brief Waits for events; requires a live Panda window and may block indefinitely.
     /// @return Success or a GLFW event-processing error.

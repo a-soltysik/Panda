@@ -72,6 +72,16 @@ auto selectSurfaceConfig(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surfa
     return chooseSurfaceConfig(capabilities.value, *listedFormats, requested);
 }
 
+auto chooseImageCount(const vk::SurfaceCapabilitiesKHR& capabilities) -> std::uint32_t
+{
+    auto imageCount = std::max(capabilities.minImageCount, 2U);
+    if (capabilities.maxImageCount != 0)
+    {
+        imageCount = std::min(imageCount, capabilities.maxImageCount);
+    }
+    return imageCount;
+}
+
 }
 
 auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
@@ -99,29 +109,21 @@ auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Surface has zero framebuffer extent")};
     }
-    auto imageCount = std::max(capabilities.minImageCount, 2U);
-    if (capabilities.maxImageCount != 0)
-    {
-        imageCount = std::min(imageCount, capabilities.maxImageCount);
-    }
     return SurfaceConfig {.capabilities = capabilities,
                           .format = chosenFormat,
                           .extent = extent,
-                          .imageCount = imageCount};
+                          .imageCount = chooseImageCount(capabilities)};
 }
 
 namespace
 {
-auto createSwapchain(const vk::raii::Device& device,
-                     vk::SurfaceKHR surface,
-                     vk::SwapchainKHR oldSwapchain,
-                     const SurfaceConfig& config,
-                     const ContextDeviceInfo& deviceInfo) -> std::expected<vk::raii::SwapchainKHR, Error>
+auto createSwapchain(const SwapchainGenerationRequest& request, const SurfaceConfig& config)
+    -> std::expected<vk::raii::SwapchainKHR, Error>
 {
-    const auto familyIndices = std::array {deviceInfo.queueFamily, deviceInfo.presentQueueFamily};
+    const auto familyIndices = std::array {request.deviceInfo.queueFamily, request.deviceInfo.presentQueueFamily};
     const auto separateFamilies = familyIndices.front() != familyIndices.back();
     const auto info = vk::SwapchainCreateInfoKHR {
-        .surface = surface,
+        .surface = request.surface,
         .minImageCount = config.imageCount,
         .imageFormat = config.format.format,
         .imageColorSpace = config.format.colorSpace,
@@ -135,8 +137,8 @@ auto createSwapchain(const vk::raii::Device& device,
         .compositeAlpha = chooseCompositeAlpha(config.capabilities.supportedCompositeAlpha),
         .presentMode = vk::PresentModeKHR::eFifo,
         .clipped = vk::True,
-        .oldSwapchain = oldSwapchain};
-    return checkedCreation(device.createSwapchainKHR(info));
+        .oldSwapchain = request.oldSwapchain};
+    return checkedCreation(request.device.createSwapchainKHR(info));
 }
 
 auto createImageView(const vk::raii::Device& device, vk::Image image, vk::Format format)
@@ -225,19 +227,14 @@ auto encodedClear(vk::Format format) -> vk::ClearColorValue
     };
 }
 
-auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
-                               const vk::raii::Device& device,
-                               vk::SurfaceKHR surface,
-                               FramebufferExtent requested,
-                               vk::SwapchainKHR oldSwapchain,
-                               const ContextDeviceInfo& deviceInfo) -> std::expected<SwapchainGeneration, Error>
+auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std::expected<SwapchainGeneration, Error>
 {
-    const auto config = selectSurfaceConfig(physicalDevice, surface, requested);
+    const auto config = selectSurfaceConfig(request.physicalDevice, request.surface, request.requested);
     if (!config)
     {
         return std::unexpected {config.error()};
     }
-    auto swapchain = createSwapchain(device, surface, oldSwapchain, *config, deviceInfo);
+    auto swapchain = createSwapchain(request, *config);
     if (!swapchain)
     {
         return std::unexpected {std::move(swapchain.error())};
@@ -246,7 +243,7 @@ auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
                                            .images = {},
                                            .extent = config->extent,
                                            .format = config->format.format};
-    if (const auto loaded = populateImages(device, generation); !loaded)
+    if (const auto loaded = populateImages(request.device, generation); !loaded)
     {
         return std::unexpected {loaded.error()};
     }

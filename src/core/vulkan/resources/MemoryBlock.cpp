@@ -98,20 +98,18 @@ auto MemoryBlock::create(const vk::raii::PhysicalDevice& physicalDevice,
 
 auto MemoryBlock::createDedicated(const vk::raii::PhysicalDevice& physicalDevice,
                                   const vk::raii::Device& device,
-                                  std::uint64_t size,
-                                  std::uint32_t memoryTypeIndex,
+                                  vk::MemoryAllocateInfo allocation,
                                   const vk::MemoryDedicatedAllocateInfo& resource)
     -> Result<std::unique_ptr<MemoryBlock>>
 {
-    if (static_cast<bool>(resource.buffer) == static_cast<bool>(resource.image) || resource.pNext != nullptr)
+    if (static_cast<bool>(resource.buffer) == static_cast<bool>(resource.image) || resource.pNext != nullptr ||
+        allocation.pNext != nullptr)
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Dedicated memory requires exactly one resource")};
     }
-    return createInternal(
-        physicalDevice,
-        device,
-        vk::MemoryAllocateInfo {.pNext = &resource, .allocationSize = size, .memoryTypeIndex = memoryTypeIndex});
+    allocation.pNext = &resource;
+    return createInternal(physicalDevice, device, allocation);
 }
 
 auto MemoryBlock::createInternal(const vk::raii::PhysicalDevice& physicalDevice,
@@ -131,10 +129,10 @@ auto MemoryBlock::createInternal(const vk::raii::PhysicalDevice& physicalDevice,
     auto block = std::unique_ptr<MemoryBlock> {
         new MemoryBlock {device,
                          std::move(*memory),
-                         info.allocationSize,
-                         configuration->atomSize,
-                         configuration->needsCacheManagement,
-                         info.pNext != nullptr}
+                         {.size = info.allocationSize,
+                          .atomSize = configuration->atomSize,
+                          .needsCacheManagement = configuration->needsCacheManagement,
+                          .dedicated = info.pNext != nullptr}}
     };
     if (configuration->hostVisible)
     {
@@ -147,18 +145,13 @@ auto MemoryBlock::createInternal(const vk::raii::PhysicalDevice& physicalDevice,
     return block;
 }
 
-MemoryBlock::MemoryBlock(const vk::raii::Device& device,
-                         vk::raii::DeviceMemory memory,
-                         std::uint64_t size,
-                         std::uint64_t atomSize,
-                         bool needsCacheManagement,
-                         bool dedicated)
+MemoryBlock::MemoryBlock(const vk::raii::Device& device, vk::raii::DeviceMemory memory, Settings settings)
     : _device {device},
       _memory {std::move(memory)},
-      _ranges {size},
-      _atomSize {atomSize},
-      _needsCacheManagement {needsCacheManagement},
-      _dedicated {dedicated}
+      _ranges {settings.size},
+      _atomSize {settings.atomSize},
+      _needsCacheManagement {settings.needsCacheManagement},
+      _dedicated {settings.dedicated}
 {
 }
 

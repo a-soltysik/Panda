@@ -267,6 +267,23 @@ void verifyPooledSharing(const panda::detail::MemoryPool& pool,
     }
 }
 
+void verifyMappedContents(const panda::detail::MemoryAllocation& allocation)
+{
+    const auto bytes = allocation.getMappedBytes();
+    ASSERT_TRUE(bytes);
+    std::ranges::fill(*bytes, std::byte {0x2A});
+    ASSERT_TRUE(allocation.flush(0, allocation.getRange().size));
+    ASSERT_TRUE(allocation.invalidate(0, allocation.getRange().size));
+    EXPECT_EQ(bytes->front(), std::byte {0x2A});
+}
+
+void verifyPoolReleased(const panda::detail::MemoryPool& pool, std::uint64_t committed)
+{
+    EXPECT_EQ(pool.getStats().liveBytes, 0);
+    EXPECT_LE(pool.getStats().allocationCount, 1);
+    EXPECT_LE(pool.getStats().committedBytes, committed);
+}
+
 void verifyPoolBindings(panda::detail::MemoryPool& pool,
                         const vk::raii::Device& device,
                         vk::raii::Buffer& firstBuffer,
@@ -279,19 +296,12 @@ void verifyPoolBindings(panda::detail::MemoryPool& pool,
     ASSERT_TRUE(second);
     verifyPooledSharing(pool, device, firstBuffer, secondBuffer, *first, *second);
     const auto committed = pool.getStats().committedBytes;
-    const auto bytes = first->getMappedBytes();
-    ASSERT_TRUE(bytes);
-    std::ranges::fill(*bytes, std::byte {0x2A});
-    ASSERT_TRUE(first->flush(0, first->getRange().size));
-    ASSERT_TRUE(first->invalidate(0, first->getRange().size));
-    EXPECT_EQ(bytes->front(), std::byte {0x2A});
+    verifyMappedContents(*first);
     firstBuffer.clear();
     secondBuffer.clear();
     first->reset();
     second->reset();
-    EXPECT_EQ(pool.getStats().liveBytes, 0);
-    EXPECT_LE(pool.getStats().allocationCount, 1);
-    EXPECT_LE(pool.getStats().committedBytes, committed);
+    verifyPoolReleased(pool, committed);
 }
 }
 

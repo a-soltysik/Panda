@@ -83,7 +83,7 @@ public:
     /// @param surface Borrowed window-system implementation; it must outlive Context.
     /// @param options Context configuration.
     /// @return An owner or a capability/backend/window-system error. May allocate and block.
-    [[nodiscard]] static auto createWithSurface(WindowSurface& surface, const ContextOptions& options = {})
+    [[nodiscard]] static auto createWithSurface(const WindowSurface& surface, const ContextOptions& options = {})
         -> Result<Context>;
 
     Context(const Context&) = delete;
@@ -129,7 +129,8 @@ private:
     struct InstanceServices;
     class Impl;
 
-    [[nodiscard]] static auto createInternal(WindowSurface* surface, const ContextOptions& options) -> Result<Context>;
+    [[nodiscard]] static auto createInternal(const WindowSurface* surface, const ContextOptions& options)
+        -> Result<Context>;
 
     explicit Context(std::unique_ptr<Impl> implementation) noexcept;
 

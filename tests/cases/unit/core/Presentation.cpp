@@ -48,6 +48,12 @@ auto releaseProcAddress() -> PFN_vkVoidFunction
     return reinterpret_cast<PFN_vkVoidFunction>(&vkReleaseSwapchainImagesKHR);
 }
 
+void expectImageLayouts(const VkImageMemoryBarrier2& barrier, VkImageLayout oldLayout, VkImageLayout newLayout)
+{
+    EXPECT_EQ(barrier.oldLayout, oldLayout);
+    EXPECT_EQ(barrier.newLayout, newLayout);
+}
+
 void expectTransitionToColorAttachment(const VkDependencyInfo* dependency)
 {
     ASSERT_EQ(dependency->imageMemoryBarrierCount, 1U);
@@ -59,8 +65,9 @@ void expectTransitionToColorAttachment(const VkDependencyInfo* dependency)
     EXPECT_EQ(barrier.dstStageMask,
               static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eColorAttachmentOutput));
     EXPECT_EQ(barrier.dstAccessMask, static_cast<VkAccessFlags2>(vk::AccessFlagBits2::eColorAttachmentWrite));
-    EXPECT_EQ(barrier.oldLayout, static_cast<VkImageLayout>(vk::ImageLayout::eUndefined));
-    EXPECT_EQ(barrier.newLayout, static_cast<VkImageLayout>(vk::ImageLayout::eColorAttachmentOptimal));
+    expectImageLayouts(barrier,
+                       static_cast<VkImageLayout>(vk::ImageLayout::eUndefined),
+                       static_cast<VkImageLayout>(vk::ImageLayout::eColorAttachmentOptimal));
 }
 
 void expectTransitionToPresent(const VkDependencyInfo* dependency)
@@ -73,8 +80,9 @@ void expectTransitionToPresent(const VkDependencyInfo* dependency)
     EXPECT_EQ(barrier.srcAccessMask, static_cast<VkAccessFlags2>(vk::AccessFlagBits2::eColorAttachmentWrite));
     EXPECT_EQ(barrier.dstStageMask, static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eNone));
     EXPECT_EQ(barrier.dstAccessMask, static_cast<VkAccessFlags2>(vk::AccessFlagBits2::eNone));
-    EXPECT_EQ(barrier.oldLayout, static_cast<VkImageLayout>(vk::ImageLayout::eColorAttachmentOptimal));
-    EXPECT_EQ(barrier.newLayout, static_cast<VkImageLayout>(vk::ImageLayout::ePresentSrcKHR));
+    expectImageLayouts(barrier,
+                       static_cast<VkImageLayout>(vk::ImageLayout::eColorAttachmentOptimal),
+                       static_cast<VkImageLayout>(vk::ImageLayout::ePresentSrcKHR));
 }
 
 auto makeGeneration(const vk::raii::Device& device, std::uintptr_t handle)
@@ -200,15 +208,10 @@ protected:
 
     void expectInitialGeneration(std::uintptr_t handle)
     {
-        EXPECT_CALL(swapchains, createSwapchainGeneration(_, _, _, _, _, _))
-            .WillOnce([handle](vk::PhysicalDevice,
-                               const vk::raii::Device& device,
-                               VkSurfaceKHR,
-                               panda::FramebufferExtent,
-                               vk::SwapchainKHR oldSwapchain,
-                               const panda::ContextDeviceInfo&) {
-                EXPECT_EQ(oldSwapchain, vk::SwapchainKHR {});
-                return makeGeneration(device, handle);
+        EXPECT_CALL(swapchains, createSwapchainGeneration(_))
+            .WillOnce([handle](const panda::detail::SwapchainGenerationRequest& request) {
+                EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {});
+                return makeGeneration(request.device, handle);
             });
     }
 
@@ -354,32 +357,22 @@ protected:
 
     void expectFailedRecreation(const Sequence& flow, std::uintptr_t oldHandle)
     {
-        EXPECT_CALL(swapchains, createSwapchainGeneration(_, _, _, _, _, _))
+        EXPECT_CALL(swapchains, createSwapchainGeneration(_))
             .InSequence(flow)
-            .WillOnce([oldHandle](vk::PhysicalDevice,
-                                  const vk::raii::Device&,
-                                  VkSurfaceKHR,
-                                  panda::FramebufferExtent,
-                                  vk::SwapchainKHR oldSwapchain,
-                                  const panda::ContextDeviceInfo&)
+            .WillOnce([oldHandle](const panda::detail::SwapchainGenerationRequest& request)
                           -> std::expected<panda::detail::SwapchainGeneration, panda::Error> {
-                EXPECT_EQ(oldSwapchain, vk::SwapchainKHR {fakeVulkanHandle<VkSwapchainKHR>(oldHandle)});
+                EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {fakeVulkanHandle<VkSwapchainKHR>(oldHandle)});
                 return std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "replacement failed")};
             });
     }
 
     void expectRetriedGeneration(Sequence& flow, std::uintptr_t handle)
     {
-        EXPECT_CALL(swapchains, createSwapchainGeneration(_, _, _, _, _, _))
+        EXPECT_CALL(swapchains, createSwapchainGeneration(_))
             .InSequence(flow)
-            .WillOnce([handle](vk::PhysicalDevice,
-                               const vk::raii::Device& device,
-                               VkSurfaceKHR,
-                               panda::FramebufferExtent,
-                               vk::SwapchainKHR oldSwapchain,
-                               const panda::ContextDeviceInfo&) {
-                EXPECT_EQ(oldSwapchain, vk::SwapchainKHR {});
-                return makeGeneration(device, handle);
+            .WillOnce([handle](const panda::detail::SwapchainGenerationRequest& request) {
+                EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {});
+                return makeGeneration(request.device, handle);
             });
     }
 
@@ -387,15 +380,17 @@ protected:
                                 panda::ContextDeviceInfo::SwapchainMaintenance::Khr)
         -> std::expected<std::unique_ptr<panda::detail::Presentation>, panda::Error>
     {
-        return panda::detail::Presentation::create(vk::PhysicalDevice {},
-                                                   getDevice(),
-                                                   VkSurfaceKHR {},
-                                                   window,
-                                                   {.name = {},
-                                                    .apiVersion = 0,
-                                                    .queueFamily = 0,
-                                                    .presentQueueFamily = 0,
-                                                    .swapchainMaintenance = maintenance});
+        return panda::detail::Presentation::create({
+            .physicalDevice = vk::PhysicalDevice {},
+            .device = getDevice(),
+            .surface = vk::SurfaceKHR {},
+            .window = window,
+            .deviceInfo = {.name = {},
+                                                  .apiVersion = 0,
+                                                  .queueFamily = 0,
+                                                  .presentQueueFamily = 0,
+                                                  .swapchainMaintenance = maintenance}
+        });
     }
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
