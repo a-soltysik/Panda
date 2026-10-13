@@ -15,14 +15,14 @@ using panda::cuda::detail::NativeAvailability;
 class CudaAdapterTest : public testing::Test
 {
 protected:
-    panda::test::ScopedMock<panda::test::CudaRuntimeMock> _cudaRuntime;
+    panda::test::ScopedMock<panda::test::CudaRuntimeMock> cudaRuntime;
 };
 
 }
 
 TEST_F(CudaAdapterTest, ReportsAvailableDevice)
 {
-    EXPECT_CALL(_cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
         .WillOnce(testing::DoAll(testing::SetArgPointee<0>(1), testing::Return(cudaSuccess)));
 
     const auto result = panda::cuda::detail::queryNativeAvailability();
@@ -32,7 +32,7 @@ TEST_F(CudaAdapterTest, ReportsAvailableDevice)
 
 TEST_F(CudaAdapterTest, ReportsRuntimeNoDevice)
 {
-    EXPECT_CALL(_cudaRuntime, cudaGetDeviceCount(testing::NotNull())).WillOnce(testing::Return(cudaErrorNoDevice));
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull())).WillOnce(testing::Return(cudaErrorNoDevice));
 
     const auto result = panda::cuda::detail::queryNativeAvailability();
     EXPECT_EQ(result.availability, NativeAvailability::NoDevice);
@@ -41,7 +41,7 @@ TEST_F(CudaAdapterTest, ReportsRuntimeNoDevice)
 
 TEST_F(CudaAdapterTest, ReportsZeroDevices)
 {
-    EXPECT_CALL(_cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
         .WillOnce(testing::DoAll(testing::SetArgPointee<0>(0), testing::Return(cudaSuccess)));
 
     const auto result = panda::cuda::detail::queryNativeAvailability();
@@ -51,7 +51,7 @@ TEST_F(CudaAdapterTest, ReportsZeroDevices)
 
 TEST_F(CudaAdapterTest, ReportsInsufficientDriver)
 {
-    EXPECT_CALL(_cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
         .WillOnce(testing::Return(cudaErrorInsufficientDriver));
 
     const auto result = panda::cuda::detail::queryNativeAvailability();
@@ -61,7 +61,7 @@ TEST_F(CudaAdapterTest, ReportsInsufficientDriver)
 
 TEST_F(CudaAdapterTest, ReportsSystemDriverMismatch)
 {
-    EXPECT_CALL(_cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
         .WillOnce(testing::Return(cudaErrorSystemDriverMismatch));
 
     const auto result = panda::cuda::detail::queryNativeAvailability();
@@ -71,7 +71,7 @@ TEST_F(CudaAdapterTest, ReportsSystemDriverMismatch)
 
 TEST_F(CudaAdapterTest, PreservesUnexpectedRuntimeFailure)
 {
-    EXPECT_CALL(_cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
         .WillOnce(testing::Return(cudaErrorInitializationError));
 
     const auto result = panda::cuda::detail::queryNativeAvailability();
