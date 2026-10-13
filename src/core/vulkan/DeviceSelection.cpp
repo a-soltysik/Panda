@@ -150,14 +150,14 @@ auto makeWindowInstanceExtensions(const WindowSurface* surface,
     return chosen;
 }
 
-}
-
-auto instanceExtensions(const WindowSurface* surface, bool enableValidation) -> Result<InstanceExtensions>
+struct InstanceExtensionInputs
 {
-    if (surface == nullptr && !enableValidation)
-    {
-        return InstanceExtensions {};
-    }
+    std::vector<std::string> required;
+    std::vector<vk::ExtensionProperties> available;
+};
+
+auto queryInstanceExtensionInputs(const WindowSurface* surface) -> Result<InstanceExtensionInputs>
+{
     auto required = requiredWindowExtensions(surface);
     if (!required)
     {
@@ -168,12 +168,28 @@ auto instanceExtensions(const WindowSurface* surface, bool enableValidation) -> 
     {
         return std::unexpected {std::move(available.error())};
     }
-    auto chosen = makeWindowInstanceExtensions(surface, std::move(*required), *available);
+    return InstanceExtensionInputs {.required = std::move(*required), .available = std::move(*available)};
+}
+
+}
+
+auto instanceExtensions(const WindowSurface* surface, bool enableValidation) -> Result<InstanceExtensions>
+{
+    if (surface == nullptr && !enableValidation)
+    {
+        return InstanceExtensions {};
+    }
+    auto inputs = queryInstanceExtensionInputs(surface);
+    if (!inputs)
+    {
+        return std::unexpected {std::move(inputs.error())};
+    }
+    auto chosen = makeWindowInstanceExtensions(surface, std::move(inputs->required), inputs->available);
     if (!chosen)
     {
         return std::unexpected {chosen.error()};
     }
-    if (const auto appended = appendValidationExtension(*chosen, enableValidation, *available); !appended)
+    if (const auto appended = appendValidationExtension(*chosen, enableValidation, inputs->available); !appended)
     {
         return std::unexpected {appended.error()};
     }
@@ -183,6 +199,20 @@ auto instanceExtensions(const WindowSurface* surface, bool enableValidation) -> 
 namespace
 {
 using Maintenance = ContextDeviceInfo::SwapchainMaintenance;
+
+auto chooseMaintenance(const std::vector<vk::ExtensionProperties>& listed, const InstanceExtensions& extensions)
+    -> std::optional<Maintenance>
+{
+    if (extensions.hasKhrMaintenance && hasExtension(listed, vk::KHRSwapchainMaintenance1ExtensionName))
+    {
+        return Maintenance::Khr;
+    }
+    if (extensions.hasExtMaintenance && hasExtension(listed, vk::EXTSwapchainMaintenance1ExtensionName))
+    {
+        return Maintenance::Ext;
+    }
+    return std::nullopt;
+}
 
 auto maintenanceVariant(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
     -> std::expected<std::optional<Maintenance>, Error>
@@ -203,15 +233,7 @@ auto maintenanceVariant(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surfac
     {
         return std::nullopt;
     }
-    if (extensions.hasKhrMaintenance && hasExtension(*listed, vk::KHRSwapchainMaintenance1ExtensionName))
-    {
-        return std::optional {Maintenance::Khr};
-    }
-    if (extensions.hasExtMaintenance && hasExtension(*listed, vk::EXTSwapchainMaintenance1ExtensionName))
-    {
-        return std::optional {Maintenance::Ext};
-    }
-    return std::nullopt;
+    return chooseMaintenance(*listed, extensions);
 }
 
 auto supportsRequiredFeatures(vk::PhysicalDevice physicalDevice, bool windowed) -> bool
@@ -265,8 +287,13 @@ struct QueueCandidates
     std::optional<std::uint32_t> present;
 };
 
-auto inspectWindowQueue(vk::PhysicalDevice physicalDevice,
-                        vk::SurfaceKHR surface,
+struct WindowQueueProbe
+{
+    vk::PhysicalDevice physicalDevice;
+    vk::SurfaceKHR surface;
+};
+
+auto inspectWindowQueue(WindowQueueProbe probe,
                         vk::QueueFamilyProperties family,
                         std::uint32_t index,
                         QueueCandidates& candidates) -> std::expected<bool, Error>
@@ -280,7 +307,7 @@ auto inspectWindowQueue(vk::PhysicalDevice physicalDevice,
     {
         candidates.graphics = index;
     }
-    const auto supported = presentSupport(physicalDevice, surface, index);
+    const auto supported = presentSupport(probe.physicalDevice, probe.surface, index);
     if (!supported)
     {
         return std::unexpected {supported.error()};
@@ -301,7 +328,10 @@ auto selectWindowQueues(vk::PhysicalDevice physicalDevice,
     for (auto index = std::size_t {0}; index < families.size(); ++index)
     {
         const auto family = static_cast<std::uint32_t>(index);
-        const auto combined = inspectWindowQueue(physicalDevice, surface, families.at(index), family, candidates);
+        const auto combined = inspectWindowQueue({.physicalDevice = physicalDevice, .surface = surface},
+                                                 families.at(index),
+                                                 family,
+                                                 candidates);
         if (!combined)
         {
             return std::unexpected {combined.error()};
@@ -477,34 +507,47 @@ auto handleInspectionFailure(vk::PhysicalDevice physicalDevice, Error error, std
     return {};
 }
 
+struct DeviceInspectionState
+{
+    vk::SurfaceKHR surface;
+    std::vector<SelectedDevice> candidates;
+    std::optional<Error> firstError;
+};
+
+auto appendDeviceCandidate(vk::PhysicalDevice physicalDevice,
+                           const InstanceExtensions& extensions,
+                           DeviceInspectionState& state) -> std::expected<void, Error>
+{
+    auto inspected = inspectDevice(physicalDevice, state.surface, extensions);
+    if (!inspected)
+    {
+        return handleInspectionFailure(physicalDevice, std::move(inspected.error()), state.firstError);
+    }
+    if (*inspected)
+    {
+        state.candidates.push_back(std::move(**inspected));
+    }
+    return {};
+}
+
 auto inspectDevices(const std::vector<vk::PhysicalDevice>& devices,
                     vk::SurfaceKHR surface,
                     const InstanceExtensions& extensions) -> std::expected<std::vector<SelectedDevice>, Error>
 {
-    auto candidates = std::vector<SelectedDevice> {};
-    auto inspectionError = std::optional<Error> {};
+    auto state = DeviceInspectionState {.surface = surface, .candidates = {}, .firstError = std::nullopt};
     for (const auto physicalDevice : devices)
     {
-        auto inspected = inspectDevice(physicalDevice, surface, extensions);
-        if (!inspected)
+        auto appended = appendDeviceCandidate(physicalDevice, extensions, state);
+        if (!appended)
         {
-            auto handled = handleInspectionFailure(physicalDevice, std::move(inspected.error()), inspectionError);
-            if (!handled)
-            {
-                return std::unexpected {std::move(handled.error())};
-            }
-            continue;
-        }
-        if (*inspected)
-        {
-            candidates.push_back(std::move(**inspected));
+            return std::unexpected {std::move(appended.error())};
         }
     }
-    if (candidates.empty() && inspectionError)
+    if (state.candidates.empty() && state.firstError)
     {
-        return std::unexpected {std::move(*inspectionError)};
+        return std::unexpected {std::move(*state.firstError)};
     }
-    return candidates;
+    return std::move(state.candidates);
 }
 
 }

@@ -36,6 +36,34 @@ template <typename Owner>
 // Enhanced Hpp enumerators inspect output counts even after a failed call.
 // Failed outputs are undefined; inspect the status before using any output.
 template <typename Element, typename Query>
+[[nodiscard]] auto enumerateVulkanOnce(Query& query, std::vector<Element>& values, std::source_location source)
+    -> std::expected<vk::Result, Error>
+{
+    auto count = std::uint32_t {};
+    const auto counted = std::invoke(query, &count, nullptr);
+    if (counted != vk::Result::eSuccess)
+    {
+        return std::unexpected {makeVulkanError(counted, source)};
+    }
+    values.resize(count);
+    if (count == 0)
+    {
+        return vk::Result::eSuccess;
+    }
+    const auto result = std::invoke(query, &count, values.data());
+    if (result != vk::Result::eSuccess && result != vk::Result::eIncomplete)
+    {
+        return std::unexpected {makeVulkanError(result, source)};
+    }
+    if (result == vk::Result::eSuccess)
+    {
+        expect(count <= values.size(), "Vulkan returned more entries than the supplied capacity");
+        values.resize(count);
+    }
+    return result;
+}
+
+template <typename Element, typename Query>
 [[nodiscard]] auto enumerateVulkan(Query query, std::source_location source = std::source_location::current())
     -> std::expected<std::vector<Element>, Error>
 {
@@ -43,27 +71,12 @@ template <typename Element, typename Query>
     auto result = vk::Result::eIncomplete;
     while (result == vk::Result::eIncomplete)
     {
-        auto count = std::uint32_t {};
-        const auto counted = std::invoke(query, &count, nullptr);
-        if (counted != vk::Result::eSuccess)
+        const auto fetched = enumerateVulkanOnce<Element>(query, values, source);
+        if (!fetched)
         {
-            return std::unexpected {makeVulkanError(counted, source)};
+            return std::unexpected {fetched.error()};
         }
-        values.resize(count);
-        if (count == 0)
-        {
-            return values;
-        }
-        result = std::invoke(query, &count, values.data());
-        if (result != vk::Result::eSuccess && result != vk::Result::eIncomplete)
-        {
-            return std::unexpected {makeVulkanError(result, source)};
-        }
-        if (result == vk::Result::eSuccess)
-        {
-            expect(count <= values.size(), "Vulkan returned more entries than the supplied capacity");
-            values.resize(count);
-        }
+        result = *fetched;
     }
     return values;
 }

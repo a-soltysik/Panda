@@ -34,6 +34,7 @@ public:
 private:
     [[nodiscard]] auto validatePoint(CompletionPoint point) const -> Result<void>;
     [[nodiscard]] auto refreshCompleted() -> Result<void>;
+    [[nodiscard]] auto ensureOutstandingCapacity() -> Result<void>;
     [[nodiscard]] auto submitValue(vk::CommandBuffer command,
                                    vk::Semaphore acquire,
                                    vk::Semaphore finished,

@@ -20,12 +20,7 @@ public:
     // NOLINTBEGIN(modernize-use-trailing-return-type)
     MOCK_METHOD((std::expected<detail::SwapchainGeneration, Error>),
                 createSwapchainGeneration,
-                (vk::PhysicalDevice,
-                 const vk::raii::Device&,
-                 vk::SurfaceKHR,
-                 FramebufferExtent,
-                 vk::SwapchainKHR,
-                 const ContextDeviceInfo&),
+                (const detail::SwapchainGenerationRequest&),
                 ());
 
     MOCK_METHOD(vk::ClearColorValue, encodedClear, (vk::Format), ());

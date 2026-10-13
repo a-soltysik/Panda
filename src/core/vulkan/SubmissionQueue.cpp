@@ -87,6 +87,11 @@ auto SubmissionQueue::prepareSubmit() -> Result<void>
     {
         return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Timeline values exhausted")};
     }
+    return ensureOutstandingCapacity();
+}
+
+auto SubmissionQueue::ensureOutstandingCapacity() -> Result<void>
+{
     if (_committed - _completed >= _maximumDifference)
     {
         const auto refreshed = refreshCompleted();

@@ -181,10 +181,7 @@ void expectNoPhysicalDevices(panda::test::VulkanMock& vulkan, VkInstance instanc
     EXPECT_CALL(vulkan, vkDestroyDebugUtilsMessengerEXT(instance, messenger, nullptr)).InSequence(lifetime);
     EXPECT_CALL(vulkan, vkDestroyInstance(instance, nullptr)).InSequence(lifetime);
     EXPECT_CALL(vulkan, vkEnumeratePhysicalDevices(instance, NotNull(), _))
-        .WillOnce([](VkInstance, std::uint32_t* count, VkPhysicalDevice*) {
-            *count = 0;
-            return static_cast<VkResult>(vk::Result::eSuccess);
-        });
+        .WillOnce(DoAll(SetArgPointee<1>(0U), Return(static_cast<VkResult>(vk::Result::eSuccess))));
 }
 
 class ContextTest : public testing::Test
@@ -241,14 +238,27 @@ TEST_F(ContextTest, ReportsMissingRequestedValidationLayer)
     EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
         .WillOnce(DoAll(SetArgPointee<0>(vk::ApiVersion13), Return(static_cast<VkResult>(vk::Result::eSuccess))));
     EXPECT_CALL(vulkan, vkEnumerateInstanceLayerProperties(NotNull(), _))
-        .WillRepeatedly([](std::uint32_t* count, [[maybe_unused]] VkLayerProperties* properties) {
-            *count = 0;
-            return static_cast<VkResult>(vk::Result::eSuccess);
-        });
+        .WillRepeatedly(DoAll(SetArgPointee<0>(0U), Return(static_cast<VkResult>(vk::Result::eSuccess))));
     const auto context = panda::Context::create({.enableValidation = true});
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(context.error().message.find("VK_LAYER_KHRONOS_validation"), std::string::npos);
+}
+
+TEST_F(ContextTest, PreservesValidationLayerEnumerationFailure)
+{
+    EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
+        .WillOnce(DoAll(SetArgPointee<0>(vk::ApiVersion13), Return(static_cast<VkResult>(vk::Result::eSuccess))));
+    EXPECT_CALL(vulkan, vkEnumerateInstanceLayerProperties(NotNull(), _))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
+
+    const auto context = panda::Context::create({.enableValidation = true});
+
+    ASSERT_FALSE(context.has_value());
+    EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
+    ASSERT_TRUE(context.error().native.has_value());
+    const auto native = context.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, static_cast<int>(vk::Result::eErrorInitializationFailed));
 }
 
 TEST_F(ContextTest, ReportsMissingDebugUtilsExtensionWhenValidationIsRequested)

@@ -27,9 +27,9 @@ private:
 
     void append(char character) noexcept;
 
-    static constexpr std::size_t Capacity {128};
+    static constexpr std::size_t capacity {128};
 
-    std::array<char, Capacity> _text {};
+    std::array<char, capacity> _text {};
     std::size_t _size {0};
     std::size_t _start {0};
     bool _truncated {false};

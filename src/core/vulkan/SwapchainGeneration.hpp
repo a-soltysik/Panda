@@ -41,16 +41,21 @@ struct SurfaceConfig
     std::uint32_t imageCount {0};
 };
 
+struct SwapchainGenerationRequest
+{
+    vk::PhysicalDevice physicalDevice;
+    const vk::raii::Device& device;
+    vk::SurfaceKHR surface;
+    FramebufferExtent requested;
+    vk::SwapchainKHR oldSwapchain;
+    ContextDeviceInfo deviceInfo;
+};
+
 [[nodiscard]] auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
                                        std::span<const vk::SurfaceFormatKHR> formats,
                                        FramebufferExtent requested) -> std::expected<SurfaceConfig, Error>;
 
-[[nodiscard]] auto createSwapchainGeneration(vk::PhysicalDevice physicalDevice,
-                                             const vk::raii::Device& device,
-                                             vk::SurfaceKHR surface,
-                                             FramebufferExtent requested,
-                                             vk::SwapchainKHR oldSwapchain,
-                                             const ContextDeviceInfo& deviceInfo)
+[[nodiscard]] auto createSwapchainGeneration(const SwapchainGenerationRequest& request)
     -> std::expected<SwapchainGeneration, Error>;
 
 [[nodiscard]] auto encodedClear(vk::Format format) -> vk::ClearColorValue;

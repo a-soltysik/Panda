@@ -13,6 +13,8 @@ namespace panda
 {
 namespace
 {
+// One exhaustive switch keeps new Vulkan result enumerators visible to -Wswitch-enum.
+// NOLINTNEXTLINE(readability-function-size)
 auto classify(vk::Result result) -> ErrorCode
 {
     // Keep this switch exhaustive: -Wswitch-enum requires a deliberate choice

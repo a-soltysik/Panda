@@ -41,7 +41,7 @@ auto finishFrames(const panda::Context& context, panda::CompletionPoint last) ->
     });
 }
 
-auto run(panda::tools::Window& window, const panda::Context& context) -> panda::Result<void>
+auto run(const panda::tools::Window& window, const panda::Context& context) -> panda::Result<void>
 {
     auto last = panda::CompletionPoint {};
     while (!window.shouldClose())
@@ -65,23 +65,28 @@ auto run(panda::tools::Window& window, const panda::Context& context) -> panda::
     }
     return finishFrames(context, last);
 }
+
+auto runApplication() -> int
+{
+    static constexpr auto windowSize = glm::uvec2 {1280, 720};
+    const auto result =
+        panda::tools::Window::create(windowSize, "Panda - Simple scene").and_then([](panda::tools::Window window) {
+            return panda::Context::createWithSurface(
+                       window,
+                       {.applicationName = "Panda simple scene", .enableValidation = true})
+                .and_then([&window](const panda::Context& context) {
+                    return run(window, context);
+                });
+        });
+    return result ? EXIT_SUCCESS : fail(result.error().message);
+}
 }
 
 auto main() -> int
 {
     try
     {
-        static constexpr auto windowSize = glm::uvec2 {1280, 720};
-        const auto result =
-            panda::tools::Window::create(windowSize, "Panda - Simple scene").and_then([](panda::tools::Window window) {
-                return panda::Context::createWithSurface(
-                           window,
-                           {.applicationName = "Panda simple scene", .enableValidation = true})
-                    .and_then([&window](const panda::Context& context) {
-                        return run(window, context);
-                    });
-            });
-        return result ? EXIT_SUCCESS : fail(result.error().message);
+        return runApplication();
     }
     catch (const std::exception& error)
     {

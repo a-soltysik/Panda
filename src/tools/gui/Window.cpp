@@ -15,7 +15,9 @@
 #include <panda/Assert.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
+#include <panda/WindowSurface.hpp>
 #include <ranges>
+#include <source_location>
 #include <span>
 #include <string>
 #include <string_view>
@@ -25,6 +27,67 @@
 
 namespace panda::tools
 {
+namespace
+{
+auto validateWindowRequest(glm::uvec2 size, const char* name) -> Result<void>
+{
+    static constexpr auto maximumDimension = static_cast<unsigned int>(std::numeric_limits<int>::max());
+    if (name == nullptr || size.x == 0 || size.y == 0 || size.x > maximumDimension || size.y > maximumDimension)
+    {
+        static constexpr auto message =
+            std::string_view {"Window requires a non-null title and positive dimensions within INT_MAX"};
+        log::warning("{}", message);
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, std::string {message})};
+    }
+    return {};
+}
+
+auto createNativeWindow(glm::uvec2 size, const char* name, std::source_location source) -> Result<GLFWwindow*>
+{
+    GlfwSession::clearError();
+    glfwDefaultWindowHints();
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    if (auto configured = GlfwSession::checkError(source); !configured)
+    {
+        return std::unexpected {std::move(configured.error())};
+    }
+    auto* const window = glfwCreateWindow(static_cast<int>(size.x), static_cast<int>(size.y), name, nullptr, nullptr);
+    if (window == nullptr)
+    {
+        return std::unexpected {GlfwSession::takeError(source)};
+    }
+    return window;
+}
+
+auto readFramebufferSize(GLFWwindow* window) -> Result<FramebufferExtent>
+{
+    GlfwSession::clearError();
+    auto width = 0;
+    auto height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    if (auto result = GlfwSession::checkError(); !result)
+    {
+        return std::unexpected {std::move(result.error())};
+    }
+    if (width < 0 || height < 0)
+    {
+        return std::unexpected {makeError(ErrorCode::BackendFailure, "GLFW reported negative framebuffer dimensions")};
+    }
+    return FramebufferExtent {.width = static_cast<std::uint32_t>(width), .height = static_cast<std::uint32_t>(height)};
+}
+
+auto isWindowIconified(GLFWwindow* window) -> Result<bool>
+{
+    GlfwSession::clearError();
+    const auto iconified = glfwGetWindowAttrib(window, GLFW_ICONIFIED) == GLFW_TRUE;
+    if (auto result = GlfwSession::checkError(); !result)
+    {
+        return std::unexpected {std::move(result.error())};
+    }
+    return iconified;
+}
+}
+
 Window::Window(GLFWwindow* window, std::shared_ptr<GlfwSession> session) noexcept
     : _window {window},
       _session {std::move(session)}
@@ -52,13 +115,9 @@ Window::~Window() noexcept
 
 auto Window::create(glm::uvec2 size, const char* name) -> Result<Window>
 {
-    static constexpr auto maximumDimension = static_cast<unsigned int>(std::numeric_limits<int>::max());
-    if (name == nullptr || size.x == 0 || size.y == 0 || size.x > maximumDimension || size.y > maximumDimension)
+    if (const auto valid = validateWindowRequest(size, name); !valid)
     {
-        static constexpr auto message =
-            std::string_view {"Window requires a non-null title and positive dimensions within INT_MAX"};
-        log::warning("{}", message);
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, std::string {message})};
+        return std::unexpected {valid.error()};
     }
     auto acquired = GlfwSession::acquire();
     if (!acquired)
@@ -66,20 +125,12 @@ auto Window::create(glm::uvec2 size, const char* name) -> Result<Window>
         return std::unexpected {std::move(acquired.error())};
     }
     auto session = *std::move(acquired);
-    GlfwSession::clearError();
-    glfwDefaultWindowHints();
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    if (auto configured = GlfwSession::checkError(); !configured)
+    auto nativeWindow = createNativeWindow(size, name, std::source_location::current());
+    if (!nativeWindow)
     {
-        return std::unexpected {std::move(configured.error())};
+        return std::unexpected {std::move(nativeWindow.error())};
     }
-    auto* const nativeWindow =
-        glfwCreateWindow(static_cast<int>(size.x), static_cast<int>(size.y), name, nullptr, nullptr);
-    if (nativeWindow == nullptr)
-    {
-        return std::unexpected {GlfwSession::takeError()};
-    }
-    auto window = Window {nativeWindow, std::move(session)};
+    auto window = Window {*nativeWindow, std::move(session)};
     log::info("Window '{}' created, {}x{}", name, size.x, size.y);
     return window;
 }
@@ -104,7 +155,7 @@ auto Window::shouldClose() const -> bool
     return closed;
 }
 
-auto Window::processInput() -> Result<void>
+auto Window::processInput() const -> Result<void>
 {
     checkUsable();
     GlfwSession::clearError();
@@ -202,29 +253,17 @@ auto Window::createSurface(vk::Instance instance) const -> Result<vk::SurfaceKHR
 auto Window::getFramebufferExtent() const -> Result<FramebufferExtent>
 {
     checkUsable();
-    GlfwSession::clearError();
-    auto width = 0;
-    auto height = 0;
-    glfwGetFramebufferSize(_window, &width, &height);
-    if (auto result = GlfwSession::checkError(); !result)
+    const auto extent = readFramebufferSize(_window);
+    if (!extent)
     {
-        return std::unexpected {std::move(result.error())};
+        return std::unexpected {extent.error()};
     }
-    if (width < 0 || height < 0)
+    const auto iconified = isWindowIconified(_window);
+    if (!iconified)
     {
-        return std::unexpected {makeError(ErrorCode::BackendFailure, "GLFW reported negative framebuffer dimensions")};
+        return std::unexpected {iconified.error()};
     }
-    GlfwSession::clearError();
-    const auto iconified = glfwGetWindowAttrib(_window, GLFW_ICONIFIED) == GLFW_TRUE;
-    if (auto result = GlfwSession::checkError(); !result)
-    {
-        return std::unexpected {std::move(result.error())};
-    }
-    if (iconified)
-    {
-        return FramebufferExtent {};
-    }
-    return FramebufferExtent {.width = static_cast<std::uint32_t>(width), .height = static_cast<std::uint32_t>(height)};
+    return *iconified ? FramebufferExtent {} : *extent;
 }
 
 auto Window::waitForInput() -> Result<void>

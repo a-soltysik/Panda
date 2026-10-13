@@ -129,6 +129,37 @@ protected:
                 });
     }
 
+    void verifySwapchainIdentity(const VkSwapchainCreateInfoKHR& info)
+    {
+        EXPECT_EQ(info.surface, surface);
+        EXPECT_EQ(info.oldSwapchain, oldSwapchain);
+        EXPECT_EQ(info.minImageCount, 2U);
+        EXPECT_EQ(info.imageExtent.width, 640U);
+        EXPECT_EQ(info.presentMode, static_cast<VkPresentModeKHR>(vk::PresentModeKHR::eFifo));
+    }
+
+    static void verifySwapchainSharing(const VkSwapchainCreateInfoKHR& info, bool separateQueues)
+    {
+        EXPECT_EQ(
+            info.imageSharingMode,
+            static_cast<VkSharingMode>(separateQueues ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive));
+        EXPECT_EQ(info.queueFamilyIndexCount, separateQueues ? 2U : 0U);
+        if (separateQueues)
+        {
+            ASSERT_NE(info.pQueueFamilyIndices, nullptr);
+            ASSERT_EQ(info.queueFamilyIndexCount, 2U);
+            const auto families = std::span {info.pQueueFamilyIndices, info.queueFamilyIndexCount};
+            EXPECT_EQ(families.front(), 2U);
+            EXPECT_EQ(families.back(), 3U);
+        }
+    }
+
+    void verifySwapchainInfo(const VkSwapchainCreateInfoKHR& info, bool separateQueues)
+    {
+        verifySwapchainIdentity(info);
+        verifySwapchainSharing(info, separateQueues);
+    }
+
     void expectSwapchain(Failure failure, bool separateQueues)
     {
         EXPECT_CALL(vulkan, vkCreateSwapchainKHR(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
@@ -136,21 +167,7 @@ protected:
                                                       const VkSwapchainCreateInfoKHR* info,
                                                       const VkAllocationCallbacks*,
                                                       VkSwapchainKHR* output) {
-                EXPECT_EQ(info->surface, surface);
-                EXPECT_EQ(info->oldSwapchain, oldSwapchain);
-                EXPECT_EQ(info->minImageCount, 2U);
-                EXPECT_EQ(info->imageExtent.width, 640U);
-                EXPECT_EQ(info->presentMode, static_cast<VkPresentModeKHR>(vk::PresentModeKHR::eFifo));
-                EXPECT_EQ(info->imageSharingMode,
-                          static_cast<VkSharingMode>(separateQueues ? vk::SharingMode::eConcurrent
-                                                                    : vk::SharingMode::eExclusive));
-                EXPECT_EQ(info->queueFamilyIndexCount, separateQueues ? 2U : 0U);
-                if (separateQueues && info->pQueueFamilyIndices != nullptr && info->queueFamilyIndexCount == 2)
-                {
-                    const auto families = std::span {info->pQueueFamilyIndices, info->queueFamilyIndexCount};
-                    EXPECT_EQ(families.front(), 2U);
-                    EXPECT_EQ(families.back(), 3U);
-                }
+                verifySwapchainInfo(*info, separateQueues);
                 *output = chain;
                 return failure == Failure::Swapchain ? exhausted : success;
             });
@@ -273,34 +290,41 @@ protected:
     void expectOwnedImages(Failure failure, bool completedFirstImage)
     {
         expectImages(failure, 2U);
-        if (failure != Failure::Images)
+        if (failure == Failure::Images)
         {
-            if (failure == Failure::None)
-            {
-                expectImage(0, Failure::None);
-                expectImage(1, Failure::None);
-            }
-            else
-            {
-                if (completedFirstImage)
-                {
-                    expectImage(0, Failure::None);
-                }
-                expectImage(completedFirstImage ? 1U : 0U, failure);
-            }
+            EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeVulkanHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
+            return;
         }
+        expectImageFailures(failure, completedFirstImage);
         EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeVulkanHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
+    }
+
+    void expectImageFailures(Failure failure, bool completedFirstImage)
+    {
+        if (failure == Failure::None)
+        {
+            expectImage(0, Failure::None);
+            expectImage(1, Failure::None);
+            return;
+        }
+        if (completedFirstImage)
+        {
+            expectImage(0, Failure::None);
+        }
+        expectImage(completedFirstImage ? 1U : 0U, failure);
     }
 
     auto create(bool separateQueues = false) -> panda::Result<panda::detail::SwapchainGeneration>
     {
-        return panda::detail::createSwapchainGeneration(
-            *physicalDevice,
-            device,
-            surface,
-            {.width = 320, .height = 240},
-            vk::SwapchainKHR {oldSwapchain},
-            {.name = {}, .apiVersion = 0, .queueFamily = 2, .presentQueueFamily = separateQueues ? 3U : 2U});
+        return panda::detail::createSwapchainGeneration({
+            .physicalDevice = *physicalDevice,
+            .device = device,
+            .surface = surface,
+            .requested = {.width = 320, .height = 240},
+            .oldSwapchain = vk::SwapchainKHR {oldSwapchain},
+            .deviceInfo =
+                {.name = {}, .apiVersion = 0, .queueFamily = 2, .presentQueueFamily = separateQueues ? 3U : 2U}
+        });
     }
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;

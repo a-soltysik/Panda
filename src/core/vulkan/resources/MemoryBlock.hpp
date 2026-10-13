@@ -25,8 +25,7 @@ public:
 
     [[nodiscard]] static auto createDedicated(const vk::raii::PhysicalDevice& physicalDevice,
                                               const vk::raii::Device& device,
-                                              std::uint64_t size,
-                                              std::uint32_t memoryTypeIndex,
+                                              vk::MemoryAllocateInfo allocation,
                                               const vk::MemoryDedicatedAllocateInfo& resource)
         -> Result<std::unique_ptr<MemoryBlock>>;
 
@@ -49,17 +48,20 @@ public:
     [[nodiscard]] auto getCapacity() const -> std::uint64_t;
 
 private:
+    struct Settings
+    {
+        std::uint64_t size;
+        std::uint64_t atomSize;
+        bool needsCacheManagement;
+        bool dedicated;
+    };
+
     [[nodiscard]] static auto createInternal(const vk::raii::PhysicalDevice& physicalDevice,
                                              const vk::raii::Device& device,
                                              const vk::MemoryAllocateInfo& info)
         -> Result<std::unique_ptr<MemoryBlock>>;
 
-    MemoryBlock(const vk::raii::Device& device,
-                vk::raii::DeviceMemory memory,
-                std::uint64_t size,
-                std::uint64_t atomSize,
-                bool needsCacheManagement,
-                bool dedicated);
+    MemoryBlock(const vk::raii::Device& device, vk::raii::DeviceMemory memory, Settings settings);
 
     [[nodiscard]] auto map() -> Result<void>;
     [[nodiscard]] auto mappedRange(MemoryRange range, std::uint64_t offset, std::uint64_t size) const

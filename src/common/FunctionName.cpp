@@ -34,12 +34,12 @@ void FunctionName::consumeName(std::string_view signature) noexcept
 {
     auto templateDepth = 0UZ;
     auto remaining = signature;
-    static constexpr auto AnonymousNamespace = std::string_view {"(anonymous namespace)::"};
+    static constexpr auto anonymousNamespace = std::string_view {"(anonymous namespace)::"};
     while (!remaining.empty())
     {
-        if (remaining.starts_with(AnonymousNamespace))
+        if (remaining.starts_with(anonymousNamespace))
         {
-            remaining.remove_prefix(AnonymousNamespace.size());
+            remaining.remove_prefix(anonymousNamespace.size());
         }
         else if (consumeNameCharacter(remaining.front(), templateDepth))
         {
