@@ -1,16 +1,25 @@
+#include <array>
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <expected>
 #include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
+#include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
+#include <panda/UploadBatch.hpp>
+#include <span>
 #include <string_view>
 #include <vulkan/vulkan.hpp>
 
 namespace
 {
+constexpr auto bufferSize = std::uint64_t {4096};
+constexpr auto uploadTimeout = std::chrono::seconds {10};
+
 auto fail(std::string_view message) noexcept -> int
 {
     try
@@ -24,17 +33,44 @@ auto fail(std::string_view message) noexcept -> int
     return EXIT_FAILURE;
 }
 
+auto uploadValues(const panda::Context& context, const panda::Buffer& buffer) -> panda::Result<void>
+{
+    const auto values = std::array<std::uint32_t, 4> {1, 2, 3, 4};
+    auto batch = context.createUploadBatch();
+    if (!batch)
+    {
+        return std::unexpected {batch.error()};
+    }
+    const auto written = batch->write(buffer, 0, std::as_bytes(std::span {values}));
+    if (!written)
+    {
+        return written;
+    }
+    return batch->submit()
+        .and_then([&](panda::CompletionPoint point) {
+            return context.wait(point, uploadTimeout);
+        })
+        .and_then([](panda::WaitStatus status) -> panda::Result<void> {
+            if (status == panda::WaitStatus::Timeout)
+            {
+                return std::unexpected {
+                    panda::makeError(panda::ErrorCode::Timeout, "Buffer upload did not finish in time")};
+            }
+            panda::log::info("Uploaded four values to the storage buffer");
+            return {};
+        });
+}
+
 auto allocateBuffer(const panda::Context& context) -> panda::Result<void>
 {
     auto created = context.createBuffer(
-        {.size = 4096, .usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst});
+        {.size = bufferSize, .usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst});
     if (!created)
     {
         return std::unexpected {created.error()};
     }
     panda::log::info("Allocated a {}-byte storage buffer on '{}'", created->getSize(), context.getDeviceInfo().name);
-    // This scope releases the buffer before main's Context is destroyed.
-    return {};
+    return uploadValues(context, *created);
 }
 }
 

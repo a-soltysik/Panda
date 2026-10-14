@@ -147,7 +147,7 @@ their public headers. Remaining entries describe planned resource APIs.
 | `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
 | `Buffer`, `Texture`, `Mesh`, `Material` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
 | `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an allocation behind a borrowed native handle |
-| `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates size, alignment and usage |
+| `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates destination bounds and transfer usage |
 | `UploadBatch::submit() -> Result<CompletionPoint>` | Submits on the same graphics/compute queue; no CPU wait for completion |
 | `Context::poll(CompletionPoint) -> Result<bool>` | Reports GPU completion or failure; not a presentation/display timestamp |
 | `Context::wait(CompletionPoint, timeout) -> Result<WaitStatus>` | Explicit administrative wait; timeout is distinct from completion and backend failure |
@@ -188,7 +188,10 @@ dedicated requirements, allocates from the Context's pool and binds at that rang
 offset. Failure publishes no handle. A last `Buffer` release destroys the native
 buffer before returning its range. The pool and device remain stable when Context
 moves; destroying Context with live Buffer owners is a checked fatal violation.
-Recoverable `close` and submission retention remain planned.
+Upload submissions retain their staging, destination buffers and command pools
+until confirmed completion. Context drains these internal owners before checking
+for remaining external Buffer owners. Unsubmitted upload batches still borrow
+Context and must be destroyed before it. Recoverable `close` remains planned.
 
 The planned `panda/NativeVulkan.hpp` extension exposes borrowed device/physical-device handles, enabled
 feature information and buffer views for native pipeline/descriptor setup. It
@@ -252,10 +255,29 @@ resources, defragmenter, residency manager, or allocator plugin API in version o
 - Exportable CUDA buffers use dedicated allocations, outside ordinary pools; the
   [compute contract](compute.md#external-buffer-creation) owns the rules.
 
-All uploads use the graphics/compute queue. Track pending upload uses and issue
-transfer-to-consumer dependencies before first use. Updating an existing buffer
-requires ordering after its earlier consumers too; queue order alone is not a memory
-barrier. Caller data may be released after `write`, staging only after completion.
+Buffer uploads use the same graphics/compute submission clock as presentation,
+including when Context has no window. `Context::createUploadBatch` initializes
+this service lazily for headless contexts. `write` snapshots nonempty caller bytes
+into a distinct persistently mapped, pooled staging buffer, validates Context,
+transfer-destination usage and destination bounds, then flushes noncoherent memory.
+Byte offsets and lengths do not have an artificial four-byte restriction.
+
+A batch records writes in insertion order. Conservative memory barriers order each
+copy after earlier queue consumers/copies and make transfers visible to later GPU
+consumers and host readback. Queue order alone is not a memory barrier. `submit`
+prepares command resources and the retention-list node before calling Vulkan;
+success consumes the public batch and issues a CompletionPoint. Failure publishes
+no point and leaves earlier writes available for retry, except a lost device stops
+new work. Caller data may be released after `write`, staging only after completion.
+
+Context reclaims confirmed packets during poll/wait, frame attempts, buffer
+creation and later upload activity; shutdown drains their last committed point.
+Timeout or a failed counter query keeps retention intact. Reclamation destroys
+command pools before dropping buffer owners. Internal upload statistics report
+pending batches and reserved pending/peak staging bytes. Frame arenas and staging
+page capacity reuse remain planned; explicit batch writes may allocate metadata
+and native buffers.
+
 Renderer parameter edits update CPU state, then copy a snapshot into the next safe
 frame slot. A host-visible allocation is not permission to modify an in-flight slot.
 

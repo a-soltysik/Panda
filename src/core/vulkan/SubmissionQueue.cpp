@@ -150,6 +150,16 @@ auto SubmissionQueue::submit(vk::CommandBuffer command, vk::Semaphore acquire, v
     return value;
 }
 
+auto SubmissionQueue::getCompletedValue() const -> std::uint64_t
+{
+    return _completed;
+}
+
+auto SubmissionQueue::isDeviceLost() const -> bool
+{
+    return _deviceLost;
+}
+
 auto SubmissionQueue::getPoint(std::uint64_t value) const -> CompletionPoint
 {
     expect(value != 0 && value <= _committed, "Completion point must identify committed work");

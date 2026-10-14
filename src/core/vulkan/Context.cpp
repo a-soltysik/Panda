@@ -19,6 +19,7 @@
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
+#include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
 #include <ranges>
 #include <string>
@@ -28,6 +29,9 @@
 
 #include "DeviceSelection.hpp"
 #include "Presentation.hpp"
+#include "SubmissionQueue.hpp"
+#include "UploadBatchImpl.hpp"
+#include "UploadManager.hpp"
 #include "VulkanError.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MemoryPool.hpp"
@@ -297,38 +301,29 @@ auto Context::InstanceServices::create(const vk::raii::Context& loader,
                              .surface = std::move(*ownedSurface)};
 }
 
-namespace
-{
-auto makePresentation(const WindowSurface* surface,
-                      const detail::SelectedDevice& selected,
-                      const vk::raii::Device& device,
-                      vk::SurfaceKHR nativeSurface) -> Result<std::unique_ptr<detail::Presentation>>
-{
-    if (surface == nullptr)
-    {
-        return std::unique_ptr<detail::Presentation> {};
-    }
-    return detail::Presentation::create({.physicalDevice = selected.physicalDevice,
-                                         .device = device,
-                                         .surface = nativeSurface,
-                                         .window = *surface,
-                                         .deviceInfo = selected.info});
-}
-}
-
 class Context::Impl
 {
 public:
     [[nodiscard]] auto initializeDevice(const WindowSurface* surface) -> Result<void>;
+    [[nodiscard]] auto ensureUploads() -> Result<void>;
+    [[nodiscard]] auto collectUploads() -> Result<void>;
+    void collectCompletedUploads();
+    void drain();
 
 private:
     friend class Context;
+
+    [[nodiscard]] auto initializePresentation(const WindowSurface& surface,
+                                              const detail::SelectedDevice& selected,
+                                              vk::SurfaceKHR nativeSurface) -> Result<void>;
 
     vk::raii::Context _loader {vkGetInstanceProcAddr};
     InstanceServices _services;
     vk::raii::PhysicalDevice _physicalDevice {nullptr};
     vk::raii::Device _device {nullptr};
     std::unique_ptr<detail::MemoryPool> _memoryPool;
+    std::unique_ptr<detail::SubmissionQueue> _submissions;
+    std::unique_ptr<detail::UploadManager> _uploads;
     std::unique_ptr<detail::Presentation> _presentation;
     ContextDeviceInfo _info;
 };
@@ -349,14 +344,83 @@ auto Context::Impl::initializeDevice(const WindowSurface* surface) -> Result<voi
     }
     _device = std::move(*createdDevice);
     _memoryPool = detail::MemoryPool::create(_physicalDevice, _device);
-    auto createdPresentation = makePresentation(surface, *selected, _device, nativeSurface);
-    if (!createdPresentation)
+    if (surface != nullptr)
     {
-        return std::unexpected {std::move(createdPresentation.error())};
+        const auto initialized = initializePresentation(*surface, *selected, nativeSurface);
+        if (!initialized)
+        {
+            return std::unexpected {initialized.error()};
+        }
     }
-    _presentation = std::move(*createdPresentation);
     _info = std::move(selected->info);
     return {};
+}
+
+auto Context::Impl::initializePresentation(const WindowSurface& surface,
+                                           const detail::SelectedDevice& selected,
+                                           vk::SurfaceKHR nativeSurface) -> Result<void>
+{
+    _submissions = std::make_unique<detail::SubmissionQueue>(_device, selected.info.queueFamily);
+    auto presentation = detail::Presentation::create({.physicalDevice = selected.physicalDevice,
+                                                      .device = _device,
+                                                      .surface = nativeSurface,
+                                                      .window = surface,
+                                                      .deviceInfo = selected.info,
+                                                      .submissions = *_submissions});
+    if (!presentation)
+    {
+        return std::unexpected {presentation.error()};
+    }
+    _presentation = std::move(*presentation);
+    return {};
+}
+
+auto Context::Impl::ensureUploads() -> Result<void>
+{
+    if (_uploads)
+    {
+        return {};
+    }
+    if (!_submissions)
+    {
+        auto submissions = std::make_unique<detail::SubmissionQueue>(_device, _info.queueFamily);
+        const auto initialized = submissions->initialize(*_physicalDevice);
+        if (!initialized)
+        {
+            return std::unexpected {initialized.error()};
+        }
+        _submissions = std::move(submissions);
+    }
+    _uploads = std::make_unique<detail::UploadManager>(_device, *_memoryPool, *_submissions, _info.queueFamily);
+    return {};
+}
+
+auto Context::Impl::collectUploads() -> Result<void>
+{
+    return _uploads ? _uploads->collect() : Result<void> {};
+}
+
+void Context::Impl::collectCompletedUploads()
+{
+    if (_uploads)
+    {
+        _uploads->collectCompleted();
+    }
+}
+
+void Context::Impl::drain()
+{
+    if (_uploads)
+    {
+        expect(!_uploads->hasActiveBatches(), "Context destroyed with live upload batches");
+        static constexpr auto timeoutNanoseconds = std::uint64_t {10'000'000'000};
+        expect(_uploads->drain(timeoutNanoseconds), "Cannot safely drain upload submissions");
+    }
+    if (_presentation)
+    {
+        expect(_presentation->drain(), "Cannot safely drain window presentation");
+    }
+    expect(_memoryPool->getStats().liveBytes == 0, "Context destroyed with live Buffer owners");
 }
 
 Context::Context(std::unique_ptr<Impl> implementation) noexcept
@@ -373,11 +437,7 @@ Context::~Context() noexcept
 {
     if (_implementation)
     {
-        expect(_implementation->_memoryPool->getStats().liveBytes == 0, "Context destroyed with live Buffer owners");
-        if (_implementation->_presentation)
-        {
-            expect(_implementation->_presentation->drain(), "Cannot safely drain window presentation");
-        }
+        _implementation->drain();
     }
 }
 
@@ -429,34 +489,58 @@ auto Context::presentClearFrame() const -> Result<FrameResult>
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to present a frame")};
     }
-    return _implementation->_presentation->presentClearFrame();
+    return _implementation->collectUploads().and_then([&] {
+        return _implementation->_presentation->presentClearFrame();
+    });
 }
 
 auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    return detail::BufferResource::create(_implementation->_device, *_implementation->_memoryPool, description)
+    return _implementation->collectUploads()
+        .and_then([&] {
+            return detail::BufferResource::create(_implementation->_device, *_implementation->_memoryPool, description);
+        })
         .transform([](std::shared_ptr<detail::BufferResource> resource) {
             return Buffer {std::move(resource)};
         });
 }
 
+auto Context::createUploadBatch() const -> Result<UploadBatch>
+{
+    if (!_implementation)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Cannot create a batch from a moved-from Context")};
+    }
+    return _implementation->ensureUploads().transform([&] {
+        return UploadBatch {_implementation->_uploads->createBatch()};
+    });
+}
+
 auto Context::poll(CompletionPoint point) const -> Result<bool>
 {
-    if (!_implementation || !_implementation->_presentation)
+    if (!_implementation || !_implementation->_submissions)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Context")};
     }
-    return _implementation->_presentation->getSubmissions().poll(point);
+    return _implementation->_submissions->poll(point).transform([&](bool completed) {
+        _implementation->collectCompletedUploads();
+        return completed;
+    });
 }
 
 auto Context::wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>
 {
-    if (timeout.count() < 0 || !_implementation || !_implementation->_presentation)
+    if (timeout.count() < 0 || !_implementation || !_implementation->_submissions)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Context")};
     }
-    return _implementation->_presentation->getSubmissions().wait(point, static_cast<std::uint64_t>(timeout.count()));
+    return _implementation->_submissions->wait(point, static_cast<std::uint64_t>(timeout.count()))
+        .transform([&](WaitStatus status) {
+            _implementation->collectCompletedUploads();
+            return status;
+        });
 }
 
 }

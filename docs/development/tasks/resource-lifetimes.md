@@ -18,7 +18,7 @@ retirement and in-flight replacement. Verify each boundary before expanding.
 
 ## Acceptance
 
-CPU split/coalesce/overflow tests; GPU alignment, noncoherent flush, failed growth and in-flight release tests with validation.
+CPU split/coalesce/overflow tests; GPU copy-range ordering and visibility, noncoherent flush, failed growth and in-flight release tests with validation.
 
 Learning: Explain why a live CPU handle and completed GPU use are separate conditions.
 
@@ -60,9 +60,9 @@ ordinary block per partition is cached; budgets may reclaim empty caches too.
 `MemoryAllocation` is a move-only RAII owner containing a borrowed pool pointer
 and `id`. Destruction/reset delegates release to the pool. The pool outlives its
 owners, and owners outlive GPU use and bound native resources. The wrapper has no
-GPU retirement state: range lifetime follows ownership. The future submission
-layer will retain resource owners until GPU completion, then release them through
-normal RAII destruction. Pending-retirement accounting belongs to that layer.
+GPU retirement state: range lifetime follows ownership. The upload submission
+layer retains staging and destination owners until GPU completion, then releases
+them through normal RAII destruction. Pending-retirement accounting belongs to that layer.
 Current counters cover this manager's native allocations, committed blocks and
 live reserved ranges. Each Context owns one manager for Panda allocations.
 
@@ -70,9 +70,10 @@ live reserved ranges. Each Context owns one manager for Panda allocations.
 memory-requirement selection, pooled/dedicated allocation and binding succeed.
 Shared resource state destroys `VkBuffer` before its `MemoryAllocation` releases
 the range. Context has stable heap-owned state; moving it preserves buffer owners.
-Context destruction rejects live owners before tearing down the device. Buffer
+Context destruction drains submitted uploads before rejecting remaining external
+owners and tearing down the device. Buffer
 memory intent selects device-local, upload or readback memory, without exposing
-CPU mapping. Native buffer views and resource submission remain planned.
+CPU mapping. Public native buffer views remain planned.
 
 Public Vulkan fields and window-surface signatures use Vulkan-Hpp flags and
 borrowed `vk` handles. `makeVulkanError` accepts `vk::Result`. Internally, surface
@@ -80,28 +81,30 @@ queries and RAII adoption pass those handles directly; C types remain only at
 external ABI boundaries. Context initializes one stable physical-device wrapper
 before logical-device creation and shares it with its allocator.
 
-`CompletionPoint` identifies successfully committed work without retaining Context
-or resources. The presentation timeline is owned by an internal `SubmissionQueue`;
-frame and acquire-retirement submissions use its single monotonic clock. Failed
-submit does not consume a value. `FrameResult::completion` is empty for skipped
-or suspended frames. `Context::poll` queries GPU completion, and `Context::wait`
-takes a nonnegative nanosecond timeout with distinct Completed/Timeout outcomes.
-Empty and foreign points are rejected. Context moves preserve issued points;
-headless contexts currently issue no points. Device loss stops further submissions
-and waits. Outstanding values respect the physical device's timeline limit; presentation
-checks available capacity before acquiring a swapchain image. Failed acquire
-retirement without a committed value rejects drain; current Context destruction
-treats this unsafe teardown as a fatal contract failure. A timed-out committed
-retirement can be drained again.
-The window example keeps the last issued point and explicitly waits at normal
-shutdown without adding a CPU wait after each frame.
-This layer currently serves presentation; uploads and retained resource packets
-remain planned. Completion of this clock does not mean display completion.
+`CompletionPoint` identifies committed work without retaining Context or resources.
+Context owns one submission clock shared by presentation and uploads, initialized
+lazily without a window. Empty/foreign points are rejected; Context moves preserve
+issued points and unsubmitted batches. Failed submit does not consume a value,
+device loss stops new work, and outstanding values respect device limits. GPU
+completion and presentation completion are tracked separately.
 
-The [buffer allocation example](../../../examples/buffer_allocation/README.md)
-uses public creation, resource diagnostics and RAII shutdown without a window, uploads or submitted
-GPU work. Explicit initialization, labels, recoverable close and retained
-in-flight use remain planned.
+`UploadBatch` is a move-only borrower until submitted or destroyed. Each `write`
+validates its destination and copies caller bytes into owned, flushed staging.
+Ordered copies use conservative dependencies for earlier and later consumers.
+Success consumes the public batch and transfers command/staging/destination owners
+to Context's pending list. Only confirmed completion permits reclamation, through
+ordinary RAII. Timeout and failed completion queries preserve pending owners.
+Unsubmitted batch destruction cancels its writes. Context rejects live unsubmitted
+batches and drains submitted packets before checking external buffer owners.
+
+Presentation checks clock capacity before acquire. Failed acquire retirement
+without a committed value rejects drain; current Context destruction treats
+unsafe teardown as fatal. A timed-out committed retirement can be drained again.
+The window example waits for its last frame at normal shutdown. The
+[buffer example](../../../examples/buffer_allocation/README.md) creates a storage
+buffer, uploads four values through the public API, waits and releases its owners.
+Explicit initialization policies, labels, recoverable close, textures/meshes and
+frame arenas remain planned.
 
 The executable `panda_unit_range_allocator` demonstrates split/alignment, all six
 release orders for three adjacent ranges, fragmented exhaustion, invalid requests
@@ -117,78 +120,41 @@ by this scenario.
 
 ## Verification
 
-Current allocator, Buffer and completion infrastructure, with CUDA disabled.
-Windows used MSVC, Vulkan SDK 1.4.341.1, clang-tidy 22.1.8 and cppcheck 2.19;
-Linux used GCC 16.0.1, Vulkan 1.4.341, clang-tidy 22.1.2 and cppcheck 2.19
-in the managed Ubuntu WSL environment.
+UploadBatch and the current resource-lifetime infrastructure were verified on
+Windows and in Ubuntu Linux WSL, with optional CUDA disabled.
 
-- Windows: the complete `msvc-quality` build passed warnings-as-errors,
-  clang-tidy, cppcheck and formatting. `ctest --preset msvc-quality -LE system`
-  passed 217 cases: 189 CPU behavior cases and 28 formatting checks.
-- Linux: `scripts/build-wsl.ps1 -Preset gcc-quality -RunTests -Jobs 2`
-  built all quality targets and ran 230 cases without failures, including 189 CPU
-  behavior cases, formatting and 13 native cases. Three noncoherent allocation
-  variants were skipped because no compatible memory type was available.
-- `all_verify_interface_header_sets` passed on both platforms, including the new
-  CompletionPoint header. The `msvc-unity` and `gcc-unity` builds passed for Core,
-  Tools and examples. `gcc-docs` generated the Doxygen API without errors.
-- `gcc-sanitizers` passed all 189 noninteractive cases under ASan/UBSan, with no
-  findings. Windows ASan was not run for this slice.
-- `WindowedContextSystem` passed both cases on Windows RTX 4070 Ti and Linux
-  llvmpipe (LLVM 21.1.8). The scenario waits and polls real frame points, including
-  one issued before moving Context, and checks resize, suspension and teardown.
-  Verbose logs contain no Vulkan validation errors. Windows disabled only implicit
-  layers in the test process because the installed ReShade layer failed to load;
-  the explicitly requested Khronos validation remained enabled. Synchronization
-  validation and a physical Linux GPU were not verified.
-- The window example compiles on both platforms and waits for the last committed
-  frame at normal shutdown. The buffer example still creates and releases a
-  4096-byte storage buffer without submitting work that uses it.
-- The documentation checker and `git diff --check` passed.
-
-CPU tests cover range alignment/coalescing/overflow, atom isolation and cache
-rounding, pool selection/budgets/fallback, shared Buffer ownership and rollback,
-and destruction order. The completion cases additionally cover successful commit,
-failed-value reuse, timeout and cached completion, empty/foreign points, moved
-Contexts, device loss, invalid counter reads and outstanding-value limits.
-Presentation tests check capacity before acquire, submit-failure retirement,
-failed retirement rejecting drain, timeout retry, and empty/committed points
-when swapchain recreation is required.
-
-`gcc-coverage` passed 189 CPU cases after clearing generated profiles. gcovr 7.2
-with `gcov-16` measured production `src/` coverage: 1896/2041 executable lines
-(92.9%), 276/279 functions (98.9%) and 1515/2359 raw compiler branches (64.2%).
-The local report is `.cache/delivery-coverage/`.
-
-| Implementation | Executable lines | Raw compiler branches |
-| --- | --- | --- |
-| CompletionPoint | 3/3 | 3/4 |
-| SubmissionQueue | 114/115 | 87/124 |
-| Context | 192/204 | 147/213 |
-| Presentation | 305/349 | 231/420 |
-
-All 160 other executable added/modified production lines run; the one unexecuted
-line rejects an exhausted 64-bit submission counter. Tests do not mutate private
-state to force that guard. Raw branches include compiler-generated exception
-edges and are not source decision coverage. Fatal child-process paths cannot
-reliably flush coverage counters. Existing unexecuted presentation/capability paths
-remain visible in the whole-file report.
-
-Buffer and the five allocator/resource implementation files retain 484/486
-executed lines, with all 80 measured functions executed. The two pool guards
-cover exhausted ids and a non-exhaustion placement error from a previously
-validated existing block. Native allocation cases establish coherent mapping,
-binding and release; controlled callbacks cover noncoherent cache behavior.
-Native noncoherent flush/invalidate, resource upload visibility and in-flight
-Buffer replacement/release remain unverified. Passing frame completion checks
-establish no submitted use of Buffer owners. The completion/lifetime learning
-checkpoint is confirmed; upload/retirement learning and full task acceptance
-remain outstanding.
+- The complete `msvc-quality` build passed warnings-as-errors, clang-tidy,
+  cppcheck, formatting and public-header checks. `ctest --preset msvc-quality`
+  ran 294 cases: 291 passed and three noncoherent memory variants skipped because
+  the Windows GPU exposes no compatible noncoherent host-visible type. The test
+  process cleared `VK_INSTANCE_LAYERS`, `VK_LAYER_DEBUG_ACTION` and
+  `VK_LAYER_LOG_FILENAME`, then set `VK_LOADER_LAYERS_DISABLE=~implicit~` to
+  isolate installed overlay layers; Khronos validation remained enabled.
+- The `gcc-quality` build passed in Ubuntu WSL, including clang-tidy, cppcheck,
+  formatting and public-header checks. GCC coverage ran 227/227 CPU and
+  integration cases; the five `UploadSystem` GPU cases also passed on llvmpipe
+  with validation enabled.
+- `gcc-docs` generated the public Doxygen API. The `buffer_allocation` example
+  built on Windows and WSL, then ran successfully on WSL llvmpipe: it uploaded
+  four values, waited for completion and released its owners.
+- A clean gcovr run over `src/core/` measured 1,847/1,929 executable lines
+  (95.7%), 305/306 functions (99.7%) and 1,495/2,287 raw branches (65.4%).
+  `UploadBatch.cpp`, `UploadBatchImpl.cpp` and `UploadCommand.cpp` reached 100%;
+  `UploadManager.cpp` reached 93/95 lines. Its remaining lines are the queue's
+  outstanding-value refusal path and the defensive staging-byte overflow guard.
+  The UploadSystem cases were included separately from the noninteractive run.
+- Unit and integration cases cover range alignment/coalescing/overflow, pool
+  growth fallback, noncoherent atom rounding and flush errors, upload preparation
+  and submit failures, retry, overlapping copy order, timeout, completed-prefix
+  reclamation, owner retention and Context destruction. Native noncoherent cache
+  operations remain unverified because no tested GPU exposed a compatible type;
+  controlled Vulkan callbacks cover that behavior. The documentation checker
+  and `git diff --check` passed.
 
 ## Remaining work
 
-Implement Texture/Mesh handles and uploads, then frame arenas,
-recoverable Context close and GPU retirement. Native noncoherent
-cache-operation validation, failed growth and in-flight replacement/release evidence,
-an upload/GPU-use example and the maintainer learning handoff remain
-required before task review. CPU passes do not establish GPU lifetime safety.
+Texture/Mesh handles and uploads, frame arenas and recoverable Context close
+remain planned parts of this task. Native noncoherent cache-operation validation
+needs a device exposing that memory type. The maintainer learning handoff and
+acceptance of the remaining task scope are still pending; passing tests do not
+replace that handoff.

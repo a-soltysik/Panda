@@ -27,6 +27,8 @@ public:
     [[nodiscard]] auto submit(vk::CommandBuffer command, vk::Semaphore acquire, vk::Semaphore finished)
         -> Result<std::uint64_t>;
     [[nodiscard]] auto getPoint(std::uint64_t value) const -> CompletionPoint;
+    [[nodiscard]] auto getCompletedValue() const -> std::uint64_t;
+    [[nodiscard]] auto isDeviceLost() const -> bool;
     [[nodiscard]] auto poll(CompletionPoint point) -> Result<bool>;
     [[nodiscard]] auto wait(CompletionPoint point, std::uint64_t timeout) -> Result<WaitStatus>;
     [[nodiscard]] auto waitValue(std::uint64_t value, std::uint64_t timeout) -> Result<WaitStatus>;
@@ -43,7 +45,7 @@ private:
     const vk::raii::Device& _device;
     vk::raii::Queue _queue;
     vk::raii::Semaphore _timeline {nullptr};
-    std::uint64_t _id;
+    std::uint64_t _id {0};
     std::uint64_t _committed {0};
     std::uint64_t _completed {0};
     std::uint64_t _maximumDifference {0};

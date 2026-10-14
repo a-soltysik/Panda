@@ -27,6 +27,7 @@ struct PresentationCreateInfo
     vk::SurfaceKHR surface;
     const WindowSurface& window;
     ContextDeviceInfo deviceInfo;
+    SubmissionQueue& submissions;
 };
 
 class Presentation final
@@ -43,7 +44,6 @@ public:
 
     [[nodiscard]] auto presentClearFrame() -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto drain() -> std::expected<void, Error>;
-    [[nodiscard]] auto getSubmissions() -> SubmissionQueue&;
 
 private:
     struct FrameSlot
@@ -110,7 +110,7 @@ private:
     vk::SurfaceKHR _surface {};
     const WindowSurface& _window;
     ContextDeviceInfo _deviceInfo;
-    std::unique_ptr<SubmissionQueue> _submissions;
+    SubmissionQueue& _submissions;
     std::array<FrameSlot, 2> _slots;
     std::optional<SwapchainGeneration> _generation;
     std::size_t _nextSlot {0};

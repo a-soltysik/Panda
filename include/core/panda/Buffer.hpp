@@ -67,6 +67,7 @@ public:
 
 private:
     friend class Context;
+    friend class detail::BufferResource;
     explicit Buffer(std::shared_ptr<detail::BufferResource> resource);
     std::shared_ptr<detail::BufferResource> _resource;
 };

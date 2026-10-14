@@ -35,6 +35,15 @@ if(MSVC AND PANDA_ENABLE_SANITIZER_ADDRESS AND PANDA_WARNINGS_AS_ERRORS)
 endif()
 add_library(PandaTest::SwapchainGenerationMock ALIAS panda_test_swapchain_generation_mock)
 
+panda_add_mock(panda_test_submission_queue_mock
+    REPLACES panda::detail::SubmissionQueue
+    API_LIBRARY Panda::Panda
+    SOURCES panda/core/SubmissionQueueStub.cpp
+    LIBRARIES PandaTest::MockHeaders)
+target_include_directories(panda_test_submission_queue_mock PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan")
+target_compile_definitions(panda_test_submission_queue_mock PRIVATE VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
+add_library(PandaTest::SubmissionQueueMock ALIAS panda_test_submission_queue_mock)
+
 panda_add_mock(panda_test_core_version_mock
     REPLACES panda::version
     API_LIBRARY Panda::Panda

@@ -6,10 +6,14 @@ panda_add_component(panda_core
         Error.cpp
         Buffer.cpp
         CompletionPoint.cpp
+        UploadBatch.cpp
         vulkan/Context.cpp
         vulkan/DeviceSelection.cpp
         vulkan/Presentation.cpp
         vulkan/SubmissionQueue.cpp
+        vulkan/UploadBatchImpl.cpp
+        vulkan/UploadManager.cpp
+        vulkan/UploadCommand.cpp
         vulkan/SwapchainGeneration.cpp
         vulkan/VulkanError.cpp
         vulkan/resources/RangeAllocator.cpp
