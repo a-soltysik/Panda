@@ -9,6 +9,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/UploadBatch.hpp>
 #include <string>
 
 namespace panda
@@ -95,7 +96,7 @@ public:
 
     auto operator=(Context&&) -> Context& = delete;
 
-    /// @brief Rejects live Buffer owners, drains presentation and releases Vulkan objects.
+    /// @brief Rejects live upload batches, drains submitted uses/presentation, then rejects live Buffer owners.
     /// An ownership violation is fatal; recoverable close is not implemented yet.
     ~Context() noexcept;
 
@@ -110,6 +111,12 @@ public:
     /// @return A shared resource owner or a validation/allocation/backend error.
     /// Context outlives all copies. May allocate; submits no work and does not wait.
     [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
+
+    /// @brief Creates an empty batch borrowing this Context; may allocate.
+    /// @return A batch or an initialization/backend error. Submits no work and performs no completion wait.
+    /// Unsubmitted batches must be destroyed before Context; successful submit
+    /// consumes the batch and transfers GPU-use retention to Context.
+    [[nodiscard]] auto createUploadBatch() const -> Result<UploadBatch>;
 
     /// @brief Queries GPU completion without waiting; does not indicate display/presentation completion.
     /// @return Completion state or a backend error; empty/foreign tokens are InvalidArgument.

@@ -27,6 +27,7 @@
 namespace
 {
 using panda::test::fakeVulkanHandle;
+using panda::test::genericVulkanProc;
 using testing::_;
 using testing::DoAll;
 using testing::NotNull;
@@ -47,12 +48,6 @@ auto makeExtension(std::string_view name) -> VkExtensionProperties
     auto extension = VkExtensionProperties {};
     std::ranges::copy(name, std::span {extension.extensionName}.begin());
     return extension;
-}
-
-template <typename Function>
-auto genericVulkanProc(Function function) -> PFN_vkVoidFunction
-{
-    return reinterpret_cast<PFN_vkVoidFunction>(function);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 }
 
 void expectValidationPrerequisites(panda::test::VulkanMock& vulkan, bool debugUtilsAvailable = true)

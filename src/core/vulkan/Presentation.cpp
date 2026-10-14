@@ -142,16 +142,11 @@ Presentation::Presentation(const PresentationCreateInfo& info)
       _surface {info.surface},
       _window {info.window},
       _deviceInfo {info.deviceInfo},
-      _submissions {std::make_unique<SubmissionQueue>(info.device, info.deviceInfo.queueFamily)}
+      _submissions {info.submissions}
 {
 }
 
 Presentation::~Presentation() = default;
-
-auto Presentation::getSubmissions() -> SubmissionQueue&
-{
-    return *_submissions;
-}
 
 auto Presentation::create(const PresentationCreateInfo& info) -> std::expected<std::unique_ptr<Presentation>, Error>
 {
@@ -312,7 +307,7 @@ auto Presentation::releaseImage(std::uint32_t index) const -> std::expected<void
 
 auto Presentation::abortAcquire(FrameSlot& slot, std::uint32_t index) -> std::expected<void, Error>
 {
-    const auto submitted = _submissions->submit({}, *slot.acquire, {});
+    const auto submitted = _submissions.submit({}, *slot.acquire, {});
     if (!submitted)
     {
         _faulted = true;
@@ -340,7 +335,7 @@ auto Presentation::acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage,
     {
         return std::unexpected {waited.error()};
     }
-    if (const auto ready = _submissions->prepareSubmit(); !ready)
+    if (const auto ready = _submissions.prepareSubmit(); !ready)
     {
         return std::unexpected {ready.error()};
     }
@@ -403,7 +398,7 @@ auto Presentation::waitImage(FrameSlot& slot, std::uint32_t index) -> std::expec
 
 auto Presentation::submitRecordedFrame(const FrameSlot& slot, const SwapchainImage& image) -> Result<std::uint64_t>
 {
-    return _submissions->submit(slot.command, *slot.acquire, *image.renderFinished);
+    return _submissions.submit(slot.command, *slot.acquire, *image.renderFinished);
 }
 
 auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, std::uint32_t index)
@@ -493,9 +488,9 @@ auto Presentation::presentFrame(SwapchainImage& image,
         {
             _recreatePending = true;
             return FrameResult {.status = FrameResult::Status::RecreatePending,
-                                .completion = _submissions->getPoint(completion)};
+                                .completion = _submissions.getPoint(completion)};
         }
-        return FrameResult {.status = FrameResult::Status::Presented, .completion = _submissions->getPoint(completion)};
+        return FrameResult {.status = FrameResult::Status::Presented, .completion = _submissions.getPoint(completion)};
     }
     if (presented == vk::Result::eErrorDeviceLost)
     {
@@ -554,7 +549,7 @@ auto Presentation::initializeFrameResources() -> std::expected<void, Error>
     {
         return std::unexpected {resolved.error()};
     }
-    if (const auto initialized = _submissions->initialize(_physicalDevice); !initialized)
+    if (const auto initialized = _submissions.initialize(_physicalDevice); !initialized)
     {
         return initialized;
     }
@@ -586,7 +581,7 @@ auto Presentation::initializeWindowPresentation() -> std::expected<void, Error>
 auto Presentation::waitCompletion(std::uint64_t value) const -> std::expected<void, Error>
 {
     static constexpr auto timeoutNanoseconds = std::uint64_t {10'000'000'000};
-    return _submissions->waitValue(value, timeoutNanoseconds).and_then([](WaitStatus status) -> Result<void> {
+    return _submissions.waitValue(value, timeoutNanoseconds).and_then([](WaitStatus status) -> Result<void> {
         if (status == WaitStatus::Timeout)
         {
             return std::unexpected {makeError(ErrorCode::Timeout, "GPU completion wait timed out")};

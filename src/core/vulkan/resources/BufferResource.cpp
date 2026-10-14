@@ -6,11 +6,14 @@
 
 #include "BufferResource.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <memory>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
+#include <span>
 #include <utility>
 
 #include "MemoryAllocation.hpp"
@@ -75,6 +78,11 @@ auto createNativeBuffer(const vk::raii::Device& device, const BufferDesc& descri
 }
 }
 
+auto BufferResource::getResource(const Buffer& buffer) -> const std::shared_ptr<BufferResource>&
+{
+    return buffer._resource;
+}
+
 auto BufferResource::create(const vk::raii::Device& device, MemoryPool& pool, const BufferDesc& description)
     -> Result<std::shared_ptr<BufferResource>>
 {
@@ -102,7 +110,9 @@ auto BufferResource::create(const vk::raii::Device& device, MemoryPool& pool, co
 BufferResource::BufferResource(MemoryPool& pool, vk::raii::Buffer buffer, const BufferDesc& description)
     : _pool {&pool},
       _buffer {std::move(buffer)},
-      _size {description.size}
+      _size {description.size},
+      _usage {description.usage},
+      _intent {description.memory}
 {
 }
 
@@ -137,5 +147,54 @@ auto BufferResource::bind(const vk::raii::Device& device, const BufferDesc& desc
 auto BufferResource::getSize() const -> std::uint64_t
 {
     return _size;
+}
+
+auto BufferResource::getReservedSize() const -> std::uint64_t
+{
+    return _allocation.getRange().size;
+}
+
+auto BufferResource::getNative() const -> vk::Buffer
+{
+    return *_buffer;
+}
+
+auto BufferResource::getUsage() const -> vk::BufferUsageFlags
+{
+    return _usage;
+}
+
+auto BufferResource::belongsTo(const MemoryPool& pool) const -> bool
+{
+    return _pool == &pool;
+}
+
+auto BufferResource::getMappedBytes() const -> Result<std::span<std::byte>>
+{
+    return _allocation.getMappedBytes().and_then([&](std::span<std::byte> mapped) -> Result<std::span<std::byte>> {
+        if (_size > mapped.size())
+        {
+            return std::unexpected {
+                makeError(ErrorCode::BackendFailure, "Buffer payload exceeds its mapped allocation")};
+        }
+        return mapped.first(static_cast<std::size_t>(_size));
+    });
+}
+
+auto BufferResource::writeMapped(std::span<const std::byte> bytes) const -> Result<void>
+{
+    if (_intent != BufferMemory::Upload || bytes.empty() || bytes.size() > _size)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Mapped upload bytes exceed staging buffer")};
+    }
+    return getMappedBytes().and_then([&](std::span<std::byte> mapped) {
+        std::ranges::copy(bytes, mapped.begin());
+        return _allocation.flush(0, bytes.size());
+    });
+}
+
+auto BufferResource::invalidate(std::uint64_t offset, std::uint64_t size) const -> Result<void>
+{
+    return _allocation.invalidate(offset, size);
 }
 }

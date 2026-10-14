@@ -10,6 +10,7 @@
 
 #include "ScopedMock.hpp"
 #include "VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 
 extern "C" {
 VKAPI_ATTR auto VKAPI_CALL vkGetSemaphoreCounterValue(VkDevice device, VkSemaphore semaphore, std::uint64_t* pValue)
@@ -213,6 +214,19 @@ VKAPI_ATTR auto VKAPI_CALL vkBeginCommandBuffer(VkCommandBuffer commandBuffer,
 {
     return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkBeginCommandBuffer(commandBuffer,
                                                                                                   beginInfo);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdCopyBuffer(VkCommandBuffer commandBuffer,
+                                           VkBuffer srcBuffer,
+                                           VkBuffer dstBuffer,
+                                           std::uint32_t regionCount,
+                                           const VkBufferCopy* pRegions)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdCopyBuffer(commandBuffer,
+                                                                                      srcBuffer,
+                                                                                      dstBuffer,
+                                                                                      regionCount,
+                                                                                      pRegions);
 }
 
 VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier2(VkCommandBuffer commandBuffer, const VkDependencyInfo* dependencyInfo)
@@ -508,14 +522,6 @@ namespace panda::test
 {
 namespace
 {
-template <typename Function>
-auto genericProc(Function function) noexcept -> PFN_vkVoidFunction
-{
-    // Vulkan specifies conversion between its entry-point pointer types.
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    return reinterpret_cast<PFN_vkVoidFunction>(function);
-}
-
 struct EntryPoint
 {
     std::string_view name;
@@ -523,75 +529,81 @@ struct EntryPoint
 };
 
 const auto entryPoints = std::array {
-    EntryPoint {.name = "vkGetSemaphoreCounterValue",                .function = genericProc(&vkGetSemaphoreCounterValue)     },
-    EntryPoint {.name = "vkCreateBuffer",                            .function = genericProc(&vkCreateBuffer)                 },
-    EntryPoint {.name = "vkDestroyBuffer",                           .function = genericProc(&vkDestroyBuffer)                },
-    EntryPoint {.name = "vkGetBufferMemoryRequirements2",            .function = genericProc(&vkGetBufferMemoryRequirements2) },
-    EntryPoint {.name = "vkBindBufferMemory2",                       .function = genericProc(&vkBindBufferMemory2)            },
-    EntryPoint {.name = "vkAllocateMemory",                          .function = genericProc(&vkAllocateMemory)               },
-    EntryPoint {.name = "vkFreeMemory",                              .function = genericProc(&vkFreeMemory)                   },
-    EntryPoint {.name = "vkMapMemory",                               .function = genericProc(&vkMapMemory)                    },
-    EntryPoint {.name = "vkUnmapMemory",                             .function = genericProc(&vkUnmapMemory)                  },
-    EntryPoint {.name = "vkFlushMappedMemoryRanges",                 .function = genericProc(&vkFlushMappedMemoryRanges)      },
-    EntryPoint {.name = "vkInvalidateMappedMemoryRanges",            .function = genericProc(&vkInvalidateMappedMemoryRanges) },
-    EntryPoint {.name = "vkGetPhysicalDeviceProperties2",            .function = genericProc(&vkGetPhysicalDeviceProperties2) },
+    EntryPoint {.name = "vkCmdCopyBuffer",                           .function = genericVulkanProc(&vkCmdCopyBuffer)              },
+    EntryPoint {.name = "vkGetSemaphoreCounterValue",                .function = genericVulkanProc(&vkGetSemaphoreCounterValue)   },
+    EntryPoint {.name = "vkCreateBuffer",                            .function = genericVulkanProc(&vkCreateBuffer)               },
+    EntryPoint {.name = "vkDestroyBuffer",                           .function = genericVulkanProc(&vkDestroyBuffer)              },
+    EntryPoint {.name = "vkGetBufferMemoryRequirements2",
+                .function = genericVulkanProc(&vkGetBufferMemoryRequirements2)                                                    },
+    EntryPoint {.name = "vkBindBufferMemory2",                       .function = genericVulkanProc(&vkBindBufferMemory2)          },
+    EntryPoint {.name = "vkAllocateMemory",                          .function = genericVulkanProc(&vkAllocateMemory)             },
+    EntryPoint {.name = "vkFreeMemory",                              .function = genericVulkanProc(&vkFreeMemory)                 },
+    EntryPoint {.name = "vkMapMemory",                               .function = genericVulkanProc(&vkMapMemory)                  },
+    EntryPoint {.name = "vkUnmapMemory",                             .function = genericVulkanProc(&vkUnmapMemory)                },
+    EntryPoint {.name = "vkFlushMappedMemoryRanges",                 .function = genericVulkanProc(&vkFlushMappedMemoryRanges)    },
+    EntryPoint {.name = "vkInvalidateMappedMemoryRanges",
+                .function = genericVulkanProc(&vkInvalidateMappedMemoryRanges)                                                    },
+    EntryPoint {.name = "vkGetPhysicalDeviceProperties2",
+                .function = genericVulkanProc(&vkGetPhysicalDeviceProperties2)                                                    },
     EntryPoint {.name = "vkGetPhysicalDeviceMemoryProperties",
-                .function = genericProc(&vkGetPhysicalDeviceMemoryProperties)                                                 },
-    EntryPoint {.name = "vkEnumerateInstanceVersion",                .function = genericProc(&vkEnumerateInstanceVersion)     },
+                .function = genericVulkanProc(&vkGetPhysicalDeviceMemoryProperties)                                               },
+    EntryPoint {.name = "vkEnumerateInstanceVersion",                .function = genericVulkanProc(&vkEnumerateInstanceVersion)   },
     EntryPoint {.name = "vkEnumerateInstanceLayerProperties",
-                .function = genericProc(&vkEnumerateInstanceLayerProperties)                                                  },
+                .function = genericVulkanProc(&vkEnumerateInstanceLayerProperties)                                                },
     EntryPoint {.name = "vkEnumerateInstanceExtensionProperties",
-                .function = genericProc(&vkEnumerateInstanceExtensionProperties)                                              },
-    EntryPoint {.name = "vkCreateInstance",                          .function = genericProc(&vkCreateInstance)               },
-    EntryPoint {.name = "vkDestroyInstance",                         .function = genericProc(&vkDestroyInstance)              },
-    EntryPoint {.name = "vkGetInstanceProcAddr",                     .function = genericProc(&vkGetInstanceProcAddr)          },
-    EntryPoint {.name = "vkCreateDebugUtilsMessengerEXT",            .function = genericProc(&vkCreateDebugUtilsMessengerEXT) },
-    EntryPoint {.name = "vkDestroyDebugUtilsMessengerEXT",           .function = genericProc(&vkDestroyDebugUtilsMessengerEXT)},
-    EntryPoint {.name = "vkGetDeviceQueue",                          .function = genericProc(&vkGetDeviceQueue)               },
-    EntryPoint {.name = "vkGetDeviceProcAddr",                       .function = genericProc(&vkGetDeviceProcAddr)            },
-    EntryPoint {.name = "vkCreateSemaphore",                         .function = genericProc(&vkCreateSemaphore)              },
-    EntryPoint {.name = "vkCreateCommandPool",                       .function = genericProc(&vkCreateCommandPool)            },
-    EntryPoint {.name = "vkAllocateCommandBuffers",                  .function = genericProc(&vkAllocateCommandBuffers)       },
-    EntryPoint {.name = "vkDestroySemaphore",                        .function = genericProc(&vkDestroySemaphore)             },
-    EntryPoint {.name = "vkDestroyCommandPool",                      .function = genericProc(&vkDestroyCommandPool)           },
-    EntryPoint {.name = "vkDestroySwapchainKHR",                     .function = genericProc(&vkDestroySwapchainKHR)          },
-    EntryPoint {.name = "vkResetCommandPool",                        .function = genericProc(&vkResetCommandPool)             },
-    EntryPoint {.name = "vkAcquireNextImageKHR",                     .function = genericProc(&vkAcquireNextImageKHR)          },
-    EntryPoint {.name = "vkBeginCommandBuffer",                      .function = genericProc(&vkBeginCommandBuffer)           },
-    EntryPoint {.name = "vkCmdPipelineBarrier2",                     .function = genericProc(&vkCmdPipelineBarrier2)          },
-    EntryPoint {.name = "vkCmdBeginRendering",                       .function = genericProc(&vkCmdBeginRendering)            },
-    EntryPoint {.name = "vkCmdEndRendering",                         .function = genericProc(&vkCmdEndRendering)              },
-    EntryPoint {.name = "vkEndCommandBuffer",                        .function = genericProc(&vkEndCommandBuffer)             },
-    EntryPoint {.name = "vkQueueSubmit2",                            .function = genericProc(&vkQueueSubmit2)                 },
-    EntryPoint {.name = "vkQueuePresentKHR",                         .function = genericProc(&vkQueuePresentKHR)              },
-    EntryPoint {.name = "vkWaitSemaphores",                          .function = genericProc(&vkWaitSemaphores)               },
-    EntryPoint {.name = "vkReleaseSwapchainImagesKHR",               .function = genericProc(&vkReleaseSwapchainImagesKHR)    },
-    EntryPoint {.name = "vkCreateDevice",                            .function = genericProc(&vkCreateDevice)                 },
-    EntryPoint {.name = "vkCreateFence",                             .function = genericProc(&vkCreateFence)                  },
-    EntryPoint {.name = "vkCreateImageView",                         .function = genericProc(&vkCreateImageView)              },
-    EntryPoint {.name = "vkCreateSwapchainKHR",                      .function = genericProc(&vkCreateSwapchainKHR)           },
-    EntryPoint {.name = "vkDestroyDevice",                           .function = genericProc(&vkDestroyDevice)                },
-    EntryPoint {.name = "vkDestroyFence",                            .function = genericProc(&vkDestroyFence)                 },
-    EntryPoint {.name = "vkDestroyImageView",                        .function = genericProc(&vkDestroyImageView)             },
-    EntryPoint {.name = "vkDestroySurfaceKHR",                       .function = genericProc(&vkDestroySurfaceKHR)            },
+                .function = genericVulkanProc(&vkEnumerateInstanceExtensionProperties)                                            },
+    EntryPoint {.name = "vkCreateInstance",                          .function = genericVulkanProc(&vkCreateInstance)             },
+    EntryPoint {.name = "vkDestroyInstance",                         .function = genericVulkanProc(&vkDestroyInstance)            },
+    EntryPoint {.name = "vkGetInstanceProcAddr",                     .function = genericVulkanProc(&vkGetInstanceProcAddr)        },
+    EntryPoint {.name = "vkCreateDebugUtilsMessengerEXT",
+                .function = genericVulkanProc(&vkCreateDebugUtilsMessengerEXT)                                                    },
+    EntryPoint {.name = "vkDestroyDebugUtilsMessengerEXT",
+                .function = genericVulkanProc(&vkDestroyDebugUtilsMessengerEXT)                                                   },
+    EntryPoint {.name = "vkGetDeviceQueue",                          .function = genericVulkanProc(&vkGetDeviceQueue)             },
+    EntryPoint {.name = "vkGetDeviceProcAddr",                       .function = genericVulkanProc(&vkGetDeviceProcAddr)          },
+    EntryPoint {.name = "vkCreateSemaphore",                         .function = genericVulkanProc(&vkCreateSemaphore)            },
+    EntryPoint {.name = "vkCreateCommandPool",                       .function = genericVulkanProc(&vkCreateCommandPool)          },
+    EntryPoint {.name = "vkAllocateCommandBuffers",                  .function = genericVulkanProc(&vkAllocateCommandBuffers)     },
+    EntryPoint {.name = "vkDestroySemaphore",                        .function = genericVulkanProc(&vkDestroySemaphore)           },
+    EntryPoint {.name = "vkDestroyCommandPool",                      .function = genericVulkanProc(&vkDestroyCommandPool)         },
+    EntryPoint {.name = "vkDestroySwapchainKHR",                     .function = genericVulkanProc(&vkDestroySwapchainKHR)        },
+    EntryPoint {.name = "vkResetCommandPool",                        .function = genericVulkanProc(&vkResetCommandPool)           },
+    EntryPoint {.name = "vkAcquireNextImageKHR",                     .function = genericVulkanProc(&vkAcquireNextImageKHR)        },
+    EntryPoint {.name = "vkBeginCommandBuffer",                      .function = genericVulkanProc(&vkBeginCommandBuffer)         },
+    EntryPoint {.name = "vkCmdPipelineBarrier2",                     .function = genericVulkanProc(&vkCmdPipelineBarrier2)        },
+    EntryPoint {.name = "vkCmdBeginRendering",                       .function = genericVulkanProc(&vkCmdBeginRendering)          },
+    EntryPoint {.name = "vkCmdEndRendering",                         .function = genericVulkanProc(&vkCmdEndRendering)            },
+    EntryPoint {.name = "vkEndCommandBuffer",                        .function = genericVulkanProc(&vkEndCommandBuffer)           },
+    EntryPoint {.name = "vkQueueSubmit2",                            .function = genericVulkanProc(&vkQueueSubmit2)               },
+    EntryPoint {.name = "vkQueuePresentKHR",                         .function = genericVulkanProc(&vkQueuePresentKHR)            },
+    EntryPoint {.name = "vkWaitSemaphores",                          .function = genericVulkanProc(&vkWaitSemaphores)             },
+    EntryPoint {.name = "vkReleaseSwapchainImagesKHR",               .function = genericVulkanProc(&vkReleaseSwapchainImagesKHR)  },
+    EntryPoint {.name = "vkCreateDevice",                            .function = genericVulkanProc(&vkCreateDevice)               },
+    EntryPoint {.name = "vkCreateFence",                             .function = genericVulkanProc(&vkCreateFence)                },
+    EntryPoint {.name = "vkCreateImageView",                         .function = genericVulkanProc(&vkCreateImageView)            },
+    EntryPoint {.name = "vkCreateSwapchainKHR",                      .function = genericVulkanProc(&vkCreateSwapchainKHR)         },
+    EntryPoint {.name = "vkDestroyDevice",                           .function = genericVulkanProc(&vkDestroyDevice)              },
+    EntryPoint {.name = "vkDestroyFence",                            .function = genericVulkanProc(&vkDestroyFence)               },
+    EntryPoint {.name = "vkDestroyImageView",                        .function = genericVulkanProc(&vkDestroyImageView)           },
+    EntryPoint {.name = "vkDestroySurfaceKHR",                       .function = genericVulkanProc(&vkDestroySurfaceKHR)          },
     EntryPoint {.name = "vkEnumerateDeviceExtensionProperties",
-                .function = genericProc(&vkEnumerateDeviceExtensionProperties)                                                },
-    EntryPoint {.name = "vkEnumeratePhysicalDevices",                .function = genericProc(&vkEnumeratePhysicalDevices)     },
-    EntryPoint {.name = "vkGetPhysicalDeviceFeatures2",              .function = genericProc(&vkGetPhysicalDeviceFeatures2)   },
-    EntryPoint {.name = "vkGetPhysicalDeviceProperties",             .function = genericProc(&vkGetPhysicalDeviceProperties)  },
+                .function = genericVulkanProc(&vkEnumerateDeviceExtensionProperties)                                              },
+    EntryPoint {.name = "vkEnumeratePhysicalDevices",                .function = genericVulkanProc(&vkEnumeratePhysicalDevices)   },
+    EntryPoint {.name = "vkGetPhysicalDeviceFeatures2",              .function = genericVulkanProc(&vkGetPhysicalDeviceFeatures2) },
+    EntryPoint {.name = "vkGetPhysicalDeviceProperties",             .function = genericVulkanProc(&vkGetPhysicalDeviceProperties)},
     EntryPoint {.name = "vkGetPhysicalDeviceQueueFamilyProperties",
-                .function = genericProc(&vkGetPhysicalDeviceQueueFamilyProperties)                                            },
+                .function = genericVulkanProc(&vkGetPhysicalDeviceQueueFamilyProperties)                                          },
     EntryPoint {.name = "vkGetPhysicalDeviceSurfaceCapabilitiesKHR",
-                .function = genericProc(&vkGetPhysicalDeviceSurfaceCapabilitiesKHR)                                           },
+                .function = genericVulkanProc(&vkGetPhysicalDeviceSurfaceCapabilitiesKHR)                                         },
     EntryPoint {.name = "vkGetPhysicalDeviceSurfaceFormatsKHR",
-                .function = genericProc(&vkGetPhysicalDeviceSurfaceFormatsKHR)                                                },
+                .function = genericVulkanProc(&vkGetPhysicalDeviceSurfaceFormatsKHR)                                              },
     EntryPoint {.name = "vkGetPhysicalDeviceSurfacePresentModesKHR",
-                .function = genericProc(&vkGetPhysicalDeviceSurfacePresentModesKHR)                                           },
+                .function = genericVulkanProc(&vkGetPhysicalDeviceSurfacePresentModesKHR)                                         },
     EntryPoint {.name = "vkGetPhysicalDeviceSurfaceSupportKHR",
-                .function = genericProc(&vkGetPhysicalDeviceSurfaceSupportKHR)                                                },
-    EntryPoint {.name = "vkGetSwapchainImagesKHR",                   .function = genericProc(&vkGetSwapchainImagesKHR)        },
-    EntryPoint {.name = "vkResetFences",                             .function = genericProc(&vkResetFences)                  },
-    EntryPoint {.name = "vkWaitForFences",                           .function = genericProc(&vkWaitForFences)                }
+                .function = genericVulkanProc(&vkGetPhysicalDeviceSurfaceSupportKHR)                                              },
+    EntryPoint {.name = "vkGetSwapchainImagesKHR",                   .function = genericVulkanProc(&vkGetSwapchainImagesKHR)      },
+    EntryPoint {.name = "vkResetFences",                             .function = genericVulkanProc(&vkResetFences)                },
+    EntryPoint {.name = "vkWaitForFences",                           .function = genericVulkanProc(&vkWaitForFences)              }
 };
 
 auto resolveEntryPoint(std::string_view name) -> PFN_vkVoidFunction
