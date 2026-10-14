@@ -68,6 +68,16 @@ public:
                 ());
     MOCK_METHOD(VkResult, vkBindBufferMemory2, (VkDevice, std::uint32_t, const VkBindBufferMemoryInfo*), ());
     MOCK_METHOD(VkResult,
+                vkCreateImage,
+                (VkDevice, const VkImageCreateInfo*, const VkAllocationCallbacks*, VkImage*),
+                ());
+    MOCK_METHOD(void, vkDestroyImage, (VkDevice, VkImage, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(void,
+                vkGetImageMemoryRequirements2,
+                (VkDevice, const VkImageMemoryRequirementsInfo2*, VkMemoryRequirements2*),
+                ());
+    MOCK_METHOD(VkResult, vkBindImageMemory2, (VkDevice, std::uint32_t, const VkBindImageMemoryInfo*), ());
+    MOCK_METHOD(VkResult,
                 vkAllocateMemory,
                 (VkDevice, const VkMemoryAllocateInfo*, const VkAllocationCallbacks*, VkDeviceMemory*),
                 ());

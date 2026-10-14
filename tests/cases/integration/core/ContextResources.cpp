@@ -19,6 +19,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
+#include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
 #include <span>
@@ -112,6 +113,40 @@ void verifyDeviceFeatures(const VkDeviceCreateInfo& info, bool windowed)
     {
         EXPECT_EQ(vulkan13->pNext, nullptr);
     }
+}
+
+void verifyImageIdentity(const VkImageCreateInfo& info, const panda::TextureDesc& description)
+{
+    EXPECT_EQ(info.flags, 0);
+    EXPECT_EQ(info.imageType, VK_IMAGE_TYPE_2D);
+    EXPECT_EQ(info.format, static_cast<VkFormat>(description.format));
+}
+
+void verifyImageDimensions(const VkImageCreateInfo& info, const panda::TextureDesc& description)
+{
+    EXPECT_EQ(info.extent.width, description.extent.width);
+    EXPECT_EQ(info.extent.height, description.extent.height);
+    EXPECT_EQ(info.extent.depth, 1U);
+    EXPECT_EQ(info.mipLevels, 1U);
+    EXPECT_EQ(info.arrayLayers, 1U);
+    EXPECT_EQ(info.samples, VK_SAMPLE_COUNT_1_BIT);
+}
+
+void verifyImageUsageAndLayout(const VkImageCreateInfo& info, const panda::TextureDesc& description)
+{
+    EXPECT_EQ(info.tiling, VK_IMAGE_TILING_OPTIMAL);
+    EXPECT_EQ(info.usage, static_cast<VkImageUsageFlags>(description.usage));
+    EXPECT_EQ(info.sharingMode, VK_SHARING_MODE_EXCLUSIVE);
+    EXPECT_EQ(info.initialLayout, VK_IMAGE_LAYOUT_UNDEFINED);
+    EXPECT_EQ(info.pNext, nullptr);
+}
+
+void verifyDedicatedImageAllocation(const VkMemoryAllocateInfo& info, VkImage image)
+{
+    const auto* resource = static_cast<const VkMemoryDedicatedAllocateInfo*>(info.pNext);
+    ASSERT_NE(resource, nullptr);
+    EXPECT_EQ(resource->image, image);
+    EXPECT_EQ(resource->buffer, VK_NULL_HANDLE);
 }
 
 // Explicit Action types avoid gMock's OnceAction ownership adapter, which
@@ -305,7 +340,10 @@ protected:
         auto parents = testing::ExpectationSet {};
         if (hasDevice)
         {
-            parents += EXPECT_CALL(vulkan, vkDestroyDevice(device, nullptr)).After(frameCleanup).After(memoryCleanup);
+            parents += EXPECT_CALL(vulkan, vkDestroyDevice(device, nullptr))
+                           .After(frameCleanup)
+                           .After(memoryCleanup)
+                           .After(imageCleanup);
         }
         if (hasSurface)
         {
@@ -479,6 +517,98 @@ protected:
             });
     }
 
+    void expectImageCreation(VkImage image, const panda::TextureDesc& description)
+    {
+        EXPECT_CALL(vulkan, vkCreateImage(device, NotNull(), nullptr, NotNull()))
+            .InSequence(imageCreationOrder)
+            .WillOnce(
+                [image,
+                 description](VkDevice, const VkImageCreateInfo* info, const VkAllocationCallbacks*, VkImage* output) {
+                    verifyImageIdentity(*info, description);
+                    verifyImageDimensions(*info, description);
+                    verifyImageUsageAndLayout(*info, description);
+                    *output = image;
+                    return success;
+                });
+    }
+
+    void expectImageMemoryRequirements(VkImage image, bool dedicated)
+    {
+        EXPECT_CALL(vulkan, vkGetImageMemoryRequirements2(device, NotNull(), NotNull()))
+            .InSequence(imageCreationOrder)
+            .WillOnce([image,
+                       dedicated](VkDevice, const VkImageMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
+                EXPECT_EQ(info->image, image);
+                output->memoryRequirements = {.size = 128, .alignment = 64, .memoryTypeBits = 7};
+                auto* requirement = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
+                ASSERT_NE(requirement, nullptr);
+                requirement->requiresDedicatedAllocation = dedicated ? vk::True : vk::False;
+            });
+    }
+
+    void expectTexture(VkImage image,
+                       const panda::TextureDesc& description,
+                       bool dedicated = false,
+                       const testing::ExpectationSet& ownerReleased = {})
+    {
+        expectImageCreation(image, description);
+        expectImageMemoryRequirements(image, dedicated);
+        imageCleanup += EXPECT_CALL(vulkan, vkDestroyImage(device, image, nullptr)).After(ownerReleased);
+    }
+
+    void expectTextureAllocation(VkDeviceMemory memory, VkImage image, std::uint32_t type = 0, bool dedicated = false)
+    {
+        EXPECT_CALL(vulkan, vkAllocateMemory(device, NotNull(), nullptr, NotNull()))
+            .InSequence(imageAllocationOrder)
+            .WillOnce([memory, image, type, dedicated](VkDevice,
+                                                       const VkMemoryAllocateInfo* info,
+                                                       const VkAllocationCallbacks*,
+                                                       VkDeviceMemory* output) {
+                EXPECT_EQ(info->memoryTypeIndex, type);
+                EXPECT_EQ(info->allocationSize, dedicated ? 128 : (type == 0 ? 64 : 8) * 1024 * 1024);
+                EXPECT_EQ(info->pNext != nullptr, dedicated);
+                if (dedicated)
+                {
+                    verifyDedicatedImageAllocation(*info, image);
+                }
+                *output = memory;
+                return success;
+            });
+        if (type == 0)
+        {
+            memoryCleanup +=
+                EXPECT_CALL(vulkan, vkFreeMemory(device, memory, nullptr)).After(bufferCleanup).After(imageCleanup);
+        }
+    }
+
+    void expectTextureAllocationFailure(VkDeviceMemory output, VkImage image)
+    {
+        EXPECT_CALL(vulkan, vkAllocateMemory(device, NotNull(), nullptr, NotNull()))
+            .InSequence(imageAllocationOrder)
+            .WillOnce([output, image](VkDevice,
+                                      const VkMemoryAllocateInfo* info,
+                                      const VkAllocationCallbacks*,
+                                      VkDeviceMemory* memory) {
+                EXPECT_EQ(info->allocationSize, 128U);
+                verifyDedicatedImageAllocation(*info, image);
+                *memory = output;
+                return exhausted;
+            });
+        EXPECT_CALL(vulkan, vkFreeMemory(device, output, nullptr)).Times(0);
+    }
+
+    void expectTextureBinding(VkImage image, VkDeviceMemory memory, std::uint64_t offset = 0, VkResult result = success)
+    {
+        EXPECT_CALL(vulkan, vkBindImageMemory2(device, 1, NotNull()))
+            .InSequence(imageBindingOrder)
+            .WillOnce([image, memory, offset, result](VkDevice, std::uint32_t, const VkBindImageMemoryInfo* info) {
+                EXPECT_EQ(info->image, image);
+                EXPECT_EQ(info->memory, memory);
+                EXPECT_EQ(info->memoryOffset, offset);
+                return result;
+            });
+    }
+
     void expectHostMapping(VkDeviceMemory memory)
     {
         EXPECT_CALL(vulkan, vkMapMemory(device, memory, 0, std::uint64_t {8} * 1024 * 1024, 0, NotNull()))
@@ -500,11 +630,15 @@ protected:
     VkSurfaceKHR surface {fakeVulkanHandle<VkSurfaceKHR>(4)};
     testing::ExpectationSet frameCleanup;
     testing::ExpectationSet bufferCleanup;
+    testing::ExpectationSet imageCleanup;
     testing::ExpectationSet memoryCleanup;
     std::array<std::byte, 128> hostStorage {};
     testing::Sequence bufferCreationOrder;
     testing::Sequence bindingOrder;
     testing::Sequence allocationOrder;
+    testing::Sequence imageCreationOrder;
+    testing::Sequence imageBindingOrder;
+    testing::Sequence imageAllocationOrder;
 };
 }
 
@@ -551,6 +685,142 @@ TEST_F(ContextResourcesIntegration, EmptyBufferAndInvalidDescriptionsNeverCreate
     const auto unsupported = context->createBuffer({.size = 1, .usage = vk::BufferUsageFlagBits::eShaderDeviceAddress});
     ASSERT_FALSE(unsupported);
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(ContextResourcesIntegration, EmptyAndInvalidTexturesNeverCreateNativeImages)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto empty = panda::Texture {};
+    EXPECT_FALSE(empty.isValid());
+    EXPECT_EQ(empty.getExtent().width, 0U);
+    EXPECT_EQ(empty.getExtent().height, 0U);
+    EXPECT_EQ(empty.getFormat(), vk::Format::eUndefined);
+    EXPECT_FALSE(empty.getUsage());
+    empty.reset();
+    const auto validUsage = vk::ImageUsageFlagBits::eSampled;
+    const auto descriptions = std::array {
+        panda::TextureDesc {},
+        panda::TextureDesc {.extent = vk::Extent2D {.width = 0, .height = 1},
+                            .format = vk::Format::eR8G8B8A8Unorm,
+                            .usage = validUsage},
+        panda::TextureDesc {.extent = vk::Extent2D {.width = 1, .height = 0},
+                            .format = vk::Format::eR8G8B8A8Unorm,
+                            .usage = validUsage},
+        panda::TextureDesc {.extent = vk::Extent2D {.width = 1, .height = 1}, .usage = validUsage},
+        panda::TextureDesc {.extent = vk::Extent2D {.width = 1, .height = 1},
+                            .format = vk::Format::eR8G8B8A8Unorm,
+                            .usage = {}},
+    };
+    for (const auto& description : descriptions)
+    {
+        const auto texture = context->createTexture(description);
+        ASSERT_FALSE(texture);
+        EXPECT_EQ(texture.error().code, panda::ErrorCode::InvalidArgument);
+    }
+    const auto unsupported = context->createTexture({
+        .extent = vk::Extent2D {.width = 1, .height = 1},
+        .format = vk::Format::eR8G8B8A8Unorm,
+        .usage = vk::ImageUsageFlagBits::eTransientAttachment
+    });
+    ASSERT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(ContextResourcesIntegration, SharedTexturesBindAndReleaseTheOptimalImage)
+{
+    expectHeadless();
+    const auto description = panda::TextureDesc {
+        .extent = vk::Extent2D {.width = 64, .height = 32},
+        .format = vk::Format::eR8G8B8A8Unorm,
+        .usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst
+    };
+    auto* const image = fakeVulkanHandle<VkImage>(40);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectTexture(image, description);
+    expectTextureAllocation(memory, image);
+    expectTextureBinding(image, memory);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto texture = context->createTexture(description);
+    ASSERT_TRUE(texture);
+    EXPECT_EQ(texture->getExtent().width, description.extent.width);
+    EXPECT_EQ(texture->getExtent().height, description.extent.height);
+    EXPECT_EQ(texture->getFormat(), description.format);
+    EXPECT_EQ(texture->getUsage(), description.usage);
+    auto copy = *texture;
+    texture->reset();
+    EXPECT_TRUE(copy.isValid());
+    EXPECT_EQ(copy.getExtent().width, description.extent.width);
+    copy.reset();
+}
+
+TEST_F(ContextResourcesIntegration, FailedImageCreationDoesNotAdoptItsUndefinedOutput)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    const auto description = panda::TextureDesc {
+        .extent = vk::Extent2D {.width = 16, .height = 16},
+        .format = vk::Format::eR8G8B8A8Unorm,
+        .usage = vk::ImageUsageFlagBits::eSampled
+    };
+    auto* const output = fakeVulkanHandle<VkImage>(40);
+    EXPECT_CALL(vulkan, vkCreateImage(device, NotNull(), nullptr, NotNull()))
+        .WillOnce([output](VkDevice, const VkImageCreateInfo*, const VkAllocationCallbacks*, VkImage* image) {
+            *image = output;
+            return exhausted;
+        });
+    EXPECT_CALL(vulkan, vkDestroyImage(device, output, nullptr)).Times(0);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto texture = context->createTexture(description);
+    ASSERT_FALSE(texture);
+    EXPECT_EQ(texture.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(ContextResourcesIntegration, FailedTextureAllocationDestroysTheUnboundImage)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    const auto description = panda::TextureDesc {
+        .extent = vk::Extent2D {.width = 16, .height = 16},
+        .format = vk::Format::eR8G8B8A8Unorm,
+        .usage = vk::ImageUsageFlagBits::eSampled
+    };
+    auto* const image = fakeVulkanHandle<VkImage>(40);
+    auto* const output = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectTexture(image, description, true);
+    expectTextureAllocationFailure(output, image);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto texture = context->createTexture(description);
+    ASSERT_FALSE(texture);
+    EXPECT_EQ(texture.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(ContextResourcesIntegration, DedicatedTextureBindingFailureDestroysImageBeforeItsAllocation)
+{
+    expectHeadless();
+    const auto description = panda::TextureDesc {
+        .extent = vk::Extent2D {.width = 16, .height = 16},
+        .format = vk::Format::eR8G8B8A8Unorm,
+        .usage = vk::ImageUsageFlagBits::eSampled
+    };
+    auto* const image = fakeVulkanHandle<VkImage>(40);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectTexture(image, description, true);
+    expectTextureAllocation(memory, image, 0, true);
+    expectTextureBinding(image, memory, 0, exhausted);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto texture = context->createTexture(description);
+    ASSERT_FALSE(texture);
+    EXPECT_EQ(texture.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_EQ(texture.error().native.value_or(panda::NativeError {}).code, exhausted);
 }
 
 TEST_F(ContextResourcesIntegration, SharedBuffersRetainNativeStateAndReuseReleasedRanges)
@@ -773,7 +1043,7 @@ TEST_F(ContextResourcesIntegration, HostMemoryIntentsSelectCoherenceForUploadsAn
 
 using ContextResourcesIntegrationDeathTest = ContextResourcesIntegration;
 
-TEST_F(ContextResourcesIntegrationDeathTest, ContextRejectsDestructionBeforeTheLastBufferOwner)
+TEST_F(ContextResourcesIntegrationDeathTest, ContextRejectsDestructionBeforeTheLastResourceOwner)
 {
     expectHeadless();
     auto* const native = fakeVulkanHandle<VkBuffer>(40);
@@ -788,7 +1058,7 @@ TEST_F(ContextResourcesIntegrationDeathTest, ContextRejectsDestructionBeforeTheL
     ASSERT_TRUE(context);
     auto buffer = (*context)->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(buffer);
-    EXPECT_DEATH(context->reset(), "Context destroyed with live Buffer owners");
+    EXPECT_DEATH(context->reset(), "Context destroyed with live Buffer or Texture owners");
     buffer->reset();
 }
 

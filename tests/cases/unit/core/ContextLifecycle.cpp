@@ -754,7 +754,7 @@ TEST_F(ContextLifecycleTest, HostMemoryIntentsSelectCoherenceForUploadsAndCachin
 
 using ContextLifecycleDeathTest = ContextLifecycleTest;
 
-TEST_F(ContextLifecycleDeathTest, ContextRejectsDestructionBeforeTheLastBufferOwner)
+TEST_F(ContextLifecycleDeathTest, ContextRejectsDestructionBeforeTheLastResourceOwner)
 {
     expectHeadless();
     auto* const native = fakeVulkanHandle<VkBuffer>(40);
@@ -769,7 +769,7 @@ TEST_F(ContextLifecycleDeathTest, ContextRejectsDestructionBeforeTheLastBufferOw
     ASSERT_TRUE(context);
     auto buffer = (*context)->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(buffer);
-    EXPECT_DEATH(context->reset(), "Context destroyed with live Buffer owners");
+    EXPECT_DEATH(context->reset(), "Context destroyed with live Buffer or Texture owners");
     buffer->reset();
 }
 

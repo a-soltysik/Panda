@@ -17,12 +17,19 @@ namespace panda
 /// @brief Recovery-oriented category for a failed engine operation.
 enum class ErrorCode : std::uint8_t
 {
+    /// The requested operation or capability is unavailable on this backend or device.
     Unsupported,
+    /// The caller supplied an invalid value or used an object in an invalid state.
     InvalidArgument,
+    /// The operation could not obtain the required memory or other finite resource.
     ResourceExhausted,
+    /// The operation did not complete within its allowed time.
     Timeout,
+    /// The window surface is no longer available for presentation.
     SurfaceLost,
+    /// The Vulkan device can no longer accept or complete work.
     DeviceLost,
+    /// The backend failed for a reason without a more specific recovery category.
     BackendFailure
 };
 
