@@ -70,10 +70,13 @@ live reserved ranges. Each Context owns one manager for Panda allocations.
 memory-requirement selection, pooled/dedicated allocation and binding succeed.
 Shared resource state destroys `VkBuffer` before its `MemoryAllocation` releases
 the range. Context has stable heap-owned state; moving it preserves buffer owners.
-Context destruction drains submitted uploads before rejecting remaining external
-owners and tearing down the device. Buffer
-memory intent selects device-local, upload or readback memory, without exposing
-CPU mapping. Public native buffer views remain planned.
+`Context::createTexture` follows the same lifecycle for an optimal-tiled, single-mip,
+single-layer 2D image: validate, create, query image memory requirements, allocate
+device-local memory from the image partition, bind, then publish a copyable `Texture`.
+Member order destroys `VkImage` before `MemoryAllocation` releases its range. Context
+destruction drains submitted uploads before checking for external Buffer or Texture
+owners and tearing down the device. Buffer memory intent selects device-local, upload
+or readback memory, without exposing CPU mapping. Public native buffer views remain planned.
 
 Public Vulkan fields and window-surface signatures use Vulkan-Hpp flags and
 borrowed `vk` handles. `makeVulkanError` accepts `vk::Result`. Internally, surface
@@ -103,8 +106,8 @@ unsafe teardown as fatal. A timed-out committed retirement can be drained again.
 The window example waits for its last frame at normal shutdown. The
 [buffer example](../../../examples/buffer_allocation/README.md) creates a storage
 buffer, uploads four values through the public API, waits and releases its owners.
-Explicit initialization policies, labels, recoverable close, textures/meshes and
-frame arenas remain planned.
+Explicit buffer initialization policies and labels, texture views/uploads, mesh
+handles/uploads and frame arenas remain planned.
 
 The executable `panda_unit_range_allocator` demonstrates split/alignment, all six
 release orders for three adjacent ranges, fragmented exhaustion, invalid requests
@@ -120,29 +123,17 @@ by this scenario.
 
 ## Verification
 
-UploadBatch and the current resource-lifetime infrastructure were verified on
-Windows and in Ubuntu Linux WSL, with optional CUDA disabled.
+The texture-creation slice was verified on Windows and in Ubuntu Linux WSL.
 
-- The complete `msvc-quality` build passed warnings-as-errors, clang-tidy,
-  cppcheck, formatting and public-header checks. `ctest --preset msvc-quality`
-  ran 294 cases: 291 passed and three noncoherent memory variants skipped because
-  the Windows GPU exposes no compatible noncoherent host-visible type. The test
-  process cleared `VK_INSTANCE_LAYERS`, `VK_LAYER_DEBUG_ACTION` and
-  `VK_LAYER_LOG_FILENAME`, then set `VK_LOADER_LAYERS_DISABLE=~implicit~` to
-  isolate installed overlay layers; Khronos validation remained enabled.
-- The `gcc-quality` build passed in Ubuntu WSL, including clang-tidy, cppcheck,
-  formatting and public-header checks. GCC coverage ran 227/227 CPU and
-  integration cases; the five `UploadSystem` GPU cases also passed on llvmpipe
-  with validation enabled.
-- `gcc-docs` generated the public Doxygen API. The `buffer_allocation` example
-  built on Windows and WSL, then ran successfully on WSL llvmpipe: it uploaded
-  four values, waited for completion and released its owners.
-- A clean gcovr run over `src/core/` measured 1,847/1,929 executable lines
-  (95.7%), 305/306 functions (99.7%) and 1,495/2,287 raw branches (65.4%).
-  `UploadBatch.cpp`, `UploadBatchImpl.cpp` and `UploadCommand.cpp` reached 100%;
-  `UploadManager.cpp` reached 93/95 lines. Its remaining lines are the queue's
-  outstanding-value refusal path and the defensive staging-byte overflow guard.
-  The UploadSystem cases were included separately from the noninteractive run.
+- `msvc-quality` built `panda_integration_context_resources`, `panda_system_texture`
+  and `panda_core_verify_interface_header_sets`; the focused CTest run passed
+  32/32 cases, including the Vulkan texture system test on Windows with validation.
+- `gcc-quality` built the same targets in Ubuntu WSL; 31/31 integration cases and
+  the texture system test passed.
+- The documentation checker validated 44 Markdown files and the task queue;
+  `git diff --check` passed.
+- A full all-target build and a fresh project-wide coverage measurement were not
+  run for this slice.
 - Unit and integration cases cover range alignment/coalescing/overflow, pool
   growth fallback, noncoherent atom rounding and flush errors, upload preparation
   and submit failures, retry, overlapping copy order, timeout, completed-prefix
@@ -153,8 +144,8 @@ Windows and in Ubuntu Linux WSL, with optional CUDA disabled.
 
 ## Remaining work
 
-Texture/Mesh handles and uploads, frame arenas and recoverable Context close
-remain planned parts of this task. Native noncoherent cache-operation validation
-needs a device exposing that memory type. The maintainer learning handoff and
-acceptance of the remaining task scope are still pending; passing tests do not
-replace that handoff.
+Texture creation and ownership are implemented. Texture views/uploads, Mesh handles
+and uploads, and frame arenas remain planned parts of this task. Native noncoherent
+cache-operation validation needs a device exposing that memory type. The maintainer
+learning handoff and acceptance of the remaining task scope are still pending;
+passing tests do not replace that handoff.

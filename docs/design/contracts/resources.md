@@ -6,7 +6,7 @@ Implementation and device evidence follow [the plan](../../development/PLAN.md).
 ## Ownership
 
 - A context owns the Vulkan device and the services required to retire GPU resources.
-  It outlives scenes, resource handles, and optional modules using that context.
+  It outlives scenes, resource handles, upload batches, and optional modules using that context.
 - A scene owns its entities and components. An entity reference contains scene
   identity and a generation-aware identifier; copying it does not keep an entity alive.
 - Meshes, textures, and materials use shareable owning value handles. Standard
@@ -15,10 +15,10 @@ Implementation and device evidence follow [the plan](../../development/PLAN.md).
   use completes. Removing an entity changes future frames, not already submitted work.
 - Do not expose long-lived raw pointers into relocatable component storage.
 
-The normal application owner establishes a clear shutdown order. It must not be
-necessary for ordinary callers to manually destroy every Vulkan object in dependency
-order. An explicit context shutdown may wait for outstanding work; per-object
-destruction must not turn into a global device idle.
+The normal application owner establishes a clear RAII shutdown order. Callers release
+their Panda handles before Context destruction; they do not manually destroy Vulkan
+objects in dependency order. Context destruction drains submitted work and may wait
+for it; per-object destruction must not turn into a global device idle.
 
 ## Lifetime is not synchronization
 
@@ -138,8 +138,8 @@ must still avoid an infinite wait on work that was never submitted or signaled.
 
 ## Handles and API boundary
 
-The following are design signatures; implemented declarations are documented in
-their public headers. Remaining entries describe planned resource APIs.
+The table describes public API behavior. Implemented declarations are documented in
+their public headers; entries without public declarations remain planned contracts.
 
 | Type/operation | Semantics |
 | --- | --- |
@@ -147,11 +147,11 @@ their public headers. Remaining entries describe planned resource APIs.
 | `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
 | `Buffer`, `Texture`, `Mesh`, `Material` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
 | `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an allocation behind a borrowed native handle |
+| `Context::createTexture(TextureDesc) -> Result<Texture>` | Optimal-tiled 2D image with one mip and layer, sample count one, and undefined initial contents |
 | `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates destination bounds and transfer usage |
 | `UploadBatch::submit() -> Result<CompletionPoint>` | Submits on the same graphics/compute queue; no CPU wait for completion |
 | `Context::poll(CompletionPoint) -> Result<bool>` | Reports GPU completion or failure; not a presentation/display timestamp |
 | `Context::wait(CompletionPoint, timeout) -> Result<WaitStatus>` | Explicit administrative wait; timeout is distinct from completion and backend failure |
-| `Context::close(timeout) -> Result<void>` | Stops new work, drains known submissions/presentation, then closes only when dependent owners are gone |
 
 `ContextOptions::enableValidation` enables the installed Khronos validation layer and
 registers a `VK_EXT_debug_utils` callback that routes diagnostics to the Panda logger.
@@ -173,7 +173,7 @@ textures provide higher-level factories. No public general-purpose memory mapper
 is needed initially: uploads handle CPU writes; a test/readback helper can explicitly
 wait, invalidate, and copy results. CUDA-shared buffers are never CPU-mapped.
 
-The implemented `BufferDesc` currently provides byte size, `vk::BufferUsageFlags` and
+The implemented `BufferDesc` provides byte size, `vk::BufferUsageFlags` and
 `BufferMemory` intent. Buffers are ordinary, non-exportable and initially contain
 undefined bytes. Explicit initialization, debug labels and external-sharing options
 remain planned with uploads and interoperability. Supported usages are transfer,
@@ -187,11 +187,19 @@ CPU mapping or GPU access permission.
 dedicated requirements, allocates from the Context's pool and binds at that range's
 offset. Failure publishes no handle. A last `Buffer` release destroys the native
 buffer before returning its range. The pool and device remain stable when Context
-moves; destroying Context with live Buffer owners is a checked fatal violation.
+moves; destroying Context with live Buffer or Texture owners is a checked fatal violation.
 Upload submissions retain their staging, destination buffers and command pools
 until confirmed completion. Context drains these internal owners before checking
-for remaining external Buffer owners. Unsubmitted upload batches still borrow
-Context and must be destroyed before it. Recoverable `close` remains planned.
+for remaining external resource owners. Unsubmitted upload batches still borrow
+Context and must be destroyed before it.
+
+`TextureDesc` currently provides a 2D extent, Vulkan format and image usage. Texture
+creation fixes optimal tiling, one mip, one array layer and one sample, with undefined
+initial contents. `Context::createTexture` creates the image, queries ordinary and
+dedicated requirements, requests device-local memory from the image partition of the
+Context pool and binds the image at that range's offset. Failure publishes no handle.
+A last `Texture` release destroys the image before returning its range. Image upload
+and image-view creation are not part of this API slice.
 
 The planned `panda/NativeVulkan.hpp` extension exposes borrowed device/physical-device handles, enabled
 feature information and buffer views for native pipeline/descriptor setup. It
@@ -200,13 +208,11 @@ remain tied to their owning Context/resource; recording accesses to Panda buffer
 must still happen through a declared callback. Descriptor creation is not GPU use.
 The application must not destroy borrowed objects or externally submit their use.
 
-Context identity is checked when combining handles. Handles do not extend context
-lifetime; `close` reports `ResourcesInUse` if external scene/module/resource owners
-remain after internal in-flight retention is drained. It stays in Closing so those
-owners can be released and close retried. A destructor invokes the checked close
-path; an unresolved ownership violation or unsafe teardown is fatal with diagnostics,
-not use-after-free or an unbounded silent wait. Shutdown timeout is configurable,
-initially 10 seconds; a slow application may explicitly increase it.
+Context identity is checked when combining handles. Handles do not extend Context
+lifetime; external owners must be released before Context destruction. Its destructor
+drains internal in-flight retention before checking that requirement. Violating the
+ownership order or encountering unsafe teardown is fatal with diagnostics rather than
+use-after-free or an unbounded silent wait.
 
 Use standard `shared_ptr` for resource state, not a public smart-pointer hierarchy.
 Capture strong handles and callback state in each submitted work packet. The last
@@ -346,7 +352,6 @@ remain exclusive. Present fences protect resource recycling, not exact display t
 | Surface lost | Stop window work and report the error; automatic platform-surface recovery is not a version-one requirement |
 | Callback/enqueue/submit failure | Follow the compute fault policy; do not continue drawing uncertain output |
 | Device loss | Faulted: stop all new GPU work; no transparent device reconstruction |
-| Closing/Closed | Reject new work; bounded drain and owner checks, then release native services |
 
 At recreation, drain the relevant `G` points and outstanding presentation fences;
 administrative waiting is allowed. Build replacement attachments and swapchain,

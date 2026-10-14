@@ -10,6 +10,10 @@ panda_add_test(panda_system_buffer system
     SOURCES Buffer.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture)
 
+panda_add_test(panda_system_texture system
+    SOURCES Texture.cpp
+    LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture)
+
 panda_add_test(panda_system_upload system
     SOURCES Upload.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture)
