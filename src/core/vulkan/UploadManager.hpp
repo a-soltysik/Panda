@@ -11,16 +11,20 @@
 #include <memory>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/UploadBatch.hpp>
 #include <span>
+
+#include "UploadBatchId.hpp"
+#include "UploadOperation.hpp"
 
 namespace panda::detail
 {
 class BufferResource;
 class MemoryPool;
 class SubmissionQueue;
+class TextureResource;
 class UploadBatchImpl;
 class UploadCommand;
-struct BufferUpload;
 
 struct UploadStats
 {
@@ -49,8 +53,11 @@ public:
     [[nodiscard]] auto validateWrite(const std::shared_ptr<BufferResource>& destination,
                                      std::uint64_t offset,
                                      std::size_t size) const -> Result<void>;
+    [[nodiscard]] auto validateTextureWrite(const std::shared_ptr<TextureResource>& destination,
+                                            const TextureUploadRegion& region,
+                                            std::size_t size) const -> Result<std::uint32_t>;
     [[nodiscard]] auto createStaging(std::span<const std::byte> bytes) const -> Result<std::shared_ptr<BufferResource>>;
-    [[nodiscard]] auto submit(std::span<const BufferUpload> writes) -> Result<CompletionPoint>;
+    [[nodiscard]] auto submit(std::span<const UploadOperation> writes) -> Result<CompletionPoint>;
     void retainBatch();
     void releaseBatch();
 
@@ -70,6 +77,7 @@ private:
     std::uint32_t _family;
     std::list<PendingUpload> _pending;
     std::size_t _activeBatches {0};
+    std::uint64_t _nextBatchId {1};
     std::uint64_t _pendingStagingBytes {0};
     std::uint64_t _peakStagingBytes {0};
 };

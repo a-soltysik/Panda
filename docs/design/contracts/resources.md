@@ -149,6 +149,8 @@ their public headers; entries without public declarations remain planned contrac
 | `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an allocation behind a borrowed native handle |
 | `Context::createTexture(TextureDesc) -> Result<Texture>` | Optimal-tiled 2D image with one mip and layer, sample count one, and undefined initial contents |
 | `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates destination bounds and transfer usage |
+| `UploadBatch::write(Texture, span<const byte>, rowPitchBytes) -> Result<void>` | Copies a full texture using tightly packed rows when pitch is zero |
+| `UploadBatch::write(Texture, span<const byte>, TextureUploadRegion) -> Result<void>` | Copies one validated region; multiple regions for one texture must use the same batch |
 | `UploadBatch::submit() -> Result<CompletionPoint>` | Submits on the same graphics/compute queue; no CPU wait for completion |
 | `Context::poll(CompletionPoint) -> Result<bool>` | Reports GPU completion or failure; not a presentation/display timestamp |
 | `Context::wait(CompletionPoint, timeout) -> Result<WaitStatus>` | Explicit administrative wait; timeout is distinct from completion and backend failure |
@@ -198,8 +200,16 @@ creation fixes optimal tiling, one mip, one array layer and one sample, with und
 initial contents. `Context::createTexture` creates the image, queries ordinary and
 dedicated requirements, requests device-local memory from the image partition of the
 Context pool and binds the image at that range's offset. Failure publishes no handle.
-A last `Texture` release destroys the image before returning its range. Image upload
-and image-view creation are not part of this API slice.
+A last `Texture` release destroys the image before returning its range. Upload requires
+both transfer-destination and sampled usage. It accepts single-plane 2D color formats,
+including block-compressed formats, and snapshots source bytes into owned staging.
+Source row pitch is a byte stride between block rows; zero means tightly packed. A
+texture can be published by one batch only, while that batch may write multiple
+regions. Region offsets and non-edge extents obey format-block alignment. After submit,
+the image transitions from undefined to transfer destination and then shader-read
+layout. Texels not covered by the supplied regions remain undefined. Published sampled
+textures are immutable; edits publish a replacement handle. Image-view creation is
+not part of this API slice.
 
 The planned `panda/NativeVulkan.hpp` extension exposes borrowed device/physical-device handles, enabled
 feature information and buffer views for native pipeline/descriptor setup. It
@@ -289,8 +299,7 @@ frame slot. A host-visible allocation is not permission to modify an in-flight s
 
 Renderer-owned depth, MSAA, offscreen color and shadow attachments belong to frame
 slots and are reused only after slot completion. Swapchain images belong to their
-swapchain generation. Published sampled textures are immutable; edits publish a
-replacement handle. Track layout and source stage/access per image mip/layer range,
+swapchain generation. Track layout and source stage/access per image mip/layer range,
 including upload, mip generation, attachment writes, sampling and presentation.
 Only new/discarded contents may transition from UNDEFINED; ownership/lifetime is
 not a substitute for image barriers. No general transient-image aliasing graph is

@@ -174,6 +174,10 @@ public:
 
     MOCK_METHOD(void, vkCmdPipelineBarrier2, (VkCommandBuffer, const VkDependencyInfo*), ());
     MOCK_METHOD(void, vkCmdCopyBuffer, (VkCommandBuffer, VkBuffer, VkBuffer, std::uint32_t, const VkBufferCopy*), ());
+    MOCK_METHOD(void,
+                vkCmdCopyBufferToImage,
+                (VkCommandBuffer, VkBuffer, VkImage, VkImageLayout, std::uint32_t, const VkBufferImageCopy*),
+                ());
 
     MOCK_METHOD(void, vkCmdBeginRendering, (VkCommandBuffer, const VkRenderingInfo*), ());
 

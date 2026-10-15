@@ -11,12 +11,15 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/Texture.hpp>
+#include <panda/UploadBatch.hpp>
 #include <span>
 #include <tuple>
 #include <unordered_map>
@@ -30,6 +33,7 @@
 #include "external/vulkan/VulkanMock.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MemoryPool.hpp"
+#include "resources/TextureResource.hpp"
 
 namespace
 {
@@ -55,6 +59,23 @@ struct ObservedCopy
     std::vector<std::byte> bytes;
 };
 
+struct NativeImage
+{
+    VkExtent3D extent;
+    VkFormat format;
+    VkImageUsageFlags usage;
+    VkDeviceMemory memory {};
+    std::uint64_t offset {0};
+};
+
+struct ObservedImageCopy
+{
+    VkImage destination;
+    VkImageLayout layout;
+    VkBufferImageCopy region;
+    std::vector<std::byte> bytes;
+};
+
 class BufferUploadIntegration : public testing::Test
 {
 protected:
@@ -62,6 +83,7 @@ protected:
     {
         configureProperties();
         configureBuffers();
+        configureImages();
         configureMemory();
         configureCommands();
         configureSubmissions();
@@ -79,6 +101,7 @@ protected:
         pool.reset();
         submissions.reset();
         EXPECT_TRUE(buffers.empty());
+        EXPECT_TRUE(images.empty());
         EXPECT_TRUE(memory.empty());
         std::ignore = device.release();
         std::ignore = instance.release();
@@ -150,6 +173,45 @@ protected:
             .WillRepeatedly([this](VkDevice, VkBuffer buffer, const VkAllocationCallbacks*) {
                 EXPECT_EQ(buffers.erase(buffer), 1);
                 destruction.push_back('b');
+            });
+    }
+
+    void configureImages()
+    {
+        EXPECT_CALL(vulkan, vkCreateImage(_, NotNull(), nullptr, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly(
+                [this](VkDevice, const VkImageCreateInfo* info, const VkAllocationCallbacks*, VkImage* output) {
+                    *output = fakeVulkanHandle<VkImage>(nextId++);
+                    images.emplace(*output,
+                                   NativeImage {.extent = info->extent, .format = info->format, .usage = info->usage});
+                    return success;
+                });
+        EXPECT_CALL(vulkan, vkGetImageMemoryRequirements2(_, NotNull(), NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly(
+                [this](VkDevice, const VkImageMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
+                    output->memoryRequirements = {.size = 128, .alignment = 64, .memoryTypeBits = 1};
+                    auto* requirements = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
+                    if (requirements != nullptr)
+                    {
+                        requirements->requiresDedicatedAllocation = VK_FALSE;
+                        requirements->prefersDedicatedAllocation = VK_FALSE;
+                    }
+                    EXPECT_TRUE(images.contains(info->image));
+                });
+        EXPECT_CALL(vulkan, vkBindImageMemory2(_, 1, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([this](VkDevice, std::uint32_t, const VkBindImageMemoryInfo* info) {
+                images.at(info->image).memory = info->memory;
+                images.at(info->image).offset = info->memoryOffset;
+                return success;
+            });
+        EXPECT_CALL(vulkan, vkDestroyImage(_, _, nullptr))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([this](VkDevice, VkImage image, const VkAllocationCallbacks*) {
+                EXPECT_EQ(images.erase(image), 1);
+                destruction.push_back('i');
             });
     }
 
@@ -237,13 +299,30 @@ protected:
 
     void configureCopies()
     {
+        configureBarriers();
+        configureBufferCopies();
+        configureTextureCopies();
+    }
+
+    void configureBarriers()
+    {
         EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkCommandBuffer, const VkDependencyInfo* info) {
-                ASSERT_EQ(info->memoryBarrierCount, 1);
-                ASSERT_NE(info->pMemoryBarriers, nullptr);
-                barriers.push_back(*info->pMemoryBarriers);
+                if (info->memoryBarrierCount != 0)
+                {
+                    ASSERT_EQ(info->memoryBarrierCount, 1);
+                    ASSERT_NE(info->pMemoryBarriers, nullptr);
+                    barriers.push_back(*info->pMemoryBarriers);
+                }
+                const auto imageDependencies =
+                    std::span<const VkImageMemoryBarrier2> {info->pImageMemoryBarriers, info->imageMemoryBarrierCount};
+                std::ranges::copy(imageDependencies, std::back_inserter(imageBarriers));
             });
+    }
+
+    void configureBufferCopies()
+    {
         // Vulkan fixes these adjacent parameters as source and destination handles.
         // NOLINTBEGIN(bugprone-easily-swappable-parameters)
         EXPECT_CALL(vulkan, vkCmdCopyBuffer(_, _, _, 1, NotNull()))
@@ -263,8 +342,34 @@ protected:
                     .offset = region->dstOffset,
                     .bytes = {bytes.begin(), bytes.end()}
                 });
+                copyOrder.push_back('b');
             });
         // NOLINTEND(bugprone-easily-swappable-parameters)
+    }
+
+    void configureTextureCopies()
+    {
+        EXPECT_CALL(vulkan, vkCmdCopyBufferToImage(_, _, _, _, 1, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([this](VkCommandBuffer,
+                                   VkBuffer source,
+                                   VkImage destination,
+                                   VkImageLayout layout,
+                                   std::uint32_t,
+                                   const VkBufferImageCopy* region) {
+                EXPECT_TRUE(images.contains(destination));
+                const auto& view = buffers.at(source);
+                const auto bytes =
+                    std::span<const std::byte> {memory.at(view.memory)}.subspan(view.offset + region->bufferOffset,
+                                                                                view.size - region->bufferOffset);
+                imageCopies.push_back(ObservedImageCopy {
+                    .destination = destination,
+                    .layout = layout,
+                    .region = *region,
+                    .bytes = {bytes.begin(), bytes.end()}
+                });
+                copyOrder.push_back('i');
+            });
     }
 
     void configureSubmissions()
@@ -317,6 +422,16 @@ protected:
         return panda::expect(created, "Test destination could not be created");
     }
 
+    auto texture(vk::Extent2D extent = {.width = 8, .height = 6},
+                 vk::Format format = vk::Format::eR8G8B8A8Unorm,
+                 vk::ImageUsageFlags usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled)
+        -> std::shared_ptr<panda::detail::TextureResource>
+    {
+        auto created =
+            panda::detail::TextureResource::create(device, *pool, {.extent = extent, .format = format, .usage = usage});
+        return panda::expect(created, "Test texture could not be created");
+    }
+
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     vk::raii::Context loader {vkGetInstanceProcAddr};
     vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
@@ -326,9 +441,13 @@ protected:
     std::unique_ptr<panda::detail::SubmissionQueue> submissions;
     std::unique_ptr<panda::detail::UploadManager> uploads;
     std::unordered_map<VkBuffer, NativeBuffer> buffers;
+    std::unordered_map<VkImage, NativeImage> images;
     std::unordered_map<VkDeviceMemory, std::vector<std::byte>> memory;
     std::vector<ObservedCopy> copies;
+    std::vector<ObservedImageCopy> imageCopies;
     std::vector<VkMemoryBarrier2> barriers;
+    std::vector<VkImageMemoryBarrier2> imageBarriers;
+    std::vector<char> copyOrder;
     std::vector<VkMappedMemoryRange> flushed;
     std::vector<std::uint64_t> signals;
     std::vector<char> destruction;
@@ -375,6 +494,21 @@ TEST_F(BufferUploadIntegration, WrongUsageAndForeignPoolAreRejected)
                                                        {.size = 512, .usage = vk::BufferUsageFlagBits::eTransferDst});
     ASSERT_TRUE(other);
     EXPECT_FALSE(batch->write(*other, 0, payload));
+
+    auto foreignTexture = panda::detail::TextureResource::create(
+        device,
+        *otherPool,
+        {
+            .extent = {.width = 8, .height = 6},
+            .format = vk::Format::eR8G8B8A8Unorm,
+            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    });
+    ASSERT_TRUE(foreignTexture);
+    const auto textureBytes = std::vector<std::byte>(std::size_t {8} * 6 * 4);
+    const auto region = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 8, .height = 6}
+    };
+    EXPECT_FALSE(batch->write(*foreignTexture, textureBytes, region));
     EXPECT_EQ(bufferCreations, 2);
 }
 
@@ -426,6 +560,217 @@ TEST_F(BufferUploadIntegration, OverlappingWritesAreRecordedInOrderWithDependenc
     EXPECT_EQ(barrier->dstStageMask,
               static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eAllCommands |
                                                  vk::PipelineStageFlagBits2::eHost));
+}
+
+TEST_F(BufferUploadIntegration, TextureRegionSnapshotsPaddedRowsAndRetainsImageThroughCompletion)
+{
+    auto target = texture();
+    const auto image = target->getNative();
+    const auto weak = std::weak_ptr {target};
+    auto bytes = std::vector<std::byte>(28, std::byte {0x5a});
+    const auto expected = bytes;
+    const auto region = panda::TextureUploadRegion {
+        .offset = vk::Offset2D {.x = 2,     .y = 1     },
+        .extent = vk::Extent2D {.width = 3, .height = 2},
+        .rowPitchBytes = 16
+    };
+    auto batch = uploads->createBatch();
+    ASSERT_TRUE(batch->write(target, bytes, region));
+    std::ranges::fill(bytes, std::byte {0});
+    target.reset();
+
+    const auto submitted = batch->submit();
+    ASSERT_TRUE(submitted);
+    batch.reset();
+    ASSERT_EQ(imageCopies.size(), 1);
+    const auto& copy = imageCopies.front();
+    EXPECT_EQ(copy.destination, image);
+    EXPECT_EQ(copy.layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    EXPECT_EQ(copy.region.bufferRowLength, 4);
+    EXPECT_EQ(copy.region.bufferImageHeight, 0);
+    EXPECT_EQ(copy.region.imageOffset.x, 2);
+    EXPECT_EQ(copy.region.imageOffset.y, 1);
+    EXPECT_EQ(copy.region.imageExtent.width, 3);
+    EXPECT_EQ(copy.region.imageExtent.height, 2);
+    EXPECT_EQ(copy.bytes, expected);
+    ASSERT_EQ(imageBarriers.size(), 2);
+    EXPECT_EQ(imageBarriers.front().oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
+    EXPECT_EQ(imageBarriers.front().newLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    EXPECT_EQ(imageBarriers.back().oldLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    EXPECT_EQ(imageBarriers.back().newLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    EXPECT_FALSE(weak.expired());
+    ASSERT_TRUE(submissions->wait(*submitted, 100));
+    uploads->collectCompleted();
+    EXPECT_TRUE(weak.expired());
+}
+
+TEST_F(BufferUploadIntegration, MultipleTextureRegionsAndBuffersKeepWriteOrderAndSingleTransitions)
+{
+    auto target = texture(vk::Extent2D {.width = 8, .height = 4});
+    auto buffer = destination();
+    auto batch = uploads->createBatch();
+    const auto left = std::vector<std::byte>(std::size_t {4} * 4 * 4, std::byte {0x11});
+    const auto right = std::vector<std::byte>(std::size_t {4} * 4 * 4, std::byte {0x22});
+    const auto leftRegion = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 4, .height = 4}
+    };
+    const auto rightRegion = panda::TextureUploadRegion {
+        .offset = vk::Offset2D {.x = 4,     .y = 0     },
+        .extent = vk::Extent2D {.width = 4, .height = 4}
+    };
+    ASSERT_TRUE(batch->write(target, left, leftRegion));
+    ASSERT_TRUE(batch->write(buffer, 0, payload));
+    ASSERT_TRUE(batch->write(target, right, rightRegion));
+
+    ASSERT_TRUE(batch->submit());
+    EXPECT_EQ(copyOrder, (std::vector<char> {'i', 'b', 'i'}));
+    ASSERT_EQ(imageCopies.size(), 2);
+    EXPECT_EQ(imageCopies.at(0).region.imageOffset.x, 0);
+    EXPECT_EQ(imageCopies.at(1).region.imageOffset.x, 4);
+    EXPECT_EQ(imageBarriers.size(), 2);
+    EXPECT_EQ(imageBarriers.front().oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
+    EXPECT_EQ(imageBarriers.back().newLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+}
+
+TEST_F(BufferUploadIntegration, InvalidTextureRegionsAndSourceLayoutsAreRejectedBeforeStaging)
+{
+    auto target = texture();
+    auto batch = uploads->createBatch();
+    const auto bytes = std::vector<std::byte>(32);
+    const auto negative = panda::TextureUploadRegion {
+        .offset = vk::Offset2D {.x = -1,    .y = 0     },
+        .extent = vk::Extent2D {.width = 1, .height = 1}
+    };
+    const auto outOfBounds = panda::TextureUploadRegion {
+        .offset = vk::Offset2D {.x = 7,     .y = 5     },
+        .extent = vk::Extent2D {.width = 2, .height = 1}
+    };
+    const auto empty = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 0, .height = 1}
+    };
+    const auto unalignedPitch = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 3, .height = 2},
+        .rowPitchBytes = 11
+    };
+    const auto shortPitch = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 3, .height = 2},
+        .rowPitchBytes = 8
+    };
+    const auto pitched = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 3, .height = 2},
+        .rowPitchBytes = 16
+    };
+    const auto shortSource = std::span<const std::byte> {bytes}.first(23);
+    EXPECT_FALSE(batch->write(target, bytes, negative));
+    EXPECT_FALSE(batch->write(target, bytes, outOfBounds));
+    EXPECT_FALSE(batch->write(target, bytes, empty));
+    EXPECT_FALSE(batch->write(target, bytes, unalignedPitch));
+    EXPECT_FALSE(batch->write(target, bytes, shortPitch));
+    EXPECT_FALSE(batch->write(target, shortSource, pitched));
+    EXPECT_EQ(bufferCreations, 0);
+    EXPECT_TRUE(imageCopies.empty());
+}
+
+TEST_F(BufferUploadIntegration, TextureWritesRequireSupportedFormatAndBothUsageFlags)
+{
+    const auto transferOnly = texture(vk::Extent2D {.width = 8, .height = 6},
+                                      vk::Format::eR8G8B8A8Unorm,
+                                      vk::ImageUsageFlagBits::eTransferDst);
+    const auto sampledOnly =
+        texture(vk::Extent2D {.width = 8, .height = 6}, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled);
+    const auto depth = texture(vk::Extent2D {.width = 8, .height = 6},
+                               vk::Format::eD32Sfloat,
+                               vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled);
+    auto batch = uploads->createBatch();
+    const auto bytes = std::vector<std::byte>(4);
+    const auto region = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 1, .height = 1}
+    };
+
+    EXPECT_FALSE(batch->write(transferOnly, bytes, region));
+    EXPECT_FALSE(batch->write(sampledOnly, bytes, region));
+    EXPECT_FALSE(batch->write(depth, bytes, region));
+    EXPECT_EQ(bufferCreations, 0);
+}
+
+TEST_F(BufferUploadIntegration, TextureReservationIsReleasedOnCancelAndCommittedOnSubmit)
+{
+    auto target = texture();
+    const auto bytes = std::vector<std::byte>(std::size_t {8} * 6 * 4);
+    auto cancelled = uploads->createBatch();
+    const auto fullRegion = panda::TextureUploadRegion {.extent = target->getExtent()};
+    ASSERT_TRUE(cancelled->write(target, bytes, fullRegion));
+    auto conflicting = uploads->createBatch();
+    EXPECT_FALSE(conflicting->write(target, bytes, fullRegion));
+    conflicting.reset();
+    cancelled.reset();
+
+    auto committed = uploads->createBatch();
+    ASSERT_TRUE(committed->write(target, bytes, fullRegion));
+    ASSERT_TRUE(committed->submit());
+    auto later = uploads->createBatch();
+    EXPECT_FALSE(later->write(target, bytes, fullRegion));
+}
+
+TEST_F(BufferUploadIntegration, TextureReservationIsReleasedAfterStagingCreationFails)
+{
+    auto target = texture();
+    const auto bytes = std::vector<std::byte>(std::size_t {8} * 6 * 4);
+    const auto fullRegion = panda::TextureUploadRegion {.extent = target->getExtent()};
+    auto failed = uploads->createBatch();
+    bufferStatus = exhausted;
+    const auto write = failed->write(target, bytes, fullRegion);
+    ASSERT_FALSE(write);
+    EXPECT_EQ(write.error().code, panda::ErrorCode::ResourceExhausted);
+    bufferStatus = success;
+
+    auto retry = uploads->createBatch();
+    ASSERT_TRUE(retry->write(target, bytes, fullRegion));
+}
+
+TEST_F(BufferUploadIntegration, CompressedTextureUsesBlockRowsAndRequiresAlignedRegions)
+{
+    auto target = texture(vk::Extent2D {.width = 7, .height = 7}, vk::Format::eBc1RgbUnormBlock);
+    auto batch = uploads->createBatch();
+    const auto bytes = std::vector<std::byte>(32, std::byte {0x5a});
+    ASSERT_TRUE(batch->write(target,
+                             bytes,
+                             {
+                                 .extent = vk::Extent2D {.width = 7, .height = 7},
+                                 .rowPitchBytes = 16
+    }));
+    ASSERT_TRUE(batch->submit());
+    ASSERT_EQ(imageCopies.size(), 1);
+    EXPECT_EQ(imageCopies.front().region.bufferRowLength, 8);
+    EXPECT_EQ(imageCopies.front().region.imageExtent.width, 7);
+    EXPECT_EQ(imageCopies.front().region.imageExtent.height, 7);
+
+    auto other = texture(vk::Extent2D {.width = 8, .height = 8}, vk::Format::eBc1RgbUnormBlock);
+    auto invalid = uploads->createBatch();
+    const auto block = std::vector<std::byte>(8, std::byte {0x33});
+    EXPECT_FALSE(invalid->write(other,
+                                block,
+                                {
+                                    .offset = vk::Offset2D {.x = 2,     .y = 0     },
+                                    .extent = vk::Extent2D {.width = 4, .height = 4}
+    }));
+}
+
+TEST_F(BufferUploadIntegration, SingleRowPitchUsesTheUnsignedVulkanRowLengthRange)
+{
+    auto target = texture();
+    auto batch = uploads->createBatch();
+    const auto bytes = std::array<std::byte, 4> {};
+    const auto region = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 1, .height = 1},
+        .rowPitchBytes = std::uint64_t {1}
+           << 31U
+    };
+
+    ASSERT_TRUE(batch->write(target, bytes, region));
+    ASSERT_TRUE(batch->submit());
+    ASSERT_EQ(imageCopies.size(), 1);
+    EXPECT_EQ(imageCopies.front().region.bufferRowLength, std::uint32_t {1} << 29U);
 }
 
 TEST_F(BufferUploadIntegration, CancelledBatchReleasesStagingWithoutSubmitting)

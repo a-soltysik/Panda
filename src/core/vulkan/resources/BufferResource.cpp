@@ -108,7 +108,7 @@ auto BufferResource::create(const vk::raii::Device& device, MemoryPool& pool, co
 }
 
 BufferResource::BufferResource(MemoryPool& pool, vk::raii::Buffer buffer, const BufferDesc& description)
-    : _pool {&pool},
+    : _pool {pool},
       _buffer {std::move(buffer)},
       _size {description.size},
       _usage {description.usage},
@@ -127,7 +127,7 @@ auto BufferResource::bind(const vk::raii::Device& device, const BufferDesc& desc
                                   .requiredProperties = {},
                                   .preferredProperties = {}};
     configureMemory(request, description.memory);
-    auto allocation = _pool->allocate(request);
+    auto allocation = _pool.allocate(request);
     if (!allocation)
     {
         return std::unexpected {std::move(allocation.error())};
@@ -166,7 +166,7 @@ auto BufferResource::getUsage() const -> vk::BufferUsageFlags
 
 auto BufferResource::belongsTo(const MemoryPool& pool) const -> bool
 {
-    return _pool == &pool;
+    return &_pool == &pool;
 }
 
 auto BufferResource::getMappedBytes() const -> Result<std::span<std::byte>>

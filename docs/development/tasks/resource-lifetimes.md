@@ -100,14 +100,23 @@ ordinary RAII. Timeout and failed completion queries preserve pending owners.
 Unsubmitted batch destruction cancels its writes. Context rejects live unsubmitted
 batches and drains submitted packets before checking external buffer owners.
 
+Texture uploads require transfer-destination and sampled usage. Full-image writes
+and pitched rectangular writes accept single-plane 2D color formats, including
+block-compressed formats. Region alignment and source size are validated before
+staging allocation. A texture may be written only by one batch, which may enqueue
+multiple regions; its batch identity is a private typed ID, not a pointer to the
+batch implementation. Submission transitions the image from undefined through
+transfer destination to shader-read layout. Unwritten texels remain undefined,
+and a published sampled texture is immutable.
+
 Presentation checks clock capacity before acquire. Failed acquire retirement
 without a committed value rejects drain; current Context destruction treats
 unsafe teardown as fatal. A timed-out committed retirement can be drained again.
 The window example waits for its last frame at normal shutdown. The
 [buffer example](../../../examples/buffer_allocation/README.md) creates a storage
 buffer, uploads four values through the public API, waits and releases its owners.
-Explicit buffer initialization policies and labels, texture views/uploads, mesh
-handles/uploads and frame arenas remain planned.
+Explicit buffer initialization policies and labels, texture views, mesh handles/
+uploads and frame arenas remain planned.
 
 The executable `panda_unit_range_allocator` demonstrates split/alignment, all six
 release orders for three adjacent ranges, fragmented exhaustion, invalid requests
@@ -123,29 +132,38 @@ by this scenario.
 
 ## Verification
 
-The texture-creation slice was verified on Windows and in Ubuntu Linux WSL.
+The pitched and region texture-upload slice was verified on Windows and in Ubuntu
+Linux WSL.
 
-- `msvc-quality` built `panda_integration_context_resources`, `panda_system_texture`
-  and `panda_core_verify_interface_header_sets`; the focused CTest run passed
-  32/32 cases, including the Vulkan texture system test on Windows with validation.
-- `gcc-quality` built the same targets in Ubuntu WSL; 31/31 integration cases and
-  the texture system test passed.
-- The documentation checker validated 44 Markdown files and the task queue;
-  `git diff --check` passed.
-- A full all-target build and a fresh project-wide coverage measurement were not
-  run for this slice.
-- Unit and integration cases cover range alignment/coalescing/overflow, pool
-  growth fallback, noncoherent atom rounding and flush errors, upload preparation
+- Windows (MSVC quality): `cmake --build --preset msvc-quality --target
+  panda_core_verify_interface_header_sets panda_integration_upload panda_system_texture
+  --parallel` succeeded. The command
+  `ctest --test-dir build-msvc-quality --output-on-failure -R
+  "BufferUploadIntegration|TextureSystem"` passed 21/21 cases (20 integration and
+  the Vulkan texture system test with validation).
+- Ubuntu Linux WSL (GCC quality):
+  `.\scripts\build-wsl.ps1 -Preset gcc-quality -Target panda_core_verify_interface_header_sets,panda_integration_upload,panda_system_texture`
+  succeeded. CTest passed the `BufferUploadIntegration` selection (20/20) and the
+  `TextureSystem` selection (1/1), with validation enabled.
+- Upload tests cover padded rows, multiple regions and interleaved buffer writes,
+  compressed blocks, row-length limits, unsupported formats and usages, foreign
+  pools, invalid layouts, batch reservation/cancel and staging-creation failure.
+  The system case exercises both public full-image and region writes, then waits for
+  completion before releasing shared image owners.
+- Existing CPU/integration coverage includes range alignment/coalescing/overflow,
+  pool growth fallback, noncoherent atom rounding and flush errors, upload preparation
   and submit failures, retry, overlapping copy order, timeout, completed-prefix
-  reclamation, owner retention and Context destruction. Native noncoherent cache
-  operations remain unverified because no tested GPU exposed a compatible type;
-  controlled Vulkan callbacks cover that behavior. The documentation checker
-  and `git diff --check` passed.
+  reclamation, owner retention and Context destruction.
+- A full all-target build and a fresh project-wide coverage measurement were not
+  run. Native noncoherent cache operations remain unverified because no tested GPU
+  exposed a compatible type; controlled Vulkan callbacks cover that behavior.
+- `py -3 .agents/skills/panda-project-maintenance/scripts/check_docs.py` and
+  `git diff --check` pass.
 
 ## Remaining work
 
-Texture creation and ownership are implemented. Texture views/uploads, Mesh handles
-and uploads, and frame arenas remain planned parts of this task. Native noncoherent
-cache-operation validation needs a device exposing that memory type. The maintainer
-learning handoff and acceptance of the remaining task scope are still pending;
-passing tests do not replace that handoff.
+Texture creation, ownership and pitched/region uploads are implemented. Texture
+views, Mesh handles and uploads, and frame arenas remain planned parts of this task.
+Native noncoherent cache-operation validation needs a device exposing that memory
+type. The maintainer learning handoff and acceptance of the remaining task scope
+are still pending; passing tests do not replace that handoff.
