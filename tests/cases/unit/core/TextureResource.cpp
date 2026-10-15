@@ -231,8 +231,12 @@ INSTANTIATE_TEST_SUITE_P(
     DefaultImageAspect,
     TextureResourceAspectTest,
     testing::Values(TextureViewCase {.format = vk::Format::eR8G8B8A8Unorm, .aspect = VK_IMAGE_ASPECT_COLOR_BIT},
+                    TextureViewCase {.format = vk::Format::eD16Unorm, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
+                    TextureViewCase {.format = vk::Format::eX8D24UnormPack32, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
                     TextureViewCase {.format = vk::Format::eD32Sfloat, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
+                    TextureViewCase {.format = vk::Format::eD16UnormS8Uint, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
                     TextureViewCase {.format = vk::Format::eD24UnormS8Uint, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
+                    TextureViewCase {.format = vk::Format::eD32SfloatS8Uint, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
                     TextureViewCase {.format = vk::Format::eS8Uint, .aspect = VK_IMAGE_ASPECT_STENCIL_BIT}));
 
 TEST_F(TextureResourceTest, FailedViewCreationDoesNotAdoptItsOutputAndDestroysTheBoundImage)

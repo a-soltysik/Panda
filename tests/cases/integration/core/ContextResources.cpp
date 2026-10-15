@@ -458,14 +458,17 @@ protected:
     void expectBuffer(VkBuffer buffer,
                       std::uint64_t size = 65,
                       bool dedicated = false,
-                      const testing::ExpectationSet& ownerReleased = {})
+                      const testing::ExpectationSet& ownerReleased = {},
+                      VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
     {
         EXPECT_CALL(vulkan, vkCreateBuffer(device, NotNull(), nullptr, NotNull()))
             .InSequence(bufferCreationOrder)
-            .WillOnce([buffer,
-                       size](VkDevice, const VkBufferCreateInfo* info, const VkAllocationCallbacks*, VkBuffer* output) {
+            .WillOnce([buffer, size, usage](VkDevice,
+                                            const VkBufferCreateInfo* info,
+                                            const VkAllocationCallbacks*,
+                                            VkBuffer* output) {
                 EXPECT_EQ(info->size, size);
-                EXPECT_EQ(info->usage, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                EXPECT_EQ(info->usage, usage);
                 EXPECT_EQ(info->sharingMode, VK_SHARING_MODE_EXCLUSIVE);
                 EXPECT_EQ(info->flags, 0);
                 EXPECT_EQ(info->pNext, nullptr);
@@ -786,6 +789,72 @@ TEST_F(ContextResourcesIntegration, EmptyAndInvalidMeshesNeverCreateNativeBuffer
         ASSERT_FALSE(mesh);
         EXPECT_EQ(mesh.error().code, panda::ErrorCode::InvalidArgument);
     }
+}
+
+TEST_F(ContextResourcesIntegration, CreatesIndexedAndNonIndexedMeshesWithSharedStorage)
+{
+    expectHeadless();
+    constexpr auto vertexBufferUsage =
+        static_cast<VkBufferUsageFlags>(vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer);
+    constexpr auto indexBufferUsage =
+        static_cast<VkBufferUsageFlags>(vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer);
+    auto* const indexedVertices = fakeVulkanHandle<VkBuffer>(40);
+    auto* const indices = fakeVulkanHandle<VkBuffer>(41);
+    auto* const nonIndexedVertices = fakeVulkanHandle<VkBuffer>(42);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectBuffer(indexedVertices, 36, false, {}, vertexBufferUsage);
+    expectBuffer(indices, 6, false, {}, indexBufferUsage);
+    expectBuffer(nonIndexedVertices, 32, false, {}, vertexBufferUsage);
+    expectBufferAllocation(memory);
+    expectBinding(indexedVertices, memory);
+    expectBinding(indices, memory, 128);
+    expectBinding(nonIndexedVertices, memory, 256);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+
+    auto indexedResult = context->createMesh({
+        .vertexCount = 3,
+        .vertexStride = 12,
+        .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+    });
+    ASSERT_TRUE(indexedResult);
+    auto indexed = *indexedResult;
+    indexedResult->reset();
+    EXPECT_TRUE(indexed.isValid());
+    EXPECT_EQ(indexed.getVertexCount(), 3);
+    EXPECT_EQ(indexed.getVertexStride(), 12);
+    EXPECT_EQ(indexed.getVertexSize(), 36);
+    EXPECT_EQ(indexed.getIndexCount(), 3);
+    EXPECT_EQ(indexed.getIndexType(), panda::MeshIndexType::UInt16);
+    EXPECT_EQ(indexed.getIndexSize(), 6);
+
+    auto nonIndexedResult = context->createMesh({.vertexCount = 4, .vertexStride = 8, .indices = std::nullopt});
+    ASSERT_TRUE(nonIndexedResult);
+    auto nonIndexed = std::move(*nonIndexedResult);
+    EXPECT_EQ(nonIndexed.getVertexSize(), 32);
+    EXPECT_EQ(nonIndexed.getIndexCount(), 0);
+    EXPECT_FALSE(nonIndexed.getIndexType());
+    EXPECT_EQ(nonIndexed.getIndexSize(), 0);
+    indexed.reset();
+    nonIndexed.reset();
+}
+
+TEST_F(ContextResourcesIntegration, ActiveBatchRejectsAnEmptyMeshAndRemainsUsable)
+{
+    expectHeadless();
+    expectUploadClock();
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto batch = context->createUploadBatch();
+    ASSERT_TRUE(batch);
+    const auto mesh = panda::Mesh {};
+    const auto written = batch->write(mesh, {}, {});
+
+    ASSERT_FALSE(written);
+    EXPECT_EQ(written.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_TRUE(batch->isValid());
 }
 
 TEST_F(ContextResourcesIntegration, SharedTexturesBindAndReleaseTheOptimalImage)

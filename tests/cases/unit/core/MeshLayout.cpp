@@ -17,7 +17,13 @@ TEST(MeshLayout, ComputesVertexAndSixteenBitIndexStorage)
     });
 
     ASSERT_TRUE(layout);
+    EXPECT_EQ(layout->getVertexCount(), 3);
+    EXPECT_EQ(layout->getVertexStride(), 20);
     EXPECT_EQ(layout->getVertexSize(), 60);
+    ASSERT_TRUE(layout->getIndices().has_value());
+    const auto indices = layout->getIndices().value_or(panda::MeshIndexDesc {});
+    EXPECT_EQ(indices.count, 6);
+    EXPECT_EQ(indices.type, panda::MeshIndexType::UInt16);
     EXPECT_EQ(layout->getIndexSize(), 12);
 }
 
@@ -30,7 +36,13 @@ TEST(MeshLayout, ComputesThirtyTwoBitIndexStorage)
     });
 
     ASSERT_TRUE(layout);
+    EXPECT_EQ(layout->getVertexCount(), 4);
+    EXPECT_EQ(layout->getVertexStride(), 12);
     EXPECT_EQ(layout->getVertexSize(), 48);
+    ASSERT_TRUE(layout->getIndices().has_value());
+    const auto indices = layout->getIndices().value_or(panda::MeshIndexDesc {});
+    EXPECT_EQ(indices.count, 9);
+    EXPECT_EQ(indices.type, panda::MeshIndexType::UInt32);
     EXPECT_EQ(layout->getIndexSize(), 36);
 }
 
@@ -40,6 +52,9 @@ TEST(MeshLayout, NonIndexedMeshHasNoIndexStorage)
         panda::detail::MeshLayout::create({.vertexCount = 3, .vertexStride = 16, .indices = std::nullopt});
 
     ASSERT_TRUE(layout);
+    EXPECT_EQ(layout->getVertexCount(), 3);
+    EXPECT_EQ(layout->getVertexStride(), 16);
+    EXPECT_EQ(layout->getVertexSize(), 48);
     EXPECT_FALSE(layout->getIndices().has_value());
     EXPECT_EQ(layout->getIndexSize(), 0);
 }

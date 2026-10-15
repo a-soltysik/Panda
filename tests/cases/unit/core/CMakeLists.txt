@@ -59,6 +59,10 @@ panda_add_test(panda_unit_upload_batch unit
     SOURCES UploadBatch.cpp
     LIBRARIES Panda::Panda)
 
+panda_add_test(panda_unit_mesh unit
+    SOURCES Mesh.cpp
+    LIBRARIES Panda::Panda)
+
 panda_add_test(panda_unit_upload_manager unit
     SOURCES UploadManager.cpp
     LIBRARIES Panda::Panda PandaTest::Support

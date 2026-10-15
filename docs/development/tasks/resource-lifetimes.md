@@ -167,15 +167,16 @@ Linux WSL.
   Unit tests verify view aspects, creation parameters, failed creation cleanup and
   destruction order. Integration tests verify Buffer and Texture shared ownership
   and release behavior through the public Panda API.
-- Mesh creation and vertex/index uploads passed the Windows MSVC quality build for
-  `panda_unit_mesh_layout`, `panda_unit_texture_resource`,
-  `panda_integration_upload`, `panda_integration_context_resources`,
-  `panda_system_mesh` and `panda_core_verify_interface_header_sets`. The matching
-  CTest selection passed 71/71 cases (12 unit, 57 integration, 2 system), including
-  mock-verified rejection of invalid Context mesh descriptions and indexed and
-  non-indexed mesh uploads through the public Context and UploadBatch API. The same
-  GCC quality targets and CTest selection passed in Ubuntu Linux WSL, with the two
-  Mesh system tests running against its Vulkan device.
+- Mesh/upload coverage changes passed the Windows MSVC quality build and its
+  84-test CTest selection (22 unit and 62 integration tests). Ubuntu Linux WSL
+  GCC quality built all targets and passed 336/336 tests; three memory-type system
+  cases skipped because the device exposed no compatible noncoherent memory type.
+  The `gcc-coverage` build passed all 275 CPU tests. With `gcov-16`, source coverage
+  was 94.7% of lines and 63.5% of branches. Compared with the original PR coverage
+  artifact, all added executable lines in `Mesh.cpp`, `Context.cpp`, `MeshLayout.cpp`,
+  `MeshResource.cpp`, `TextureResource.cpp` and `UploadBatch.cpp` were hit; the new
+  `UploadBatchImpl.cpp` lines were hit 66/68 times. Its changed-line branch outcomes
+  rose from 55/106 to 65/106.
 - Upload tests cover padded rows, multiple regions and interleaved buffer writes,
   compressed blocks, row-length limits, unsupported formats and usages, foreign
   pools, invalid layouts, batch reservation/cancel and staging-creation failure.
@@ -185,10 +186,9 @@ Linux WSL.
   pool growth fallback, noncoherent atom rounding and flush errors, upload preparation
   and submit failures, retry, overlapping copy order, timeout, completed-prefix
   reclamation, owner retention and Context destruction.
-- A full all-target build and a fresh project-wide coverage measurement were not
-  run. Native noncoherent cache operations remain unverified because no tested GPU
+- Native noncoherent cache operations remain unverified because no tested GPU
   exposed a compatible type; controlled Vulkan callbacks cover that behavior.
-- `py -3 .agents/skills/panda-project-maintenance/scripts/check_docs.py` and
+- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` and
   `git diff --check` pass.
 
 ## Remaining work
