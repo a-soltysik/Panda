@@ -34,7 +34,7 @@ private:
     BufferResource(MemoryPool& pool, vk::raii::Buffer buffer, const BufferDesc& description);
     [[nodiscard]] auto bind(const vk::raii::Device& device, const BufferDesc& description) -> Result<void>;
 
-    MemoryPool* _pool;
+    MemoryPool& _pool;
     MemoryAllocation _allocation;
     vk::raii::Buffer _buffer;
     std::uint64_t _size;

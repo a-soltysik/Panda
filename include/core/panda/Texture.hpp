@@ -57,6 +57,7 @@ public:
 
 private:
     friend class Context;
+    friend class detail::TextureResource;
     explicit Texture(std::shared_ptr<detail::TextureResource> resource);
     std::shared_ptr<detail::TextureResource> _resource;
 };

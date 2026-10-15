@@ -8,12 +8,14 @@
 
 #include <expected>
 #include <memory>
+#include <panda/Assert.hpp>
 #include <panda/Error.hpp>
 #include <panda/Texture.hpp>
 #include <utility>
 
 #include "MemoryAllocation.hpp"
 #include "MemoryPool.hpp"
+#include "UploadBatchId.hpp"
 #include "VulkanError.hpp"
 
 namespace panda::detail
@@ -62,6 +64,11 @@ auto createNativeImage(const vk::raii::Device& device, const TextureDesc& descri
 }
 }
 
+auto TextureResource::getResource(const Texture& texture) -> const std::shared_ptr<TextureResource>&
+{
+    return texture._resource;
+}
+
 auto TextureResource::create(const vk::raii::Device& device, MemoryPool& pool, const TextureDesc& description)
     -> Result<std::shared_ptr<TextureResource>>
 {
@@ -76,9 +83,9 @@ auto TextureResource::create(const vk::raii::Device& device, MemoryPool& pool, c
         return std::unexpected {std::move(image.error())};
     }
     auto resource = std::shared_ptr<TextureResource> {
-        new TextureResource {std::move(*image), description}
+        new TextureResource {pool, std::move(*image), description}
     };
-    const auto bound = resource->bind(device, pool);
+    const auto bound = resource->bind(device);
     if (!bound)
     {
         return std::unexpected {bound.error()};
@@ -86,15 +93,16 @@ auto TextureResource::create(const vk::raii::Device& device, MemoryPool& pool, c
     return resource;
 }
 
-TextureResource::TextureResource(vk::raii::Image image, const TextureDesc& description)
+TextureResource::TextureResource(MemoryPool& pool, vk::raii::Image image, const TextureDesc& description)
     : _image {std::move(image)},
+      _pool {pool},
       _extent {description.extent},
       _format {description.format},
       _usage {description.usage}
 {
 }
 
-auto TextureResource::bind(const vk::raii::Device& device, MemoryPool& pool) -> Result<void>
+auto TextureResource::bind(const vk::raii::Device& device) -> Result<void>
 {
     const auto requirements =
         device.getImageMemoryRequirements2<vk::MemoryRequirements2, vk::MemoryDedicatedRequirements>(
@@ -104,7 +112,7 @@ auto TextureResource::bind(const vk::raii::Device& device, MemoryPool& pool) -> 
                                   .resource = vk::MemoryDedicatedAllocateInfo {.image = *_image},
                                   .requiredProperties = vk::MemoryPropertyFlagBits::eDeviceLocal,
                                   .preferredProperties = {}};
-    auto allocation = pool.allocate(request);
+    auto allocation = _pool.allocate(request);
     if (!allocation)
     {
         return std::unexpected {std::move(allocation.error())};
@@ -134,6 +142,39 @@ auto TextureResource::getFormat() const -> vk::Format
 auto TextureResource::getUsage() const -> vk::ImageUsageFlags
 {
     return _usage;
+}
+
+auto TextureResource::getNative() const -> vk::Image
+{
+    return *_image;
+}
+
+auto TextureResource::belongsTo(const MemoryPool& pool) const -> bool
+{
+    return &_pool == &pool;
+}
+
+auto TextureResource::reserveUpload(UploadBatchId batchId) -> Result<void>
+{
+    if (_uploaded || (_uploadBatchId && *_uploadBatchId != batchId))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture is already uploaded or reserved")};
+    }
+    _uploadBatchId = batchId;
+    return {};
+}
+
+void TextureResource::cancelUpload(UploadBatchId batchId)
+{
+    expect(_uploadBatchId == batchId, "Texture upload reservation was lost");
+    _uploadBatchId.reset();
+}
+
+void TextureResource::commitUpload(UploadBatchId batchId)
+{
+    expect(_uploadBatchId == batchId, "Texture upload reservation was lost");
+    _uploadBatchId.reset();
+    _uploaded = true;
 }
 
 }

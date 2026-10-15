@@ -11,7 +11,7 @@
 #include <span>
 #include <vector>
 
-#include "UploadBatchImpl.hpp"
+#include "UploadOperation.hpp"
 
 namespace panda::detail
 {
@@ -22,16 +22,16 @@ class UploadCommand final
 public:
     [[nodiscard]] static auto create(const vk::raii::Device& device,
                                      std::uint32_t family,
-                                     std::span<const BufferUpload> writes) -> Result<std::unique_ptr<UploadCommand>>;
+                                     std::span<const UploadOperation> writes) -> Result<std::unique_ptr<UploadCommand>>;
     [[nodiscard]] auto getCommand() const -> vk::CommandBuffer;
     [[nodiscard]] auto getStagingSize() const -> std::uint64_t;
 
 private:
-    explicit UploadCommand(std::span<const BufferUpload> writes);
+    explicit UploadCommand(std::span<const UploadOperation> writes);
     [[nodiscard]] auto initialize(const vk::raii::Device& device, std::uint32_t family) -> Result<void>;
     [[nodiscard]] auto record() const -> Result<void>;
 
-    std::vector<BufferUpload> _writes;
+    std::vector<UploadOperation> _writes;
     vk::raii::CommandPool _pool {nullptr};
     vk::CommandBuffer _command;
 };

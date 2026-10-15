@@ -264,6 +264,17 @@ VKAPI_ATTR void VKAPI_CALL vkCmdCopyBuffer(VkCommandBuffer commandBuffer,
                                                                                       pRegions);
 }
 
+VKAPI_ATTR void VKAPI_CALL vkCmdCopyBufferToImage(VkCommandBuffer commandBuffer,
+                                                  VkBuffer srcBuffer,
+                                                  VkImage dstImage,
+                                                  VkImageLayout dstImageLayout,
+                                                  std::uint32_t regionCount,
+                                                  const VkBufferImageCopy* pRegions)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock()
+        .vkCmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
+}
+
 VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier2(VkCommandBuffer commandBuffer, const VkDependencyInfo* dependencyInfo)
 {
     panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdPipelineBarrier2(commandBuffer,
@@ -610,6 +621,7 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkAcquireNextImageKHR",                     .function = genericVulkanProc(&vkAcquireNextImageKHR)        },
     EntryPoint {.name = "vkBeginCommandBuffer",                      .function = genericVulkanProc(&vkBeginCommandBuffer)         },
     EntryPoint {.name = "vkCmdPipelineBarrier2",                     .function = genericVulkanProc(&vkCmdPipelineBarrier2)        },
+    EntryPoint {.name = "vkCmdCopyBufferToImage",                    .function = genericVulkanProc(&vkCmdCopyBufferToImage)       },
     EntryPoint {.name = "vkCmdBeginRendering",                       .function = genericVulkanProc(&vkCmdBeginRendering)          },
     EntryPoint {.name = "vkCmdEndRendering",                         .function = genericVulkanProc(&vkCmdEndRendering)            },
     EntryPoint {.name = "vkEndCommandBuffer",                        .function = genericVulkanProc(&vkEndCommandBuffer)           },

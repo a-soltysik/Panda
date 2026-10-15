@@ -21,6 +21,23 @@ TEST(UploadBatch, EmptyHandleRejectsWriteAndSubmit)
     EXPECT_EQ(submitted.error().code, panda::ErrorCode::InvalidArgument);
 }
 
+TEST(UploadBatch, EmptyHandleRejectsTextureWrites)
+{
+    auto batch = panda::UploadBatch {};
+    const auto target = panda::Texture {};
+    const auto bytes = std::array {std::byte {1}};
+    const auto region = panda::TextureUploadRegion {};
+
+    const auto fullImageWrite = batch.write(target, bytes);
+    ASSERT_FALSE(fullImageWrite);
+    EXPECT_EQ(fullImageWrite.error().code, panda::ErrorCode::InvalidArgument);
+
+    const auto regionWrite = batch.write(target, bytes, region);
+    ASSERT_FALSE(regionWrite);
+    EXPECT_EQ(regionWrite.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_FALSE(batch.isValid());
+}
+
 TEST(UploadBatch, MovingAndReplacingEmptyHandlesPreservesInvalidState)
 {
     auto original = panda::UploadBatch {};
