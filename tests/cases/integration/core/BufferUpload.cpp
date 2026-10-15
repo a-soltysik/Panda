@@ -618,12 +618,12 @@ TEST_F(BufferUploadIntegration, MultipleTextureRegionsAndBuffersKeepWriteOrderAn
         .offset = vk::Offset2D {.x = 4,     .y = 0     },
         .extent = vk::Extent2D {.width = 4, .height = 4}
     };
-    ASSERT_TRUE(batch->write(target, left, leftRegion));
     ASSERT_TRUE(batch->write(buffer, 0, payload));
+    ASSERT_TRUE(batch->write(target, left, leftRegion));
     ASSERT_TRUE(batch->write(target, right, rightRegion));
 
     ASSERT_TRUE(batch->submit());
-    EXPECT_EQ(copyOrder, (std::vector<char> {'i', 'b', 'i'}));
+    EXPECT_EQ(copyOrder, (std::vector<char> {'b', 'i', 'i'}));
     ASSERT_EQ(imageCopies.size(), 2);
     EXPECT_EQ(imageCopies.at(0).region.imageOffset.x, 0);
     EXPECT_EQ(imageCopies.at(1).region.imageOffset.x, 4);
@@ -771,6 +771,34 @@ TEST_F(BufferUploadIntegration, SingleRowPitchUsesTheUnsignedVulkanRowLengthRang
     ASSERT_TRUE(batch->submit());
     ASSERT_EQ(imageCopies.size(), 1);
     EXPECT_EQ(imageCopies.front().region.bufferRowLength, std::uint32_t {1} << 29U);
+}
+
+TEST_F(BufferUploadIntegration, TextureCopyRejectsRowLengthAndSourceSizeOverflow)
+{
+    const auto bytes = std::array {std::byte {1}, std::byte {2}, std::byte {3}, std::byte {4}};
+    const auto rowLengthOverflow = texture();
+    auto rowLengthBatch = uploads->createBatch();
+    const auto excessiveRowPitch = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 1, .height = 1},
+        .rowPitchBytes = (std::uint64_t {std::numeric_limits<std::uint32_t>::max()}
+           + 1) * 4
+    };
+    const auto rowLengthResult = rowLengthBatch->write(rowLengthOverflow, bytes, excessiveRowPitch);
+    ASSERT_FALSE(rowLengthResult);
+    EXPECT_EQ(rowLengthResult.error().code, panda::ErrorCode::InvalidArgument);
+
+    const auto maximumHeight = std::numeric_limits<std::uint32_t>::max();
+    const auto sourceSizeOverflow = texture(vk::Extent2D {.width = 1, .height = maximumHeight});
+    auto sourceSizeBatch = uploads->createBatch();
+    const auto oversizedSourceLayout = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 1, .height = maximumHeight},
+        .rowPitchBytes = std::uint64_t {maximumHeight}
+           * 4
+    };
+    const auto sourceSizeResult = sourceSizeBatch->write(sourceSizeOverflow, bytes, oversizedSourceLayout);
+    ASSERT_FALSE(sourceSizeResult);
+    EXPECT_EQ(sourceSizeResult.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(bufferCreations, 0);
 }
 
 TEST_F(BufferUploadIntegration, CancelledBatchReleasesStagingWithoutSubmitting)

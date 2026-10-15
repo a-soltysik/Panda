@@ -46,6 +46,14 @@ panda_add_test(panda_unit_upload_batch unit
     SOURCES UploadBatch.cpp
     LIBRARIES Panda::Panda)
 
+panda_add_test(panda_unit_upload_manager unit
+    SOURCES UploadManager.cpp
+    LIBRARIES Panda::Panda PandaTest::Support
+    MOCKS PandaTest::VulkanMock PandaTest::SubmissionQueueMock)
+target_include_directories(panda_unit_upload_manager PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan"
+    "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources")
+target_compile_definitions(panda_unit_upload_manager PRIVATE VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
+
 panda_add_test(panda_unit_submission_queue unit
     SOURCES SubmissionQueue.cpp
     LIBRARIES Panda::Panda PandaTest::Support
