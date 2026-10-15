@@ -19,6 +19,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
@@ -546,14 +547,42 @@ protected:
             });
     }
 
-    void expectTexture(VkImage image,
-                       const panda::TextureDesc& description,
-                       bool dedicated = false,
-                       const testing::ExpectationSet& ownerReleased = {})
+    void expectTexture(VkImage image, const panda::TextureDesc& description, bool dedicated = false)
     {
         expectImageCreation(image, description);
         expectImageMemoryRequirements(image, dedicated);
+    }
+
+    void expectTextureCleanup(VkImage image, const testing::ExpectationSet& ownerReleased = {})
+    {
         imageCleanup += EXPECT_CALL(vulkan, vkDestroyImage(device, image, nullptr)).After(ownerReleased);
+    }
+
+    void expectTextureViewCleanup(VkImage image, VkImageView view, const testing::ExpectationSet& ownerReleased = {})
+    {
+        const testing::Expectation viewReleased =
+            EXPECT_CALL(vulkan, vkDestroyImageView(device, view, nullptr)).After(ownerReleased);
+        imageCleanup += viewReleased;
+        imageCleanup += EXPECT_CALL(vulkan, vkDestroyImage(device, image, nullptr)).After(viewReleased);
+    }
+
+    void expectTextureViewCreation(VkImage image, VkImageView view, const panda::TextureDesc& description)
+    {
+        EXPECT_CALL(vulkan, vkCreateImageView(device, NotNull(), nullptr, NotNull()))
+            .InSequence(imageBindingOrder)
+            .WillOnce([image, view, format = description.format](VkDevice,
+                                                                 const VkImageViewCreateInfo* info,
+                                                                 const VkAllocationCallbacks*,
+                                                                 VkImageView* output) {
+                EXPECT_EQ(info->image, image);
+                EXPECT_EQ(info->viewType, VK_IMAGE_VIEW_TYPE_2D);
+                EXPECT_EQ(info->format, static_cast<VkFormat>(format));
+                EXPECT_EQ(info->subresourceRange.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+                EXPECT_EQ(info->subresourceRange.levelCount, 1U);
+                EXPECT_EQ(info->subresourceRange.layerCount, 1U);
+                *output = view;
+                return success;
+            });
     }
 
     void expectTextureAllocation(VkDeviceMemory memory, VkImage image, std::uint32_t type = 0, bool dedicated = false)
@@ -729,6 +758,36 @@ TEST_F(ContextResourcesIntegration, EmptyAndInvalidTexturesNeverCreateNativeImag
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 }
 
+TEST_F(ContextResourcesIntegration, EmptyAndInvalidMeshesNeverCreateNativeBuffers)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    auto empty = panda::Mesh {};
+    EXPECT_FALSE(empty.isValid());
+    EXPECT_EQ(empty.getVertexCount(), 0);
+    EXPECT_EQ(empty.getVertexStride(), 0);
+    EXPECT_EQ(empty.getVertexSize(), 0);
+    EXPECT_EQ(empty.getIndexCount(), 0);
+    EXPECT_FALSE(empty.getIndexType());
+    EXPECT_EQ(empty.getIndexSize(), 0);
+    empty.reset();
+    const auto descriptions = std::array {
+        panda::MeshDesc {},
+        panda::MeshDesc {.vertexCount = 3, .vertexStride = 0, .indices = std::nullopt},
+        panda::MeshDesc {.vertexCount = 3,
+                         .vertexStride = 12,
+                         .indices = panda::MeshIndexDesc {.count = 0, .type = panda::MeshIndexType::UInt16}}
+    };
+    for (const auto& description : descriptions)
+    {
+        const auto mesh = context->createMesh(description);
+        ASSERT_FALSE(mesh);
+        EXPECT_EQ(mesh.error().code, panda::ErrorCode::InvalidArgument);
+    }
+}
+
 TEST_F(ContextResourcesIntegration, SharedTexturesBindAndReleaseTheOptimalImage)
 {
     expectHeadless();
@@ -738,10 +797,13 @@ TEST_F(ContextResourcesIntegration, SharedTexturesBindAndReleaseTheOptimalImage)
         .usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst
     };
     auto* const image = fakeVulkanHandle<VkImage>(40);
+    auto* const view = fakeVulkanHandle<VkImageView>(41);
     auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
     expectTexture(image, description);
+    expectTextureViewCleanup(image, view);
     expectTextureAllocation(memory, image);
     expectTextureBinding(image, memory);
+    expectTextureViewCreation(image, view, description);
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
@@ -793,6 +855,7 @@ TEST_F(ContextResourcesIntegration, FailedTextureAllocationDestroysTheUnboundIma
     auto* const image = fakeVulkanHandle<VkImage>(40);
     auto* const output = fakeVulkanHandle<VkDeviceMemory>(50);
     expectTexture(image, description, true);
+    expectTextureCleanup(image);
     expectTextureAllocationFailure(output, image);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
@@ -812,6 +875,7 @@ TEST_F(ContextResourcesIntegration, DedicatedTextureBindingFailureDestroysImageB
     auto* const image = fakeVulkanHandle<VkImage>(40);
     auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
     expectTexture(image, description, true);
+    expectTextureCleanup(image);
     expectTextureAllocation(memory, image, 0, true);
     expectTextureBinding(image, memory, 0, exhausted);
     expectParentsDestroyed(true, false);

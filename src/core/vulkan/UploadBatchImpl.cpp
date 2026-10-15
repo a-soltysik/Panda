@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <iterator>
 #include <memory>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
@@ -15,11 +16,13 @@
 #include <span>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "UploadBatchId.hpp"
 #include "UploadManager.hpp"
 #include "UploadOperation.hpp"
 #include "resources/BufferResource.hpp"
+#include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
 
 namespace panda::detail
@@ -87,6 +90,117 @@ auto createStaging(UploadManager& manager, std::span<const std::byte> bytes) -> 
     return manager.createStaging(bytes);
 }
 
+auto validateMeshWriteSizes(const MeshResource& destination,
+                            std::span<const std::byte> vertexBytes,
+                            std::span<const std::byte> indexBytes) -> Result<void>
+{
+    const auto& layout = destination.getLayout();
+    if (vertexBytes.size() != layout.getVertexSize() || indexBytes.size() != layout.getIndexSize())
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Mesh upload data sizes do not match its description")};
+    }
+    return {};
+}
+
+auto validateMeshWriteBuffers(const UploadManager& manager,
+                              const MeshResource& destination,
+                              std::span<const std::byte> vertexBytes,
+                              std::span<const std::byte> indexBytes) -> Result<void>
+{
+    const auto validVertex = manager.validateWrite(destination.getVertexBuffer(), 0, vertexBytes.size());
+    if (!validVertex)
+    {
+        return validVertex;
+    }
+    const auto& indexBuffer = destination.getIndexBuffer();
+    if (indexBuffer)
+    {
+        const auto validIndices = manager.validateWrite(indexBuffer, 0, indexBytes.size());
+        if (!validIndices)
+        {
+            return validIndices;
+        }
+    }
+    return {};
+}
+
+auto createBufferUpload(UploadManager& manager,
+                        const std::shared_ptr<BufferResource>& destination,
+                        std::span<const std::byte> bytes) -> Result<BufferUpload>
+{
+    auto staging = createStaging(manager, bytes);
+    if (!staging)
+    {
+        return std::unexpected {std::move(staging.error())};
+    }
+    return BufferUpload {.staging = std::move(*staging), .destination = destination, .offset = 0, .size = bytes.size()};
+}
+
+auto validateMeshWrite(const UploadManager& manager,
+                       const std::shared_ptr<MeshResource>& destination,
+                       std::span<const std::byte> vertexBytes,
+                       std::span<const std::byte> indexBytes) -> Result<void>
+{
+    if (!destination)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Mesh handle is empty")};
+    }
+    const auto validSizes = validateMeshWriteSizes(*destination, vertexBytes, indexBytes);
+    if (!validSizes)
+    {
+        return std::unexpected {validSizes.error()};
+    }
+    return validateMeshWriteBuffers(manager, *destination, vertexBytes, indexBytes);
+}
+
+auto appendIndexUpload(UploadManager& manager,
+                       const MeshResource& destination,
+                       std::span<const std::byte> indexBytes,
+                       std::vector<UploadOperation>& writes) -> Result<void>
+{
+    const auto& indexBuffer = destination.getIndexBuffer();
+    if (!indexBuffer)
+    {
+        return {};
+    }
+    auto indexUpload = createBufferUpload(manager, indexBuffer, indexBytes);
+    if (!indexUpload)
+    {
+        return std::unexpected {std::move(indexUpload.error())};
+    }
+    writes.emplace_back(std::move(*indexUpload));
+    return {};
+}
+
+auto createMeshUploads(UploadManager& manager,
+                       const std::shared_ptr<MeshResource>& destination,
+                       std::span<const std::byte> vertexBytes,
+                       std::span<const std::byte> indexBytes) -> Result<std::vector<UploadOperation>>
+{
+    const auto valid = validateMeshWrite(manager, destination, vertexBytes, indexBytes);
+    if (!valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+
+    const auto& vertexBuffer = destination->getVertexBuffer();
+    auto vertexUpload = createBufferUpload(manager, vertexBuffer, vertexBytes);
+    if (!vertexUpload)
+    {
+        return std::unexpected {std::move(vertexUpload.error())};
+    }
+    auto writes = std::vector<UploadOperation> {};
+    writes.reserve(destination->getIndexBuffer() ? 2 : 1);
+    writes.emplace_back(std::move(*vertexUpload));
+    const auto indexUpload = appendIndexUpload(manager, *destination, indexBytes, writes);
+    if (!indexUpload)
+    {
+        return std::unexpected {indexUpload.error()};
+    }
+    return writes;
+}
+
 void cancelReservation(const std::shared_ptr<TextureResource>& destination, UploadBatchId batchId, bool reserved)
 {
     if (reserved)
@@ -130,6 +244,24 @@ auto UploadBatchImpl::write(const std::shared_ptr<BufferResource>& destination,
                                        .destination = destination,
                                        .offset = offset,
                                        .size = bytes.size()});
+    return {};
+}
+
+auto UploadBatchImpl::write(const std::shared_ptr<MeshResource>& destination,
+                            std::span<const std::byte> vertexBytes,
+                            std::span<const std::byte> indexBytes) -> Result<void>
+{
+    auto uploads = createMeshUploads(_manager, destination, vertexBytes, indexBytes);
+    if (!uploads)
+    {
+        return std::unexpected {uploads.error()};
+    }
+    if (_writes.size() > _writes.max_size() - uploads->size())
+    {
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Upload batch cannot retain mesh writes")};
+    }
+    _writes.reserve(_writes.size() + uploads->size());
+    std::ranges::move(*uploads, std::back_inserter(_writes));
     return {};
 }
 

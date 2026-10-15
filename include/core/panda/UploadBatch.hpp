@@ -9,6 +9,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
 #include <span>
 
@@ -56,6 +57,15 @@ public:
     /// Writes are applied in insertion order, including overlapping destination ranges.
     [[nodiscard]] auto write(const Buffer& destination, std::uint64_t offset, std::span<const std::byte> bytes)
         -> Result<void>;
+    /// @brief Snapshots a mesh's complete vertex and optional index data into owned staging.
+    /// @param destination Mesh from the same Context.
+    /// @param vertexBytes Exactly vertexCount * vertexStride bytes.
+    /// @param indexBytes Exactly the declared index storage size, or empty for a non-indexed mesh.
+    /// @return Success or a validation/allocation/cache error. Failure queues no part of this mesh write;
+    /// earlier writes in the batch remain intact.
+    [[nodiscard]] auto write(const Mesh& destination,
+                             std::span<const std::byte> vertexBytes,
+                             std::span<const std::byte> indexBytes = {}) -> Result<void>;
     /// @brief Snapshots a full-texture upload into owned staging.
     /// @param destination Texture from the same Context with transfer-destination and sampled usage.
     /// @param bytes Source texels or compressed blocks, with rows separated by rowPitchBytes.

@@ -9,6 +9,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <string>
@@ -72,7 +73,7 @@ struct FrameResult
 /// Calls on one Context must be serialized. A quiescent Context may move between
 /// threads. A borrowed WindowSurface and its native window must outlive this Context;
 /// windowed calls follow that surface's thread requirements.
-/// Context outlives every Buffer and Texture owner created from it, including copied handles.
+/// Context outlives every Buffer, Texture and Mesh owner created from it, including copied handles.
 class Context final
 {
 public:
@@ -97,7 +98,7 @@ public:
 
     auto operator=(Context&&) -> Context& = delete;
 
-    /// @brief Rejects live upload batches, drains submitted uses/presentation, then requires Buffer and Texture owners released.
+    /// @brief Rejects live upload batches, drains submitted uses/presentation, then requires Buffer, Texture and Mesh owners released.
     /// An ownership violation is fatal.
     ~Context() noexcept;
 
@@ -117,6 +118,11 @@ public:
     /// @return A shared image owner or a validation/allocation/backend error.
     /// Context outlives all copies. May allocate; submits no work and does not wait.
     [[nodiscard]] auto createTexture(const TextureDesc& description) const -> Result<Texture>;
+
+    /// @brief Creates fixed vertex storage and optional index storage for one mesh.
+    /// @return A shared mesh owner or a validation/allocation/backend error.
+    /// Context outlives all copies. May allocate; submits no work and does not wait.
+    [[nodiscard]] auto createMesh(const MeshDesc& description) const -> Result<Mesh>;
 
     /// @brief Creates an empty batch borrowing this Context; may allocate.
     /// @return A batch or an initialization/backend error. Submits no work and performs no completion wait.

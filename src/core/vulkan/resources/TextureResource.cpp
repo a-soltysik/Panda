@@ -62,6 +62,41 @@ auto createNativeImage(const vk::raii::Device& device, const TextureDesc& descri
     }
     return Result<vk::raii::Image> {std::in_place, device, image};
 }
+
+auto imageAspect(vk::Format format) -> vk::ImageAspectFlags
+{
+    if (format == vk::Format::eS8Uint)
+    {
+        return vk::ImageAspectFlagBits::eStencil;
+    }
+    if (format == vk::Format::eD16Unorm || format == vk::Format::eX8D24UnormPack32 ||
+        format == vk::Format::eD32Sfloat || format == vk::Format::eD16UnormS8Uint ||
+        format == vk::Format::eD24UnormS8Uint || format == vk::Format::eD32SfloatS8Uint)
+    {
+        // Depth-only views work for both depth sampling and depth/stencil attachments.
+        return vk::ImageAspectFlagBits::eDepth;
+    }
+    return vk::ImageAspectFlagBits::eColor;
+}
+
+auto createNativeView(const vk::raii::Device& device, vk::Image image, vk::Format format) -> Result<vk::raii::ImageView>
+{
+    const auto info = vk::ImageViewCreateInfo {
+        .image = image,
+        .viewType = vk::ImageViewType::e2D,
+        .format = format,
+        .components = {.r = vk::ComponentSwizzle::eIdentity,
+                       .g = vk::ComponentSwizzle::eIdentity,
+                       .b = vk::ComponentSwizzle::eIdentity,
+                       .a = vk::ComponentSwizzle::eIdentity},
+        .subresourceRange = {.aspectMask = imageAspect(format),
+                       .baseMipLevel = 0,
+                       .levelCount = 1,
+                       .baseArrayLayer = 0,
+                       .layerCount = 1}
+    };
+    return checkedCreation(device.createImageView(info));
+}
 }
 
 auto TextureResource::getResource(const Texture& texture) -> const std::shared_ptr<TextureResource>&
@@ -90,6 +125,12 @@ auto TextureResource::create(const vk::raii::Device& device, MemoryPool& pool, c
     {
         return std::unexpected {bound.error()};
     }
+    auto view = createNativeView(device, *resource->_image, description.format);
+    if (!view)
+    {
+        return std::unexpected {std::move(view.error())};
+    }
+    resource->_view = std::move(*view);
     return resource;
 }
 

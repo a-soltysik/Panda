@@ -9,6 +9,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <span>
@@ -16,6 +17,7 @@
 
 #include "UploadBatchImpl.hpp"
 #include "resources/BufferResource.hpp"
+#include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
 
 namespace panda
@@ -44,6 +46,17 @@ auto UploadBatch::write(const Buffer& destination, std::uint64_t offset, std::sp
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Upload batch is empty or already submitted")};
     }
     return _impl->write(detail::BufferResource::getResource(destination), offset, bytes);
+}
+
+auto UploadBatch::write(const Mesh& destination,
+                        std::span<const std::byte> vertexBytes,
+                        std::span<const std::byte> indexBytes) -> Result<void>
+{
+    if (!_impl)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Upload batch is empty or already submitted")};
+    }
+    return _impl->write(detail::MeshResource::getResource(destination), vertexBytes, indexBytes);
 }
 
 auto UploadBatch::write(const Texture& destination, std::span<const std::byte> bytes, std::uint64_t rowPitchBytes)

@@ -12,7 +12,7 @@
 
 namespace panda::detail
 {
-// Declaration order destroys the bound image before releasing its allocation.
+// Declaration order destroys the view and bound image before releasing their allocation.
 // The context pool and device outlive this state, including every shared owner.
 class TextureResource final
 {
@@ -35,6 +35,7 @@ private:
 
     MemoryAllocation _allocation;
     vk::raii::Image _image;
+    vk::raii::ImageView _view {nullptr};
     MemoryPool& _pool;
     vk::Extent2D _extent;
     vk::Format _format;

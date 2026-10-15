@@ -5,6 +5,7 @@ panda_add_component(panda_core
         Panda.cpp
         Error.cpp
         Buffer.cpp
+        Mesh.cpp
         Texture.cpp
         CompletionPoint.cpp
         UploadBatch.cpp
@@ -22,6 +23,8 @@ panda_add_component(panda_core
         vulkan/resources/MemoryAllocation.cpp
         vulkan/resources/MemoryPool.cpp
         vulkan/resources/BufferResource.cpp
+        vulkan/resources/MeshLayout.cpp
+        vulkan/resources/MeshResource.cpp
         vulkan/resources/TextureResource.cpp
     LIBRARIES PUBLIC panda_common glm::glm Vulkan::Headers PRIVATE Vulkan::Vulkan)
 

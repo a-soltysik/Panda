@@ -15,6 +15,7 @@
 namespace panda::detail
 {
 class BufferResource;
+class MeshResource;
 class TextureResource;
 class UploadManager;
 
@@ -32,6 +33,9 @@ public:
     [[nodiscard]] auto write(const std::shared_ptr<BufferResource>& destination,
                              std::uint64_t offset,
                              std::span<const std::byte> bytes) -> Result<void>;
+    [[nodiscard]] auto write(const std::shared_ptr<MeshResource>& destination,
+                             std::span<const std::byte> vertexBytes,
+                             std::span<const std::byte> indexBytes) -> Result<void>;
     [[nodiscard]] auto write(const std::shared_ptr<TextureResource>& destination,
                              std::span<const std::byte> bytes,
                              const TextureUploadRegion& region) -> Result<void>;
