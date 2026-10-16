@@ -313,7 +313,7 @@ class Context::Impl
 {
 public:
     [[nodiscard]] auto initialize(const WindowSurface* surface, const ContextOptions& options) -> Result<void>;
-    [[nodiscard]] auto getDeviceInfo() const -> ContextDeviceInfo;
+    [[nodiscard]] auto getDeviceInfo() const -> const ContextDeviceInfo&;
     [[nodiscard]] auto presentClearFrame() -> Result<FrameResult>;
     [[nodiscard]] auto createBufferResource(const BufferDesc& description)
         -> Result<std::shared_ptr<detail::BufferResource>>;
@@ -449,7 +449,7 @@ void Context::Impl::collectCompletedUploads()
     }
 }
 
-auto Context::Impl::getDeviceInfo() const -> ContextDeviceInfo
+auto Context::Impl::getDeviceInfo() const -> const ContextDeviceInfo&
 {
     return _info;
 }
