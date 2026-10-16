@@ -280,10 +280,13 @@ resources, defragmenter, residency manager, or allocator plugin API in version o
 - Persistently map host-visible blocks. Prefer coherent memory, but support explicit
   flush/invalidate. Separate independently reusable slices on non-coherent atom
   boundaries and keep rounded operations inside the mapped allocation.
-- Use frame-local linear arenas for camera/light/material/transform data and staging;
-  reset only after that frame slot completes. Reuse high-water capacities instead
-  of allocating every frame. Large explicit upload batches retain their own staging
-  pages to their submission point. Overflow grows pages, not an unsafe wraparound.
+- Keep transient parameter data associated with the frame slot that uses it, and
+  reuse it only after that slot's final completion point. Choose the smallest
+  ownership-safe representation for the first renderer; do not mandate a general
+  linear arena or growth policy before representative frame workloads exist. Measure
+  allocation count, CPU cost and high-water bytes before adding one. Explicit upload
+  batches retain their staging pages through completion; adding a page must preserve
+  in-flight data rather than wrap around it.
 - Exportable CUDA buffers use dedicated allocations, outside ordinary pools; the
   [compute contract](compute.md#external-buffer-creation) owns the rules.
 
@@ -312,9 +315,13 @@ creation and later upload activity; shutdown drains their last committed point.
 Timeout or a failed counter query keeps retention intact. Reclamation destroys
 command pools before dropping buffer owners. Internal upload statistics report
 pending batches and reserved pending/peak staging bytes. Staging pages are shared
-within one explicit batch and retained through its completion; reuse between batches
-and frame-local arenas remain planned. Explicit batch writes may allocate metadata
-and additional native buffers when another page is needed.
+within one explicit batch and retained through its completion. Cancellation or
+confirmed completion releases the batch's pages through ordinary RAII and the memory
+pool; pages are not cached for reuse by later batches. Cross-batch page caches and
+general frame-local arenas are deferred until representative workloads can be
+measured. The first renderer must associate any transient parameter data with a safe
+frame slot. Explicit batch writes may allocate metadata and additional native buffers
+when another page is needed.
 
 Renderer parameter edits update CPU state, then copy a snapshot into the next safe
 frame slot. A host-visible allocation is not permission to modify an in-flight slot.
@@ -344,11 +351,15 @@ The pool algorithm and sizes above are Panda design choices, not Vulkan prescrip
 
 ## Frame and window state
 
-Two frame slots each own command pools/buffers, descriptor pools, parameter/staging
-arenas, timestamp ranges, and retained work packets. Their reuse point is the final
-`G` value defined in the [compute protocol](compute.md#submission-protocol).
-Even a CUDA stage with no rendered output is joined before this value. Rendering
-without CUDA uses the same `G` completion path without any CUDA objects/imports.
+Two frame slots each own command pools/buffers, descriptor pools, transient
+parameter storage, timestamp ranges, and retained work packets. Frame-local data is
+reusable only after the slot's final `G` value, defined in the [compute
+protocol](compute.md#submission-protocol). The first renderer chooses a minimal
+safe representation; a general arena is added only if representative measurements
+justify it. Explicit upload staging remains owned by its batch and submission until
+completion. Even a CUDA stage with no rendered output is joined before the final
+`G` value. Rendering without CUDA uses the same completion path without CUDA
+objects/imports.
 
 For a normal frame: reclaim completed work, wait/poll the selected slot, acquire an
 image, prepare/execute the ordered work, submit the final rendering segment, then
