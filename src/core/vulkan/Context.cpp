@@ -19,6 +19,7 @@
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
@@ -36,6 +37,7 @@
 #include "VulkanError.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MemoryPool.hpp"
+#include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
 
 namespace panda
@@ -422,7 +424,8 @@ void Context::Impl::drain()
     {
         expect(_presentation->drain(), "Cannot safely drain window presentation");
     }
-    expect(_memoryPool->getStats().liveBytes == 0, "Context destroyed with live Buffer or Texture owners");
+    expect(_memoryPool->getStats().liveBytes == 0,
+           "Context destroyed with live Buffer or Texture owners or Mesh storage");
 }
 
 Context::Context(std::unique_ptr<Impl> implementation) noexcept
@@ -519,6 +522,18 @@ auto Context::createTexture(const TextureDesc& description) const -> Result<Text
         })
         .transform([](std::shared_ptr<detail::TextureResource> resource) {
             return Texture {std::move(resource)};
+        });
+}
+
+auto Context::createMesh(const MeshDesc& description) const -> Result<Mesh>
+{
+    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    return _implementation->collectUploads()
+        .and_then([&] {
+            return detail::MeshResource::create(_implementation->_device, *_implementation->_memoryPool, description);
+        })
+        .transform([](std::shared_ptr<detail::MeshResource> resource) {
+            return Mesh {std::move(resource)};
         });
 }
 

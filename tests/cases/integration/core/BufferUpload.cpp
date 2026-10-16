@@ -14,10 +14,12 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <span>
@@ -33,6 +35,7 @@
 #include "external/vulkan/VulkanMock.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MemoryPool.hpp"
+#include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
 
 namespace
@@ -84,6 +87,7 @@ protected:
         configureProperties();
         configureBuffers();
         configureImages();
+        configureImageViews();
         configureMemory();
         configureCommands();
         configureSubmissions();
@@ -102,6 +106,7 @@ protected:
         submissions.reset();
         EXPECT_TRUE(buffers.empty());
         EXPECT_TRUE(images.empty());
+        EXPECT_TRUE(imageViews.empty());
         EXPECT_TRUE(memory.empty());
         std::ignore = device.release();
         std::ignore = instance.release();
@@ -142,11 +147,12 @@ protected:
                 [this](VkDevice, const VkBufferCreateInfo* info, const VkAllocationCallbacks*, VkBuffer* output) {
                     ++bufferCreations;
                     *output = fakeVulkanHandle<VkBuffer>(nextId++);
-                    if (bufferStatus == success)
+                    const auto result = bufferCreations == failBufferCreationAt ? exhausted : bufferStatus;
+                    if (result == success)
                     {
                         buffers.emplace(*output, NativeBuffer {.size = info->size});
                     }
-                    return bufferStatus;
+                    return result;
                 });
         EXPECT_CALL(vulkan, vkGetBufferMemoryRequirements2(_, NotNull(), NotNull()))
             .Times(testing::AnyNumber())
@@ -210,8 +216,32 @@ protected:
         EXPECT_CALL(vulkan, vkDestroyImage(_, _, nullptr))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkDevice, VkImage image, const VkAllocationCallbacks*) {
+                EXPECT_FALSE(std::ranges::any_of(imageViews, [image](const auto& entry) {
+                    return entry.second == image;
+                }));
                 EXPECT_EQ(images.erase(image), 1);
                 destruction.push_back('i');
+            });
+    }
+
+    void configureImageViews()
+    {
+        EXPECT_CALL(vulkan, vkCreateImageView(_, NotNull(), nullptr, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly(
+                [this](VkDevice, const VkImageViewCreateInfo* info, const VkAllocationCallbacks*, VkImageView* output) {
+                    EXPECT_TRUE(images.contains(info->image));
+                    EXPECT_EQ(info->viewType, VK_IMAGE_VIEW_TYPE_2D);
+                    auto* const view = fakeVulkanHandle<VkImageView>(nextId++);
+                    *output = view;
+                    imageViews.emplace(view, info->image);
+                    return success;
+                });
+        EXPECT_CALL(vulkan, vkDestroyImageView(_, _, nullptr))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([this](VkDevice, VkImageView view, const VkAllocationCallbacks*) {
+                EXPECT_EQ(imageViews.erase(view), 1);
+                destruction.push_back('v');
             });
     }
 
@@ -442,6 +472,7 @@ protected:
     std::unique_ptr<panda::detail::UploadManager> uploads;
     std::unordered_map<VkBuffer, NativeBuffer> buffers;
     std::unordered_map<VkImage, NativeImage> images;
+    std::unordered_map<VkImageView, VkImage> imageViews;
     std::unordered_map<VkDeviceMemory, std::vector<std::byte>> memory;
     std::vector<ObservedCopy> copies;
     std::vector<ObservedImageCopy> imageCopies;
@@ -466,6 +497,7 @@ protected:
     std::uintptr_t nextId {100};
     std::uint64_t completed {0};
     std::size_t bufferCreations {0};
+    std::size_t failBufferCreationAt {0};
     std::size_t waits {0};
 };
 }
@@ -509,7 +541,235 @@ TEST_F(BufferUploadIntegration, WrongUsageAndForeignPoolAreRejected)
         .extent = vk::Extent2D {.width = 8, .height = 6}
     };
     EXPECT_FALSE(batch->write(*foreignTexture, textureBytes, region));
+    const auto foreignMesh =
+        panda::detail::MeshResource::create(device,
+                                            *otherPool,
+                                            {.vertexCount = 3, .vertexStride = 4, .indices = std::nullopt});
+    ASSERT_TRUE(foreignMesh);
+    const auto vertexBytes = std::array {std::byte {1},
+                                         std::byte {2},
+                                         std::byte {3},
+                                         std::byte {4},
+                                         std::byte {5},
+                                         std::byte {6},
+                                         std::byte {7},
+                                         std::byte {8},
+                                         std::byte {9},
+                                         std::byte {10},
+                                         std::byte {11},
+                                         std::byte {12}};
+    EXPECT_FALSE(batch->write(*foreignMesh, vertexBytes, {}));
+    EXPECT_EQ(bufferCreations, 3);
+}
+
+TEST_F(BufferUploadIntegration, MeshWriteCopiesVertexAndIndexStorageInOrder)
+{
+    const auto mesh = panda::detail::MeshResource::create(
+        device,
+        *pool,
+        {
+            .vertexCount = 3,
+            .vertexStride = 4,
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+    });
+    ASSERT_TRUE(mesh);
+    const auto vertexBytes = std::array {std::byte {1},
+                                         std::byte {2},
+                                         std::byte {3},
+                                         std::byte {4},
+                                         std::byte {5},
+                                         std::byte {6},
+                                         std::byte {7},
+                                         std::byte {8},
+                                         std::byte {9},
+                                         std::byte {10},
+                                         std::byte {11},
+                                         std::byte {12}};
+    const auto indexBytes =
+        std::array {std::byte {0}, std::byte {1}, std::byte {1}, std::byte {2}, std::byte {2}, std::byte {0}};
+    auto batch = uploads->createBatch();
+
+    ASSERT_TRUE(batch->write(*mesh, vertexBytes, indexBytes));
+    ASSERT_TRUE(batch->submit());
+
+    ASSERT_EQ(copies.size(), 2);
+    EXPECT_EQ(copies.front().destination, (*mesh)->getVertexBuffer()->getNative());
+    EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {vertexBytes.begin(), vertexBytes.end()}));
+    EXPECT_EQ(copies.back().destination, (*mesh)->getIndexBuffer()->getNative());
+    EXPECT_EQ(copies.back().bytes, (std::vector<std::byte> {indexBytes.begin(), indexBytes.end()}));
+}
+
+TEST_F(BufferUploadIntegration, NonIndexedMeshWriteCopiesOnlyVertexStorage)
+{
+    const auto mesh =
+        panda::detail::MeshResource::create(device,
+                                            *pool,
+                                            {.vertexCount = 3, .vertexStride = 4, .indices = std::nullopt});
+    ASSERT_TRUE(mesh);
+    ASSERT_FALSE((*mesh)->getIndexBuffer());
+    const auto vertexBytes = std::array {std::byte {1},
+                                         std::byte {2},
+                                         std::byte {3},
+                                         std::byte {4},
+                                         std::byte {5},
+                                         std::byte {6},
+                                         std::byte {7},
+                                         std::byte {8},
+                                         std::byte {9},
+                                         std::byte {10},
+                                         std::byte {11},
+                                         std::byte {12}};
+    const auto indexBytes = std::array<std::byte, 0> {};
+    auto batch = uploads->createBatch();
+
+    ASSERT_TRUE(batch->write(*mesh, vertexBytes, indexBytes));
+    ASSERT_TRUE(batch->submit());
+
+    ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().destination, (*mesh)->getVertexBuffer()->getNative());
+    EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {vertexBytes.begin(), vertexBytes.end()}));
+}
+
+TEST_F(BufferUploadIntegration, FailedVertexBufferCreationDoesNotPublishMesh)
+{
+    failBufferCreationAt = 1;
+
+    const auto mesh =
+        panda::detail::MeshResource::create(device,
+                                            *pool,
+                                            {.vertexCount = 3, .vertexStride = 4, .indices = std::nullopt});
+
+    ASSERT_FALSE(mesh);
+    EXPECT_EQ(mesh.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_EQ(bufferCreations, 1);
+    EXPECT_TRUE(buffers.empty());
+}
+
+TEST_F(BufferUploadIntegration, FailedIndexBufferCreationReleasesUnpublishedVertexBuffer)
+{
+    failBufferCreationAt = 2;
+
+    const auto mesh = panda::detail::MeshResource::create(
+        device,
+        *pool,
+        {
+            .vertexCount = 3,
+            .vertexStride = 4,
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+    });
+
+    ASSERT_FALSE(mesh);
+    EXPECT_EQ(mesh.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_EQ(bufferCreations, 2);
+    EXPECT_TRUE(buffers.empty());
+}
+
+TEST_F(BufferUploadIntegration, InvalidMeshWriteQueuesNoPartialData)
+{
+    const auto mesh = panda::detail::MeshResource::create(
+        device,
+        *pool,
+        {
+            .vertexCount = 3,
+            .vertexStride = 4,
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+    });
+    ASSERT_TRUE(mesh);
+    auto batch = uploads->createBatch();
+    const auto shortVertices = std::array<std::byte, 11> {};
+    const auto indices = std::array<std::byte, 6> {};
+    const auto shortIndices = std::array<std::byte, 4> {};
+
+    const auto invalid = batch->write(*mesh, shortVertices, indices);
+    const auto invalidIndices = batch->write(*mesh, std::array<std::byte, 12> {}, shortIndices);
+
+    ASSERT_FALSE(invalid);
+    EXPECT_EQ(invalid.error().code, panda::ErrorCode::InvalidArgument);
+    ASSERT_FALSE(invalidIndices);
+    EXPECT_EQ(invalidIndices.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(bufferCreations, 2);
+    EXPECT_FALSE(batch->submit());
+    EXPECT_TRUE(copies.empty());
+}
+
+TEST_F(BufferUploadIntegration, SecondMeshStagingFailurePreservesOnlyEarlierBatchWrites)
+{
+    auto target = destination();
+    const auto mesh = panda::detail::MeshResource::create(
+        device,
+        *pool,
+        {
+            .vertexCount = 3,
+            .vertexStride = 4,
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+    });
+    ASSERT_TRUE(mesh);
+    auto batch = uploads->createBatch();
+    ASSERT_TRUE(batch->write(target, 0, payload));
+    const auto vertexBytes = std::array {std::byte {1},
+                                         std::byte {2},
+                                         std::byte {3},
+                                         std::byte {4},
+                                         std::byte {5},
+                                         std::byte {6},
+                                         std::byte {7},
+                                         std::byte {8},
+                                         std::byte {9},
+                                         std::byte {10},
+                                         std::byte {11},
+                                         std::byte {12}};
+    const auto indexBytes =
+        std::array {std::byte {0}, std::byte {1}, std::byte {1}, std::byte {2}, std::byte {2}, std::byte {0}};
+    failBufferCreationAt = bufferCreations + 2;
+
+    const auto failed = batch->write(*mesh, vertexBytes, indexBytes);
+
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_TRUE(batch->submit());
+    ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().destination, target->getNative());
+    EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
+}
+
+TEST_F(BufferUploadIntegration, FirstMeshStagingFailurePreservesOnlyEarlierBatchWrites)
+{
+    auto target = destination();
+    const auto mesh = panda::detail::MeshResource::create(
+        device,
+        *pool,
+        {
+            .vertexCount = 3,
+            .vertexStride = 4,
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+    });
+    ASSERT_TRUE(mesh);
+    auto batch = uploads->createBatch();
+    ASSERT_TRUE(batch->write(target, 0, payload));
+    const auto vertexBytes = std::array {std::byte {1},
+                                         std::byte {2},
+                                         std::byte {3},
+                                         std::byte {4},
+                                         std::byte {5},
+                                         std::byte {6},
+                                         std::byte {7},
+                                         std::byte {8},
+                                         std::byte {9},
+                                         std::byte {10},
+                                         std::byte {11},
+                                         std::byte {12}};
+    const auto indexBytes =
+        std::array {std::byte {0}, std::byte {1}, std::byte {1}, std::byte {2}, std::byte {2}, std::byte {0}};
+    failBufferCreationAt = bufferCreations + 1;
+
+    const auto failed = batch->write(*mesh, vertexBytes, indexBytes);
+
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
+    ASSERT_TRUE(batch->submit());
+    ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().destination, target->getNative());
+    EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
 }
 
 TEST_F(BufferUploadIntegration, WriteSnapshotsCallerBytesAndSubmissionRetainsBothBuffers)

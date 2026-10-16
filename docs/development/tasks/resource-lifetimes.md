@@ -72,11 +72,26 @@ Shared resource state destroys `VkBuffer` before its `MemoryAllocation` releases
 the range. Context has stable heap-owned state; moving it preserves buffer owners.
 `Context::createTexture` follows the same lifecycle for an optimal-tiled, single-mip,
 single-layer 2D image: validate, create, query image memory requirements, allocate
-device-local memory from the image partition, bind, then publish a copyable `Texture`.
-Member order destroys `VkImage` before `MemoryAllocation` releases its range. Context
-destruction drains submitted uploads before checking for external Buffer or Texture
-owners and tearing down the device. Buffer memory intent selects device-local, upload
-or readback memory, without exposing CPU mapping. Public native buffer views remain planned.
+device-local memory from the image partition, bind, create one default 2D image view,
+then publish a copyable `Texture`. The default view spans the sole mip/layer and uses
+the format's color, depth or stencil aspect; combined depth/stencil formats use depth.
+Member order destroys `VkImageView` before `VkImage`, then `MemoryAllocation` releases
+its range. Vulkan device, buffer and image-view handles remain private to the backend.
+Queue submission and synchronization remain owned by Panda. Context destruction
+drains submitted uploads before checking for external Buffer, Texture or Mesh owners
+and tearing down the device. Buffer memory intent
+selects device-local, upload or readback memory, without exposing CPU mapping.
+
+`Context::createMesh` builds one fixed vertex buffer and, when described, one index
+buffer from the same Context pool. `MeshDesc` uses a vertex count/byte stride and an
+optional index count/type; index width is 16 or 32 bits. Both buffers use device-local
+memory and transfer-destination usage. A failed second-buffer creation releases the
+first through RAII before returning an error. The copyable `Mesh` handle reports its
+counts and byte sizes without exposing its internal buffers. `UploadBatch::write`
+accepts exact-size vertex and optional index byte spans, stages both before adding
+either write to the batch, and keeps earlier batch entries if staging fails. The
+caller supplies vertex attributes and valid index values; those are not part of this
+storage handle.
 
 Public Vulkan fields and window-surface signatures use Vulkan-Hpp flags and
 borrowed `vk` handles. `makeVulkanError` accepts `vk::Result`. Internally, surface
@@ -115,8 +130,7 @@ unsafe teardown as fatal. A timed-out committed retirement can be drained again.
 The window example waits for its last frame at normal shutdown. The
 [buffer example](../../../examples/buffer_allocation/README.md) creates a storage
 buffer, uploads four values through the public API, waits and releases its owners.
-Explicit buffer initialization policies and labels, texture views, mesh handles/
-uploads and frame arenas remain planned.
+Explicit buffer initialization policies and labels, and frame arenas remain planned.
 
 The executable `panda_unit_range_allocator` demonstrates split/alignment, all six
 release orders for three adjacent ranges, fragmented exhaustion, invalid requests
@@ -145,6 +159,24 @@ Linux WSL.
   `.\scripts\build-wsl.ps1 -Preset gcc-quality -Target panda_core_verify_interface_header_sets,panda_integration_upload,panda_system_texture`
   succeeded. CTest passed the `BufferUploadIntegration` selection (20/20) and the
   `TextureSystem` selection (1/1), with validation enabled.
+- Internal image-view ownership and resource lifetimes were verified on Windows
+  and Ubuntu Linux WSL. MSVC and GCC quality builds passed for
+  `panda_unit_texture_resource`, `panda_integration_context_resources`,
+  `panda_system_texture` and `panda_core_verify_interface_header_sets`; the
+  corresponding CTest selections passed 37/37 (5 unit, 31 integration, 1 system).
+  Unit tests verify view aspects, creation parameters, failed creation cleanup and
+  destruction order. Integration tests verify Buffer and Texture shared ownership
+  and release behavior through the public Panda API.
+- Mesh/upload coverage changes passed the Windows MSVC quality build and its
+  84-test CTest selection (22 unit and 62 integration tests). Ubuntu Linux WSL
+  GCC quality built all targets and passed 336/336 tests; three memory-type system
+  cases skipped because the device exposed no compatible noncoherent memory type.
+  The `gcc-coverage` build passed all 275 CPU tests. With `gcov-16`, source coverage
+  was 94.7% of lines and 63.5% of branches. Compared with the original PR coverage
+  artifact, all added executable lines in `Mesh.cpp`, `Context.cpp`, `MeshLayout.cpp`,
+  `MeshResource.cpp`, `TextureResource.cpp` and `UploadBatch.cpp` were hit; the new
+  `UploadBatchImpl.cpp` lines were hit 66/68 times. Its changed-line branch outcomes
+  rose from 55/106 to 65/106.
 - Upload tests cover padded rows, multiple regions and interleaved buffer writes,
   compressed blocks, row-length limits, unsupported formats and usages, foreign
   pools, invalid layouts, batch reservation/cancel and staging-creation failure.
@@ -154,16 +186,15 @@ Linux WSL.
   pool growth fallback, noncoherent atom rounding and flush errors, upload preparation
   and submit failures, retry, overlapping copy order, timeout, completed-prefix
   reclamation, owner retention and Context destruction.
-- A full all-target build and a fresh project-wide coverage measurement were not
-  run. Native noncoherent cache operations remain unverified because no tested GPU
+- Native noncoherent cache operations remain unverified because no tested GPU
   exposed a compatible type; controlled Vulkan callbacks cover that behavior.
-- `py -3 .agents/skills/panda-project-maintenance/scripts/check_docs.py` and
+- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` and
   `git diff --check` pass.
 
 ## Remaining work
 
-Texture creation, ownership and pitched/region uploads are implemented. Texture
-views, Mesh handles and uploads, and frame arenas remain planned parts of this task.
+Texture creation, internal image-view ownership, pitched/region uploads, and Mesh
+creation/uploads are implemented. Frame arenas remain planned parts of this task.
 Native noncoherent cache-operation validation needs a device exposing that memory
 type. The maintainer learning handoff and acceptance of the remaining task scope
 are still pending; passing tests do not replace that handoff.

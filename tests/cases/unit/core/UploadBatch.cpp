@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/UploadBatch.hpp>
 #include <utility>
 
@@ -35,6 +36,17 @@ TEST(UploadBatch, EmptyHandleRejectsTextureWrites)
     const auto regionWrite = batch.write(target, bytes, region);
     ASSERT_FALSE(regionWrite);
     EXPECT_EQ(regionWrite.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_FALSE(batch.isValid());
+}
+
+TEST(UploadBatch, EmptyHandleRejectsMeshWrite)
+{
+    auto batch = panda::UploadBatch {};
+    const auto target = panda::Mesh {};
+    const auto written = batch.write(target, {}, {});
+
+    ASSERT_FALSE(written);
+    EXPECT_EQ(written.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_FALSE(batch.isValid());
 }
 

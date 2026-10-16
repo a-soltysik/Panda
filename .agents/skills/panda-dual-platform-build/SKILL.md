@@ -34,9 +34,10 @@ ctest --preset msvc-tests
 The helper configures with an installed `ccache` and keeps its cache in the WSL
 home directory. It chooses a conservative parallel job count from available
 memory and CPU count; pass `-Jobs N` to override it. Pass `-SyncOnly` to update
-the WSL mirror without building. `-TestRegex` selects CTest cases. The default
-test-preset run excludes `system` tests; `-IncludeSystemTests` runs all tests
-registered by the selected test-enabled preset.
+the WSL mirror without building. `-TestRegex` selects CTest cases. The `gcc-tests`,
+`gcc-coverage` and sanitizer test presets exclude `system` tests by default.
+The `gcc-quality` and `msvc-quality` presets do not filter them.
+`-IncludeSystemTests` runs all tests registered by the selected test-enabled preset.
 
 ## Verification and handoff
 

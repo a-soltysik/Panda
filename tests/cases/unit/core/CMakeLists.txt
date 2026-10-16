@@ -19,6 +19,19 @@ target_include_directories(panda_unit_memory_pool PRIVATE "${PROJECT_SOURCE_DIR}
     "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources")
 target_compile_definitions(panda_unit_memory_pool PRIVATE VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
 
+panda_add_test(panda_unit_texture_resource unit
+    SOURCES TextureResource.cpp
+    LIBRARIES Panda::Panda PandaTest::Support
+    MOCKS PandaTest::VulkanMock)
+target_include_directories(panda_unit_texture_resource PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan"
+    "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources")
+target_compile_definitions(panda_unit_texture_resource PRIVATE VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
+
+panda_add_test(panda_unit_mesh_layout unit
+    SOURCES MeshLayout.cpp
+    LIBRARIES Panda::Panda)
+target_include_directories(panda_unit_mesh_layout PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources")
+
 panda_add_test(panda_unit_core unit
     SOURCES Version.cpp DeviceSelection.cpp SwapchainGeneration.cpp SwapchainCreation.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
@@ -44,6 +57,10 @@ panda_add_test(panda_unit_error unit
 
 panda_add_test(panda_unit_upload_batch unit
     SOURCES UploadBatch.cpp
+    LIBRARIES Panda::Panda)
+
+panda_add_test(panda_unit_mesh unit
+    SOURCES Mesh.cpp
     LIBRARIES Panda::Panda)
 
 panda_add_test(panda_unit_upload_manager unit

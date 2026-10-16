@@ -146,9 +146,11 @@ their public headers; entries without public declarations remain planned contrac
 | `Context::create(ContextOptions) -> Result<Context>` | Move-only owner with stable, heap-owned internal state; operations on one context are serialized |
 | `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
 | `Buffer`, `Texture`, `Mesh`, `Material` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
-| `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an allocation behind a borrowed native handle |
+| `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
 | `Context::createTexture(TextureDesc) -> Result<Texture>` | Optimal-tiled 2D image with one mip and layer, sample count one, and undefined initial contents |
+| `Context::createMesh(MeshDesc) -> Result<Mesh>` | Fixed vertex storage and optional 16- or 32-bit index storage; does not submit work |
 | `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates destination bounds and transfer usage |
+| `UploadBatch::write(Mesh, vertexBytes, indexBytes) -> Result<void>` | Snapshots the complete mesh payload; a failed call queues none of that mesh's buffers |
 | `UploadBatch::write(Texture, span<const byte>, rowPitchBytes) -> Result<void>` | Copies a full texture using tightly packed rows when pitch is zero |
 | `UploadBatch::write(Texture, span<const byte>, TextureUploadRegion) -> Result<void>` | Copies one validated region; multiple regions for one texture must use the same batch |
 | `UploadBatch::submit() -> Result<CompletionPoint>` | Submits on the same graphics/compute queue; no CPU wait for completion |
@@ -189,7 +191,7 @@ CPU mapping or GPU access permission.
 dedicated requirements, allocates from the Context's pool and binds at that range's
 offset. Failure publishes no handle. A last `Buffer` release destroys the native
 buffer before returning its range. The pool and device remain stable when Context
-moves; destroying Context with live Buffer or Texture owners is a checked fatal violation.
+moves; destroying Context with live Buffer, Texture or Mesh owners is a checked fatal violation.
 Upload submissions retain their staging, destination buffers and command pools
 until confirmed completion. Context drains these internal owners before checking
 for remaining external resource owners. Unsubmitted upload batches still borrow
@@ -200,23 +202,37 @@ creation fixes optimal tiling, one mip, one array layer and one sample, with und
 initial contents. `Context::createTexture` creates the image, queries ordinary and
 dedicated requirements, requests device-local memory from the image partition of the
 Context pool and binds the image at that range's offset. Failure publishes no handle.
-A last `Texture` release destroys the image before returning its range. Upload requires
-both transfer-destination and sampled usage. It accepts single-plane 2D color formats,
+A successful creation also gives the texture one internal default 2D image view
+spanning its sole mip and layer. The view selects color, depth or stencil from the
+format; combined depth/stencil formats use a depth-only view. The Texture retains
+the view and destroys it before the image. A last `Texture` release destroys the
+image before returning its range. Upload requires both transfer-destination and
+sampled usage. It accepts single-plane 2D color formats,
 including block-compressed formats, and snapshots source bytes into owned staging.
 Source row pitch is a byte stride between block rows; zero means tightly packed. A
 texture can be published by one batch only, while that batch may write multiple
 regions. Region offsets and non-edge extents obey format-block alignment. After submit,
 the image transitions from undefined to transfer destination and then shader-read
 layout. Texels not covered by the supplied regions remain undefined. Published sampled
-textures are immutable; edits publish a replacement handle. Image-view creation is
-not part of this API slice.
+textures are immutable; edits publish a replacement handle.
 
-The planned `panda/NativeVulkan.hpp` extension exposes borrowed device/physical-device handles, enabled
-feature information and buffer views for native pipeline/descriptor setup. It
-does not expose Panda's queue submission or semaphore ownership. Native handles
-remain tied to their owning Context/resource; recording accesses to Panda buffers
-must still happen through a declared callback. Descriptor creation is not GPU use.
-The application must not destroy borrowed objects or externally submit their use.
+`MeshDesc` gives a nonzero vertex count and byte stride, plus an optional nonzero
+index count and `MeshIndexType` (`UInt16` or `UInt32`). `Context::createMesh` derives
+the byte sizes, creates device-local vertex and optional index buffers with transfer
+destination usage, and publishes one copyable `Mesh` only after all buffers are
+ready. If index-buffer creation fails, the unpublished vertex buffer is released.
+`Mesh` exposes counts, stride and byte sizes, but not its component buffers or native
+Vulkan handles. `UploadBatch::write` requires exactly the described number of vertex
+and index bytes; pass an empty index span for a non-indexed mesh. The call snapshots
+both buffers into owned staging as one logical write. If either staging allocation
+fails, no part of that mesh write is queued and earlier batch writes remain intact.
+The API does not define vertex attributes or inspect index values; pipeline layout
+and draw validation belong to rendering.
+
+The Vulkan device and native resource handles remain private to the backend.
+Descriptor and pipeline interfaces belong to the later frame-rendering task.
+Selected-device diagnostics are available through `Context::getDeviceInfo()` without
+exposing a device object.
 
 Context identity is checked when combining handles. Handles do not extend Context
 lifetime; external owners must be released before Context destruction. Its destructor
