@@ -11,6 +11,7 @@
 #include <expected>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
@@ -38,6 +39,7 @@ struct TextureBlock
     std::uint64_t size;
     std::uint32_t width;
     std::uint32_t height;
+    std::uint64_t bufferOffsetAlignment;
 };
 
 struct TextureCopyLayout
@@ -46,6 +48,7 @@ struct TextureCopyLayout
     std::uint64_t rowBytes;
     std::uint64_t rowPitch;
     std::uint64_t blockRows;
+    std::uint64_t bufferOffsetAlignment;
 };
 
 auto getTextureBlock(vk::Format format) -> Result<TextureBlock>
@@ -57,7 +60,10 @@ auto getTextureBlock(vk::Format format) -> Result<TextureBlock>
         return std::unexpected {
             makeError(ErrorCode::Unsupported, "Texture upload requires a single-plane 2D color format")};
     }
-    return TextureBlock {.size = size, .width = width, .height = height};
+    return TextureBlock {.size = size,
+                         .width = width,
+                         .height = height,
+                         .bufferOffsetAlignment = std::lcm(std::uint64_t {4}, size)};
 }
 
 auto validateTextureRegion(vk::Extent2D textureExtent, const TextureUploadRegion& region, const TextureBlock& block)
@@ -109,7 +115,8 @@ auto makeTextureCopyLayout(const TextureBlock& block, const TextureUploadRegion&
     return TextureCopyLayout {.rowLength = region.rowPitchBytes == 0 ? 0U : static_cast<std::uint32_t>(rowLength),
                               .rowBytes = rowBytes,
                               .rowPitch = rowPitch,
-                              .blockRows = blockRows};
+                              .blockRows = blockRows,
+                              .bufferOffsetAlignment = block.bufferOffsetAlignment};
 }
 
 auto validateTextureSourceSize(const TextureCopyLayout& layout, std::size_t size) -> Result<void>
@@ -263,7 +270,7 @@ auto UploadManager::validateWrite(const std::shared_ptr<BufferResource>& destina
 
 auto UploadManager::validateTextureWrite(const std::shared_ptr<TextureResource>& destination,
                                          const TextureUploadRegion& region,
-                                         std::size_t size) const -> Result<std::uint32_t>
+                                         std::size_t size) const -> Result<TextureUploadLayout>
 {
     if (!destination || !destination->belongsTo(_pool) || size == 0)
     {
@@ -281,28 +288,18 @@ auto UploadManager::validateTextureWrite(const std::shared_ptr<TextureResource>&
     {
         return std::unexpected {layout.error()};
     }
-    return layout->rowLength;
+    return TextureUploadLayout {.rowLength = layout->rowLength, .bufferOffsetAlignment = layout->bufferOffsetAlignment};
 }
 
-auto UploadManager::createStaging(std::span<const std::byte> bytes) const -> Result<std::shared_ptr<BufferResource>>
+auto UploadManager::createStaging(std::uint64_t size) const -> Result<std::shared_ptr<BufferResource>>
 {
-    const auto description = BufferDesc {.size = bytes.size(),
-                                         .usage = vk::BufferUsageFlagBits::eTransferSrc,
-                                         .memory = BufferMemory::Upload};
-    auto staging = BufferResource::create(_device, _pool, description);
-    if (!staging)
-    {
-        return std::unexpected {std::move(staging.error())};
-    }
-    const auto copied = (*staging)->writeMapped(bytes);
-    if (!copied)
-    {
-        return std::unexpected {copied.error()};
-    }
-    return staging;
+    const auto description =
+        BufferDesc {.size = size, .usage = vk::BufferUsageFlagBits::eTransferSrc, .memory = BufferMemory::Upload};
+    return BufferResource::create(_device, _pool, description);
 }
 
-auto UploadManager::submit(std::span<const UploadOperation> writes) -> Result<CompletionPoint>
+auto UploadManager::submit(std::span<const UploadOperation> writes,
+                           std::span<const std::shared_ptr<BufferResource>> stagingPages) -> Result<CompletionPoint>
 {
     if (writes.empty())
     {
@@ -316,7 +313,7 @@ auto UploadManager::submit(std::span<const UploadOperation> writes) -> Result<Co
     {
         return std::unexpected {ready.error()};
     }
-    auto packet = UploadCommand::create(_device, _family, writes);
+    auto packet = UploadCommand::create(_device, _family, writes, stagingPages);
     if (!packet)
     {
         return std::unexpected {std::move(packet.error())};

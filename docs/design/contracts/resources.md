@@ -290,25 +290,31 @@ resources, defragmenter, residency manager, or allocator plugin API in version o
 Buffer uploads use the same graphics/compute submission clock as presentation,
 including when Context has no window. `Context::createUploadBatch` initializes
 this service lazily for headless contexts. `write` snapshots nonempty caller bytes
-into a distinct persistently mapped, pooled staging buffer, validates Context,
-transfer-destination usage and destination bounds, then flushes noncoherent memory.
-Byte offsets and lengths do not have an artificial four-byte restriction.
+into a persistently mapped, pooled staging page owned by the batch, validates
+Context, transfer-destination usage and destination bounds, then flushes
+noncoherent memory. Writes share the current page when its remaining capacity and
+alignment permit; otherwise the batch adds a page large enough for the write.
+Buffer copies do not impose an artificial four-byte restriction. Texture source
+offsets are conservatively aligned to four bytes and the format's texel-block byte
+size.
 
 A batch records writes in insertion order. Conservative memory barriers order each
 copy after earlier queue consumers/copies and make transfers visible to later GPU
 consumers and host readback. Queue order alone is not a memory barrier. `submit`
 prepares command resources and the retention-list node before calling Vulkan;
 success consumes the public batch and issues a CompletionPoint. Failure publishes
-no point and leaves earlier writes available for retry, except a lost device stops
-new work. Caller data may be released after `write`, staging only after completion.
+no point and leaves earlier writes and their staging pages available for retry,
+except a lost device stops new work. Caller data may be released after `write`,
+staging only after completion.
 
 Context reclaims confirmed packets during poll/wait, frame attempts, buffer
 creation and later upload activity; shutdown drains their last committed point.
 Timeout or a failed counter query keeps retention intact. Reclamation destroys
 command pools before dropping buffer owners. Internal upload statistics report
-pending batches and reserved pending/peak staging bytes. Frame arenas and staging
-page capacity reuse remain planned; explicit batch writes may allocate metadata
-and native buffers.
+pending batches and reserved pending/peak staging bytes. Staging pages are shared
+within one explicit batch and retained through its completion; reuse between batches
+and frame-local arenas remain planned. Explicit batch writes may allocate metadata
+and additional native buffers when another page is needed.
 
 Renderer parameter edits update CPU state, then copy a snapshot into the next safe
 frame slot. A host-visible allocation is not permission to modify an in-flight slot.

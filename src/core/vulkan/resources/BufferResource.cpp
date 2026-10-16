@@ -181,15 +181,15 @@ auto BufferResource::getMappedBytes() const -> Result<std::span<std::byte>>
     });
 }
 
-auto BufferResource::writeMapped(std::span<const std::byte> bytes) const -> Result<void>
+auto BufferResource::writeMapped(std::uint64_t offset, std::span<const std::byte> bytes) const -> Result<void>
 {
-    if (_intent != BufferMemory::Upload || bytes.empty() || bytes.size() > _size)
+    if (_intent != BufferMemory::Upload || bytes.empty() || offset > _size || bytes.size() > _size - offset)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Mapped upload bytes exceed staging buffer")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Mapped upload bytes exceed staging range")};
     }
     return getMappedBytes().and_then([&](std::span<std::byte> mapped) {
-        std::ranges::copy(bytes, mapped.begin());
-        return _allocation.flush(0, bytes.size());
+        std::ranges::copy(bytes, mapped.begin() + static_cast<std::ptrdiff_t>(offset));
+        return _allocation.flush(offset, bytes.size());
     });
 }
 

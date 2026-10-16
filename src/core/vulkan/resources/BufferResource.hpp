@@ -27,7 +27,7 @@ public:
     [[nodiscard]] auto getUsage() const -> vk::BufferUsageFlags;
     [[nodiscard]] auto belongsTo(const MemoryPool& pool) const -> bool;
     [[nodiscard]] auto getMappedBytes() const -> Result<std::span<std::byte>>;
-    [[nodiscard]] auto writeMapped(std::span<const std::byte> bytes) const -> Result<void>;
+    [[nodiscard]] auto writeMapped(std::uint64_t offset, std::span<const std::byte> bytes) const -> Result<void>;
     [[nodiscard]] auto invalidate(std::uint64_t offset, std::uint64_t size) const -> Result<void>;
 
 private:
