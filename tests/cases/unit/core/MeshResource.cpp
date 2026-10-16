@@ -11,7 +11,10 @@
 #include <vulkan/vulkan_core.h>
 
 #include <cstdint>
+#include <expected>
 #include <memory>
+#include <optional>
+#include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <tuple>
@@ -24,6 +27,7 @@
 #include "panda/core/MemoryAllocationMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"
 #include "panda/core/MeshLayoutMock.hpp"
+#include "resources/memory/MemoryPool.hpp"
 
 namespace
 {

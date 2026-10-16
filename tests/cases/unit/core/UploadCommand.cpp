@@ -11,7 +11,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <array>
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
@@ -80,8 +80,10 @@ protected:
             panda::BufferDesc {.size = size,
                                .usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
                                .memory = panda::BufferMemory::Upload};
+        // GMock's WillOnce wrapper triggers a false-positive leak report in clang-analyzer.
         EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), testing::Field(&panda::BufferDesc::size, size)))
-            .WillOnce(Return(panda::Result<void> {}));
+            .Times(1)
+            .WillRepeatedly(Return(panda::Result<void> {}));
         auto created = BufferResource::create(device, *pool, description);
         EXPECT_TRUE(created);
         return created ? std::move(*created) : nullptr;
@@ -89,7 +91,7 @@ protected:
 
     auto expectPoolCreation() -> VkCommandPool
     {
-        const auto poolHandle = fakeVulkanHandle<VkCommandPool>(21);
+        auto* const poolHandle = fakeVulkanHandle<VkCommandPool>(21);
         EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
             .WillOnce([poolHandle](VkDevice,
                                    const VkCommandPoolCreateInfo* info,
@@ -105,7 +107,7 @@ protected:
 
     auto expectCommandBufferAllocation(VkCommandPool poolHandle) -> VkCommandBuffer
     {
-        const auto command = fakeVulkanHandle<VkCommandBuffer>(22);
+        auto* const command = fakeVulkanHandle<VkCommandBuffer>(22);
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull()))
             .WillOnce(
                 [command, poolHandle](VkDevice, const VkCommandBufferAllocateInfo* info, VkCommandBuffer* output) {
@@ -139,12 +141,18 @@ TEST_F(UploadCommandTest, PreservesCommandPoolCreationFailure)
     const auto command = UploadCommand::create(device, 5, {}, {});
 
     ASSERT_FALSE(command);
-    EXPECT_EQ(command.error().native->code, static_cast<std::int64_t>(failure));
+    const auto& native = command.error().native;
+    if (!native.has_value())
+    {
+        FAIL() << "Expected a native Vulkan error";
+        return;
+    }
+    EXPECT_EQ(native->code, static_cast<std::int64_t>(failure));
 }
 
 TEST_F(UploadCommandTest, DestroysTheCommandPoolWhenCommandBufferAllocationFails)
 {
-    const auto poolHandle = expectPoolCreation();
+    auto* const poolHandle = expectPoolCreation();
     const auto failure = VK_ERROR_OUT_OF_DEVICE_MEMORY;
     EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull())).WillOnce(Return(failure));
     EXPECT_CALL(vulkan, vkDestroyCommandPool(_, poolHandle, _));
@@ -152,12 +160,18 @@ TEST_F(UploadCommandTest, DestroysTheCommandPoolWhenCommandBufferAllocationFails
     const auto command = UploadCommand::create(device, 5, {}, {});
 
     ASSERT_FALSE(command);
-    EXPECT_EQ(command.error().native->code, static_cast<std::int64_t>(failure));
+    const auto& native = command.error().native;
+    if (!native.has_value())
+    {
+        FAIL() << "Expected a native Vulkan error";
+        return;
+    }
+    EXPECT_EQ(native->code, static_cast<std::int64_t>(failure));
 }
 
 TEST_F(UploadCommandTest, DestroysTheCommandPoolWhenRecordingCannotBegin)
 {
-    const auto poolHandle = expectPoolCreation();
+    auto* const poolHandle = expectPoolCreation();
     static_cast<void>(expectCommandBufferAllocation(poolHandle));
     EXPECT_CALL(vulkan, vkBeginCommandBuffer(_, NotNull())).WillOnce(Return(VK_ERROR_DEVICE_LOST));
     EXPECT_CALL(vulkan, vkDestroyCommandPool(_, poolHandle, _));
@@ -170,8 +184,8 @@ TEST_F(UploadCommandTest, DestroysTheCommandPoolWhenRecordingCannotBegin)
 
 TEST_F(UploadCommandTest, DestroysTheCommandPoolWhenRecordingCannotEnd)
 {
-    const auto poolHandle = expectPoolCreation();
-    const auto commandHandle = expectCommandBufferAllocation(poolHandle);
+    auto* const poolHandle = expectPoolCreation();
+    auto* const commandHandle = expectCommandBufferAllocation(poolHandle);
     EXPECT_CALL(vulkan, vkBeginCommandBuffer(commandHandle, NotNull())).WillOnce(Return(VK_SUCCESS));
     EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(commandHandle, NotNull())).Times(1);
     EXPECT_CALL(vulkan, vkEndCommandBuffer(commandHandle)).WillOnce(Return(VK_ERROR_DEVICE_LOST));
@@ -187,10 +201,10 @@ TEST_F(UploadCommandTest, RecordsBufferCopyBetweenTheSuppliedResources)
 {
     auto source = makeBuffer(64);
     auto destination = makeBuffer(128);
-    const auto poolHandle = expectPoolCreation();
-    const auto commandHandle = expectCommandBufferAllocation(poolHandle);
-    const auto sourceHandle = fakeVulkanHandle<VkBuffer>(23);
-    const auto destinationHandle = fakeVulkanHandle<VkBuffer>(24);
+    auto* const poolHandle = expectPoolCreation();
+    auto* const commandHandle = expectCommandBufferAllocation(poolHandle);
+    auto* const sourceHandle = fakeVulkanHandle<VkBuffer>(23);
+    auto* const destinationHandle = fakeVulkanHandle<VkBuffer>(24);
     const auto stagingOffset = std::uint64_t {16};
     const auto destinationOffset = std::uint64_t {32};
     const auto copySize = std::uint64_t {48};
@@ -204,7 +218,7 @@ TEST_F(UploadCommandTest, RecordsBufferCopyBetweenTheSuppliedResources)
         return info != nullptr && info->flags == VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     });
     EXPECT_CALL(vulkan, vkBeginCommandBuffer(commandHandle, beginInfo)).WillOnce(Return(VK_SUCCESS));
-    testing::Sequence recording;
+    const testing::Sequence recording;
     EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(commandHandle, NotNull()))
         .InSequence(recording)
         .WillOnce([](VkCommandBuffer, const VkDependencyInfo* dependency) {

@@ -17,9 +17,12 @@
 // This definition needs the complete member type owned by UploadManager.
 // NOLINTNEXTLINE(misc-include-cleaner)
 #include "panda/core/UploadManagerMock.hpp"
-#include "upload/UploadCommand.hpp"
 #include "upload/UploadManager.hpp"
 #include "upload/UploadOperation.hpp"
+// The out-of-line destructor destroys UploadManager's unique_ptr<UploadCommand>
+// member.
+// NOLINTNEXTLINE(misc-include-cleaner)
+#include "upload/UploadCommand.hpp"
 
 namespace panda::core::vulkan::upload
 {

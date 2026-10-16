@@ -12,12 +12,15 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <memory>
-#include <optional>
 #include <panda/Buffer.hpp>
+#include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
+#include <panda/UploadBatch.hpp>
 #include <span>
 #include <utility>
 
@@ -129,8 +132,10 @@ protected:
     auto makeBuffer(std::uint64_t size) -> std::shared_ptr<BufferResource>
     {
         const auto description = bufferDescription(size);
+        // GMock's WillOnce wrapper triggers a false-positive leak report in clang-analyzer.
         EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), testing::Field(&panda::BufferDesc::size, size)))
-            .WillOnce(Return(panda::Result<void> {}));
+            .Times(1)
+            .WillRepeatedly(Return(panda::Result<void> {}));
         auto created = BufferResource::create(device, *pool, description);
         EXPECT_TRUE(created);
         return created ? std::move(*created) : nullptr;
@@ -139,7 +144,10 @@ protected:
     auto makeTexture() -> std::shared_ptr<TextureResource>
     {
         const auto description = textureDescription();
-        EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
+        // GMock's WillOnce wrapper triggers a false-positive leak report in clang-analyzer.
+        EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
+            .Times(1)
+            .WillRepeatedly(Return(panda::Result<void> {}));
         auto created = TextureResource::create(device, *pool, description);
         EXPECT_TRUE(created);
         return created ? std::move(*created) : nullptr;
@@ -163,12 +171,12 @@ protected:
         {
             return nullptr;
         }
-        meshLayout = std::move(*layout);
+        meshLayout = std::make_unique<MeshLayout>(*layout);
         EXPECT_CALL(meshes, create(Ref(device), Ref(*pool), _))
             .WillOnce(Return(panda::Result<panda::test::MeshResourcePlan> {
                 panda::test::MeshResourcePlan {.vertexBuffer = meshVertexBuffer,
                                                .indexBuffer = meshIndexBuffer,
-                                               .layout = &*meshLayout}
+                                               .layout = meshLayout.get()}
         }));
         ON_CALL(meshes, getVertexBuffer(_)).WillByDefault(ReturnRef(meshVertexBuffer));
         ON_CALL(meshes, getIndexBuffer(_)).WillByDefault(ReturnRef(meshIndexBuffer));
@@ -194,7 +202,7 @@ protected:
     std::unique_ptr<MemoryPool> pool;
     std::unique_ptr<panda::detail::SubmissionQueue> submissions;
     std::unique_ptr<UploadManager> manager;
-    std::optional<MeshLayout> meshLayout;
+    std::unique_ptr<MeshLayout> meshLayout;
     std::shared_ptr<BufferResource> meshVertexBuffer;
     std::shared_ptr<BufferResource> meshIndexBuffer;
 };
@@ -305,6 +313,8 @@ TEST_F(UploadBatchImplTest, ReusesStagingAndKeepsOrderedBufferWritesForRetry)
 TEST_F(UploadBatchImplTest, StagesVertexAndIndexWritesAsOneOrderedMeshOperation)
 {
     auto mesh = makeMesh();
+    ASSERT_TRUE(mesh);
+    ASSERT_NE(meshLayout, nullptr);
     auto page = makeBuffer(4096);
     auto batch = makeBatch();
     const auto vertices = std::array {std::byte {1},

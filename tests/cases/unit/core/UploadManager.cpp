@@ -10,11 +10,14 @@
 #include <vulkan/vulkan_core.h>
 
 #include <array>
+#include <cstdint>
 #include <expected>
 #include <memory>
 #include <panda/Buffer.hpp>
+#include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
 #include <panda/Texture.hpp>
+#include <panda/UploadBatch.hpp>
 #include <span>
 #include <utility>
 
@@ -32,13 +35,11 @@
 #include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 #include "upload/UploadBatchImpl.hpp"
-#include "upload/UploadCommand.hpp"
 #include "upload/UploadOperation.hpp"
 
 namespace
 {
 using panda::core::vulkan::resources::MemoryPool;
-using panda::core::vulkan::upload::TextureUploadLayout;
 using panda::core::vulkan::upload::UploadManager;
 using panda::core::vulkan::upload::UploadOperation;
 using panda::detail::BufferResource;
@@ -86,7 +87,7 @@ protected:
     auto submitOne(UploadManager& uploads, std::span<const UploadOperation> writes)
         -> panda::Result<panda::CompletionPoint>
     {
-        const auto command = fakeVulkanHandle<VkCommandBuffer>(31);
+        auto* const command = fakeVulkanHandle<VkCommandBuffer>(31);
         EXPECT_CALL(submission, isDeviceLost()).WillOnce(Return(false));
         EXPECT_CALL(submission, prepareSubmit()).WillOnce(Return(panda::Result<void> {}));
         EXPECT_CALL(commandMock, create(Ref(device), 0, _, _)).WillOnce(Return(panda::Result<void> {}));
@@ -365,7 +366,7 @@ TEST_F(UploadManagerTest, RemovesUncommittedPacketWhenQueueSubmissionFails)
     auto submissions = SubmissionQueue {device, 0};
     auto uploads = UploadManager {device, *pool, submissions, 0};
     const auto writes = std::array {UploadOperation {panda::core::vulkan::upload::BufferUpload {}}};
-    const auto command = fakeVulkanHandle<VkCommandBuffer>(32);
+    auto* const command = fakeVulkanHandle<VkCommandBuffer>(32);
     const auto failure = panda::Result<std::uint64_t> {
         std::unexpected {panda::makeError(panda::ErrorCode::DeviceLost, "Controlled queue failure")}};
     EXPECT_CALL(submission, isDeviceLost()).WillOnce(Return(false));
