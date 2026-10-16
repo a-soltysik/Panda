@@ -4,7 +4,7 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include "Presentation.hpp"
+#include "presentation/Presentation.hpp"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -154,9 +154,9 @@ protected:
 
     auto createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance maintenance =
                                 panda::ContextDeviceInfo::SwapchainMaintenance::Khr)
-        -> std::expected<std::unique_ptr<panda::detail::Presentation>, panda::Error>
+        -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
     {
-        return panda::detail::Presentation::create({
+        return panda::core::vulkan::Presentation::create({
             .physicalDevice = vk::PhysicalDevice {},
             .device = getDevice(),
             .surface = vk::SurfaceKHR {},

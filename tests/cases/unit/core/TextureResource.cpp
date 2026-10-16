@@ -11,51 +11,41 @@
 #include <vulkan/vulkan_core.h>
 
 #include <cstdint>
+#include <expected>
 #include <memory>
 #include <panda/Error.hpp>
+#include <panda/Texture.hpp>
 #include <tuple>
+#include <utility>
 
-#include "MemoryPool.hpp"
 #include "ScopedMock.hpp"
 #include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
+#include "panda/core/MemoryAllocationMock.hpp"
+#include "panda/core/MemoryPoolMock.hpp"
+#include "resources/memory/MemoryPool.hpp"
+#include "resources/memory/RangeAllocator.hpp"
 
 namespace
 {
-using panda::detail::MemoryPool;
+using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::TextureResource;
 using panda::test::fakeVulkanHandle;
 using testing::_;
 using testing::NotNull;
+using testing::Ref;
+using testing::Return;
+
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
 constexpr auto exhausted = static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory);
-constexpr auto mebibyte = std::uint64_t {1024} * 1024;
 
-struct TextureViewCase final
+auto description(vk::Format format = vk::Format::eR8G8B8A8Unorm) -> panda::TextureDesc
 {
-    vk::Format format;
-    VkImageAspectFlags aspect;
-};
-
-void verifyViewRange(const VkImageViewCreateInfo& info, VkImageAspectFlags aspect)
-{
-    EXPECT_EQ(info.subresourceRange.baseMipLevel, 0U);
-    EXPECT_EQ(info.subresourceRange.aspectMask, aspect);
-    EXPECT_EQ(info.subresourceRange.levelCount, 1U);
-    EXPECT_EQ(info.subresourceRange.baseArrayLayer, 0U);
-    EXPECT_EQ(info.subresourceRange.layerCount, 1U);
-}
-
-void verifyViewInfo(const VkImageViewCreateInfo& info, VkImage image, vk::Format format, VkImageAspectFlags aspect)
-{
-    EXPECT_EQ(info.image, image);
-    EXPECT_EQ(info.viewType, VK_IMAGE_VIEW_TYPE_2D);
-    EXPECT_EQ(info.format, static_cast<VkFormat>(format));
-    EXPECT_EQ(info.components.r, VK_COMPONENT_SWIZZLE_IDENTITY);
-    EXPECT_EQ(info.components.g, VK_COMPONENT_SWIZZLE_IDENTITY);
-    EXPECT_EQ(info.components.b, VK_COMPONENT_SWIZZLE_IDENTITY);
-    EXPECT_EQ(info.components.a, VK_COMPONENT_SWIZZLE_IDENTITY);
-    verifyViewRange(info, aspect);
+    return {
+        .extent = {.width = 32, .height = 16},
+        .format = format,
+        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    };
 }
 
 class TextureResourceTest : public testing::Test
@@ -63,26 +53,23 @@ class TextureResourceTest : public testing::Test
 protected:
     void SetUp() override
     {
-        EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(physicalHandle, NotNull()))
-            .Times(testing::AnyNumber())
-            .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
-                *output = VkPhysicalDeviceMemoryProperties {};
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
+            .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
                 output->memoryTypeCount = 1;
                 output->memoryTypes[0] = {
                     .propertyFlags = static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eDeviceLocal),
                     .heapIndex = 0};
                 output->memoryHeapCount = 1;
-                output->memoryHeaps[0] = {.size = mebibyte, .flags = 0};
+                output->memoryHeaps[0] = {.size = 4096, .flags = 0};
             });
-        EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(physicalHandle, NotNull()))
-            .Times(testing::AnyNumber())
-            .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
-                output->properties.limits.maxMemoryAllocationCount = 16;
-                output->properties.limits.nonCoherentAtomSize = 1;
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
+            .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                output->properties.limits.maxMemoryAllocationCount = 8;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
                 ASSERT_NE(maintenance, nullptr);
-                maintenance->maxMemoryAllocationSize = mebibyte;
+                maintenance->maxMemoryAllocationSize = 4096;
             });
+        EXPECT_CALL(poolMock, destroy(_));
         pool = MemoryPool::create(physical, device);
     }
 
@@ -93,174 +80,185 @@ protected:
         std::ignore = instance.release();
     }
 
-    void expectImageCreation(VkImage image, vk::Format format)
+    void expectImage(VkImage image, const panda::TextureDesc& desc, VkResult result = success)
     {
         EXPECT_CALL(vulkan, vkCreateImage(deviceHandle, NotNull(), nullptr, NotNull()))
-            .InSequence(creationOrder)
             .WillOnce([image,
-                       format](VkDevice, const VkImageCreateInfo* info, const VkAllocationCallbacks*, VkImage* output) {
+                       desc,
+                       result](VkDevice, const VkImageCreateInfo* info, const VkAllocationCallbacks*, VkImage* output) {
                 EXPECT_EQ(info->imageType, VK_IMAGE_TYPE_2D);
-                EXPECT_EQ(info->format, static_cast<VkFormat>(format));
-                EXPECT_EQ(info->extent.depth, 1U);
-                EXPECT_EQ(info->mipLevels, 1U);
-                EXPECT_EQ(info->arrayLayers, 1U);
-                EXPECT_EQ(info->tiling, VK_IMAGE_TILING_OPTIMAL);
-                *output = image;
-                return success;
-            });
-    }
-
-    void expectImageMemoryRequirements(VkImage image)
-    {
-        EXPECT_CALL(vulkan, vkGetImageMemoryRequirements2(deviceHandle, NotNull(), NotNull()))
-            .InSequence(creationOrder)
-            .WillOnce([image](VkDevice, const VkImageMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
-                EXPECT_EQ(info->image, image);
-                output->memoryRequirements = {.size = 128, .alignment = 16, .memoryTypeBits = 1};
-                auto* dedicated = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
-                ASSERT_NE(dedicated, nullptr);
-                dedicated->requiresDedicatedAllocation = VK_TRUE;
-            });
-    }
-
-    void expectImageAllocation(VkImage image, VkDeviceMemory memory)
-    {
-        EXPECT_CALL(vulkan, vkAllocateMemory(deviceHandle, NotNull(), nullptr, NotNull()))
-            .InSequence(creationOrder)
-            .WillOnce([image, memory](VkDevice,
-                                      const VkMemoryAllocateInfo* info,
-                                      const VkAllocationCallbacks*,
-                                      VkDeviceMemory* output) {
-                EXPECT_EQ(info->allocationSize, 128U);
-                EXPECT_NE(info->pNext, nullptr);
-                if (info->pNext == nullptr)
+                EXPECT_EQ(info->format, static_cast<VkFormat>(desc.format));
+                EXPECT_EQ(info->extent.width, desc.extent.width);
+                EXPECT_EQ(info->extent.height, desc.extent.height);
+                EXPECT_EQ(info->extent.depth, 1);
+                EXPECT_EQ(info->usage, static_cast<VkImageUsageFlags>(desc.usage));
+                if (result == success)
                 {
-                    return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
+                    *output = image;
                 }
-                const auto* dedicated = static_cast<const VkMemoryDedicatedAllocateInfo*>(info->pNext);
-                EXPECT_EQ(dedicated->image, image);
-                *output = memory;
-                return success;
-            });
-    }
-
-    void expectImageBinding(VkImage image, VkDeviceMemory memory)
-    {
-        EXPECT_CALL(vulkan, vkBindImageMemory2(deviceHandle, 1, NotNull()))
-            .InSequence(creationOrder)
-            .WillOnce([image, memory](VkDevice, std::uint32_t, const VkBindImageMemoryInfo* info) {
-                EXPECT_EQ(info->image, image);
-                EXPECT_EQ(info->memory, memory);
-                EXPECT_EQ(info->memoryOffset, 0U);
-                return success;
-            });
-    }
-
-    void expectViewCreation(
-        VkImage image, VkImageView view, vk::Format format, VkImageAspectFlags aspect, VkResult result)
-    {
-        EXPECT_CALL(vulkan, vkCreateImageView(deviceHandle, NotNull(), nullptr, NotNull()))
-            .InSequence(creationOrder)
-            .WillOnce([image, view, format, aspect, result](VkDevice,
-                                                            const VkImageViewCreateInfo* info,
-                                                            const VkAllocationCallbacks*,
-                                                            VkImageView* output) {
-                verifyViewInfo(*info, image, format, aspect);
-                *output = view;
                 return result;
             });
     }
 
-    void expectNativeImage(VkImage image,
-                           VkImageView view,
-                           VkDeviceMemory memory,
-                           vk::Format format,
-                           VkImageAspectFlags aspect,
-                           VkResult viewResult = success)
+    void expectRequirements(VkImage image)
     {
-        expectImageCreation(image, format);
-        expectImageMemoryRequirements(image);
-        expectImageAllocation(image, memory);
-        expectImageBinding(image, memory);
-        expectViewCreation(image, view, format, aspect, viewResult);
+        EXPECT_CALL(vulkan, vkGetImageMemoryRequirements2(deviceHandle, NotNull(), NotNull()))
+            .WillOnce([image](VkDevice, const VkImageMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
+                EXPECT_EQ(info->image, image);
+                output->memoryRequirements = {.size = 128, .alignment = 64, .memoryTypeBits = 1};
+                auto* dedicated = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
+                ASSERT_NE(dedicated, nullptr);
+                dedicated->requiresDedicatedAllocation = vk::False;
+            });
+    }
+
+    void expectBind(VkImage image, VkDeviceMemory memory, VkResult result = success)
+    {
+        EXPECT_CALL(vulkan, vkBindImageMemory2(deviceHandle, 1, NotNull()))
+            .WillOnce([image, memory, result](VkDevice, std::uint32_t, const VkBindImageMemoryInfo* info) {
+                EXPECT_EQ(info->image, image);
+                EXPECT_EQ(info->memory, memory);
+                EXPECT_EQ(info->memoryOffset, 32);
+                return result;
+            });
+    }
+
+    void expectView(VkImage image, VkImageView view, VkResult result = success)
+    {
+        EXPECT_CALL(vulkan, vkCreateImageView(deviceHandle, NotNull(), nullptr, NotNull()))
+            .WillOnce([image, view, result](VkDevice,
+                                            const VkImageViewCreateInfo* info,
+                                            const VkAllocationCallbacks*,
+                                            VkImageView* output) {
+                EXPECT_EQ(info->image, image);
+                EXPECT_EQ(info->viewType, VK_IMAGE_VIEW_TYPE_2D);
+                EXPECT_EQ(info->subresourceRange.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+                if (result == success)
+                {
+                    *output = view;
+                }
+                return result;
+            });
+    }
+
+    void expectBoundImage(VkImage image)
+    {
+        expectImage(image, description());
+        expectRequirements(image);
+        EXPECT_CALL(poolMock, allocate(Ref(*pool), _))
+            .WillRepeatedly([](MemoryPool&, const panda::core::vulkan::resources::MemoryRequest&) {
+                return std::uint64_t {9};
+            });
+        EXPECT_CALL(allocationMock, getMemory(9)).WillRepeatedly([](std::uint64_t) {
+            return vk::DeviceMemory {fakeVulkanHandle<VkDeviceMemory>(30)};
+        });
+        EXPECT_CALL(allocationMock, getRange(9)).WillRepeatedly([](std::uint64_t) {
+            return panda::core::vulkan::resources::MemoryRange {.offset = 32, .size = 128};
+        });
+        expectBind(image, fakeVulkanHandle<VkDeviceMemory>(30));
     }
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
+    panda::test::ScopedMock<panda::test::MemoryPoolMock> poolMock;
+    panda::test::ScopedMock<panda::test::MemoryAllocationMock> allocationMock;
     vk::raii::Context loader {vkGetInstanceProcAddr};
     vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    VkPhysicalDevice physicalHandle {fakeVulkanHandle<VkPhysicalDevice>(2)};
+    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
     VkDevice deviceHandle {fakeVulkanHandle<VkDevice>(3)};
-    vk::raii::PhysicalDevice physical {instance, physicalHandle};
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
-    testing::Sequence creationOrder;
-};
-
-class TextureResourceAspectTest : public TextureResourceTest, public testing::WithParamInterface<TextureViewCase>
-{
 };
 }
 
-TEST_P(TextureResourceAspectTest, CreatesDefaultViewWithTheFormatAspectAndDestroysItBeforeTheImage)
+TEST_F(TextureResourceTest, RejectsInvalidDescriptionsBeforeCreatingNativeObjects)
 {
-    const auto viewCase = GetParam();
-    auto* const image = fakeVulkanHandle<VkImage>(10);
-    auto* const view = fakeVulkanHandle<VkImageView>(11);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(12);
-    expectNativeImage(image, view, memory, viewCase.format, viewCase.aspect);
-    auto cleanupOrder = testing::Sequence {};
-    EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, view, nullptr)).InSequence(cleanupOrder);
-    EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanupOrder);
-    EXPECT_CALL(vulkan, vkFreeMemory(deviceHandle, memory, nullptr)).InSequence(cleanupOrder);
-
-    auto resource =
-        TextureResource::create(device,
-                                *pool,
-                                {
-                                    .extent = vk::Extent2D {.width = 32, .height = 16},
-                                    .format = viewCase.format,
-                                    .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    const auto empty = TextureResource::create(
+        device,
+        *pool,
+        {.extent = {}, .format = vk::Format::eR8G8B8A8Unorm, .usage = vk::ImageUsageFlagBits::eSampled});
+    const auto undefined = TextureResource::create(device,
+                                                   *pool,
+                                                   {
+                                                       .extent = {.width = 1, .height = 1},
+                                                       .format = vk::Format::eUndefined,
+                                                       .usage = vk::ImageUsageFlagBits::eSampled
     });
 
-    ASSERT_TRUE(resource);
-    resource->reset();
-    pool.reset();
+    ASSERT_FALSE(empty);
+    ASSERT_FALSE(undefined);
+    EXPECT_EQ(empty.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(undefined.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    DefaultImageAspect,
-    TextureResourceAspectTest,
-    testing::Values(TextureViewCase {.format = vk::Format::eR8G8B8A8Unorm, .aspect = VK_IMAGE_ASPECT_COLOR_BIT},
-                    TextureViewCase {.format = vk::Format::eD16Unorm, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
-                    TextureViewCase {.format = vk::Format::eX8D24UnormPack32, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
-                    TextureViewCase {.format = vk::Format::eD32Sfloat, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
-                    TextureViewCase {.format = vk::Format::eD16UnormS8Uint, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
-                    TextureViewCase {.format = vk::Format::eD24UnormS8Uint, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
-                    TextureViewCase {.format = vk::Format::eD32SfloatS8Uint, .aspect = VK_IMAGE_ASPECT_DEPTH_BIT},
-                    TextureViewCase {.format = vk::Format::eS8Uint, .aspect = VK_IMAGE_ASPECT_STENCIL_BIT}));
+TEST_F(TextureResourceTest, PreservesImageCreationFailureWithoutDestroyingItsUndefinedOutput)
+{
+    expectImage(fakeVulkanHandle<VkImage>(20), description(), exhausted);
 
-TEST_F(TextureResourceTest, FailedViewCreationDoesNotAdoptItsOutputAndDestroysTheBoundImage)
+    const auto created = TextureResource::create(device, *pool, description());
+
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(TextureResourceTest, DestroysAnUnboundImageWhenPoolAllocationFails)
+{
+    auto* const image = fakeVulkanHandle<VkImage>(20);
+    expectImage(image, description());
+    expectRequirements(image);
+    EXPECT_CALL(poolMock, allocate(Ref(*pool), _))
+        .WillOnce(Return(panda::Result<std::uint64_t> {std::unexpected {
+            panda::makeError(panda::ErrorCode::ResourceExhausted, "Controlled image allocation failure")}}));
+    EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr));
+
+    const auto created = TextureResource::create(device, *pool, description());
+
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(TextureResourceTest, DestroysBoundImageBeforeReleasingAllocationWhenViewCreationFails)
 {
     auto* const image = fakeVulkanHandle<VkImage>(20);
     auto* const view = fakeVulkanHandle<VkImageView>(21);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(22);
-    const auto format = vk::Format::eR8G8B8A8Unorm;
-    expectNativeImage(image, view, memory, format, VK_IMAGE_ASPECT_COLOR_BIT, exhausted);
-    EXPECT_CALL(vulkan, vkDestroyImageView(_, _, _)).Times(0);
-    auto cleanupOrder = testing::Sequence {};
-    EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanupOrder);
-    EXPECT_CALL(vulkan, vkFreeMemory(deviceHandle, memory, nullptr)).InSequence(cleanupOrder);
+    expectBoundImage(image);
+    expectView(image, view, exhausted);
+    auto cleanup = testing::Sequence {};
+    EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, view, nullptr)).Times(0);
+    EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(poolMock, release(Ref(*pool), 9)).InSequence(cleanup);
 
-    const auto resource =
-        TextureResource::create(device,
-                                *pool,
-                                {
-                                    .extent = vk::Extent2D {.width = 32, .height = 16},
-                                    .format = format,
-                                    .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
-    });
+    const auto created = TextureResource::create(device, *pool, description());
 
-    ASSERT_FALSE(resource);
-    EXPECT_EQ(resource.error().code, panda::ErrorCode::ResourceExhausted);
-    pool.reset();
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(TextureResourceTest, OwnsItsViewImageAndAllocationAndTracksBatchReservations)
+{
+    auto* const image = fakeVulkanHandle<VkImage>(20);
+    auto* const view = fakeVulkanHandle<VkImageView>(21);
+    expectBoundImage(image);
+    expectView(image, view);
+    auto cleanup = testing::Sequence {};
+    EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, view, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(poolMock, release(Ref(*pool), 9)).InSequence(cleanup);
+
+    {
+        auto created = TextureResource::create(device, *pool, description());
+        ASSERT_TRUE(created);
+        EXPECT_EQ((*created)->getExtent(), (vk::Extent2D {.width = 32, .height = 16}));
+        EXPECT_EQ((*created)->getFormat(), vk::Format::eR8G8B8A8Unorm);
+        EXPECT_EQ((*created)->getUsage(), description().usage);
+        EXPECT_EQ((*created)->getNative(), vk::Image {image});
+
+        const auto firstBatch = panda::core::vulkan::upload::UploadBatchId {1};
+        const auto otherBatch = panda::core::vulkan::upload::UploadBatchId {2};
+        ASSERT_TRUE((*created)->reserveUpload(firstBatch));
+        EXPECT_FALSE((*created)->reserveUpload(otherBatch));
+        (*created)->cancelUpload(firstBatch);
+        ASSERT_TRUE((*created)->reserveUpload(otherBatch));
+        (*created)->commitUpload(otherBatch);
+        EXPECT_FALSE((*created)->reserveUpload(firstBatch));
+    }
 }

@@ -13,11 +13,14 @@
 #include <panda/Mesh.hpp>
 #include <utility>
 
-#include "MemoryPool.hpp"
 #include "MeshLayout.hpp"
+#include "resources/memory/MemoryPool.hpp"
 
 namespace panda::detail
 {
+using core::vulkan::resources::MemoryPool;
+using core::vulkan::resources::MeshLayout;
+
 namespace
 {
 auto createMeshBuffer(const vk::raii::Device& device, MemoryPool& pool, std::uint64_t size, vk::BufferUsageFlags usage)

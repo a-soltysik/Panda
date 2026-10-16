@@ -10,4 +10,11 @@ add_library(panda_test_log_capture STATIC LogCapture.cpp)
 set_target_properties(panda_test_log_capture PROPERTIES FOLDER "Panda/Test support")
 add_library(PandaTest::LogCapture ALIAS panda_test_log_capture)
 target_link_libraries(panda_test_log_capture PUBLIC PandaTest::Support PRIVATE PandaTest::MockHeaders)
-panda_configure_test(panda_test_log_capture)
+panda_configure_test(panda_test_log_capture HEADERS
+    GlfwTestSupport.hpp
+    LogCapture.hpp
+    PresentationTestSupport.hpp
+    ScopedMock.hpp
+    VulkanTestSupport.hpp
+    mocks/panda/common/SinkMock.hpp
+    mocks/panda/core/WindowSurfaceMock.hpp)

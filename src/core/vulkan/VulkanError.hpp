@@ -12,7 +12,7 @@
 
 #include "VulkanHpp.hpp"
 
-namespace panda::detail
+namespace panda::core::vulkan::detail
 {
 
 using ::panda::makeVulkanError;

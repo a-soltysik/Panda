@@ -13,13 +13,18 @@
 #include <panda/Texture.hpp>
 #include <utility>
 
-#include "MemoryAllocation.hpp"
-#include "MemoryPool.hpp"
-#include "UploadBatchId.hpp"
 #include "VulkanError.hpp"
+#include "resources/memory/MemoryAllocation.hpp"
+#include "resources/memory/MemoryPool.hpp"
+#include "upload/UploadBatchId.hpp"
 
 namespace panda::detail
 {
+using core::vulkan::detail::checkedCreation;
+using core::vulkan::resources::MemoryPool;
+using core::vulkan::resources::MemoryRequest;
+using core::vulkan::upload::UploadBatchId;
+
 namespace
 {
 auto validateDescription(const TextureDesc& description) -> Result<void>

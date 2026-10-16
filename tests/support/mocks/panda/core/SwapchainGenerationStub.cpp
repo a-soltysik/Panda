@@ -7,10 +7,10 @@
 #include <panda/Error.hpp>
 
 #include "ScopedMock.hpp"
-#include "SwapchainGeneration.hpp"
 #include "SwapchainGenerationMock.hpp"
+#include "presentation/SwapchainGeneration.hpp"
 
-namespace panda::detail
+namespace panda::core::vulkan
 {
 auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std::expected<SwapchainGeneration, Error>
 {

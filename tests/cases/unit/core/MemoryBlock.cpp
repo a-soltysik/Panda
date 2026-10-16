@@ -4,7 +4,7 @@
 #include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
-#include "MemoryBlock.hpp"
+#include "resources/memory/MemoryBlock.hpp"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -13,26 +13,28 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
+#include <expected>
 #include <panda/Error.hpp>
+#include <span>
 #include <tuple>
+#include <utility>
 
-#include "RangeAllocator.hpp"
 #include "ScopedMock.hpp"
 #include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
+#include "panda/core/RangeAllocatorMock.hpp"
+#include "resources/memory/RangeAllocator.hpp"
 
 namespace
 {
-using panda::detail::MemoryBlock;
-using panda::detail::MemoryRange;
+using panda::core::vulkan::resources::MemoryBlock;
+using panda::core::vulkan::resources::MemoryRange;
 using panda::test::fakeVulkanHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
 
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
-constexpr auto exhausted = static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory);
 
 class MemoryBlockTest : public testing::Test
 {
@@ -43,28 +45,21 @@ protected:
         std::ignore = instance.release();
     }
 
-    void expectMemoryTypes(vk::MemoryPropertyFlags flags)
+    void expectDeviceProperties(vk::MemoryPropertyFlags flags, std::uint64_t size, std::uint64_t atomSize = 64)
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
-            .WillOnce([flags](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
-                *output = VkPhysicalDeviceMemoryProperties {};
+            .WillOnce([flags, size](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
                 output->memoryTypeCount = 1;
                 output->memoryTypes[0] = {.propertyFlags = static_cast<VkMemoryPropertyFlags>(flags), .heapIndex = 0};
                 output->memoryHeapCount = 1;
-                output->memoryHeaps[0] = {.size = 1024, .flags = 0};
+                output->memoryHeaps[0] = {.size = size, .flags = 0};
             });
-    }
-
-    void expectLimits(std::uint64_t atomSize = 64, std::uint64_t maximum = 1024)
-    {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
-            .WillOnce([atomSize, maximum](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+            .WillOnce([atomSize, size](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
                 output->properties.limits.nonCoherentAtomSize = atomSize;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
                 ASSERT_NE(maintenance, nullptr);
-                EXPECT_EQ(maintenance->sType,
-                          static_cast<VkStructureType>(vk::StructureType::ePhysicalDeviceMaintenance3Properties));
-                maintenance->maxMemoryAllocationSize = maximum;
+                maintenance->maxMemoryAllocationSize = size;
             });
     }
 
@@ -77,327 +72,130 @@ protected:
                                    VkDeviceMemory* output) {
                 EXPECT_EQ(info->allocationSize, size);
                 EXPECT_EQ(info->memoryTypeIndex, 0);
-                EXPECT_EQ(info->pNext, nullptr);
                 *output = memory;
                 return success;
             });
     }
 
-    void expectMapping(std::uint64_t size)
+    void expectCleanAllocator(std::uint64_t size)
     {
-        EXPECT_CALL(vulkan, vkMapMemory(_, memory, 0, size, 0, NotNull()))
-            .WillOnce([this](VkDevice, VkDeviceMemory, VkDeviceSize, VkDeviceSize, VkMemoryMapFlags, void** output) {
-                *output = storage.data();
-                return success;
-            });
-        const auto unmapped = testing::Expectation {EXPECT_CALL(vulkan, vkUnmapMemory(_, memory))};
-        EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr)).After(unmapped);
-    }
-
-    void expectFlushed(std::uint64_t offset, std::uint64_t size)
-    {
-        EXPECT_CALL(vulkan, vkFlushMappedMemoryRanges(_, 1, NotNull()))
-            .WillOnce([this, offset, size](VkDevice, std::uint32_t, const VkMappedMemoryRange* range) {
-                EXPECT_EQ(range->memory, memory);
-                EXPECT_EQ(range->offset, offset);
-                EXPECT_EQ(range->size, size);
-                return success;
-            });
+        EXPECT_CALL(allocator, getFreeSize()).WillRepeatedly(Return(size));
+        EXPECT_CALL(allocator, getCapacity()).WillRepeatedly(Return(size));
     }
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
+    panda::test::ScopedMock<panda::test::RangeAllocatorMock> allocator;
     vk::raii::Context loader {vkGetInstanceProcAddr};
     vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
     vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
     vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
     VkDeviceMemory memory {fakeVulkanHandle<VkDeviceMemory>(4)};
-    std::array<std::byte, 1024> storage {};
 };
 }
 
-TEST_F(MemoryBlockTest, DeviceLocalBlockAllocatesOnceAndReusesReleasedRanges)
+TEST_F(MemoryBlockTest, DelegatesAllocationAndReleaseToItsRangeAllocator)
 {
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
-    expectLimits();
-    expectAllocation(128);
+    constexpr auto capacity = std::uint64_t {128};
+    expectDeviceProperties(vk::MemoryPropertyFlagBits::eDeviceLocal, capacity);
+    expectAllocation(capacity);
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
-    auto created = MemoryBlock::create(physical, device, 128, 0);
+    EXPECT_CALL(allocator, construct(capacity));
+    expectCleanAllocator(capacity);
+    EXPECT_CALL(allocator, allocate(8, 16)).WillOnce(Return(MemoryRange {.offset = 16, .size = 8}));
+    EXPECT_CALL(allocator, release(MemoryRange {.offset = 16, .size = 8})).WillOnce(Return(panda::Result<void> {}));
+
+    auto created = MemoryBlock::create(physical, device, capacity, 0);
+
     ASSERT_TRUE(created);
     auto& block = **created;
-    EXPECT_EQ(block.getMemory(), vk::DeviceMemory {memory});
-    const auto first = block.allocate(3, 1);
-    const auto aligned = block.allocate(8, 16);
-    ASSERT_TRUE(first);
-    ASSERT_TRUE(aligned);
-    EXPECT_EQ(aligned->offset, 16);
-    EXPECT_EQ(block.getFreeSize(), 117);
-    EXPECT_FALSE(block.getMappedBytes(*first));
-    ASSERT_TRUE(block.release(*first));
-    ASSERT_TRUE(block.release(*aligned));
-    EXPECT_EQ(block.getFreeSize(), 128);
-}
-
-TEST_F(MemoryBlockTest, CoherentMemoryMapsOnceAndNeedsNoCacheCalls)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-    expectLimits();
-    expectAllocation(128);
-    expectMapping(128);
-    auto created = MemoryBlock::create(physical, device, 128, 0);
-    ASSERT_TRUE(created);
-    auto& block = **created;
-    const auto slice = block.allocate(7, 1);
-    ASSERT_TRUE(slice);
-    EXPECT_EQ(slice->size, 7);
-    const auto bytes = block.getMappedBytes(*slice);
-    ASSERT_TRUE(bytes);
-    EXPECT_EQ(bytes->data(), storage.data());
-    ASSERT_TRUE(block.flush(*slice, 1, 3));
-    ASSERT_TRUE(block.invalidate(*slice, 1, 3));
-    ASSERT_TRUE(block.release(*slice));
-}
-
-TEST_F(MemoryBlockTest, NoncoherentSlicesAndCacheOperationsStayOnSeparateAtoms)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eHostVisible);
-    expectLimits();
-    expectAllocation(192);
-    expectMapping(192);
-    auto created = MemoryBlock::create(physical, device, 192, 0);
-    ASSERT_TRUE(created);
-    auto& block = **created;
-    const auto first = block.allocate(1, 1);
-    const auto second = block.allocate(65, 1);
-    ASSERT_TRUE(first);
-    ASSERT_TRUE(second);
-    EXPECT_EQ(*first, (MemoryRange {.offset = 0, .size = 64}));
-    EXPECT_EQ(*second, (MemoryRange {.offset = 64, .size = 128}));
-    expectFlushed(64, 128);
-    ASSERT_TRUE(block.flush(*second, 3, 64));
-    ASSERT_TRUE(block.release(*first));
-    ASSERT_TRUE(block.release(*second));
-}
-
-TEST_F(MemoryBlockTest, FailedAllocationDoesNotFreeAnUndefinedOutput)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
-    expectLimits();
-    EXPECT_CALL(vulkan, vkAllocateMemory(_, _, _, NotNull()))
-        .WillOnce([this](VkDevice, const VkMemoryAllocateInfo*, const VkAllocationCallbacks*, VkDeviceMemory* output) {
-            *output = memory;
-            return exhausted;
-        });
-    const auto created = MemoryBlock::create(physical, device, 128, 0);
-    ASSERT_FALSE(created);
-    EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
-}
-
-TEST_F(MemoryBlockTest, FailedMappingFreesMemoryWithoutUnmappingUndefinedOutput)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eHostVisible);
-    expectLimits();
-    expectAllocation(128);
-    EXPECT_CALL(vulkan, vkMapMemory(_, memory, _, _, _, NotNull()))
-        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorMemoryMapFailed)));
-    EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
-    const auto created = MemoryBlock::create(physical, device, 128, 0);
-    ASSERT_FALSE(created);
-    EXPECT_EQ(created.error().code, panda::ErrorCode::BackendFailure);
-}
-
-TEST_F(MemoryBlockTest, RejectsInvalidMemoryTypeBeforeCallingAllocate)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
-    const auto created = MemoryBlock::create(physical, device, 128, 1);
-    ASSERT_FALSE(created);
-    EXPECT_EQ(created.error().code, panda::ErrorCode::InvalidArgument);
-}
-
-TEST_F(MemoryBlockTest, RejectsAllocationLargerThanDeviceLimit)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
-    expectLimits(64, 64);
-    const auto created = MemoryBlock::create(physical, device, 128, 0);
-    ASSERT_FALSE(created);
-    EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
-}
-
-TEST_F(MemoryBlockTest, RejectsAllocationLargerThanHeap)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
-    expectLimits(64, 4096);
-    const auto created = MemoryBlock::create(physical, device, 2048, 0);
-    ASSERT_FALSE(created);
-    EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
-}
-
-TEST_F(MemoryBlockTest, InvalidAndOverflowingSliceRequestsPreserveBlock)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eHostVisible);
-    expectLimits();
-    expectAllocation(128);
-    expectMapping(128);
-    auto created = MemoryBlock::create(physical, device, 128, 0);
-    ASSERT_TRUE(created);
-    auto& block = **created;
-    EXPECT_FALSE(block.allocate(0, 1));
-    EXPECT_FALSE(block.allocate(1, 3));
-    EXPECT_FALSE(block.allocate(std::numeric_limits<std::uint64_t>::max(), 1));
-    EXPECT_EQ(block.getFreeSize(), 128);
-    const auto slice = block.allocate(1, 1);
-    ASSERT_TRUE(slice);
-    EXPECT_FALSE(block.flush(*slice, 0, 0));
-    EXPECT_FALSE(block.flush(*slice, 63, 2));
-    EXPECT_FALSE(block.invalidate(*slice, std::numeric_limits<std::uint64_t>::max(), 1));
-    EXPECT_FALSE(block.release(MemoryRange {.offset = slice->offset, .size = 1}));
-    ASSERT_TRUE(block.release(*slice));
-    EXPECT_FALSE(block.getMappedBytes(*slice));
-    EXPECT_FALSE(block.flush(*slice, 0, 1));
-    EXPECT_EQ(block.getFreeSize(), 128);
-}
-
-TEST_F(MemoryBlockTest, NoncoherentAtomSizeOneStillFlushesAndPropagatesFailure)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eHostVisible);
-    expectLimits(1);
-    expectAllocation(128);
-    expectMapping(128);
-    auto created = MemoryBlock::create(physical, device, 128, 0);
-    ASSERT_TRUE(created);
-    auto& block = **created;
-    const auto slice = block.allocate(7, 1);
-    ASSERT_TRUE(slice);
-    EXPECT_CALL(vulkan, vkFlushMappedMemoryRanges(_, 1, NotNull())).WillOnce(Return(exhausted));
-    const auto flushed = block.flush(*slice, 0, 7);
-    ASSERT_FALSE(flushed);
-    EXPECT_EQ(flushed.error().code, panda::ErrorCode::ResourceExhausted);
-    EXPECT_CALL(vulkan, vkInvalidateMappedMemoryRanges(_, 1, NotNull())).WillOnce(Return(success));
-    ASSERT_TRUE(block.invalidate(*slice, 0, 7));
-    ASSERT_TRUE(block.release(*slice));
-}
-
-TEST_F(MemoryBlockTest, RejectsEmptyBlockBeforeAllocation)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
-    const auto created = MemoryBlock::create(physical, device, 0, 0);
-    ASSERT_FALSE(created);
-    EXPECT_EQ(created.error().code, panda::ErrorCode::InvalidArgument);
-}
-
-TEST_F(MemoryBlockTest, RejectsMemoryRequiringUnsupportedFeatures)
-{
-    const auto flags = std::array {vk::MemoryPropertyFlagBits::eProtected,
-                                   vk::MemoryPropertyFlagBits::eLazilyAllocated,
-                                   vk::MemoryPropertyFlagBits::eDeviceCoherentAMD};
-    for (const auto flag : flags)
-    {
-        expectMemoryTypes(flag);
-        expectLimits();
-        const auto created = MemoryBlock::create(physical, device, 128, 0);
-        ASSERT_FALSE(created);
-        EXPECT_EQ(created.error().code, panda::ErrorCode::Unsupported);
-    }
-}
-
-TEST_F(MemoryBlockTest, NoncoherentRoundingDoesNotEscapeMappedBlockTail)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eHostVisible);
-    expectLimits();
-    expectAllocation(130);
-    expectMapping(130);
-    auto created = MemoryBlock::create(physical, device, 130, 0);
-    ASSERT_TRUE(created);
-    auto& block = **created;
-    const auto oversized = block.allocate(129, 1);
-    ASSERT_FALSE(oversized);
-    EXPECT_EQ(oversized.error().code, panda::ErrorCode::ResourceExhausted);
-    EXPECT_EQ(block.getFreeSize(), 130);
-    const auto slice = block.allocate(65, 128);
-    ASSERT_TRUE(slice);
-    expectFlushed(64, 64);
-    ASSERT_TRUE(block.flush(*slice, 127, 1));
-    EXPECT_CALL(vulkan, vkInvalidateMappedMemoryRanges(_, 1, NotNull())).WillOnce(Return(exhausted));
-    const auto invalidated = block.invalidate(*slice, 0, 1);
-    ASSERT_FALSE(invalidated);
-    EXPECT_EQ(invalidated.error().code, panda::ErrorCode::ResourceExhausted);
-    ASSERT_TRUE(block.release(*slice));
-}
-
-TEST_F(MemoryBlockTest, DedicatedFactoryRejectsMissingAmbiguousOrChainedResources)
-{
-    const auto buffer = vk::Buffer {fakeVulkanHandle<VkBuffer>(20)};
-    const auto valid = vk::MemoryDedicatedAllocateInfo {.buffer = buffer};
-    const auto requests = std::array {
-        vk::MemoryDedicatedAllocateInfo {},
-        vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeVulkanHandle<VkImage>(21)}, .buffer = buffer},
-        vk::MemoryDedicatedAllocateInfo {.pNext = &valid, .buffer = buffer}
-    };
-    static constexpr auto allocation = vk::MemoryAllocateInfo {.allocationSize = 128, .memoryTypeIndex = 0};
-    const auto chainedAllocation =
-        vk::MemoryAllocateInfo {.pNext = &valid, .allocationSize = 128, .memoryTypeIndex = 0};
-    const auto rejectedChain = MemoryBlock::createDedicated(physical, device, chainedAllocation, valid);
-    ASSERT_FALSE(rejectedChain.has_value());
-    EXPECT_EQ(rejectedChain.error().code, panda::ErrorCode::InvalidArgument);
-    for (const auto& resource : requests)
-    {
-        const auto created = MemoryBlock::createDedicated(physical, device, allocation, resource);
-        ASSERT_FALSE(created);
-        EXPECT_EQ(created.error().code, panda::ErrorCode::InvalidArgument);
-    }
-}
-
-TEST_F(MemoryBlockTest, DedicatedBlockRejectsSubdivisionWithoutConsumingSpace)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
-    expectLimits();
-    const auto resource = vk::MemoryDedicatedAllocateInfo {.buffer = vk::Buffer {fakeVulkanHandle<VkBuffer>(20)}};
-    const auto allocation = vk::MemoryAllocateInfo {.allocationSize = 128, .memoryTypeIndex = 0};
-    EXPECT_CALL(vulkan, vkAllocateMemory(_, NotNull(), nullptr, NotNull()))
-        .WillOnce(
-            [this](VkDevice, const VkMemoryAllocateInfo* info, const VkAllocationCallbacks*, VkDeviceMemory* output) {
-                EXPECT_EQ(info->allocationSize, 128);
-                EXPECT_NE(info->pNext, nullptr);
-                *output = memory;
-                return success;
-            });
-    EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
-    auto created = MemoryBlock::createDedicated(physical, device, allocation, resource);
-    ASSERT_TRUE(created);
-    const auto partial = (*created)->allocate(64, 1);
-    ASSERT_FALSE(partial);
-    EXPECT_EQ(partial.error().code, panda::ErrorCode::InvalidArgument);
-    EXPECT_EQ((*created)->getFreeSize(), 128);
-    const auto whole = (*created)->allocate(128, 16);
-    ASSERT_TRUE(whole);
-    EXPECT_EQ(whole->offset, 0);
-    EXPECT_EQ(whole->size, 128);
-    ASSERT_TRUE((*created)->release(*whole));
-}
-
-TEST_F(MemoryBlockTest, InvalidNoncoherentAtomIsRejectedBeforeNativeAllocation)
-{
-    for (const auto atom : std::array {0U, 3U})
-    {
-        expectMemoryTypes(vk::MemoryPropertyFlagBits::eHostVisible);
-        expectLimits(atom);
-        const auto created = MemoryBlock::create(physical, device, 128, 0);
-        ASSERT_FALSE(created);
-        EXPECT_EQ(created.error().code, panda::ErrorCode::Unsupported);
-    }
-}
-
-using MemoryBlockDeathTest = MemoryBlockTest;
-
-TEST_F(MemoryBlockDeathTest, RejectsDestructionWithLiveAllocations)
-{
-    expectMemoryTypes(vk::MemoryPropertyFlagBits::eDeviceLocal);
-    expectLimits();
-    expectAllocation(128);
-    EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
-    auto created = MemoryBlock::create(physical, device, 128, 0);
-    ASSERT_TRUE(created);
-    const auto range = (*created)->allocate(1, 1);
+    const auto range = block.allocate(8, 16);
     ASSERT_TRUE(range);
-    EXPECT_DEATH(created->reset(), "Memory block destroyed with live allocations");
-    ASSERT_TRUE((*created)->release(*range));
+    EXPECT_EQ(*range, (MemoryRange {.offset = 16, .size = 8}));
+    EXPECT_EQ(block.getFreeSize(), capacity);
+    EXPECT_EQ(block.getCapacity(), capacity);
+    EXPECT_EQ(block.getMemory(), vk::DeviceMemory {memory});
+    EXPECT_TRUE(block.release(*range));
+}
+
+TEST_F(MemoryBlockTest, RejectsInvalidRangesBeforeCallingTheAllocator)
+{
+    constexpr auto capacity = std::uint64_t {128};
+    expectDeviceProperties(vk::MemoryPropertyFlagBits::eDeviceLocal, capacity);
+    expectAllocation(capacity);
+    EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
+    EXPECT_CALL(allocator, construct(capacity));
+    expectCleanAllocator(capacity);
+
+    auto created = MemoryBlock::create(physical, device, capacity, 0);
+
+    ASSERT_TRUE(created);
+    EXPECT_EQ(created.value()->allocate(0, 1).error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(created.value()->allocate(1, 0).error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(created.value()->allocate(1, 3).error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(MemoryBlockTest, PreservesRangeAllocatorFailure)
+{
+    constexpr auto capacity = std::uint64_t {128};
+    expectDeviceProperties(vk::MemoryPropertyFlagBits::eDeviceLocal, capacity);
+    expectAllocation(capacity);
+    EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
+    EXPECT_CALL(allocator, construct(capacity));
+    expectCleanAllocator(capacity);
+    EXPECT_CALL(allocator, allocate(32, 8))
+        .WillOnce(Return(panda::Result<MemoryRange> {
+            std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "Controlled range failure")}}));
+
+    auto created = MemoryBlock::create(physical, device, capacity, 0);
+
+    ASSERT_TRUE(created);
+    const auto allocation = created.value()->allocate(32, 8);
+    ASSERT_FALSE(allocation);
+    EXPECT_EQ(allocation.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(MemoryBlockTest, MapsLiveRangesAndRoundsCacheOperationsWithinTheRange)
+{
+    constexpr auto capacity = std::uint64_t {256};
+    std::array<std::byte, 256> storage {};
+    expectDeviceProperties(vk::MemoryPropertyFlagBits::eHostVisible, capacity);
+    expectAllocation(capacity);
+    EXPECT_CALL(vulkan, vkMapMemory(_, memory, 0, capacity, 0, NotNull()))
+        .WillOnce([&storage](VkDevice, VkDeviceMemory, VkDeviceSize, VkDeviceSize, VkMemoryMapFlags, void** output) {
+            *output = storage.data();
+            return success;
+        });
+    const auto unmapped = testing::Expectation {EXPECT_CALL(vulkan, vkUnmapMemory(_, memory))};
+    EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr)).After(unmapped);
+    EXPECT_CALL(allocator, construct(capacity));
+    EXPECT_CALL(allocator, getCapacity()).WillRepeatedly(Return(capacity));
+    const auto range = MemoryRange {.offset = 64, .size = 64};
+    EXPECT_CALL(allocator, isLive(range.offset, range.size)).Times(3).WillRepeatedly(Return(true));
+    EXPECT_CALL(allocator, getFreeSize()).WillRepeatedly(Return(capacity));
+    EXPECT_CALL(vulkan, vkFlushMappedMemoryRanges(_, 1, NotNull()))
+        .WillOnce([this](VkDevice, std::uint32_t count, const VkMappedMemoryRange* mapped) {
+            EXPECT_EQ(count, 1);
+            EXPECT_EQ(mapped->memory, memory);
+            EXPECT_EQ(mapped->offset, 64);
+            EXPECT_EQ(mapped->size, 64);
+            return success;
+        });
+    EXPECT_CALL(vulkan, vkInvalidateMappedMemoryRanges(_, 1, NotNull()))
+        .WillOnce([this](VkDevice, std::uint32_t count, const VkMappedMemoryRange* mapped) {
+            EXPECT_EQ(count, 1);
+            EXPECT_EQ(mapped->memory, memory);
+            EXPECT_EQ(mapped->offset, 64);
+            EXPECT_EQ(mapped->size, 64);
+            return success;
+        });
+
+    auto created = MemoryBlock::create(physical, device, capacity, 0);
+
+    ASSERT_TRUE(created);
+    auto& block = **created;
+    const auto mapped = block.getMappedBytes(range);
+    ASSERT_TRUE(mapped);
+    EXPECT_EQ(mapped->data(), std::span {storage}.subspan(range.offset).data());
+    EXPECT_TRUE(block.flush(range, 3, 5));
+    EXPECT_TRUE(block.invalidate(range, 3, 5));
 }

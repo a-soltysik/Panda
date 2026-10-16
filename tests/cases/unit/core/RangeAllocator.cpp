@@ -1,4 +1,4 @@
-#include "RangeAllocator.hpp"
+#include "resources/memory/RangeAllocator.hpp"
 
 #include <gtest/gtest.h>
 
@@ -10,8 +10,8 @@
 
 namespace
 {
-using panda::detail::MemoryRange;
-using panda::detail::RangeAllocator;
+using panda::core::vulkan::resources::MemoryRange;
+using panda::core::vulkan::resources::RangeAllocator;
 }
 
 TEST(RangeAllocator, ExactFitExhaustsAndReleaseRestoresBlock)

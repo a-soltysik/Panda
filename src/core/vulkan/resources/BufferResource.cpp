@@ -16,12 +16,14 @@
 #include <span>
 #include <utility>
 
-#include "MemoryAllocation.hpp"
-#include "MemoryPool.hpp"
-#include "VulkanError.hpp"
+#include "resources/memory/MemoryAllocation.hpp"
+#include "resources/memory/MemoryPool.hpp"
 
 namespace panda::detail
 {
+using core::vulkan::resources::MemoryPool;
+using core::vulkan::resources::MemoryRequest;
+
 namespace
 {
 auto validateDescription(const BufferDesc& description) -> Result<void>

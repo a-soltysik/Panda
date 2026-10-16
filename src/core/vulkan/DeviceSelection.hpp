@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace panda::detail
+namespace panda::core::vulkan
 {
 
 struct InstanceExtensions

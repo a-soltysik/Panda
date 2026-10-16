@@ -15,10 +15,10 @@
 #include <span>
 #include <utility>
 
-#include "UploadBatchImpl.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
+#include "upload/UploadBatchImpl.hpp"
 
 namespace panda
 {

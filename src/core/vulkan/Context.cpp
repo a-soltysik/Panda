@@ -30,25 +30,29 @@
 #include <vector>
 
 #include "DeviceSelection.hpp"
-#include "Presentation.hpp"
 #include "SubmissionQueue.hpp"
-#include "UploadBatchImpl.hpp"
-#include "UploadManager.hpp"
 #include "VulkanError.hpp"
+#include "presentation/Presentation.hpp"
 #include "resources/BufferResource.hpp"
-#include "resources/MemoryPool.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
+#include "resources/memory/MemoryPool.hpp"
+#include "upload/UploadBatchImpl.hpp"
+#include "upload/UploadManager.hpp"
 
 namespace panda
 {
+namespace vulkan = core::vulkan;
+namespace resources = core::vulkan::resources;
+namespace upload = core::vulkan::upload;
+
 struct Context::InstanceServices
 {
     [[nodiscard]] static auto create(const vk::raii::Context& loader,
                                      const WindowSurface* surface,
                                      const ContextOptions& options) -> Result<InstanceServices>;
 
-    detail::InstanceExtensions extensions;
+    vulkan::InstanceExtensions extensions;
     vk::raii::Instance instance {nullptr};
     std::optional<vk::raii::DebugUtilsMessengerEXT> debugMessenger;
     std::optional<vk::raii::SurfaceKHR> surface;
@@ -106,7 +110,7 @@ auto validationMessengerCreateInfo() noexcept -> vk::DebugUtilsMessengerCreateIn
 auto hasValidationLayer(const vk::raii::Context& loader) -> Result<bool>
 {
     const auto listed =
-        detail::enumerateVulkan<vk::LayerProperties>([&](std::uint32_t* count, vk::LayerProperties* output) {
+        vulkan::detail::enumerateVulkan<vk::LayerProperties>([&](std::uint32_t* count, vk::LayerProperties* output) {
             return vk::enumerateInstanceLayerProperties(count, output, *loader.getDispatcher());
         });
     if (!listed)
@@ -141,7 +145,7 @@ auto verifyPrerequisites(const vk::raii::Context& loader, const ContextOptions& 
     const auto version = loader.enumerateInstanceVersion();
     if (version.result != vk::Result::eSuccess)
     {
-        return std::unexpected {detail::makeVulkanError(version.result)};
+        return std::unexpected {makeVulkanError(version.result)};
     }
     if (version.value < vk::ApiVersion13)
     {
@@ -156,7 +160,7 @@ auto createInstance(const vk::raii::Context& loader, const vk::InstanceCreateInf
     const auto result = vk::createInstance(&info, nullptr, &instance, *loader.getDispatcher());
     if (result != vk::Result::eSuccess)
     {
-        return std::unexpected {detail::makeVulkanError(result)};
+        return std::unexpected {makeVulkanError(result)};
     }
     // Unlike leaf objects, Instance construction uses the handle immediately
     // to load Vulkan functions, so check the result before creating the RAII wrapper.
@@ -165,7 +169,7 @@ auto createInstance(const vk::raii::Context& loader, const vk::InstanceCreateInf
 
 auto makeInstance(const vk::raii::Context& loader,
                   const ContextOptions& options,
-                  const detail::InstanceExtensions& extensions) -> Result<vk::raii::Instance>
+                  const vulkan::InstanceExtensions& extensions) -> Result<vk::raii::Instance>
 {
     const auto extensionNames =
         extensions.names | std::views::transform(&std::string::c_str) | std::ranges::to<std::vector<const char*>>();
@@ -196,7 +200,7 @@ auto makeDebugMessenger(const vk::raii::Instance& instance, bool enableValidatio
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Vulkan loader does not expose VK_EXT_debug_utils")};
     }
-    return detail::checkedCreation(instance.createDebugUtilsMessengerEXT(validationMessengerCreateInfo()));
+    return vulkan::detail::checkedCreation(instance.createDebugUtilsMessengerEXT(validationMessengerCreateInfo()));
 }
 
 auto makeWindowSurface(const WindowSurface* surface, const vk::raii::Instance& instance)
@@ -225,7 +229,7 @@ auto createLogicalDevice(const vk::raii::PhysicalDevice& physicalDevice, const v
     const auto result = (*physicalDevice).createDevice(&info, nullptr, &device, *physicalDevice.getDispatcher());
     if (result != vk::Result::eSuccess)
     {
-        return std::unexpected {detail::makeVulkanError(result)};
+        return std::unexpected {makeVulkanError(result)};
     }
     // Unlike leaf objects, Device construction uses the handle immediately
     // to load Vulkan functions, so check the result before creating the RAII wrapper.
@@ -233,7 +237,7 @@ auto createLogicalDevice(const vk::raii::PhysicalDevice& physicalDevice, const v
 }
 
 auto createDevice(const vk::raii::PhysicalDevice& physicalDevice,
-                  const detail::SelectedDevice& selected,
+                  const vulkan::SelectedDevice& selected,
                   bool windowed,
                   const vk::PhysicalDeviceFeatures2& features) -> Result<vk::raii::Device>
 {
@@ -261,7 +265,7 @@ auto createDevice(const vk::raii::PhysicalDevice& physicalDevice,
     return createLogicalDevice(physicalDevice, deviceInfo);
 }
 
-auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice, const detail::SelectedDevice& selected, bool windowed)
+auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice, const vulkan::SelectedDevice& selected, bool windowed)
     -> Result<vk::raii::Device>
 {
     auto maintenance = vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR {.swapchainMaintenance1 = vk::True};
@@ -279,7 +283,7 @@ auto Context::InstanceServices::create(const vk::raii::Context& loader,
                                        const WindowSurface* surface,
                                        const ContextOptions& options) -> Result<InstanceServices>
 {
-    auto extensions = detail::instanceExtensions(surface, options.enableValidation);
+    auto extensions = vulkan::instanceExtensions(surface, options.enableValidation);
     if (!extensions)
     {
         return std::unexpected {std::move(extensions.error())};
@@ -308,34 +312,67 @@ auto Context::InstanceServices::create(const vk::raii::Context& loader,
 class Context::Impl
 {
 public:
+    [[nodiscard]] auto initialize(const WindowSurface* surface, const ContextOptions& options) -> Result<void>;
+    [[nodiscard]] auto getDeviceInfo() const -> ContextDeviceInfo;
+    [[nodiscard]] auto presentClearFrame() -> Result<FrameResult>;
+    [[nodiscard]] auto createBufferResource(const BufferDesc& description)
+        -> Result<std::shared_ptr<detail::BufferResource>>;
+    [[nodiscard]] auto createTextureResource(const TextureDesc& description)
+        -> Result<std::shared_ptr<detail::TextureResource>>;
+    [[nodiscard]] auto createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>;
+    [[nodiscard]] auto createUploadBatch() -> Result<std::unique_ptr<detail::UploadBatchImpl>>;
+    [[nodiscard]] auto poll(CompletionPoint point) -> Result<bool>;
+    [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) -> Result<WaitStatus>;
+    void drain();
+
+private:
     [[nodiscard]] auto initializeDevice(const WindowSurface* surface) -> Result<void>;
     [[nodiscard]] auto ensureUploads() -> Result<void>;
     [[nodiscard]] auto collectUploads() -> Result<void>;
     void collectCompletedUploads();
-    void drain();
 
-private:
-    friend class Context;
+    template <typename Resource, typename Description>
+    [[nodiscard]] auto createResource(const Description& description) -> Result<std::shared_ptr<Resource>>
+    {
+        return collectUploads().and_then([&] {
+            return Resource::create(_device, *_memoryPool, description);
+        });
+    }
 
     [[nodiscard]] auto initializePresentation(const WindowSurface& surface,
-                                              const detail::SelectedDevice& selected,
+                                              const vulkan::SelectedDevice& selected,
                                               vk::SurfaceKHR nativeSurface) -> Result<void>;
 
     vk::raii::Context _loader {vkGetInstanceProcAddr};
     InstanceServices _services;
     vk::raii::PhysicalDevice _physicalDevice {nullptr};
     vk::raii::Device _device {nullptr};
-    std::unique_ptr<detail::MemoryPool> _memoryPool;
+    std::unique_ptr<resources::MemoryPool> _memoryPool;
     std::unique_ptr<detail::SubmissionQueue> _submissions;
-    std::unique_ptr<detail::UploadManager> _uploads;
-    std::unique_ptr<detail::Presentation> _presentation;
+    std::unique_ptr<upload::UploadManager> _uploads;
+    std::unique_ptr<vulkan::Presentation> _presentation;
     ContextDeviceInfo _info;
 };
+
+auto Context::Impl::initialize(const WindowSurface* surface, const ContextOptions& options) -> Result<void>
+{
+    if (const auto checked = verifyPrerequisites(_loader, options); !checked)
+    {
+        return std::unexpected {checked.error()};
+    }
+    auto services = InstanceServices::create(_loader, surface, options);
+    if (!services)
+    {
+        return std::unexpected {std::move(services.error())};
+    }
+    _services = std::move(*services);
+    return initializeDevice(surface);
+}
 
 auto Context::Impl::initializeDevice(const WindowSurface* surface) -> Result<void>
 {
     const auto nativeSurface = _services.surface ? **_services.surface : vk::SurfaceKHR {};
-    auto selected = detail::selectDevice(*_services.instance, nativeSurface, _services.extensions);
+    auto selected = vulkan::selectDevice(*_services.instance, nativeSurface, _services.extensions);
     if (!selected)
     {
         return std::unexpected {std::move(selected.error())};
@@ -347,7 +384,7 @@ auto Context::Impl::initializeDevice(const WindowSurface* surface) -> Result<voi
         return std::unexpected {std::move(createdDevice.error())};
     }
     _device = std::move(*createdDevice);
-    _memoryPool = detail::MemoryPool::create(_physicalDevice, _device);
+    _memoryPool = resources::MemoryPool::create(_physicalDevice, _device);
     if (surface != nullptr)
     {
         const auto initialized = initializePresentation(*surface, *selected, nativeSurface);
@@ -361,11 +398,11 @@ auto Context::Impl::initializeDevice(const WindowSurface* surface) -> Result<voi
 }
 
 auto Context::Impl::initializePresentation(const WindowSurface& surface,
-                                           const detail::SelectedDevice& selected,
+                                           const vulkan::SelectedDevice& selected,
                                            vk::SurfaceKHR nativeSurface) -> Result<void>
 {
     _submissions = std::make_unique<detail::SubmissionQueue>(_device, selected.info.queueFamily);
-    auto presentation = detail::Presentation::create({.physicalDevice = selected.physicalDevice,
+    auto presentation = vulkan::Presentation::create({.physicalDevice = selected.physicalDevice,
                                                       .device = _device,
                                                       .surface = nativeSurface,
                                                       .window = surface,
@@ -395,7 +432,7 @@ auto Context::Impl::ensureUploads() -> Result<void>
         }
         _submissions = std::move(submissions);
     }
-    _uploads = std::make_unique<detail::UploadManager>(_device, *_memoryPool, *_submissions, _info.queueFamily);
+    _uploads = std::make_unique<upload::UploadManager>(_device, *_memoryPool, *_submissions, _info.queueFamily);
     return {};
 }
 
@@ -410,6 +447,70 @@ void Context::Impl::collectCompletedUploads()
     {
         _uploads->collectCompleted();
     }
+}
+
+auto Context::Impl::getDeviceInfo() const -> ContextDeviceInfo
+{
+    return _info;
+}
+
+auto Context::Impl::presentClearFrame() -> Result<FrameResult>
+{
+    if (!_presentation)
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to present a frame")};
+    }
+    return collectUploads().and_then([&] {
+        return _presentation->presentClearFrame();
+    });
+}
+
+auto Context::Impl::createBufferResource(const BufferDesc& description)
+    -> Result<std::shared_ptr<detail::BufferResource>>
+{
+    return createResource<detail::BufferResource>(description);
+}
+
+auto Context::Impl::createTextureResource(const TextureDesc& description)
+    -> Result<std::shared_ptr<detail::TextureResource>>
+{
+    return createResource<detail::TextureResource>(description);
+}
+
+auto Context::Impl::createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>
+{
+    return createResource<detail::MeshResource>(description);
+}
+
+auto Context::Impl::createUploadBatch() -> Result<std::unique_ptr<detail::UploadBatchImpl>>
+{
+    return ensureUploads().transform([&] {
+        return _uploads->createBatch();
+    });
+}
+
+auto Context::Impl::poll(CompletionPoint point) -> Result<bool>
+{
+    if (!_submissions)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Context")};
+    }
+    return _submissions->poll(point).transform([&](bool completed) {
+        collectCompletedUploads();
+        return completed;
+    });
+}
+
+auto Context::Impl::wait(CompletionPoint point, std::chrono::nanoseconds timeout) -> Result<WaitStatus>
+{
+    if (timeout.count() < 0 || !_submissions)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Context")};
+    }
+    return _submissions->wait(point, static_cast<std::uint64_t>(timeout.count())).transform([&](WaitStatus status) {
+        collectCompletedUploads();
+        return status;
+    });
 }
 
 void Context::Impl::drain()
@@ -459,17 +560,7 @@ auto Context::createWithSurface(const WindowSurface& surface, const ContextOptio
 auto Context::createInternal(const WindowSurface* surface, const ContextOptions& options) -> Result<Context>
 {
     auto implementation = std::make_unique<Impl>();
-    if (const auto checked = verifyPrerequisites(implementation->_loader, options); !checked)
-    {
-        return std::unexpected {checked.error()};
-    }
-    auto services = InstanceServices::create(implementation->_loader, surface, options);
-    if (!services)
-    {
-        return std::unexpected {std::move(services.error())};
-    }
-    implementation->_services = std::move(*services);
-    if (const auto initialized = implementation->initializeDevice(surface); !initialized)
+    if (const auto initialized = implementation->initialize(surface, options); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
@@ -484,28 +575,19 @@ auto Context::isValid() const noexcept -> bool
 auto Context::getDeviceInfo() const -> ContextDeviceInfo
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    return _implementation->_info;
+    return _implementation->getDeviceInfo();
 }
 
 auto Context::presentClearFrame() const -> Result<FrameResult>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    if (!_implementation->_presentation)
-    {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to present a frame")};
-    }
-    return _implementation->collectUploads().and_then([&] {
-        return _implementation->_presentation->presentClearFrame();
-    });
+    return _implementation->presentClearFrame();
 }
 
 auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    return _implementation->collectUploads()
-        .and_then([&] {
-            return detail::BufferResource::create(_implementation->_device, *_implementation->_memoryPool, description);
-        })
+    return _implementation->createBufferResource(description)
         .transform([](std::shared_ptr<detail::BufferResource> resource) {
             return Buffer {std::move(resource)};
         });
@@ -514,12 +596,7 @@ auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer
 auto Context::createTexture(const TextureDesc& description) const -> Result<Texture>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    return _implementation->collectUploads()
-        .and_then([&] {
-            return detail::TextureResource::create(_implementation->_device,
-                                                   *_implementation->_memoryPool,
-                                                   description);
-        })
+    return _implementation->createTextureResource(description)
         .transform([](std::shared_ptr<detail::TextureResource> resource) {
             return Texture {std::move(resource)};
         });
@@ -528,10 +605,7 @@ auto Context::createTexture(const TextureDesc& description) const -> Result<Text
 auto Context::createMesh(const MeshDesc& description) const -> Result<Mesh>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    return _implementation->collectUploads()
-        .and_then([&] {
-            return detail::MeshResource::create(_implementation->_device, *_implementation->_memoryPool, description);
-        })
+    return _implementation->createMeshResource(description)
         .transform([](std::shared_ptr<detail::MeshResource> resource) {
             return Mesh {std::move(resource)};
         });
@@ -544,34 +618,27 @@ auto Context::createUploadBatch() const -> Result<UploadBatch>
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Cannot create a batch from a moved-from Context")};
     }
-    return _implementation->ensureUploads().transform([&] {
-        return UploadBatch {_implementation->_uploads->createBatch()};
+    return _implementation->createUploadBatch().transform([](std::unique_ptr<detail::UploadBatchImpl> batch) {
+        return UploadBatch {std::move(batch)};
     });
 }
 
 auto Context::poll(CompletionPoint point) const -> Result<bool>
 {
-    if (!_implementation || !_implementation->_submissions)
+    if (!_implementation)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Context")};
     }
-    return _implementation->_submissions->poll(point).transform([&](bool completed) {
-        _implementation->collectCompletedUploads();
-        return completed;
-    });
+    return _implementation->poll(point);
 }
 
 auto Context::wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>
 {
-    if (timeout.count() < 0 || !_implementation || !_implementation->_submissions)
+    if (!_implementation)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Context")};
     }
-    return _implementation->_submissions->wait(point, static_cast<std::uint64_t>(timeout.count()))
-        .transform([&](WaitStatus status) {
-            _implementation->collectCompletedUploads();
-            return status;
-        });
+    return _implementation->wait(point, timeout);
 }
 
 }

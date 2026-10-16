@@ -81,7 +81,6 @@ public:
 
 private:
     friend class Context;
-    friend class UploadBatch;
     friend class detail::MeshResource;
     explicit Mesh(std::shared_ptr<detail::MeshResource> resource);
     std::shared_ptr<detail::MeshResource> _resource;

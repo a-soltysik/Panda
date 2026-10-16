@@ -98,9 +98,10 @@ the [window task](window-wrapper.md).
 An intentional formatting violation in the common Logger.hpp failed the actual
 `panda_common` build. The header was restored and the quality build/test suite
 then passed. The object target's formatting dependency also runs without a link
-step. CTest is enabled before source subdirectories so their formatting checks
-are registered. Compiler and analyzer findings in the moved headers were
-reported by the real target builds. The constructor that intentionally converts
+step. CMake registers one formatting check per target source directory after
+declaring the targets, and each target depends on its directory's check. Compiler
+and analyzer findings in the moved headers were reported by the real target builds.
+The constructor that intentionally converts
 format literals has one documented cppcheck suppression; other diagnostics
 remain enabled.
 

@@ -32,11 +32,14 @@ plumbing and target helpers. `tests/support/mocks/panda/<module>` holds
 Panda implementation replacements, and `tests/support/mocks/external/<library>` holds
 dependency mocks. Each replacement pairs a `*Mock.hpp` declaration with a thin
 `*Stub.cpp` forwarding implementation. Target helpers live in
-`tests/support/cmake/TestTargets.cmake`; suite CMake files declare only sources, libraries
-their level and optional `MOCKS` through `panda_add_test`. Every executable links the same
-`GTest::gmock_main` runner; tests do not define their own main. The helper prefixes
-each CTest name with its level (`unit.`, `integration.`, `system.`) and applies the
-matching label. GoogleTest suite and case names stay unchanged.
+`tests/support/cmake/TestTargets.cmake`. `panda_add_test` declares suite sources,
+optional `HEADERS`, libraries, the test level and optional `MOCKS`; `panda_add_mock`
+declares replacement sources and their API. Both accept additional target-private
+`INCLUDE_DIRECTORIES`, which callers specify explicitly. `VULKAN_INTERNAL` adds the
+internal Vulkan include path and Vulkan-Hpp policy definitions. Every executable
+links the same `GTest::gmock_main` runner; tests do not define their own main. The
+helper prefixes each CTest name with its level (`unit.`, `integration.`, `system.`)
+and applies the matching label. GoogleTest suite and case names stay unchanged.
 
 Test-only CMake aliases describe their role: `PandaTest::Support` exposes the
 generic mock fixture, `PandaTest::LogCapture` observes the real logger, and
@@ -46,16 +49,27 @@ replacement logger. `PandaTest::MockHeaders` exposes mock declarations, includin
 without selecting stub implementations. `PandaTest::VulkanMock` is the shared
 Vulkan boundary for Core unit tests; its stub forwards the entry points used by
 current scenarios to one strict mock and fails on any other Vulkan call used by
-Core. `Context`, `DeviceSelection` and
-`Presentation`, `MemoryBlock` and `MemoryPool` use it without a native window.
-Presentation unit tests replace SubmissionQueue at link time; the real queue and
-presentation collaborate only in their integration target. Context/resource
-lifecycles and upload retention are integration scenarios with controlled Vulkan
-entry points. Shared presentation fixture setup and Vulkan entry-point conversions
-live in test support. Swapchain configuration
-policy has separate CPU unit tests. The `Context` executable substitutes the
-`SwapchainGeneration` archive member; its tests cannot create a real swapchain,
-while the `SwapchainGeneration` tests link that member unchanged.
+Core. `Context`, `DeviceSelection`, `Presentation` and the resource unit suites
+use it without a native window. `RangeAllocator` and `MeshLayout` are standalone
+CPU units. `MemoryBlock` replaces `RangeAllocator`, and `MemoryPool` replaces
+`MemoryBlock`; integration suites keep the real block and pool together to cover
+allocation lifetimes. Buffer, texture and mesh resource units replace their pool,
+allocation and resource collaborators so creation, validation and cleanup paths
+can be controlled independently; context and resource integration suites cover
+their real ownership chain.
+
+Upload tests split at the same boundaries: `UploadBatchImpl` replaces the
+manager and resource collaborators, `UploadManager` replaces the submission
+queue, command packet and resources, and `UploadCommand` controls Vulkan calls
+and resource accessors. `BufferUpload` integration keeps the real batch,
+manager, command packet and resources together to verify copy ordering and
+retention across submission. Presentation unit tests replace SubmissionQueue at
+link time; the real queue and presentation collaborate only in their integration
+target. Shared presentation fixture setup and Vulkan entry-point conversions live
+in test support. Swapchain configuration policy has separate CPU unit tests. The
+`Context` executable substitutes the `SwapchainGeneration` archive member; its
+tests cannot create a real swapchain, while the `SwapchainGeneration` tests link
+that member unchanged.
 With CUDA enabled, `PandaTest::CudaRuntimeMock` replaces only the external
 `cudaGetDeviceCount` function while `CudaAdapter.cpp` remains real.
 Tests list the production module explicitly alongside these
@@ -86,7 +100,8 @@ ctest --test-dir <build-directory> --output-on-failure -L integration
 ctest --test-dir <build-directory> --output-on-failure -L system
 ```
 
-Use `-LE system` for a noninteractive run that also includes formatting checks.
+Use `-LE system` for a noninteractive run that also selects registered formatting
+checks. Quality presets enable formatting; test presets disable it.
 The `gcc-coverage` preset runs the same noninteractive selection with GCC
 instrumentation. CI publishes the `panda-coverage` artifact with annotated HTML and
 Cobertura XML for production sources. The displayed percentage counts only the
@@ -197,9 +212,10 @@ symbol inclusion for replaced archives. Shared-library implementations, definiti
 inline in callers and template instantiations in callers cannot be replaced this way.
 Stub declarations, ABI and compilation configuration must match production.
 
-Source lists contain `.cpp` files; headers are included normally, analyzed through
-translation units and discovered separately for formatting. Libraries follow module
-responsibilities rather than class count. All cases in one executable share its
+Source lists contain `.cpp` files; component and test headers are declared explicitly
+in their CMake target manifests, analyzed through translation units, and formatted
+in checks grouped by the CMake directory that declares each target. Libraries follow
+module responsibilities rather than class count. All cases in one executable share its
 replacement set; incompatible selections require separate executables. Tests depend
 on production targets and shared support, never on another level's test executable
 or fixture. `ImplementationSubstitution.cpp` checks a mocked core archive member

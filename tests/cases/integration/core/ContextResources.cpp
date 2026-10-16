@@ -30,11 +30,11 @@
 #include <vector>
 
 #include "ScopedMock.hpp"
-#include "SwapchainGeneration.hpp"
 #include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
+#include "presentation/SwapchainGeneration.hpp"
 
 namespace
 {
@@ -1291,8 +1291,9 @@ TEST_F(ContextResourcesIntegration, GenerationFailureReleasesFrameResourcesAndAl
              )
     });
     EXPECT_CALL(generations, createSwapchainGeneration(_))
-        .WillOnce(testing::Action<decltype(panda::detail::createSwapchainGeneration)> {
-            [](const panda::detail::SwapchainGenerationRequest&) -> panda::Result<panda::detail::SwapchainGeneration> {
+        .WillOnce(testing::Action<decltype(panda::core::vulkan::createSwapchainGeneration)> {
+            [](const panda::core::vulkan::SwapchainGenerationRequest&)
+                -> panda::Result<panda::core::vulkan::SwapchainGeneration> {
                 return std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "generation failed")};
             }});
     const auto context = panda::Context::createWithSurface(window);

@@ -23,11 +23,11 @@
 #include <vector>
 
 #include "ScopedMock.hpp"
-#include "SwapchainGeneration.hpp"
 #include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
+#include "presentation/SwapchainGeneration.hpp"
 
 namespace panda::test
 {
@@ -85,10 +85,10 @@ inline void expectTransitionToPresent(const VkDependencyInfo* dependency)
 }
 
 inline auto makeGeneration(const vk::raii::Device& device, std::uintptr_t handle)
-    -> std::expected<panda::detail::SwapchainGeneration, panda::Error>
+    -> std::expected<panda::core::vulkan::SwapchainGeneration, panda::Error>
 {
-    auto images = std::vector<panda::detail::SwapchainImage> {};
-    images.emplace_back(panda::detail::SwapchainImage {
+    auto images = std::vector<panda::core::vulkan::SwapchainImage> {};
+    images.emplace_back(panda::core::vulkan::SwapchainImage {
         .image = vk::Image {fakeVulkanHandle<VkImage>(handle + 1U)},
         .view = {nullptr},
         .renderFinished = vk::raii::Semaphore {device, fakeVulkanHandle<VkSemaphore>(handle + 2U)},
@@ -96,7 +96,7 @@ inline auto makeGeneration(const vk::raii::Device& device, std::uintptr_t handle
         .presentPending = false,
         .initialized = false
     });
-    return panda::detail::SwapchainGeneration {
+    return panda::core::vulkan::SwapchainGeneration {
         .swapchain = vk::raii::SwapchainKHR {device,       fakeVulkanHandle<VkSwapchainKHR>(handle)},
         .images = std::move(images),
         .extent = vk::Extent2D {.width = 640, .height = 480                           },
@@ -185,8 +185,8 @@ protected:
     void expectInitialGeneration(std::uintptr_t handle)
     {
         EXPECT_CALL(swapchains, createSwapchainGeneration(_))
-            .WillOnce(testing::Action<decltype(panda::detail::createSwapchainGeneration)> {
-                [handle](const panda::detail::SwapchainGenerationRequest& request) {
+            .WillOnce(testing::Action<decltype(panda::core::vulkan::createSwapchainGeneration)> {
+                [handle](const panda::core::vulkan::SwapchainGenerationRequest& request) {
                     EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {});
                     return makeGeneration(request.device, handle);
                 }});
@@ -265,9 +265,9 @@ protected:
     {
         EXPECT_CALL(swapchains, createSwapchainGeneration(_))
             .InSequence(flow)
-            .WillOnce(testing::Action<decltype(panda::detail::createSwapchainGeneration)> {
-                [oldHandle](const panda::detail::SwapchainGenerationRequest& request)
-                    -> std::expected<panda::detail::SwapchainGeneration, panda::Error> {
+            .WillOnce(testing::Action<decltype(panda::core::vulkan::createSwapchainGeneration)> {
+                [oldHandle](const panda::core::vulkan::SwapchainGenerationRequest& request)
+                    -> std::expected<panda::core::vulkan::SwapchainGeneration, panda::Error> {
                     EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {fakeVulkanHandle<VkSwapchainKHR>(oldHandle)});
                     return std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "replacement failed")};
                 }});
@@ -277,8 +277,8 @@ protected:
     {
         EXPECT_CALL(swapchains, createSwapchainGeneration(_))
             .InSequence(flow)
-            .WillOnce(testing::Action<decltype(panda::detail::createSwapchainGeneration)> {
-                [handle](const panda::detail::SwapchainGenerationRequest& request) {
+            .WillOnce(testing::Action<decltype(panda::core::vulkan::createSwapchainGeneration)> {
+                [handle](const panda::core::vulkan::SwapchainGenerationRequest& request) {
                     EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {});
                     return makeGeneration(request.device, handle);
                 }});
