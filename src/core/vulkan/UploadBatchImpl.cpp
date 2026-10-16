@@ -251,10 +251,6 @@ auto UploadBatchImpl::createStagingPage(std::span<const std::byte> bytes) -> Res
     {
         return std::unexpected {copied.error()};
     }
-    if (_stagingPages.size() == _stagingPages.max_size())
-    {
-        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Upload staging pages are exhausted")};
-    }
     _stagingPages.push_back(*page);
     _stagingOffset = bytes.size();
     return StagingSlice {.buffer = std::move(*page), .offset = 0};

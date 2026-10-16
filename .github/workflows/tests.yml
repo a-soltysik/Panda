@@ -31,6 +31,7 @@ jobs:
         run: |
           mkdir -p build-gcc-coverage-Linux/coverage
           gcovr --root . --gcov-executable gcov-16 --filter 'src/.*' \
+            --exclude-throw-branches \
             --html-details build-gcc-coverage-Linux/coverage/index.html \
             --cobertura build-gcc-coverage-Linux/coverage/coverage.xml \
             --print-summary build-gcc-coverage-Linux

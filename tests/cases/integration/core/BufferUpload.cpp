@@ -142,7 +142,7 @@ protected:
             });
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
             .Times(testing::AnyNumber())
-            .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties2* properties) {
+            .WillRepeatedly([this](VkPhysicalDevice, VkPhysicalDeviceProperties2* properties) {
                 const auto* header = static_cast<const VkBaseOutStructure*>(properties->pNext);
                 if (header->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_PROPERTIES)
                 {
@@ -152,7 +152,8 @@ protected:
                 }
                 properties->properties.limits.maxMemoryAllocationCount = 16;
                 properties->properties.limits.nonCoherentAtomSize = 64;
-                static_cast<VkPhysicalDeviceMaintenance3Properties*>(properties->pNext)->maxMemoryAllocationSize = 4096;
+                static_cast<VkPhysicalDeviceMaintenance3Properties*>(properties->pNext)->maxMemoryAllocationSize =
+                    maximumAllocationSize;
             });
     }
 
@@ -439,9 +440,20 @@ protected:
 
     void useNoncoherentMemory()
     {
+        memoryFlags &= ~static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eHostCoherent);
+        recreatePoolAndUploads();
+    }
+
+    void useLargerAllocations()
+    {
+        maximumAllocationSize = 8192;
+        recreatePoolAndUploads();
+    }
+
+    void recreatePoolAndUploads()
+    {
         uploads.reset();
         pool.reset();
-        memoryFlags &= ~static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eHostCoherent);
         pool = panda::detail::MemoryPool::create(physical, device);
         uploads = std::make_unique<panda::detail::UploadManager>(device, *pool, *submissions, 0);
     }
@@ -521,6 +533,7 @@ protected:
     VkMemoryPropertyFlags memoryFlags {static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eDeviceLocal |
                                                                           vk::MemoryPropertyFlagBits::eHostVisible |
                                                                           vk::MemoryPropertyFlagBits::eHostCoherent)};
+    VkDeviceSize maximumAllocationSize {4096};
     VkResult bufferStatus {success};
     VkResult flushStatus {success};
     VkResult poolStatus {success};
@@ -1035,6 +1048,33 @@ TEST_F(BufferUploadIntegration, TextureReservationIsReleasedAfterStagingCreation
     ASSERT_TRUE(retry->write(target, bytes, fullRegion));
 }
 
+TEST_F(BufferUploadIntegration, FailedLaterTextureWriteKeepsTheBatchReservation)
+{
+    useNoncoherentMemory();
+    auto target = texture();
+    const auto bytes = std::array {std::byte {1}, std::byte {2}, std::byte {3}, std::byte {4}};
+    const auto firstRegion = panda::TextureUploadRegion {
+        .extent = vk::Extent2D {.width = 1, .height = 1}
+    };
+    const auto secondRegion = panda::TextureUploadRegion {
+        .offset = vk::Offset2D {.x = 1,     .y = 0     },
+        .extent = vk::Extent2D {.width = 1, .height = 1}
+    };
+    auto batch = uploads->createBatch();
+    ASSERT_TRUE(batch->write(target, bytes, firstRegion));
+
+    flushStatus = exhausted;
+    EXPECT_FALSE(batch->write(target, bytes, secondRegion));
+    auto conflicting = uploads->createBatch();
+    EXPECT_FALSE(conflicting->write(target, bytes, secondRegion));
+    conflicting.reset();
+
+    flushStatus = success;
+    ASSERT_TRUE(batch->submit());
+    ASSERT_EQ(imageCopies.size(), 1);
+    EXPECT_EQ(imageCopies.front().bytes, (std::vector<std::byte> {bytes.begin(), bytes.end()}));
+}
+
 TEST_F(BufferUploadIntegration, CompressedTextureUsesBlockRowsAndRequiresAlignedRegions)
 {
     auto buffer = destination();
@@ -1163,6 +1203,51 @@ TEST_F(BufferUploadIntegration, FailedStagingCreationKeepsEarlierWrites)
     EXPECT_EQ(copies.front().bytes, bytes);
 }
 
+TEST_F(BufferUploadIntegration, TextureAlignmentPastALargePageStartsANewPage)
+{
+    useLargerAllocations();
+    auto buffer = destinationWithSize(5001);
+    auto target = texture(vk::Extent2D {.width = 1, .height = 1}, vk::Format::eR8G8B8Unorm);
+    const auto bufferBytes = std::vector<std::byte>(5001, std::byte {0x11});
+    const auto textureBytes = std::array {std::byte {0x21}, std::byte {0x22}, std::byte {0x23}};
+    auto batch = uploads->createBatch();
+    ASSERT_TRUE(batch->write(buffer, 0, bufferBytes));
+    ASSERT_TRUE(batch->write(target,
+                             textureBytes,
+                             {
+                                 .extent = vk::Extent2D {.width = 1, .height = 1}
+    }));
+
+    ASSERT_TRUE(batch->submit());
+
+    ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().sourceOffset, 0);
+    EXPECT_EQ(copies.front().bytes, bufferBytes);
+    ASSERT_EQ(imageCopies.size(), 1);
+    EXPECT_EQ(imageCopies.front().region.bufferOffset, 0);
+    EXPECT_EQ(imageCopies.front().bytes, (std::vector<std::byte> {textureBytes.begin(), textureBytes.end()}));
+    EXPECT_EQ(bufferCreations, 3);
+    EXPECT_EQ(uploads->getStats().pendingStagingBytes, 5001 + 4096);
+}
+
+TEST_F(BufferUploadIntegration, MappedStagingWritesValidateAndUseTheRequestedOffset)
+{
+    auto deviceBuffer = destination();
+    EXPECT_FALSE(deviceBuffer->writeMapped(0, payload));
+
+    auto staging = uploads->createStaging(8);
+    ASSERT_TRUE(staging);
+    EXPECT_FALSE((*staging)->writeMapped(9, payload));
+    EXPECT_FALSE((*staging)->writeMapped(3, payload));
+    EXPECT_FALSE((*staging)->writeMapped(0, {}));
+
+    const auto bytes = std::array {std::byte {0x31}, std::byte {0x32}, std::byte {0x33}};
+    ASSERT_TRUE((*staging)->writeMapped(5, bytes));
+    const auto& native = buffers.at((*staging)->getNative());
+    const auto mapped = std::span<const std::byte> {memory.at(native.memory)}.subspan(native.offset + 5, bytes.size());
+    EXPECT_TRUE(std::ranges::equal(mapped, bytes));
+}
+
 TEST_F(BufferUploadIntegration, StagingPageGrowsForWritesThatDoNotFit)
 {
     auto firstTarget = destinationWithSize(3000);
@@ -1199,6 +1284,28 @@ TEST_F(BufferUploadIntegration, NoncoherentStagingFlushesWholeAtomsAndFailedFlus
     EXPECT_EQ(flushed.back().size, 64);
     ASSERT_TRUE(batch->submit());
     EXPECT_EQ(uploads->getStats().pendingStagingBytes, 4096);
+}
+
+TEST_F(BufferUploadIntegration, FailedFlushWhileReusingPageLeavesItsCursorAndEarlierWritesIntact)
+{
+    useNoncoherentMemory();
+    auto target = destination();
+    auto batch = uploads->createBatch();
+    ASSERT_TRUE(batch->write(target, 0, payload));
+
+    flushStatus = exhausted;
+    EXPECT_FALSE(batch->write(target, 16, payload));
+    EXPECT_EQ(buffers.size(), 2);
+
+    flushStatus = success;
+    ASSERT_TRUE(batch->write(target, 32, payload));
+    ASSERT_TRUE(batch->submit());
+
+    ASSERT_EQ(copies.size(), 2);
+    EXPECT_EQ(copies.at(0).sourceOffset, 0);
+    EXPECT_EQ(copies.at(1).sourceOffset, payload.size());
+    EXPECT_EQ(copies.at(0).bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
+    EXPECT_EQ(copies.at(1).bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
 }
 
 TEST_F(BufferUploadIntegration, CommandPreparationFailuresLeaveBatchAvailableForRetry)

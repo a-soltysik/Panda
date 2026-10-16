@@ -153,27 +153,26 @@ by this scenario.
 
 ## Verification
 
-The current batch-staging change was verified with Windows MSVC, WSL GCC quality
-and GCC coverage presets.
+The upload-coverage follow-up was verified with Windows MSVC and Linux WSL GCC.
 
-- `cmake --build --preset msvc-quality --parallel` passed.
-- `ctest --test-dir build-msvc-quality --output-on-failure` passed all 353 tests
-  with no failures, including unit, integration and system tests. Three noncoherent
+- `cmake --build --preset msvc-quality --parallel` passed, including formatting,
+  static analysis and compilation of the changed upload integration tests.
+- `ctest --preset msvc-quality` passed all 357 tests. Three noncoherent
   memory-type variants were skipped because the GPU did not expose the required
-  memory type. All five `UploadSystem` tests ran with the real Vulkan loader and
+  memory type; the upload system tests ran with the real Vulkan loader and
   validation enabled.
-- `cmake --build --preset gcc-quality --parallel` and
-  `ctest --preset gcc-quality` passed in WSL: 338 tests, no failures, and three
-  unavailable noncoherent memory-type variants skipped.
-- `gcc-coverage` CPU tests passed 277/277. The `gcovr` report for `src/` shows
-  94.6% line and 63.4% branch coverage. Changed implementation files report
-  96.1% lines for `UploadBatchImpl.cpp`, 100% for `UploadCommand.cpp`, 99.4% for
-  `UploadManager.cpp` and 93.1% for `BufferResource.cpp`.
-- Quality builds ran `clang-format --dry-run --Werror` and static analysis for the
-  changed targets. `git diff --check` and
-  `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` passed.
-  Native noncoherent cache operations remain unverified because no tested GPU
-  exposed a compatible memory type; controlled Vulkan callbacks cover those paths.
+- `.\scripts\build-wsl.ps1 -Preset gcc-coverage -RunTests` passed all 281 unit
+  and integration tests. The GCC coverage report for `src/` shows 94.7% line and
+  83.4% branch coverage after excluding compiler-generated exception-only arcs.
+  A local patch-coverage calculation from the generated Cobertura XML against
+  `master` is 91.67%: 121 hit, 8 partial and 3 missed lines. The remaining misses
+  are overflow or invalid internal requests that normal upload calls cannot
+  produce; Codecov will confirm the reported patch value after CI runs.
+- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
+  44 Markdown files and the task queue successfully; `git diff --check` passed.
+
+Native noncoherent cache operations remain unverified because no tested GPU
+exposed a compatible memory type; controlled Vulkan callbacks cover those paths.
 
 ## Remaining work
 
