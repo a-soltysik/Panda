@@ -106,14 +106,21 @@ issued points and unsubmitted batches. Failed submit does not consume a value,
 device loss stops new work, and outstanding values respect device limits. GPU
 completion and presentation completion are tracked separately.
 
-`UploadBatch` is a move-only borrower until submitted or destroyed. Each `write`
-validates its destination and copies caller bytes into owned, flushed staging.
+`UploadBatch` is a move-only borrower until submitted or destroyed. Its first write
+creates a mapped transfer-source staging page with a 4 KiB minimum. Later writes
+share its remaining bytes, using a linear cursor; when a write does not fit, the
+batch adds another page sized to at least that write. Buffer source slices need no
+extra alignment. Texture slices align to the least common multiple of four bytes
+and the format's texel-block byte size. Each `write` validates its destination,
+snapshots caller bytes and flushes noncoherent memory before queuing the copy.
 Ordered copies use conservative dependencies for earlier and later consumers.
-Success consumes the public batch and transfers command/staging/destination owners
-to Context's pending list. Only confirmed completion permits reclamation, through
-ordinary RAII. Timeout and failed completion queries preserve pending owners.
-Unsubmitted batch destruction cancels its writes. Context rejects live unsubmitted
-batches and drains submitted packets before checking external buffer owners.
+Success consumes the public batch and transfers command, staging-page and
+destination owners to Context's pending list. Only confirmed completion permits
+reclamation, through ordinary RAII. A failed preparation or submission leaves the
+batch's writes and pages available for retry. Timeout and failed completion queries
+preserve pending owners. Pages are not reused across batches yet. Unsubmitted batch
+destruction cancels its writes. Context rejects live unsubmitted batches and drains
+submitted packets before checking external buffer owners.
 
 Texture uploads require transfer-destination and sampled usage. Full-image writes
 and pitched rectangular writes accept single-plane 2D color formats, including
@@ -146,55 +153,32 @@ by this scenario.
 
 ## Verification
 
-The pitched and region texture-upload slice was verified on Windows and in Ubuntu
-Linux WSL.
+The upload-coverage follow-up was verified with Windows MSVC and Linux WSL GCC.
 
-- Windows (MSVC quality): `cmake --build --preset msvc-quality --target
-  panda_core_verify_interface_header_sets panda_integration_upload panda_system_texture
-  --parallel` succeeded. The command
-  `ctest --test-dir build-msvc-quality --output-on-failure -R
-  "BufferUploadIntegration|TextureSystem"` passed 21/21 cases (20 integration and
-  the Vulkan texture system test with validation).
-- Ubuntu Linux WSL (GCC quality):
-  `.\scripts\build-wsl.ps1 -Preset gcc-quality -Target panda_core_verify_interface_header_sets,panda_integration_upload,panda_system_texture`
-  succeeded. CTest passed the `BufferUploadIntegration` selection (20/20) and the
-  `TextureSystem` selection (1/1), with validation enabled.
-- Internal image-view ownership and resource lifetimes were verified on Windows
-  and Ubuntu Linux WSL. MSVC and GCC quality builds passed for
-  `panda_unit_texture_resource`, `panda_integration_context_resources`,
-  `panda_system_texture` and `panda_core_verify_interface_header_sets`; the
-  corresponding CTest selections passed 37/37 (5 unit, 31 integration, 1 system).
-  Unit tests verify view aspects, creation parameters, failed creation cleanup and
-  destruction order. Integration tests verify Buffer and Texture shared ownership
-  and release behavior through the public Panda API.
-- Mesh/upload coverage changes passed the Windows MSVC quality build and its
-  84-test CTest selection (22 unit and 62 integration tests). Ubuntu Linux WSL
-  GCC quality built all targets and passed 336/336 tests; three memory-type system
-  cases skipped because the device exposed no compatible noncoherent memory type.
-  The `gcc-coverage` build passed all 275 CPU tests. With `gcov-16`, source coverage
-  was 94.7% of lines and 63.5% of branches. Compared with the original PR coverage
-  artifact, all added executable lines in `Mesh.cpp`, `Context.cpp`, `MeshLayout.cpp`,
-  `MeshResource.cpp`, `TextureResource.cpp` and `UploadBatch.cpp` were hit; the new
-  `UploadBatchImpl.cpp` lines were hit 66/68 times. Its changed-line branch outcomes
-  rose from 55/106 to 65/106.
-- Upload tests cover padded rows, multiple regions and interleaved buffer writes,
-  compressed blocks, row-length limits, unsupported formats and usages, foreign
-  pools, invalid layouts, batch reservation/cancel and staging-creation failure.
-  The system case exercises both public full-image and region writes, then waits for
-  completion before releasing shared image owners.
-- Existing CPU/integration coverage includes range alignment/coalescing/overflow,
-  pool growth fallback, noncoherent atom rounding and flush errors, upload preparation
-  and submit failures, retry, overlapping copy order, timeout, completed-prefix
-  reclamation, owner retention and Context destruction.
-- Native noncoherent cache operations remain unverified because no tested GPU
-  exposed a compatible type; controlled Vulkan callbacks cover that behavior.
-- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` and
-  `git diff --check` pass.
+- `cmake --build --preset msvc-quality --parallel` passed, including formatting,
+  static analysis and compilation of the changed upload integration tests.
+- `ctest --preset msvc-quality` passed all 357 tests. Three noncoherent
+  memory-type variants were skipped because the GPU did not expose the required
+  memory type; the upload system tests ran with the real Vulkan loader and
+  validation enabled.
+- `.\scripts\build-wsl.ps1 -Preset gcc-coverage -RunTests` passed all 281 unit
+  and integration tests. The GCC coverage report for `src/` shows 94.7% line and
+  83.4% branch coverage after excluding compiler-generated exception-only arcs.
+  A local patch-coverage calculation from the generated Cobertura XML against
+  `master` is 91.67%: 121 hit, 8 partial and 3 missed lines. The remaining misses
+  are overflow or invalid internal requests that normal upload calls cannot
+  produce; Codecov will confirm the reported patch value after CI runs.
+- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
+  44 Markdown files and the task queue successfully; `git diff --check` passed.
+
+Native noncoherent cache operations remain unverified because no tested GPU
+exposed a compatible memory type; controlled Vulkan callbacks cover those paths.
 
 ## Remaining work
 
-Texture creation, internal image-view ownership, pitched/region uploads, and Mesh
-creation/uploads are implemented. Frame arenas remain planned parts of this task.
-Native noncoherent cache-operation validation needs a device exposing that memory
-type. The maintainer learning handoff and acceptance of the remaining task scope
-are still pending; passing tests do not replace that handoff.
+Texture creation, internal image-view ownership, pitched/region uploads, Mesh
+creation/uploads and per-batch staging pages are implemented. Frame arenas and
+staging capacity reuse across batches remain planned parts of this task. Native
+noncoherent cache-operation validation needs a device exposing that memory type.
+The maintainer learning handoff and acceptance of the remaining task scope are
+still pending; passing tests do not replace that handoff.

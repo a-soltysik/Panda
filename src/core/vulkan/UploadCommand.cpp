@@ -89,7 +89,8 @@ void transitionToSampled(vk::CommandBuffer command, const TextureResource& textu
 void recordCopy(vk::CommandBuffer command, const BufferUpload& buffer)
 {
     orderBeforeCopy(command);
-    const auto region = vk::BufferCopy {.srcOffset = 0, .dstOffset = buffer.offset, .size = buffer.size};
+    const auto region =
+        vk::BufferCopy {.srcOffset = buffer.stagingOffset, .dstOffset = buffer.offset, .size = buffer.size};
     command.copyBuffer(buffer.staging->getNative(), buffer.destination->getNative(), region);
 }
 
@@ -101,7 +102,7 @@ void recordCopy(vk::CommandBuffer command, const TextureUpload& texture)
         transitionToTransfer(command, *texture.destination);
     }
     const auto copy = vk::BufferImageCopy {
-        .bufferOffset = 0,
+        .bufferOffset = texture.stagingOffset,
         .bufferRowLength = texture.bufferRowLength,
         .bufferImageHeight = 0,
         .imageSubresource = vk::ImageSubresourceLayers {.aspectMask = vk::ImageAspectFlagBits::eColor,
@@ -132,16 +133,22 @@ void transitionToSampledAfterCopies(vk::CommandBuffer command, const TextureUplo
 }
 }
 
-UploadCommand::UploadCommand(std::span<const UploadOperation> writes)
-    : _writes {writes.begin(), writes.end()}
+UploadCommand::UploadCommand(std::span<const UploadOperation> writes,
+                             std::span<const std::shared_ptr<BufferResource>> stagingPages)
+    : _writes {writes.begin(), writes.end()},
+      _stagingPages {stagingPages.begin(), stagingPages.end()}
 {
 }
 
 auto UploadCommand::create(const vk::raii::Device& device,
                            std::uint32_t family,
-                           std::span<const UploadOperation> writes) -> Result<std::unique_ptr<UploadCommand>>
+                           std::span<const UploadOperation> writes,
+                           std::span<const std::shared_ptr<BufferResource>> stagingPages)
+    -> Result<std::unique_ptr<UploadCommand>>
 {
-    auto packet = std::unique_ptr<UploadCommand> {new UploadCommand {writes}};
+    auto packet = std::unique_ptr<UploadCommand> {
+        new UploadCommand {writes, stagingPages}
+    };
     const auto initialized = packet->initialize(device, family);
     if (!initialized)
     {
@@ -213,13 +220,9 @@ auto UploadCommand::getCommand() const -> vk::CommandBuffer
 auto UploadCommand::getStagingSize() const -> std::uint64_t
 {
     auto bytes = std::uint64_t {0};
-    for (const auto& write : _writes)
+    for (const auto& page : _stagingPages)
     {
-        const auto reserved = std::visit(
-            [](const auto& operation) {
-                return operation.staging->getReservedSize();
-            },
-            write);
+        const auto reserved = page->getReservedSize();
         expect(reserved <= std::numeric_limits<std::uint64_t>::max() - bytes, "Upload staging size overflow");
         bytes += reserved;
     }

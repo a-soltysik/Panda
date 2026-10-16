@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
 #include <panda/UploadBatch.hpp>
@@ -42,10 +43,21 @@ public:
     [[nodiscard]] auto submit() -> Result<CompletionPoint>;
 
 private:
+    [[nodiscard]] auto stage(std::span<const std::byte> bytes, std::uint64_t alignment) -> Result<StagingSlice>;
+    [[nodiscard]] auto stageInCurrentPage(std::span<const std::byte> bytes, std::uint64_t alignment)
+        -> Result<std::optional<StagingSlice>>;
+    [[nodiscard]] auto createStagingPage(std::span<const std::byte> bytes) -> Result<StagingSlice>;
+    [[nodiscard]] auto createBufferUpload(const std::shared_ptr<BufferResource>& destination,
+                                          std::span<const std::byte> bytes) -> Result<BufferUpload>;
+    [[nodiscard]] auto createMeshUploads(const std::shared_ptr<MeshResource>& destination,
+                                         std::span<const std::byte> vertexBytes,
+                                         std::span<const std::byte> indexBytes) -> Result<std::vector<UploadOperation>>;
     [[nodiscard]] auto hasTexture(const std::shared_ptr<TextureResource>& texture) const -> bool;
 
     UploadManager& _manager;
     UploadBatchId _id;
     std::vector<UploadOperation> _writes;
+    std::vector<std::shared_ptr<BufferResource>> _stagingPages;
+    std::uint64_t _stagingOffset {0};
 };
 }

@@ -9,7 +9,9 @@
 #include <cstdint>
 #include <expected>
 #include <iterator>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
 #include <panda/UploadBatch.hpp>
@@ -29,6 +31,33 @@ namespace panda::detail
 {
 namespace
 {
+constexpr auto stagingPageSize = std::uint64_t {4} * 1024;
+
+auto alignOffset(std::uint64_t offset, std::uint64_t alignment) -> std::optional<std::uint64_t>
+{
+    const auto remainder = offset % alignment;
+    const auto padding = remainder == 0 ? 0 : alignment - remainder;
+    if (padding > std::numeric_limits<std::uint64_t>::max() - offset)
+    {
+        return std::nullopt;
+    }
+    return offset + padding;
+}
+
+auto fitsPageRange(std::uint64_t offset, std::size_t size, std::uint64_t pageSize) -> bool
+{
+    return offset <= pageSize && size <= pageSize - offset;
+}
+
+auto validateStageRequest(std::span<const std::byte> bytes, std::uint64_t alignment) -> Result<void>
+{
+    if (bytes.empty() || alignment == 0)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Staging writes must be nonempty and aligned")};
+    }
+    return {};
+}
+
 void releaseUploadReservation(const UploadOperation& operation, UploadBatchId batchId)
 {
     const auto* upload = std::get_if<TextureUpload>(&operation);
@@ -81,15 +110,6 @@ auto reserveTexture(const std::shared_ptr<TextureResource>& texture, UploadBatch
     return true;
 }
 
-auto createStaging(UploadManager& manager, std::span<const std::byte> bytes) -> Result<std::shared_ptr<BufferResource>>
-{
-    if (const auto collected = manager.collect(); !collected)
-    {
-        return std::unexpected {collected.error()};
-    }
-    return manager.createStaging(bytes);
-}
-
 auto validateMeshWriteSizes(const MeshResource& destination,
                             std::span<const std::byte> vertexBytes,
                             std::span<const std::byte> indexBytes) -> Result<void>
@@ -125,18 +145,6 @@ auto validateMeshWriteBuffers(const UploadManager& manager,
     return {};
 }
 
-auto createBufferUpload(UploadManager& manager,
-                        const std::shared_ptr<BufferResource>& destination,
-                        std::span<const std::byte> bytes) -> Result<BufferUpload>
-{
-    auto staging = createStaging(manager, bytes);
-    if (!staging)
-    {
-        return std::unexpected {std::move(staging.error())};
-    }
-    return BufferUpload {.staging = std::move(*staging), .destination = destination, .offset = 0, .size = bytes.size()};
-}
-
 auto validateMeshWrite(const UploadManager& manager,
                        const std::shared_ptr<MeshResource>& destination,
                        std::span<const std::byte> vertexBytes,
@@ -152,53 +160,6 @@ auto validateMeshWrite(const UploadManager& manager,
         return std::unexpected {validSizes.error()};
     }
     return validateMeshWriteBuffers(manager, *destination, vertexBytes, indexBytes);
-}
-
-auto appendIndexUpload(UploadManager& manager,
-                       const MeshResource& destination,
-                       std::span<const std::byte> indexBytes,
-                       std::vector<UploadOperation>& writes) -> Result<void>
-{
-    const auto& indexBuffer = destination.getIndexBuffer();
-    if (!indexBuffer)
-    {
-        return {};
-    }
-    auto indexUpload = createBufferUpload(manager, indexBuffer, indexBytes);
-    if (!indexUpload)
-    {
-        return std::unexpected {std::move(indexUpload.error())};
-    }
-    writes.emplace_back(std::move(*indexUpload));
-    return {};
-}
-
-auto createMeshUploads(UploadManager& manager,
-                       const std::shared_ptr<MeshResource>& destination,
-                       std::span<const std::byte> vertexBytes,
-                       std::span<const std::byte> indexBytes) -> Result<std::vector<UploadOperation>>
-{
-    const auto valid = validateMeshWrite(manager, destination, vertexBytes, indexBytes);
-    if (!valid)
-    {
-        return std::unexpected {valid.error()};
-    }
-
-    const auto& vertexBuffer = destination->getVertexBuffer();
-    auto vertexUpload = createBufferUpload(manager, vertexBuffer, vertexBytes);
-    if (!vertexUpload)
-    {
-        return std::unexpected {std::move(vertexUpload.error())};
-    }
-    auto writes = std::vector<UploadOperation> {};
-    writes.reserve(destination->getIndexBuffer() ? 2 : 1);
-    writes.emplace_back(std::move(*vertexUpload));
-    const auto indexUpload = appendIndexUpload(manager, *destination, indexBytes, writes);
-    if (!indexUpload)
-    {
-        return std::unexpected {indexUpload.error()};
-    }
-    return writes;
 }
 
 void cancelReservation(const std::shared_ptr<TextureResource>& destination, UploadBatchId batchId, bool reserved)
@@ -226,6 +187,120 @@ UploadBatchImpl::~UploadBatchImpl()
     _manager.releaseBatch();
 }
 
+auto UploadBatchImpl::stage(std::span<const std::byte> bytes, std::uint64_t alignment) -> Result<StagingSlice>
+{
+    const auto valid = validateStageRequest(bytes, alignment);
+    if (!valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    if (const auto collected = _manager.collect(); !collected)
+    {
+        return std::unexpected {collected.error()};
+    }
+    auto current = stageInCurrentPage(bytes, alignment);
+    if (!current)
+    {
+        return std::unexpected {current.error()};
+    }
+    if (*current)
+    {
+        return std::move(**current);
+    }
+    return createStagingPage(bytes);
+}
+
+auto UploadBatchImpl::stageInCurrentPage(std::span<const std::byte> bytes, std::uint64_t alignment)
+    -> Result<std::optional<StagingSlice>>
+{
+    if (_stagingPages.empty())
+    {
+        return std::optional<StagingSlice> {};
+    }
+    const auto offset = alignOffset(_stagingOffset, alignment);
+    if (!offset)
+    {
+        return std::optional<StagingSlice> {};
+    }
+    const auto& page = _stagingPages.back();
+    if (!fitsPageRange(*offset, bytes.size(), page->getSize()))
+    {
+        return std::optional<StagingSlice> {};
+    }
+    const auto copied = page->writeMapped(*offset, bytes);
+    if (!copied)
+    {
+        return std::unexpected {copied.error()};
+    }
+    _stagingOffset = *offset + bytes.size();
+    return std::optional<StagingSlice> {
+        StagingSlice {.buffer = page, .offset = *offset}
+    };
+}
+
+auto UploadBatchImpl::createStagingPage(std::span<const std::byte> bytes) -> Result<StagingSlice>
+{
+    const auto pageSize = std::max<std::uint64_t>(stagingPageSize, bytes.size());
+    auto page = _manager.createStaging(pageSize);
+    if (!page)
+    {
+        return std::unexpected {page.error()};
+    }
+    const auto copied = (*page)->writeMapped(0, bytes);
+    if (!copied)
+    {
+        return std::unexpected {copied.error()};
+    }
+    _stagingPages.push_back(*page);
+    _stagingOffset = bytes.size();
+    return StagingSlice {.buffer = std::move(*page), .offset = 0};
+}
+
+auto UploadBatchImpl::createBufferUpload(const std::shared_ptr<BufferResource>& destination,
+                                         std::span<const std::byte> bytes) -> Result<BufferUpload>
+{
+    auto staging = stage(bytes, 1);
+    if (!staging)
+    {
+        return std::unexpected {staging.error()};
+    }
+    return BufferUpload {.staging = std::move(staging->buffer),
+                         .stagingOffset = staging->offset,
+                         .destination = destination,
+                         .offset = 0,
+                         .size = bytes.size()};
+}
+
+auto UploadBatchImpl::createMeshUploads(const std::shared_ptr<MeshResource>& destination,
+                                        std::span<const std::byte> vertexBytes,
+                                        std::span<const std::byte> indexBytes) -> Result<std::vector<UploadOperation>>
+{
+    const auto valid = validateMeshWrite(_manager, destination, vertexBytes, indexBytes);
+    if (!valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    auto writes = std::vector<UploadOperation> {};
+    writes.reserve(destination->getIndexBuffer() ? 2 : 1);
+    auto vertexUpload = createBufferUpload(destination->getVertexBuffer(), vertexBytes);
+    if (!vertexUpload)
+    {
+        return std::unexpected {vertexUpload.error()};
+    }
+    writes.emplace_back(std::move(*vertexUpload));
+    const auto& indexBuffer = destination->getIndexBuffer();
+    if (indexBuffer)
+    {
+        auto indexUpload = createBufferUpload(indexBuffer, indexBytes);
+        if (!indexUpload)
+        {
+            return std::unexpected {indexUpload.error()};
+        }
+        writes.emplace_back(std::move(*indexUpload));
+    }
+    return writes;
+}
+
 auto UploadBatchImpl::write(const std::shared_ptr<BufferResource>& destination,
                             std::uint64_t offset,
                             std::span<const std::byte> bytes) -> Result<void>
@@ -235,15 +310,13 @@ auto UploadBatchImpl::write(const std::shared_ptr<BufferResource>& destination,
     {
         return valid;
     }
-    auto staging = createStaging(_manager, bytes);
-    if (!staging)
+    auto upload = createBufferUpload(destination, bytes);
+    if (!upload)
     {
-        return std::unexpected {std::move(staging.error())};
+        return std::unexpected {upload.error()};
     }
-    _writes.emplace_back(BufferUpload {.staging = std::move(*staging),
-                                       .destination = destination,
-                                       .offset = offset,
-                                       .size = bytes.size()});
+    upload->offset = offset;
+    _writes.emplace_back(std::move(*upload));
     return {};
 }
 
@@ -251,7 +324,7 @@ auto UploadBatchImpl::write(const std::shared_ptr<MeshResource>& destination,
                             std::span<const std::byte> vertexBytes,
                             std::span<const std::byte> indexBytes) -> Result<void>
 {
-    auto uploads = createMeshUploads(_manager, destination, vertexBytes, indexBytes);
+    auto uploads = createMeshUploads(destination, vertexBytes, indexBytes);
     if (!uploads)
     {
         return std::unexpected {uploads.error()};
@@ -269,26 +342,27 @@ auto UploadBatchImpl::write(const std::shared_ptr<TextureResource>& destination,
                             std::span<const std::byte> bytes,
                             const TextureUploadRegion& region) -> Result<void>
 {
-    const auto rowLength = _manager.validateTextureWrite(destination, region, bytes.size());
-    if (!rowLength)
+    const auto layout = _manager.validateTextureWrite(destination, region, bytes.size());
+    if (!layout)
     {
-        return std::unexpected {rowLength.error()};
+        return std::unexpected {layout.error()};
     }
     const auto reserved = reserveTexture(destination, _id, hasTexture(destination));
     if (!reserved)
     {
         return std::unexpected {reserved.error()};
     }
-    auto staging = createStaging(_manager, bytes);
+    auto staging = stage(bytes, layout->bufferOffsetAlignment);
     if (!staging)
     {
         cancelReservation(destination, _id, *reserved);
-        return std::unexpected {std::move(staging.error())};
+        return std::unexpected {staging.error()};
     }
-    _writes.emplace_back(TextureUpload {.staging = std::move(*staging),
+    _writes.emplace_back(TextureUpload {.staging = std::move(staging->buffer),
+                                        .stagingOffset = staging->offset,
                                         .destination = destination,
                                         .region = region,
-                                        .bufferRowLength = *rowLength,
+                                        .bufferRowLength = layout->rowLength,
                                         .firstForTexture = *reserved});
     return {};
 }
@@ -306,11 +380,13 @@ auto UploadBatchImpl::hasTexture(const std::shared_ptr<TextureResource>& texture
 
 auto UploadBatchImpl::submit() -> Result<CompletionPoint>
 {
-    auto point = _manager.submit(_writes);
+    auto point = _manager.submit(_writes, _stagingPages);
     if (point)
     {
         commitUploadReservations(_writes, _id);
         _writes.clear();
+        _stagingPages.clear();
+        _stagingOffset = 0;
     }
     return point;
 }

@@ -33,6 +33,12 @@ struct UploadStats
     std::uint64_t peakStagingBytes;
 };
 
+struct TextureUploadLayout
+{
+    std::uint32_t rowLength;
+    std::uint64_t bufferOffsetAlignment;
+};
+
 // Context owns this service and outlives its unsubmitted batches. Pending packets
 // own all GPU uses; no allocation or fallible bookkeeping occurs after submit succeeds.
 class UploadManager final
@@ -55,9 +61,11 @@ public:
                                      std::size_t size) const -> Result<void>;
     [[nodiscard]] auto validateTextureWrite(const std::shared_ptr<TextureResource>& destination,
                                             const TextureUploadRegion& region,
-                                            std::size_t size) const -> Result<std::uint32_t>;
-    [[nodiscard]] auto createStaging(std::span<const std::byte> bytes) const -> Result<std::shared_ptr<BufferResource>>;
-    [[nodiscard]] auto submit(std::span<const UploadOperation> writes) -> Result<CompletionPoint>;
+                                            std::size_t size) const -> Result<TextureUploadLayout>;
+    [[nodiscard]] auto createStaging(std::uint64_t size) const -> Result<std::shared_ptr<BufferResource>>;
+    [[nodiscard]] auto submit(std::span<const UploadOperation> writes,
+                              std::span<const std::shared_ptr<BufferResource>> stagingPages = {})
+        -> Result<CompletionPoint>;
     void retainBatch();
     void releaseBatch();
 
