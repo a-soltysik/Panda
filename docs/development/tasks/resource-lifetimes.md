@@ -4,7 +4,7 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Implement typed handles, limited pooled allocator, upload batches, frame-safe parameter storage and completion-based retirement.
+Implement typed handles, a limited pooled allocator, upload batches and completion-based retirement.
 
 Non-goal: No CUDA export or per-object device idle.
 
@@ -79,8 +79,8 @@ Member order destroys `VkImageView` before `VkImage`, then `MemoryAllocation` re
 its range. Vulkan device, buffer and image-view handles remain private to the backend.
 Queue submission and synchronization remain owned by Panda. Context destruction
 drains submitted uploads before checking for external Buffer, Texture or Mesh owners
-and tearing down the device. Buffer memory intent
-selects device-local, upload or readback memory, without exposing CPU mapping.
+and tearing down the device. Buffer memory intent selects device-local, upload or
+readback memory, without exposing CPU mapping.
 
 `Context::createMesh` builds one fixed vertex buffer and, when described, one index
 buffer from the same Context pool. `MeshDesc` uses a vertex count/byte stride and an
@@ -118,9 +118,12 @@ Success consumes the public batch and transfers command, staging-page and
 destination owners to Context's pending list. Only confirmed completion permits
 reclamation, through ordinary RAII. A failed preparation or submission leaves the
 batch's writes and pages available for retry. Timeout and failed completion queries
-preserve pending owners. Pages are not reused across batches yet. Unsubmitted batch
-destruction cancels its writes. Context rejects live unsubmitted batches and drains
-submitted packets before checking external buffer owners.
+preserve pending owners. An in-flight page stays owned by its pending packet and
+cannot be reused early. Cancellation or confirmed completion releases the batch's
+staging pages through ordinary RAII and the memory pool. Pages are not cached across
+batches. Unsubmitted batch destruction cancels its writes. Context rejects live
+unsubmitted batches and drains submitted packets before checking external buffer
+owners.
 
 Texture uploads require transfer-destination and sampled usage. Full-image writes
 and pitched rectangular writes accept single-plane 2D color formats, including
@@ -137,7 +140,9 @@ unsafe teardown as fatal. A timed-out committed retirement can be drained again.
 The window example waits for its last frame at normal shutdown. The
 [buffer example](../../../examples/buffer_allocation/README.md) creates a storage
 buffer, uploads four values through the public API, waits and releases its owners.
-Explicit buffer initialization policies and labels, and frame arenas remain planned.
+Explicit buffer initialization policies and labels remain planned. Frame-local
+transient storage belongs to the frame-rendering task; its representation will be
+chosen against a representative workload rather than assumed to require an arena.
 
 The executable `panda_unit_range_allocator` demonstrates split/alignment, all six
 release orders for three adjacent ranges, fragmented exhaustion, invalid requests
@@ -153,21 +158,18 @@ by this scenario.
 
 ## Verification
 
-The upload-coverage follow-up was verified with Windows MSVC and Linux WSL GCC.
+The upload lifetime and within-batch staging-page changes were verified with
+Windows MSVC and Linux WSL GCC.
 
 - `cmake --build --preset msvc-quality --parallel` passed, including formatting,
-  static analysis and compilation of the changed upload integration tests.
-- `ctest --preset msvc-quality` passed all 357 tests. Three noncoherent
-  memory-type variants were skipped because the GPU did not expose the required
-  memory type; the upload system tests ran with the real Vulkan loader and
-  validation enabled.
-- `.\scripts\build-wsl.ps1 -Preset gcc-coverage -RunTests` passed all 281 unit
-  and integration tests. The GCC coverage report for `src/` shows 94.7% line and
-  83.4% branch coverage after excluding compiler-generated exception-only arcs.
-  A local patch-coverage calculation from the generated Cobertura XML against
-  `master` is 91.67%: 121 hit, 8 partial and 3 missed lines. The remaining misses
-  are overflow or invalid internal requests that normal upload calls cannot
-  produce; Codecov will confirm the reported patch value after CI runs.
+  static analysis and compilation of all targets.
+- `ctest --preset msvc-quality --output-on-failure` passed all 357 tests. Three
+  noncoherent memory-type variants were skipped because the GPU did not expose
+  that memory type. Upload, mesh and texture system tests ran with the real Vulkan
+  loader and validation.
+- `.\scripts\build-wsl.ps1 -Preset gcc-coverage -RunTests` passed all 281 unit and
+  integration tests. The build reported stale `.gcda` checksum warnings while
+  relinking; no fresh coverage percentage is recorded.
 - `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
   44 Markdown files and the task queue successfully; `git diff --check` passed.
 
@@ -177,8 +179,10 @@ exposed a compatible memory type; controlled Vulkan callbacks cover those paths.
 ## Remaining work
 
 Texture creation, internal image-view ownership, pitched/region uploads, Mesh
-creation/uploads and per-batch staging pages are implemented. Frame arenas and
-staging capacity reuse across batches remain planned parts of this task. Native
-noncoherent cache-operation validation needs a device exposing that memory type.
-The maintainer learning handoff and acceptance of the remaining task scope are
-still pending; passing tests do not replace that handoff.
+creation/uploads and per-batch staging pages are implemented. Reuse of staging pages
+between batches and frame-local arenas are deferred until representative upload and
+rendering workloads can be measured; they are not acceptance items for this task.
+The maintainer accepted this task with the native noncoherent validation gap
+recorded: controlled Vulkan callbacks cover flush range handling and failure
+propagation, but no tested GPU exposed a compatible memory type for native
+validation.
