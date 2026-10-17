@@ -81,7 +81,7 @@ jobs:
       - name: Compile public headers independently
         run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
       - name: Check formatting
-        run: ctest --preset ${{ matrix.preset }} -R '_format$'
+        run: ctest --preset ${{ matrix.preset }} -L format
 
   cuda:
     name: ${{ matrix.name }}
@@ -112,6 +112,6 @@ jobs:
       - name: Compile public headers independently
         run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
       - name: Check formatting
-        run: ctest --preset ${{ matrix.preset }} -R '_format$'
+        run: ctest --preset ${{ matrix.preset }} -L format
       - name: Test CUDA
         run: ctest --preset ${{ matrix.preset }} -R Cuda
