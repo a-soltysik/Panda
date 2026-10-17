@@ -30,14 +30,14 @@
 
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "UploadBatchImpl.hpp"
-#include "UploadManager.hpp"
 #include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "resources/BufferResource.hpp"
-#include "resources/MemoryPool.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
+#include "resources/memory/MemoryPool.hpp"
+#include "upload/UploadBatchImpl.hpp"
+#include "upload/UploadManager.hpp"
 
 namespace
 {
@@ -108,10 +108,10 @@ protected:
         configureMemory();
         configureCommands();
         configureSubmissions();
-        pool = panda::detail::MemoryPool::create(physical, device);
+        pool = panda::core::vulkan::resources::MemoryPool::create(physical, device);
         submissions = std::make_unique<panda::detail::SubmissionQueue>(device, 0);
         ASSERT_TRUE(submissions->initialize(*physical));
-        uploads = std::make_unique<panda::detail::UploadManager>(device, *pool, *submissions, 0);
+        uploads = std::make_unique<panda::core::vulkan::upload::UploadManager>(device, *pool, *submissions, 0);
     }
 
     void TearDown() override
@@ -454,8 +454,8 @@ protected:
     {
         uploads.reset();
         pool.reset();
-        pool = panda::detail::MemoryPool::create(physical, device);
-        uploads = std::make_unique<panda::detail::UploadManager>(device, *pool, *submissions, 0);
+        pool = panda::core::vulkan::resources::MemoryPool::create(physical, device);
+        uploads = std::make_unique<panda::core::vulkan::upload::UploadManager>(device, *pool, *submissions, 0);
     }
 
     void configureSubmissionResults()
@@ -515,9 +515,9 @@ protected:
     vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
     vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
     vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
-    std::unique_ptr<panda::detail::MemoryPool> pool;
+    std::unique_ptr<panda::core::vulkan::resources::MemoryPool> pool;
     std::unique_ptr<panda::detail::SubmissionQueue> submissions;
-    std::unique_ptr<panda::detail::UploadManager> uploads;
+    std::unique_ptr<panda::core::vulkan::upload::UploadManager> uploads;
     std::unordered_map<VkBuffer, NativeBuffer> buffers;
     std::unordered_map<VkImage, NativeImage> images;
     std::unordered_map<VkImageView, VkImage> imageViews;
@@ -570,7 +570,7 @@ TEST_F(BufferUploadIntegration, WrongUsageAndForeignPoolAreRejected)
     auto target = destination(vk::BufferUsageFlagBits::eStorageBuffer);
     auto batch = uploads->createBatch();
     EXPECT_FALSE(batch->write(target, 0, payload));
-    auto otherPool = panda::detail::MemoryPool::create(physical, device);
+    auto otherPool = panda::core::vulkan::resources::MemoryPool::create(physical, device);
     auto other = panda::detail::BufferResource::create(device,
                                                        *otherPool,
                                                        {.size = 512, .usage = vk::BufferUsageFlagBits::eTransferDst});

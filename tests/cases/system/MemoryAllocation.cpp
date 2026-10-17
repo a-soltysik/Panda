@@ -4,7 +4,7 @@
 #include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
-#include "MemoryAllocation.hpp"
+#include "resources/memory/MemoryAllocation.hpp"
 
 #include <gtest/gtest.h>
 #include <vulkan/vk_platform.h>
@@ -25,10 +25,10 @@
 #include <tuple>
 #include <utility>
 
-#include "MemoryBlock.hpp"
-#include "MemoryPool.hpp"
-#include "RangeAllocator.hpp"
 #include "VulkanError.hpp"
+#include "resources/memory/MemoryBlock.hpp"
+#include "resources/memory/MemoryPool.hpp"
+#include "resources/memory/RangeAllocator.hpp"
 
 namespace
 {
@@ -41,7 +41,7 @@ auto makeTestBuffer(const vk::raii::Device& device) -> panda::Result<vk::raii::B
     const auto result = (*device).createBuffer(&info, nullptr, &native, *device.getDispatcher());
     if (result != vk::Result::eSuccess)
     {
-        return std::unexpected {panda::detail::makeVulkanError(result)};
+        return std::unexpected {panda::makeVulkanError(result)};
     }
     return panda::Result<vk::raii::Buffer> {std::in_place, device, native};
 }
@@ -144,7 +144,7 @@ protected:
         const auto queue =
             vk::DeviceQueueCreateInfo {.queueFamilyIndex = family, .queueCount = 1, .pQueuePriorities = &priority};
         const auto info = vk::DeviceCreateInfo {.queueCreateInfoCount = 1, .pQueueCreateInfos = &queue};
-        auto created = panda::detail::checkedCreation(physical.createDevice(info));
+        auto created = panda::core::vulkan::detail::checkedCreation(physical.createDevice(info));
         ASSERT_TRUE(created) << created.error().message;
         device = std::move(*created);
     }
@@ -173,9 +173,9 @@ protected:
     vk::raii::Device device {nullptr};
 };
 
-void verifyMappedSlices(const panda::detail::MemoryBlock& block,
-                        panda::detail::MemoryRange first,
-                        panda::detail::MemoryRange second)
+void verifyMappedSlices(const panda::core::vulkan::resources::MemoryBlock& block,
+                        panda::core::vulkan::resources::MemoryRange first,
+                        panda::core::vulkan::resources::MemoryRange second)
 {
     const auto firstBytes = block.getMappedBytes(first);
     const auto secondBytes = block.getMappedBytes(second);
@@ -194,7 +194,7 @@ void verifyMappedSlices(const panda::detail::MemoryBlock& block,
     }));
 }
 
-void verifyBufferBindings(panda::detail::MemoryBlock& block,
+void verifyBufferBindings(panda::core::vulkan::resources::MemoryBlock& block,
                           vk::raii::Buffer& firstBuffer,
                           vk::raii::Buffer& secondBuffer,
                           const vk::MemoryRequirements& required)
@@ -212,20 +212,20 @@ void verifyBufferBindings(panda::detail::MemoryBlock& block,
     ASSERT_TRUE(block.release(*second));
 }
 
-auto allocateForBuffer(panda::detail::MemoryPool& pool,
+auto allocateForBuffer(panda::core::vulkan::resources::MemoryPool& pool,
                        const vk::raii::Device& device,
                        const vk::raii::Buffer& buffer,
                        std::uint32_t type,
-                       bool forceDedicated = false) -> panda::Result<panda::detail::MemoryAllocation>
+                       bool forceDedicated = false) -> panda::Result<panda::core::vulkan::resources::MemoryAllocation>
 {
     const auto queried = device.getBufferMemoryRequirements2<vk::MemoryRequirements2, vk::MemoryDedicatedRequirements>(
         vk::BufferMemoryRequirementsInfo2 {.buffer = *buffer});
-    auto request =
-        panda::detail::MemoryRequest {.requirements = queried.get<vk::MemoryRequirements2>().memoryRequirements,
-                                      .dedicated = queried.get<vk::MemoryDedicatedRequirements>(),
-                                      .resource = {.buffer = *buffer},
-                                      .requiredProperties = vk::MemoryPropertyFlagBits::eHostVisible,
-                                      .preferredProperties = {}};
+    auto request = panda::core::vulkan::resources::MemoryRequest {
+        .requirements = queried.get<vk::MemoryRequirements2>().memoryRequirements,
+        .dedicated = queried.get<vk::MemoryDedicatedRequirements>(),
+        .resource = {.buffer = *buffer},
+        .requiredProperties = vk::MemoryPropertyFlagBits::eHostVisible,
+        .preferredProperties = {}};
     request.requirements.memoryTypeBits &= std::uint32_t {1} << type;
     if (forceDedicated)
     {
@@ -239,7 +239,7 @@ auto allocateForBuffer(panda::detail::MemoryPool& pool,
     const auto bound = buffer.bindMemory(allocation->getMemory(), allocation->getRange().offset);
     if (bound != vk::Result::eSuccess)
     {
-        return std::unexpected {panda::detail::makeVulkanError(bound)};
+        return std::unexpected {panda::makeVulkanError(bound)};
     }
     return allocation;
 }
@@ -252,12 +252,12 @@ auto requiresDedicated(const vk::raii::Device& device, const vk::raii::Buffer& b
     return dedicated.requiresDedicatedAllocation == vk::True || dedicated.prefersDedicatedAllocation == vk::True;
 }
 
-void verifyPooledSharing(const panda::detail::MemoryPool& pool,
+void verifyPooledSharing(const panda::core::vulkan::resources::MemoryPool& pool,
                          const vk::raii::Device& device,
                          const vk::raii::Buffer& firstBuffer,
                          const vk::raii::Buffer& secondBuffer,
-                         const panda::detail::MemoryAllocation& first,
-                         const panda::detail::MemoryAllocation& second)
+                         const panda::core::vulkan::resources::MemoryAllocation& first,
+                         const panda::core::vulkan::resources::MemoryAllocation& second)
 {
     if (!requiresDedicated(device, firstBuffer) && !requiresDedicated(device, secondBuffer))
     {
@@ -267,7 +267,7 @@ void verifyPooledSharing(const panda::detail::MemoryPool& pool,
     }
 }
 
-void verifyMappedContents(const panda::detail::MemoryAllocation& allocation)
+void verifyMappedContents(const panda::core::vulkan::resources::MemoryAllocation& allocation)
 {
     const auto bytes = allocation.getMappedBytes();
     ASSERT_TRUE(bytes);
@@ -277,14 +277,14 @@ void verifyMappedContents(const panda::detail::MemoryAllocation& allocation)
     EXPECT_EQ(bytes->front(), std::byte {0x2A});
 }
 
-void verifyPoolReleased(const panda::detail::MemoryPool& pool, std::uint64_t committed)
+void verifyPoolReleased(const panda::core::vulkan::resources::MemoryPool& pool, std::uint64_t committed)
 {
     EXPECT_EQ(pool.getStats().liveBytes, 0);
     EXPECT_LE(pool.getStats().allocationCount, 1);
     EXPECT_LE(pool.getStats().committedBytes, committed);
 }
 
-void verifyPoolBindings(panda::detail::MemoryPool& pool,
+void verifyPoolBindings(panda::core::vulkan::resources::MemoryPool& pool,
                         const vk::raii::Device& device,
                         vk::raii::Buffer& firstBuffer,
                         vk::raii::Buffer& secondBuffer,
@@ -326,10 +326,11 @@ TEST_P(MemoryAllocationSystem, BindsTwoBuffersToOneMappedBlockWithoutValidationE
         GTEST_SKIP() << "No host-visible buffer memory type with the requested coherence";
     }
     const auto atom = physical.getProperties().limits.nonCoherentAtomSize;
-    auto block = panda::detail::MemoryBlock::create(physical,
-                                                    device,
-                                                    2 * (required.size + std::max(required.alignment, atom)),
-                                                    *type);
+    auto block =
+        panda::core::vulkan::resources::MemoryBlock::create(physical,
+                                                            device,
+                                                            2 * (required.size + std::max(required.alignment, atom)),
+                                                            *type);
     ASSERT_TRUE(block) << block.error().message;
     verifyBufferBindings(**block, *firstBuffer, *secondBuffer, required);
     std::cout << "Device: " << physical.getProperties().deviceName.data() << "; memory type: " << *type << '\n';
@@ -354,7 +355,7 @@ TEST_P(MemoryAllocationSystem, PoolSharesMemoryAndReleasesRangesWithValidation)
     {
         GTEST_SKIP() << "No host-visible buffer memory type with the requested coherence";
     }
-    auto pool = panda::detail::MemoryPool::create(physical, device);
+    auto pool = panda::core::vulkan::resources::MemoryPool::create(physical, device);
     EXPECT_EQ(pool->getStats().allocationCount, 0);
     verifyPoolBindings(*pool, device, *firstBuffer, *secondBuffer, *type);
     std::cout << "Pool device: " << physical.getProperties().deviceName.data() << "; memory type: " << *type << '\n';
@@ -370,7 +371,7 @@ TEST_P(MemoryAllocationSystem, DedicatedMemoryHasZeroOffsetAndIsFreedOnReset)
     {
         GTEST_SKIP() << "No host-visible buffer memory type with the requested coherence";
     }
-    auto pool = panda::detail::MemoryPool::create(physical, device);
+    auto pool = panda::core::vulkan::resources::MemoryPool::create(physical, device);
     auto allocation = allocateForBuffer(*pool, device, *buffer, *type, true);
     ASSERT_TRUE(allocation);
     EXPECT_EQ(allocation->getRange().offset, 0);

@@ -5,7 +5,7 @@
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 
-namespace panda::detail
+namespace panda::core::vulkan::resources
 {
 class MeshLayout final
 {

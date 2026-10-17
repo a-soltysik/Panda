@@ -9,7 +9,7 @@
 
 #include <expected>
 
-#include "SwapchainGeneration.hpp"
+#include "presentation/SwapchainGeneration.hpp"
 
 namespace panda::test
 {
@@ -18,9 +18,9 @@ class SwapchainGenerationMock
 public:
     // gMock cannot generate trailing-return declarations.
     // NOLINTBEGIN(modernize-use-trailing-return-type)
-    MOCK_METHOD((std::expected<detail::SwapchainGeneration, Error>),
+    MOCK_METHOD((std::expected<panda::core::vulkan::SwapchainGeneration, Error>),
                 createSwapchainGeneration,
-                (const detail::SwapchainGenerationRequest&),
+                (const panda::core::vulkan::SwapchainGenerationRequest&),
                 ());
 
     MOCK_METHOD(vk::ClearColorValue, encodedClear, (vk::Format), ());

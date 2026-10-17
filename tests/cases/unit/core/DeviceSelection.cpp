@@ -263,7 +263,7 @@ TEST(DeviceSelection, PreservesWindowExtensionQueryFailure)
         .WillOnce(Return(std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure,
                                                            "backend unavailable",
                                                            panda::NativeError {.api = "test window", .code = 17})}));
-    const auto extensions = panda::detail::instanceExtensions(&surface);
+    const auto extensions = panda::core::vulkan::instanceExtensions(&surface);
     ASSERT_FALSE(extensions.has_value());
     EXPECT_EQ(extensions.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(extensions.error().native.has_value());
@@ -292,7 +292,7 @@ TEST(DeviceSelection, RejectsUnavailableWindowExtension)
             }
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
-    const auto extensions = panda::detail::instanceExtensions(&surface);
+    const auto extensions = panda::core::vulkan::instanceExtensions(&surface);
     ASSERT_FALSE(extensions.has_value());
     EXPECT_EQ(extensions.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(extensions.error().message.find("VK_EXT_window_missing"), std::string::npos);
@@ -310,7 +310,7 @@ TEST(DeviceSelection, AddsAvailableMaintenanceExtensionsWithoutDuplicates)
                                         makeExtension(vk::KHRGetSurfaceCapabilities2ExtensionName),
                                         makeExtension(vk::KHRSurfaceMaintenance1ExtensionName)};
     expectAvailableInstanceExtensions(vulkan, available);
-    const auto extensions = panda::detail::instanceExtensions(&surface);
+    const auto extensions = panda::core::vulkan::instanceExtensions(&surface);
     ASSERT_TRUE(extensions.has_value());
     EXPECT_TRUE(extensions->hasKhrMaintenance);
     EXPECT_FALSE(extensions->hasExtMaintenance);
@@ -325,10 +325,10 @@ TEST(DeviceSelection, SelectsExtSwapchainMaintenanceWhenKhrVariantIsUnavailable)
     scenario.extensions.at(1) = makeExtension(vk::EXTSwapchainMaintenance1ExtensionName);
     expectTwoDeviceScenario(vulkan, scenario);
 
-    const auto selected = panda::detail::selectDevice(
+    const auto selected = panda::core::vulkan::selectDevice(
         vk::Instance {scenario.instance},
         scenario.surface,
-        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = false, .hasExtMaintenance = true});
+        panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = false, .hasExtMaintenance = true});
 
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->info.swapchainMaintenance, panda::ContextDeviceInfo::SwapchainMaintenance::Ext);
@@ -340,10 +340,10 @@ TEST(DeviceSelection, SelectsSeparateGraphicsAndPresentQueueFamilies)
     const auto scenario = makeDeviceScenario();
     expectTwoDeviceScenario(vulkan, scenario, vk::Result::eSuccess, true);
 
-    const auto selected = panda::detail::selectDevice(
+    const auto selected = panda::core::vulkan::selectDevice(
         vk::Instance {scenario.instance},
         scenario.surface,
-        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
+        panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
 
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->info.queueFamily, 0U);
@@ -359,10 +359,10 @@ TEST(DeviceSelection, RejectsWindowedDeviceWithoutMaintenanceExtensionVariant)
     expectDeviceProperties(vulkan, scenario);
     expectDeviceExtensions(vulkan, scenario, vk::Result::eSuccess);
 
-    const auto selected = panda::detail::selectDevice(
+    const auto selected = panda::core::vulkan::selectDevice(
         vk::Instance {scenario.instance},
         scenario.surface,
-        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = true});
+        panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = true});
 
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::Unsupported);
@@ -376,10 +376,10 @@ TEST(DeviceSelection, LogsAndSkipsDeviceInspectionFailureWhenAnotherDeviceIsUsab
     const auto scenario = makeDeviceScenario();
     expectTwoDeviceScenario(vulkan, scenario);
 
-    const auto selected = panda::detail::selectDevice(
+    const auto selected = panda::core::vulkan::selectDevice(
         vk::Instance {scenario.instance},
         scenario.surface,
-        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
+        panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
 
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->physicalDevice, vk::PhysicalDevice {scenario.usableDevice});
@@ -398,10 +398,10 @@ TEST(DeviceSelection, PreservesInspectionErrorWhenNoDeviceCanBeSelected)
     auto* const surface = fakeVulkanHandle<VkSurfaceKHR>(3);
     expectSingleDeviceQueryFailure(vulkan, brokenDevice);
 
-    const auto selected = panda::detail::selectDevice(
+    const auto selected = panda::core::vulkan::selectDevice(
         vk::Instance {instance},
         surface,
-        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
+        panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
 
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::BackendFailure);
@@ -416,10 +416,10 @@ TEST(DeviceSelection, PropagatesFatalSurfaceFailureInsteadOfSkippingDevice)
     const auto scenario = makeDeviceScenario();
     expectTwoDeviceScenario(vulkan, scenario, vk::Result::eErrorSurfaceLostKHR);
 
-    const auto selected = panda::detail::selectDevice(
+    const auto selected = panda::core::vulkan::selectDevice(
         vk::Instance {scenario.instance},
         scenario.surface,
-        panda::detail::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
+        panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
 
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::SurfaceLost);

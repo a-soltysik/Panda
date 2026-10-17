@@ -10,7 +10,7 @@
 
 TEST(MeshLayout, ComputesVertexAndSixteenBitIndexStorage)
 {
-    const auto layout = panda::detail::MeshLayout::create({
+    const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = 3,
         .vertexStride = 20,
         .indices = panda::MeshIndexDesc {.count = 6, .type = panda::MeshIndexType::UInt16}
@@ -29,7 +29,7 @@ TEST(MeshLayout, ComputesVertexAndSixteenBitIndexStorage)
 
 TEST(MeshLayout, ComputesThirtyTwoBitIndexStorage)
 {
-    const auto layout = panda::detail::MeshLayout::create({
+    const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = 4,
         .vertexStride = 12,
         .indices = panda::MeshIndexDesc {.count = 9, .type = panda::MeshIndexType::UInt32}
@@ -48,8 +48,8 @@ TEST(MeshLayout, ComputesThirtyTwoBitIndexStorage)
 
 TEST(MeshLayout, NonIndexedMeshHasNoIndexStorage)
 {
-    const auto layout =
-        panda::detail::MeshLayout::create({.vertexCount = 3, .vertexStride = 16, .indices = std::nullopt});
+    const auto layout = panda::core::vulkan::resources::MeshLayout::create(
+        {.vertexCount = 3, .vertexStride = 16, .indices = std::nullopt});
 
     ASSERT_TRUE(layout);
     EXPECT_EQ(layout->getVertexCount(), 3);
@@ -62,7 +62,7 @@ TEST(MeshLayout, NonIndexedMeshHasNoIndexStorage)
 TEST(MeshLayout, MaximumPublicCountsProduceExact64BitStorageSizes)
 {
     constexpr auto maximum = std::numeric_limits<std::uint32_t>::max();
-    const auto layout = panda::detail::MeshLayout::create({
+    const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = maximum,
         .vertexStride = maximum,
         .indices = panda::MeshIndexDesc {.count = maximum, .type = panda::MeshIndexType::UInt32}
@@ -75,10 +75,10 @@ TEST(MeshLayout, MaximumPublicCountsProduceExact64BitStorageSizes)
 
 TEST(MeshLayout, RejectsMissingVertexCountOrStride)
 {
-    const auto noVertices =
-        panda::detail::MeshLayout::create({.vertexCount = 0, .vertexStride = 12, .indices = std::nullopt});
-    const auto noStride =
-        panda::detail::MeshLayout::create({.vertexCount = 3, .vertexStride = 0, .indices = std::nullopt});
+    const auto noVertices = panda::core::vulkan::resources::MeshLayout::create(
+        {.vertexCount = 0, .vertexStride = 12, .indices = std::nullopt});
+    const auto noStride = panda::core::vulkan::resources::MeshLayout::create(
+        {.vertexCount = 3, .vertexStride = 0, .indices = std::nullopt});
 
     ASSERT_FALSE(noVertices);
     ASSERT_FALSE(noStride);
@@ -88,7 +88,7 @@ TEST(MeshLayout, RejectsMissingVertexCountOrStride)
 
 TEST(MeshLayout, RejectsEmptyIndexDescription)
 {
-    const auto layout = panda::detail::MeshLayout::create({
+    const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = 3,
         .vertexStride = 12,
         .indices = panda::MeshIndexDesc {.count = 0, .type = panda::MeshIndexType::UInt16}
@@ -102,7 +102,7 @@ TEST(MeshLayout, RejectsUnknownIndexType)
 {
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     const auto invalidType = static_cast<panda::MeshIndexType>(255);
-    const auto layout = panda::detail::MeshLayout::create({
+    const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = 3,
         .vertexStride = 12,
         .indices = panda::MeshIndexDesc {.count = 3, .type = invalidType}

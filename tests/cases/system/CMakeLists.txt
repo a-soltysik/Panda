@@ -19,17 +19,15 @@ panda_add_test(panda_system_mesh system
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture)
 
 panda_add_test(panda_system_upload system
+    VULKAN_INTERNAL
     SOURCES Upload.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture)
-target_include_directories(panda_system_upload PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan")
-target_compile_definitions(panda_system_upload PRIVATE VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
 
 panda_add_test(panda_system_memory_allocation system
+    VULKAN_INTERNAL
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"
     SOURCES MemoryAllocation.cpp
     LIBRARIES Panda::Panda Vulkan::Headers)
-target_include_directories(panda_system_memory_allocation PRIVATE "${PROJECT_SOURCE_DIR}/src/core/vulkan"
-    "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources")
-target_compile_definitions(panda_system_memory_allocation PRIVATE VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
 
 panda_add_test(panda_system_windowed_context system
     SOURCES WindowedContext.cpp

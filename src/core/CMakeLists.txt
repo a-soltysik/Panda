@@ -11,24 +11,54 @@ panda_add_component(panda_core
         UploadBatch.cpp
         vulkan/Context.cpp
         vulkan/DeviceSelection.cpp
-        vulkan/Presentation.cpp
+        vulkan/presentation/Presentation.cpp
         vulkan/SubmissionQueue.cpp
-        vulkan/UploadBatchImpl.cpp
-        vulkan/UploadManager.cpp
-        vulkan/UploadCommand.cpp
-        vulkan/SwapchainGeneration.cpp
+        vulkan/upload/UploadBatchImpl.cpp
+        vulkan/upload/UploadManager.cpp
+        vulkan/upload/UploadCommand.cpp
+        vulkan/presentation/SwapchainGeneration.cpp
         vulkan/VulkanError.cpp
-        vulkan/resources/RangeAllocator.cpp
-        vulkan/resources/MemoryBlock.cpp
-        vulkan/resources/MemoryAllocation.cpp
-        vulkan/resources/MemoryPool.cpp
+        vulkan/resources/memory/RangeAllocator.cpp
+        vulkan/resources/memory/MemoryBlock.cpp
+        vulkan/resources/memory/MemoryAllocation.cpp
+        vulkan/resources/memory/MemoryPool.cpp
         vulkan/resources/BufferResource.cpp
         vulkan/resources/MeshLayout.cpp
         vulkan/resources/MeshResource.cpp
         vulkan/resources/TextureResource.cpp
-    LIBRARIES PUBLIC panda_common glm::glm Vulkan::Headers PRIVATE Vulkan::Vulkan)
+    PUBLIC_HEADERS
+        panda/Buffer.hpp
+        panda/CompletionPoint.hpp
+        panda/Context.hpp
+        panda/Error.hpp
+        panda/Mesh.hpp
+        panda/Panda.hpp
+        panda/Texture.hpp
+        panda/UploadBatch.hpp
+        panda/WindowSurface.hpp
+    PRIVATE_HEADERS
+        vulkan/DeviceSelection.hpp
+        vulkan/presentation/Presentation.hpp
+        vulkan/SubmissionQueue.hpp
+        vulkan/presentation/SwapchainGeneration.hpp
+        vulkan/upload/UploadBatchId.hpp
+        vulkan/upload/UploadBatchImpl.hpp
+        vulkan/upload/UploadCommand.hpp
+        vulkan/upload/UploadManager.hpp
+        vulkan/upload/UploadOperation.hpp
+        vulkan/VulkanError.hpp
+        vulkan/VulkanHpp.hpp
+        vulkan/resources/BufferResource.hpp
+        vulkan/resources/memory/MemoryAllocation.hpp
+        vulkan/resources/memory/MemoryBlock.hpp
+        vulkan/resources/memory/MemoryPool.hpp
+        vulkan/resources/memory/MemoryProperties.hpp
+        vulkan/resources/MeshLayout.hpp
+        vulkan/resources/MeshResource.hpp
+        vulkan/resources/memory/RangeAllocator.hpp
+        vulkan/resources/TextureResource.hpp
+    LIBRARIES PUBLIC panda_common Vulkan::Headers PRIVATE Vulkan::Vulkan)
 
 set_target_properties(panda_core PROPERTIES OUTPUT_NAME panda)
-target_include_directories(panda_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/vulkan")
-target_compile_definitions(panda_core PRIVATE PANDA_VERSION_TEXT="${PROJECT_VERSION}"
-    VULKAN_HPP_NO_EXCEPTIONS VULKAN_HPP_NO_CONSTRUCTORS)
+target_compile_definitions(panda_core PRIVATE PANDA_VERSION_TEXT="${PROJECT_VERSION}")
+panda_configure_vulkan_internal(panda_core)

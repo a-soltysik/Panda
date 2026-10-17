@@ -40,3 +40,5 @@ endif()
 if(PANDA_BUILD_DOCS)
     add_subdirectory(docs/api)
 endif()
+
+panda_finalize_format_checks()

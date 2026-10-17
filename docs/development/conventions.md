@@ -36,6 +36,15 @@ verification records still identify the environment that actually ran a check.
   operators follow their required C++ syntax.
 - Use `typename`, rather than `class`, for template type parameters.
 
+## Namespaces
+
+- Put implementation types in namespaces named for the subsystem they serve,
+  such as `panda::core::vulkan::resources` and
+  `panda::core::vulkan::upload`. Reserve `detail` for opaque types that bridge
+  a public API to its implementation and for genuinely internal helpers; do not
+  use it as the default namespace for an entire subsystem. Keep helpers used only
+  within one `.cpp` file in an anonymous namespace.
+
 ## Initialization and local variables
 
 - Use `=` to initialize local variables declared with `auto`. Prefer braces (`{}`)

@@ -20,9 +20,9 @@
 #include <utility>
 
 #include "ScopedMock.hpp"
-#include "SwapchainGeneration.hpp"
 #include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
+#include "presentation/SwapchainGeneration.hpp"
 
 namespace
 {
@@ -314,9 +314,9 @@ protected:
         expectImage(completedFirstImage ? 1U : 0U, failure);
     }
 
-    auto create(bool separateQueues = false) -> panda::Result<panda::detail::SwapchainGeneration>
+    auto create(bool separateQueues = false) -> panda::Result<panda::core::vulkan::SwapchainGeneration>
     {
-        return panda::detail::createSwapchainGeneration({
+        return panda::core::vulkan::createSwapchainGeneration({
             .physicalDevice = *physicalDevice,
             .device = device,
             .surface = surface,

@@ -15,8 +15,6 @@
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
 
-#include "VulkanError.hpp"
-
 namespace panda::detail
 {
 namespace
@@ -195,20 +193,20 @@ auto SubmissionQueue::poll(CompletionPoint point) -> Result<bool>
     });
 }
 
-auto SubmissionQueue::waitValue(std::uint64_t value, std::uint64_t timeout) -> Result<WaitStatus>
+auto SubmissionQueue::waitValue(std::uint64_t timelineValue, std::uint64_t timeoutNanoseconds) -> Result<WaitStatus>
 {
-    expect(value <= _committed, "Cannot wait for uncommitted work");
+    expect(timelineValue <= _committed, "Cannot wait for uncommitted work");
     if (_deviceLost)
     {
         return std::unexpected {makeVulkanError(vk::Result::eErrorDeviceLost)};
     }
-    if (value <= _completed)
+    if (timelineValue <= _completed)
     {
         return WaitStatus::Completed;
     }
     const auto semaphore = *_timeline;
-    const auto info = vk::SemaphoreWaitInfo {.semaphoreCount = 1, .pSemaphores = &semaphore, .pValues = &value};
-    const auto result = _device.waitSemaphores(info, timeout);
+    const auto info = vk::SemaphoreWaitInfo {.semaphoreCount = 1, .pSemaphores = &semaphore, .pValues = &timelineValue};
+    const auto result = _device.waitSemaphores(info, timeoutNanoseconds);
     if (result == vk::Result::eTimeout)
     {
         return WaitStatus::Timeout;
@@ -218,7 +216,7 @@ auto SubmissionQueue::waitValue(std::uint64_t value, std::uint64_t timeout) -> R
         _deviceLost = result == vk::Result::eErrorDeviceLost;
         return std::unexpected {makeVulkanError(result)};
     }
-    _completed = std::max(_completed, value);
+    _completed = std::max(_completed, timelineValue);
     return WaitStatus::Completed;
 }
 

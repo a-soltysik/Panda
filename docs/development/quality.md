@@ -86,10 +86,13 @@ its component's usage requirements.
 ## Effective quality checks
 
 Strong compiler warnings, clang-tidy, cppcheck and formatting form the foundation.
-Cover Panda source, tests and owned headers automatically as targets grow, excluding
-third-party and reference trees. Verify header diagnostic filters; an analyzer parsing
-a header does not mean its findings are reported. Avoid separate hand-maintained
-file lists or scripts duplicating CMake analyzer invocations.
+Cover Panda sources, tests and owned headers through CMake target manifests, excluding
+third-party and reference trees. Component manifests name public and private headers;
+test and mock targets name their owned headers. Group formatting checks by the CMake
+directory that declares the target, deduplicating files within each group. Verify
+header diagnostic filters: an analyzer parsing a header does not mean its findings
+are reported. Keep analyzer invocation and file selection in CMake rather than
+duplicating them in scripts.
 
 `.clang-tidy` owns the checks, diagnostic severity and inclusion filter for headers
 under `include/`, `src/`, `tests/` and `examples/`. CMake attaches the tools privately
@@ -135,7 +138,8 @@ examples off because `cuda_connection` detects a native GPU architecture when
 building its kernel. Toolkit 13.4.92 files are cached separately per OS, so a
 cache hit skips the NVIDIA download and installation. The ordinary quality jobs
 build and analyze examples.
-CTest selections check formatting.
+When formatting is enabled, CTest registers one `format`-labeled check per source
+directory. Test presets disable formatting; quality presets enable it.
 [Tests](../../.github/workflows/tests.yml) runs unit and integration cases on
 Linux/GCC, Linux/Clang and Windows/MSVC, plus separate Linux ASan/UBSan and Windows
 ASan builds. Runtime presets disable static analysis and formatting to keep those

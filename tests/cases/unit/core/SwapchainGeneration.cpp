@@ -3,7 +3,7 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include "SwapchainGeneration.hpp"
+#include "presentation/SwapchainGeneration.hpp"
 
 #include <gtest/gtest.h>
 
@@ -36,7 +36,7 @@ constexpr auto formats = std::array {
 TEST(SwapchainGeneration, SelectsPreferredSrgbFormatAndClampsVariableExtent)
 {
     const auto selected =
-        panda::detail::chooseSurfaceConfig(variableExtentCapabilities(), formats, {.width = 4000, .height = 12});
+        panda::core::vulkan::chooseSurfaceConfig(variableExtentCapabilities(), formats, {.width = 4000, .height = 12});
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->format.format, vk::Format::eB8G8R8A8Srgb);
     EXPECT_EQ(selected->extent.width, 1920U);
@@ -52,7 +52,8 @@ TEST(SwapchainGeneration, HonorsFixedExtentAndSupportedImageCount)
     const auto supported = std::array {
         vk::SurfaceFormatKHR {.format = vk::Format::eR8G8B8A8Unorm, .colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear}
     };
-    const auto selected = panda::detail::chooseSurfaceConfig(capabilities, supported, {.width = 1280, .height = 720});
+    const auto selected =
+        panda::core::vulkan::chooseSurfaceConfig(capabilities, supported, {.width = 1280, .height = 720});
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->format.format, vk::Format::eR8G8B8A8Unorm);
     EXPECT_EQ(selected->extent.width, 800U);
@@ -66,7 +67,8 @@ TEST(SwapchainGeneration, UsesMinimumImageCountWhenMaximumIsUnbounded)
     capabilities.minImageCount = 4;
     capabilities.maxImageCount = 0;
 
-    const auto selected = panda::detail::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
+    const auto selected =
+        panda::core::vulkan::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
 
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->imageCount, 4U);
@@ -76,7 +78,7 @@ TEST(SwapchainGeneration, RejectsUnsupportedColorAttachmentAndFormat)
 {
     auto capabilities = variableExtentCapabilities();
     capabilities.supportedUsageFlags = vk::ImageUsageFlagBits::eTransferDst;
-    auto selected = panda::detail::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
+    auto selected = panda::core::vulkan::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::Unsupported);
     capabilities.supportedUsageFlags = vk::ImageUsageFlagBits::eColorAttachment;
@@ -84,7 +86,7 @@ TEST(SwapchainGeneration, RejectsUnsupportedColorAttachmentAndFormat)
         vk::SurfaceFormatKHR {.format = vk::Format::eR16G16B16A16Sfloat,
                               .colorSpace = vk::ColorSpaceKHR::eExtendedSrgbLinearEXT}
     };
-    selected = panda::detail::chooseSurfaceConfig(capabilities, hdrOnly, {.width = 800, .height = 600});
+    selected = panda::core::vulkan::chooseSurfaceConfig(capabilities, hdrOnly, {.width = 800, .height = 600});
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::Unsupported);
 }
@@ -93,15 +95,16 @@ TEST(SwapchainGeneration, RejectsZeroFixedFramebufferExtent)
 {
     auto capabilities = variableExtentCapabilities();
     capabilities.currentExtent = vk::Extent2D {.width = 0, .height = 0};
-    const auto selected = panda::detail::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
+    const auto selected =
+        panda::core::vulkan::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::Unsupported);
 }
 
 TEST(SwapchainGeneration, EncodesLinearClearColorExactlyOnce)
 {
-    const auto srgb = panda::detail::encodedClear(vk::Format::eB8G8R8A8Srgb);
-    const auto unorm = panda::detail::encodedClear(vk::Format::eB8G8R8A8Unorm);
+    const auto srgb = panda::core::vulkan::encodedClear(vk::Format::eB8G8R8A8Srgb);
+    const auto unorm = panda::core::vulkan::encodedClear(vk::Format::eB8G8R8A8Unorm);
     EXPECT_NEAR(srgb.float32.at(0), 0.025F, 0.0001F);
     EXPECT_NEAR(srgb.float32.at(1), 0.035F, 0.0001F);
     EXPECT_NEAR(srgb.float32.at(2), 0.05F, 0.0001F);

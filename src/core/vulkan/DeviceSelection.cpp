@@ -22,8 +22,10 @@
 
 #include "VulkanError.hpp"
 
-namespace panda::detail
+namespace panda::core::vulkan
 {
+using detail::enumerateVulkan;
+
 namespace
 {
 auto hasExtension(const std::vector<vk::ExtensionProperties>& available, std::string_view name) -> bool

@@ -1,32 +1,80 @@
 function(panda_enable_format_check target)
-    if(PANDA_ENABLE_CLANG_FORMAT)
-        find_program(PANDA_CLANG_FORMAT_EXECUTABLE NAMES clang-format REQUIRED)
-        get_target_property(panda_format_sources ${target} SOURCES)
-        list(APPEND panda_format_sources ${ARGN})
-        get_target_property(panda_target_type ${target} TYPE)
-        if(panda_target_type STREQUAL "OBJECT_LIBRARY")
-            add_custom_target(${target}_format_check
-                COMMAND "${PANDA_CLANG_FORMAT_EXECUTABLE}" --dry-run --Werror
-                    ${panda_format_sources}
-                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-                VERBATIM
-            )
-            set_target_properties(${target}_format_check PROPERTIES FOLDER "Panda/Checks")
-            add_dependencies(${target} ${target}_format_check)
-        else()
-            add_custom_command(TARGET ${target} PRE_LINK
-                COMMAND "${PANDA_CLANG_FORMAT_EXECUTABLE}" --dry-run --Werror
-                    ${panda_format_sources}
-                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-                VERBATIM
-            )
-        endif()
-        if(PANDA_BUILD_TESTS)
-            add_test(NAME ${target}_format
-                COMMAND "${PANDA_CLANG_FORMAT_EXECUTABLE}" --dry-run --Werror
-                    ${panda_format_sources})
-            set_tests_properties(${target}_format PROPERTIES
-                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
-        endif()
+    if(NOT PANDA_ENABLE_CLANG_FORMAT)
+        return()
     endif()
+
+    get_target_property(format_files ${target} SOURCES)
+    list(APPEND format_files ${ARGN})
+    set(absolute_format_files "")
+    foreach(file IN LISTS format_files)
+        if(file MATCHES "^\\$<")
+            message(FATAL_ERROR "Format check for ${target} does not support generated source expressions: ${file}")
+        endif()
+        if(IS_ABSOLUTE "${file}")
+            set(absolute_file "${file}")
+        else()
+            get_filename_component(absolute_file "${file}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        endif()
+        list(APPEND absolute_format_files "${absolute_file}")
+    endforeach()
+    list(REMOVE_DUPLICATES absolute_format_files)
+
+    string(SHA256 format_group "${CMAKE_CURRENT_SOURCE_DIR}")
+    string(SUBSTRING "${format_group}" 0 12 format_group)
+    set_property(GLOBAL APPEND PROPERTY PANDA_FORMAT_GROUPS "${format_group}")
+    set_property(GLOBAL PROPERTY "PANDA_FORMAT_DIRECTORY_${format_group}" "${CMAKE_CURRENT_SOURCE_DIR}")
+    set_property(GLOBAL APPEND PROPERTY "PANDA_FORMAT_FILES_${format_group}" ${absolute_format_files})
+    set_property(GLOBAL APPEND PROPERTY "PANDA_FORMAT_TARGETS_${format_group}" "${target}")
+endfunction()
+
+function(panda_finalize_format_checks)
+    if(NOT PANDA_ENABLE_CLANG_FORMAT)
+        return()
+    endif()
+
+    find_program(PANDA_CLANG_FORMAT_EXECUTABLE NAMES clang-format REQUIRED)
+    get_property(format_groups GLOBAL PROPERTY PANDA_FORMAT_GROUPS)
+    list(REMOVE_DUPLICATES format_groups)
+    if(NOT format_groups)
+        return()
+    endif()
+
+    add_custom_target(panda_format_checks)
+    set_target_properties(panda_format_checks PROPERTIES FOLDER "Panda/Checks")
+
+    foreach(format_group IN LISTS format_groups)
+        get_property(format_directory GLOBAL PROPERTY "PANDA_FORMAT_DIRECTORY_${format_group}")
+        get_property(format_files GLOBAL PROPERTY "PANDA_FORMAT_FILES_${format_group}")
+        get_property(format_targets GLOBAL PROPERTY "PANDA_FORMAT_TARGETS_${format_group}")
+        list(REMOVE_DUPLICATES format_files)
+        list(SORT format_files)
+        list(REMOVE_DUPLICATES format_targets)
+
+        set(format_target "panda_format_check_${format_group}")
+        add_custom_target(${format_target}
+            COMMAND "${PANDA_CLANG_FORMAT_EXECUTABLE}" --dry-run --Werror ${format_files}
+            WORKING_DIRECTORY "${format_directory}"
+            VERBATIM)
+        set_target_properties(${format_target} PROPERTIES FOLDER "Panda/Checks")
+        add_dependencies(panda_format_checks ${format_target})
+
+        foreach(target IN LISTS format_targets)
+            get_target_property(target_type ${target} TYPE)
+            if(NOT target_type STREQUAL "INTERFACE_LIBRARY")
+                add_dependencies(${target} ${format_target})
+            endif()
+        endforeach()
+
+        if(PANDA_BUILD_TESTS)
+            file(RELATIVE_PATH format_test_suffix "${PROJECT_SOURCE_DIR}" "${format_directory}")
+            if(NOT format_test_suffix)
+                set(format_test_suffix root)
+            endif()
+            string(REPLACE "/" "." format_test_suffix "${format_test_suffix}")
+            string(REPLACE "\\" "." format_test_suffix "${format_test_suffix}")
+            add_test(NAME "format.${format_test_suffix}"
+                COMMAND "${PANDA_CLANG_FORMAT_EXECUTABLE}" --dry-run --Werror ${format_files})
+            set_tests_properties("format.${format_test_suffix}" PROPERTIES LABELS format)
+        endif()
+    endforeach()
 endfunction()
