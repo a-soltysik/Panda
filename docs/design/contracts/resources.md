@@ -352,7 +352,7 @@ The pool algorithm and sizes above are Panda design choices, not Vulkan prescrip
 ## Frame and window state
 
 Two frame slots each own command pools/buffers, descriptor pools, transient
-parameter storage, timestamp ranges, and retained work packets. Frame-local data is
+parameter storage, optional timestamp query pools, and retained work packets. Frame-local data is
 reusable only after the slot's final `G` value, defined in the [compute
 protocol](compute.md#submission-protocol). The first renderer chooses a minimal
 safe representation; a general arena is added only if representative measurements
@@ -360,6 +360,12 @@ justify it. Explicit upload staging remains owned by its batch and submission un
 completion. Even a CUDA stage with no rendered output is joined before the final
 `G` value. Rendering without CUDA uses the same completion path without CUDA
 objects/imports.
+
+When GPU timestamp sampling is enabled, the Context-owned public
+`PerformanceManager` collects a slot's ready timestamps before that slot's query
+pool is reset and makes the results available without an additional GPU wait. The
+[benchmarking contract](../../development/benchmarking.md#public-performance-collection)
+defines the public sample shape and initial measurement boundary.
 
 For a normal frame: reclaim completed work, wait/poll the selected slot, acquire an
 image, prepare/execute the ordered work, submit the final rendering segment, then

@@ -144,7 +144,8 @@ Presentation::Presentation(const PresentationCreateInfo& info)
       _surface {info.surface},
       _window {info.window},
       _deviceInfo {info.deviceInfo},
-      _submissions {info.submissions}
+      _submissions {info.submissions},
+      _performance {info.performance}
 {
 }
 
@@ -233,7 +234,8 @@ auto Presentation::presentClearFrame() -> std::expected<FrameResult, Error>
 
 auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
 {
-    auto& slot = _slots.at(_nextSlot);
+    const auto slotIndex = _nextSlot;
+    auto& slot = _slots.at(slotIndex);
     const auto acquired = acquireFrame(slot);
     if (!acquired)
     {
@@ -248,7 +250,7 @@ auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
     {
         return std::unexpected {waited.error()};
     }
-    const auto completion = submitFrame(slot, image, acquired->index);
+    const auto completion = submitFrame(slot, image, acquired->index, slotIndex);
     if (!completion)
     {
         return std::unexpected {completion.error()};
@@ -269,7 +271,8 @@ auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) -> std::opt
     return std::nullopt;
 }
 
-auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image) -> std::expected<void, Error>
+auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image, std::size_t slotIndex)
+    -> std::expected<void, Error>
 {
     const auto reset = slot.pool.reset();
     if (reset != vk::Result::eSuccess)
@@ -282,7 +285,18 @@ auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image) -> 
         return std::unexpected {makeVulkanError(begun)};
     }
     transitionToColorAttachment(slot.command, image);
+    if (_performance != nullptr)
+    {
+        if (const auto timestamp = _performance->recordStart(slotIndex, slot.command); !timestamp)
+        {
+            return std::unexpected {timestamp.error()};
+        }
+    }
     recordClearRendering(slot.command, image, activeGeneration().format, activeGeneration().extent);
+    if (_performance != nullptr)
+    {
+        _performance->recordEnd(slotIndex, slot.command);
+    }
     transitionToPresent(slot.command, image);
     const auto ended = slot.command.end();
     if (ended != vk::Result::eSuccess)
@@ -403,10 +417,10 @@ auto Presentation::submitRecordedFrame(const FrameSlot& slot, const SwapchainIma
     return _submissions.submit(slot.command, *slot.acquire, *image.renderFinished);
 }
 
-auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, std::uint32_t index)
+auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, std::uint32_t index, std::size_t slotIndex)
     -> std::expected<std::uint64_t, Error>
 {
-    if (const auto recorded = recordClear(slot, image); !recorded)
+    if (const auto recorded = recordClear(slot, image, slotIndex); !recorded)
     {
         const auto cleanup = abortAcquire(slot, index);
         return std::unexpected {cleanup ? recorded.error() : cleanup.error()};
@@ -424,6 +438,10 @@ auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, std::uint
     }
     const auto completion = *submitted;
     slot.lastCompletion = completion;
+    if (_performance != nullptr)
+    {
+        _performance->markSubmitted(slotIndex);
+    }
     image.initialized = true;
     _nextSlot = (_nextSlot + 1) % _slots.size();
     return completion;

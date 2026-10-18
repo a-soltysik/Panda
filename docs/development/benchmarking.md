@@ -33,6 +33,62 @@ reference profile; a long benchmark is not part of every ordinary build or test 
 Use the same renderer and synchronization path as applications, not a special fast
 path that bypasses production behavior.
 
+`panda-bench` is an ordinary Panda API consumer. It enables
+`ContextOptions::enableGpuTimestampSampling`, obtains the Context-owned
+`PerformanceManager` through `Context::getPerformanceManager()`, checks the public
+capabilities, and drains samples through `takeAvailableSamples()`. Applications use
+the same option and API; the benchmark has no private route to timestamp data.
+
+## Public performance collection
+
+Every valid Context exposes a `PerformanceManager`, including a headless Context.
+GPU timestamp sampling is disabled by default. Set
+`ContextOptions::enableGpuTimestampSampling` to enable it. `getCapabilities()` reports
+both whether the selected graphics queue supports timestamp queries and whether
+sampling is enabled for this Context. The manager handles counter wrapping and
+converts device ticks to nanoseconds internally. A queue without timestamp support
+reports the capability as unavailable, even if sampling was requested.
+
+`getLatestSample()` peeks at a copy of the highest-frame-index sample currently ready
+and leaves it buffered. `takeNextSample()` removes and returns the lowest-frame-index
+ready sample, allowing FIFO processing one frame at a time. `takeAvailableSamples()`
+removes and returns all currently ready samples in frame-index order. These calls
+check query availability without waiting; each can return an empty result when
+sampling is disabled, unsupported, or no sample is ready yet. Samples stay buffered
+until a `take` method returns them, so long-running applications should drain samples
+regularly.
+
+The first measurement is `gpuExecutionDuration`: GPU time from the start to the end
+of rendering work for a submitted frame, returned in nanoseconds. It excludes CPU
+work and presentation latency. Disabled sampling or unsupported timestamp queries
+produce no GPU samples; callers inspect capabilities instead of interpreting missing
+data as zero.
+
+Vulkan timestamp results live in query pools. Panda creates one pool for each of its
+two in-flight frame slots with `queryType = eTimestamp` and `queryCount = 2`. The
+query type tells Vulkan what each pool entry stores; the recorded `writeTimestamp2`
+commands choose the measurement points. Query 0 marks the beginning of the frame's
+measured rendering work and query 1 marks its end. Both timestamps use the
+color-attachment output stage. A slot's previous result is collected before its pool
+is reset for a new frame. These are GPU-written device timestamps, not CPU stopwatch readings
+([`vkCmdWriteTimestamp2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdWriteTimestamp2.html)).
+
+The manager requests 64-bit results with an availability value for each query, without
+the Vulkan wait flag. If either query is not ready, the sample stays pending. Once
+both are ready, the manager subtracts the timestamps with the device counter's wrap
+width, multiplies the tick difference by the device's timestamp period, and rounds
+the result to nanoseconds. Query results are raw ticks, not nanoseconds;
+`VkPhysicalDeviceLimits::timestampPeriod` gives the nanoseconds per tick. For
+example, a 40-tick difference with a 2 ns period is returned as 80 ns. The selected
+device's period stays internal to the manager, so callers receive
+`std::chrono::nanoseconds`. Availability and result layout follow
+[`vkGetQueryPoolResults`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetQueryPoolResults.html).
+The CPU records `writeTimestamp2` commands, but the GPU writes their values when it
+executes the submitted command buffer. The later result read requests availability
+without the wait flag. CPU command recording, submission, polling and conversion are
+outside the measured interval. The value is elapsed GPU device time between the two
+markers; GPU-side stalls between them can contribute to that elapsed time.
+
 ## Measurement rules
 
 - Measure active CPU render preparation separately from waiting, application solver
@@ -137,7 +193,8 @@ VSync/present waits are separately timed and excluded from active CPU preparatio
 GPU timestamps cover submitted shadow, camera and tone-map passes. Compare runs only
 with equal effective settings and present mode. A missing optional timestamp feature
 marks GPU duration unavailable rather than inventing zero; the GPU timing profile
-requires nonzero timestamp valid bits and fails clearly if unavailable.
+enables `ContextOptions::enableGpuTimestampSampling`, requires nonzero timestamp
+valid bits and fails clearly if unavailable.
 
 The built-in `reference-1080p-v1` fixture generates one indexed static grid mesh:
 101 by 51 vertices, 100 by 50 quads, two triangles per quad, therefore exactly

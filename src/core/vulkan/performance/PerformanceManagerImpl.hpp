@@ -1,0 +1,60 @@
+#pragma once
+
+// clang-format off
+#include "VulkanHpp.hpp" // IWYU pragma: keep
+#include <vulkan/vulkan.hpp>
+// clang-format on
+
+#include <array>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <panda/PerformanceManager.hpp>
+#include <vector>
+
+namespace panda::detail
+{
+class PerformanceManagerImpl final
+{
+public:
+    PerformanceManagerImpl(const vk::raii::Device& device,
+                           std::uint32_t timestampValidBits,
+                           double timestampPeriodNanoseconds,
+                           bool enableGpuTimestampSampling);
+
+    [[nodiscard]] auto initialize() -> Result<void>;
+    [[nodiscard]] auto getCapabilities() const noexcept -> PerformanceCapabilities;
+    [[nodiscard]] auto getLatestSample() -> Result<std::optional<FramePerformanceSample>>;
+    [[nodiscard]] auto takeNextSample() -> Result<std::optional<FramePerformanceSample>>;
+    [[nodiscard]] auto takeAvailableSamples() -> Result<std::vector<FramePerformanceSample>>;
+    [[nodiscard]] auto recordStart(std::size_t slotIndex, vk::CommandBuffer command) -> Result<void>;
+    void recordEnd(std::size_t slotIndex, vk::CommandBuffer command);
+    void markSubmitted(std::size_t slotIndex) noexcept;
+
+private:
+    struct QuerySlot
+    {
+        vk::raii::QueryPool pool {nullptr};
+        bool submitted {false};
+        std::uint64_t frameIndex {0};
+    };
+
+    struct ReadySample
+    {
+        std::uint64_t frameIndex;
+        FramePerformanceSample sample;
+    };
+
+    [[nodiscard]] auto collect(std::size_t slotIndex) -> Result<bool>;
+    [[nodiscard]] auto collectAvailableSamples() -> Result<void>;
+    [[nodiscard]] auto duration(std::uint64_t start, std::uint64_t end) const -> Result<std::chrono::nanoseconds>;
+
+    const vk::raii::Device& _device;
+    PerformanceCapabilities _capabilities;
+    std::uint32_t _timestampValidBits;
+    double _timestampPeriodNanoseconds;
+    std::array<QuerySlot, 2> _slots;
+    std::vector<ReadySample> _readySamples;
+    std::uint64_t _nextFrameIndex {0};
+};
+}

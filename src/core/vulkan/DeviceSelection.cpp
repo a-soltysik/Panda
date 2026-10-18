@@ -354,10 +354,11 @@ auto selectWindowQueues(vk::PhysicalDevice physicalDevice,
     };
 }
 
-auto selectQueues(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface)
+auto selectQueues(vk::PhysicalDevice physicalDevice,
+                  vk::SurfaceKHR surface,
+                  const std::vector<vk::QueueFamilyProperties>& families)
     -> std::expected<std::optional<QueueSelection>, Error>
 {
-    const auto families = physicalDevice.getQueueFamilyProperties();
     if (!surface)
     {
         return selectHeadlessQueue(families);
@@ -417,10 +418,12 @@ auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice,
     };
 }
 
-auto inspectPresentation(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface)
+auto inspectPresentation(vk::PhysicalDevice physicalDevice,
+                         vk::SurfaceKHR surface,
+                         const std::vector<vk::QueueFamilyProperties>& queueFamilies)
     -> std::expected<std::optional<QueueSelection>, Error>
 {
-    const auto queues = selectQueues(physicalDevice, surface);
+    const auto queues = selectQueues(physicalDevice, surface, queueFamilies);
     if (!queues)
     {
         return std::unexpected {queues.error()};
@@ -453,7 +456,8 @@ auto inspectDevice(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, co
     {
         return std::nullopt;
     }
-    auto presentation = inspectPresentation(physicalDevice, surface);
+    const auto queueFamilies = physicalDevice.getQueueFamilyProperties();
+    auto presentation = inspectPresentation(physicalDevice, surface, queueFamilies);
     if (!presentation)
     {
         return std::unexpected {presentation.error()};
@@ -463,14 +467,18 @@ auto inspectDevice(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, co
         return std::nullopt;
     }
     const auto& [properties, maintenance] = **profile;
-    const auto& [graphics, present] = **presentation;
+    const auto& selectedQueues = **presentation;
+    const auto graphics = selectedQueues.graphics;
+    const auto present = selectedQueues.present;
     return std::optional {
         SelectedDevice {.physicalDevice = physicalDevice,
                         .info = {.name = properties.deviceName.data(),
                                  .apiVersion = properties.apiVersion,
                                  .queueFamily = graphics,
                                  .presentQueueFamily = present,
-                                 .swapchainMaintenance = maintenance}}
+                                 .swapchainMaintenance = maintenance},
+                        .timestampValidBits = queueFamilies.at(graphics).timestampValidBits,
+                        .timestampPeriodNanoseconds = static_cast<double>(properties.limits.timestampPeriod)}
     };
 }
 
