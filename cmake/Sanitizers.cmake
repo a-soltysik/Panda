@@ -27,7 +27,7 @@ if(panda_sanitizers)
         if(NOT panda_sanitizers STREQUAL "address")
             message(FATAL_ERROR "MSVC supports only AddressSanitizer")
         endif()
-        set(panda_sanitizer_compile_options /fsanitize=address /Zi)
+        set(panda_sanitizer_compile_options /fsanitize=address /Z7)
         set(panda_sanitizer_link_options /INCREMENTAL:NO)
         get_filename_component(msvc_directory "${CMAKE_CXX_COMPILER}" DIRECTORY)
         find_file(PANDA_ASAN_RUNTIME NAMES clang_rt.asan_dynamic-x86_64.dll

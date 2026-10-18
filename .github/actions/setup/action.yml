@@ -10,6 +10,12 @@ inputs:
   cuda:
     description: Install CUDA Toolkit 13.4 for CUDA builds
     default: 'false'
+  cache-key:
+    description: CMake build configuration used to partition compiler outputs
+    required: true
+  ccache:
+    description: Enable the pinned compiler cache
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -29,12 +35,43 @@ runs:
         clang-tidy: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
         clang-format: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
         cppcheck: ${{ inputs.analysis == 'true' && (runner.os == 'Linux' && '2.19.0-3' || '2.19.0') || 'false' }}
+        ccache: ${{ inputs.ccache == 'true' && '4.14.1' || 'false' }}
         setup-cpp: false
     - name: Build tool versions
       shell: bash
       run: |
         cmake --version
         ninja --version
+    - name: Cache compiler outputs
+      if: inputs.ccache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/panda-ccache
+        key: panda-ccache-${{ runner.os }}-${{ inputs.compiler }}-${{ inputs.cache-key }}-4.14.1-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: panda-ccache-${{ runner.os }}-${{ inputs.compiler }}-${{ inputs.cache-key }}-4.14.1-
+    - name: Enable compiler cache for CMake
+      if: inputs.ccache == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        echo "CCACHE_DIR=$RUNNER_TEMP/panda-ccache" >> "$GITHUB_ENV"
+        echo "CCACHE_MAXSIZE=1G" >> "$GITHUB_ENV"
+        echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+        echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+        echo "CMAKE_CUDA_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+    - name: Enable compiler cache for CMake on Windows
+      if: inputs.ccache == 'true' && runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "CCACHE_DIR=$(Join-Path $env:RUNNER_TEMP 'panda-ccache')"
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value 'CCACHE_MAXSIZE=1G'
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value 'CMAKE_C_COMPILER_LAUNCHER=ccache'
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value 'CMAKE_CXX_COMPILER_LAUNCHER=ccache'
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value 'CMAKE_CUDA_COMPILER_LAUNCHER=ccache'
+    - name: Compiler cache version
+      if: inputs.ccache == 'true'
+      shell: bash
+      run: ccache --version
     - name: Analysis tool versions
       if: inputs.analysis == 'true'
       shell: bash

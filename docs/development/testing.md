@@ -103,10 +103,19 @@ ctest --test-dir <build-directory> --output-on-failure -L system
 Use `-LE system` for a noninteractive run that also selects registered formatting
 checks. Quality presets enable formatting; test presets disable it.
 The `gcc-coverage` preset runs the same noninteractive selection with GCC
-instrumentation. CI publishes the `panda-coverage` artifact with annotated HTML and
-Cobertura XML for production sources. The displayed percentage counts only the
-instrumented Linux CPU run; native-window and future GPU paths require separate
-evidence.
+instrumentation. Run and report it with:
+
+```sh
+cmake --preset gcc-coverage
+cmake --build --preset gcc-coverage
+ctest --preset gcc-coverage
+cmake --build --preset gcc-coverage --target panda_coverage_report
+```
+
+The target generates annotated HTML and Cobertura XML in the configured build
+directory's `coverage/` subdirectory. CI publishes these files as the
+`panda-coverage` artifact. The displayed percentage counts only the instrumented
+Linux CPU run; native-window and future GPU paths require separate evidence.
 GoogleTest death tests assert both process termination and the originating
 diagnostic. GoogleTest owns subprocess handling and platform differences; test
 files need no separate fatal executable, custom main or conditional process code.

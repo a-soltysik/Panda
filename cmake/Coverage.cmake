@@ -10,6 +10,28 @@ if(PANDA_ENABLE_COVERAGE)
             OR PANDA_ENABLE_SANITIZER_LEAK)
         message(FATAL_ERROR "PANDA_ENABLE_COVERAGE uses a separate build from sanitizers")
     endif()
+
+    find_program(PANDA_GCOVR_EXECUTABLE NAMES gcovr REQUIRED)
+    string(REGEX MATCH "^[0-9]+" PANDA_GCC_VERSION_MAJOR "${CMAKE_CXX_COMPILER_VERSION}")
+    find_program(PANDA_GCOV_EXECUTABLE NAMES "gcov-${PANDA_GCC_VERSION_MAJOR}" gcov REQUIRED)
+
+    set(panda_coverage_directory "${PROJECT_BINARY_DIR}/coverage")
+    add_custom_target(panda_coverage_report
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${panda_coverage_directory}"
+        COMMAND "${PANDA_GCOVR_EXECUTABLE}"
+            --root "${PROJECT_SOURCE_DIR}"
+            --gcov-executable "${PANDA_GCOV_EXECUTABLE}"
+            --filter "src/.*"
+            --exclude-throw-branches
+            --html-details "${panda_coverage_directory}/index.html"
+            --cobertura "${panda_coverage_directory}/coverage.xml"
+            --print-summary
+            "${PROJECT_BINARY_DIR}"
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        COMMENT "Generating Panda coverage reports"
+        VERBATIM
+    )
+    set_target_properties(panda_coverage_report PROPERTIES FOLDER "Panda/Checks")
 endif()
 
 function(panda_enable_coverage target)
