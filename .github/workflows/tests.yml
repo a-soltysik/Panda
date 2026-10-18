@@ -18,6 +18,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           compiler: gcc-16
+          cache-key: gcc-coverage
       - name: Install report generator
         run: sudo apt-get install -y gcovr=7.2+really-2
       - name: Configure
@@ -28,13 +29,7 @@ jobs:
         run: ctest --preset gcc-coverage
       - name: Generate coverage report
         if: success() || failure()
-        run: |
-          mkdir -p build-gcc-coverage-Linux/coverage
-          gcovr --root . --gcov-executable gcov-16 --filter 'src/.*' \
-            --exclude-throw-branches \
-            --html-details build-gcc-coverage-Linux/coverage/index.html \
-            --cobertura build-gcc-coverage-Linux/coverage/coverage.xml \
-            --print-summary build-gcc-coverage-Linux
+        run: cmake --build --preset gcc-coverage --target panda_coverage_report
       - name: Upload downloadable report
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,6 +45,13 @@ jobs:
           files: build-gcc-coverage-Linux/coverage/coverage.xml
           disable_search: true
           fail_ci_if_error: true
+      - name: Show compiler cache statistics
+        if: always()
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
   tests:
     name: ${{ matrix.name }}
@@ -83,9 +85,19 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           compiler: ${{ matrix.compiler }}
+          cache-key: ${{ matrix.preset }}
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: >-
+          cmake --preset ${{ matrix.preset }}
+          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
+      - name: Show compiler cache statistics
+        if: always()
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi

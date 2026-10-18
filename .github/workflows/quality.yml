@@ -27,10 +27,20 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           compiler: ${{ matrix.compiler }}
+          cache-key: ${{ matrix.preset }}
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: >-
+          cmake --preset ${{ matrix.preset }}
+          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
+      - name: Show compiler cache statistics
+        if: always()
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
   api-docs:
     name: Public API documentation
@@ -40,12 +50,20 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           compiler: gcc-16
+          cache-key: gcc-docs
       - name: Install Doxygen
         run: sudo apt-get install -y doxygen=1.15.0+ds1-1ubuntu3
       - name: Configure
         run: cmake --preset gcc-docs
       - name: Check and generate API documentation
         run: cmake --build --preset gcc-docs
+      - name: Show compiler cache statistics
+        if: always()
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
       - name: Upload API documentation
         uses: actions/upload-artifact@v4
         with:
@@ -74,14 +92,24 @@ jobs:
         with:
           compiler: ${{ matrix.compiler }}
           analysis: 'true'
+          cache-key: ${{ matrix.preset }}
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: >-
+          cmake --preset ${{ matrix.preset }}
+          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
       - name: Build and analyze
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Compile public headers independently
         run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
       - name: Check formatting
         run: ctest --preset ${{ matrix.preset }} -L format
+      - name: Show compiler cache statistics
+        if: always()
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
   cuda:
     name: ${{ matrix.name }}
@@ -105,8 +133,11 @@ jobs:
           compiler: ${{ matrix.compiler }}
           analysis: 'true'
           cuda: 'true'
+          cache-key: ${{ matrix.preset }}-cuda
       - name: Configure CUDA without GPU-dependent examples
-        run: cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DPANDA_BUILD_EXAMPLES=OFF
+        run: >-
+          cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DPANDA_BUILD_EXAMPLES=OFF
+          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
       - name: Build and analyze
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Compile public headers independently
@@ -115,3 +146,10 @@ jobs:
         run: ctest --preset ${{ matrix.preset }} -L format
       - name: Test CUDA
         run: ctest --preset ${{ matrix.preset }} -R Cuda
+      - name: Show compiler cache statistics
+        if: always()
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
