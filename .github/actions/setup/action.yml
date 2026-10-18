@@ -35,7 +35,7 @@ runs:
         clang-tidy: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
         clang-format: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
         cppcheck: ${{ inputs.analysis == 'true' && (runner.os == 'Linux' && '2.19.0-3' || '2.19.0') || 'false' }}
-        ccache: ${{ inputs.ccache == 'true' && 'true' || 'false' }}
+        ccache: ${{ inputs.ccache }}
         setup-cpp: false
     - name: Build tool versions
       shell: bash
