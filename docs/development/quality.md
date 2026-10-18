@@ -156,8 +156,9 @@ Feature-branch pushes do not start a second run alongside the pull request.
 Both workflows use the small [setup action](../../.github/actions/setup/action.yml)
 and matching CMake configure/build/test presets. They build their own dependencies
 and executables; build directories and target outputs are not shared between jobs.
-CI uses ccache 4.14.1 through CMake's compiler launcher and saves its outputs in
-separate caches keyed by runner OS, compiler and build configuration. MSVC CI uses
+CI installs ccache through setup-cpp and uses it through CMake's compiler launcher.
+It saves compiler outputs in separate caches keyed by runner OS, compiler and build
+configuration. MSVC CI uses
 embedded `/Z7` debug information, which retains symbols and allows those compilations
 to be cached. Jobs print cache statistics after their checks. These entries are
 compiler results, not reusable build trees; ccache validates compiler inputs and

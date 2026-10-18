@@ -14,7 +14,7 @@ inputs:
     description: CMake build configuration used to partition compiler outputs
     required: true
   ccache:
-    description: Enable the pinned compiler cache
+    description: Enable the compiler cache
     default: 'true'
 runs:
   using: composite
@@ -35,7 +35,7 @@ runs:
         clang-tidy: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
         clang-format: ${{ inputs.analysis == 'true' && '22.1.8' || 'false' }}
         cppcheck: ${{ inputs.analysis == 'true' && (runner.os == 'Linux' && '2.19.0-3' || '2.19.0') || 'false' }}
-        ccache: ${{ inputs.ccache == 'true' && '4.14.1' || 'false' }}
+        ccache: ${{ inputs.ccache == 'true' && 'true' || 'false' }}
         setup-cpp: false
     - name: Build tool versions
       shell: bash
@@ -47,8 +47,8 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ runner.temp }}/panda-ccache
-        key: panda-ccache-${{ runner.os }}-${{ inputs.compiler }}-${{ inputs.cache-key }}-4.14.1-${{ github.run_id }}-${{ github.run_attempt }}
-        restore-keys: panda-ccache-${{ runner.os }}-${{ inputs.compiler }}-${{ inputs.cache-key }}-4.14.1-
+        key: panda-ccache-${{ runner.os }}-${{ inputs.compiler }}-${{ inputs.cache-key }}-v1-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: panda-ccache-${{ runner.os }}-${{ inputs.compiler }}-${{ inputs.cache-key }}-v1-
     - name: Enable compiler cache for CMake
       if: inputs.ccache == 'true' && runner.os == 'Linux'
       shell: bash
