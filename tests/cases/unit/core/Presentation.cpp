@@ -10,6 +10,8 @@
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
 
+#include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -18,6 +20,7 @@
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
+#include <panda/PerformanceManager.hpp>
 #include <string>
 
 #include "PresentationTestSupport.hpp"
@@ -25,6 +28,7 @@
 #include "SubmissionQueue.hpp"
 #include "VulkanTestSupport.hpp"
 #include "panda/core/SubmissionQueueMock.hpp"
+#include "performance/PerformanceManagerImpl.hpp"
 
 namespace
 {
@@ -67,6 +71,7 @@ protected:
     void TearDown() override
     {
         _submissions.reset();
+        _performance.reset();
         panda::test::PresentationTestSupport::TearDown();
     }
 
@@ -122,6 +127,104 @@ protected:
             });
     }
 
+    void expectPerformancePools()
+    {
+        auto* const first = fakeVulkanHandle<VkQueryPool>(50);
+        auto* const second = fakeVulkanHandle<VkQueryPool>(51);
+        EXPECT_CALL(vulkan, vkCreateQueryPool(_, NotNull(), nullptr, NotNull()))
+            .Times(2)
+            .WillOnce([first](VkDevice,
+                              const VkQueryPoolCreateInfo* info,
+                              const VkAllocationCallbacks*,
+                              VkQueryPool* output) {
+                EXPECT_EQ(info->queryType, VK_QUERY_TYPE_TIMESTAMP);
+                EXPECT_EQ(info->queryCount, 2U);
+                *output = first;
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            })
+            .WillOnce([second](VkDevice,
+                               const VkQueryPoolCreateInfo* info,
+                               const VkAllocationCallbacks*,
+                               VkQueryPool* output) {
+                EXPECT_EQ(info->queryType, VK_QUERY_TYPE_TIMESTAMP);
+                EXPECT_EQ(info->queryCount, 2U);
+                *output = second;
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
+        EXPECT_CALL(vulkan, vkDestroyQueryPool(_, first, nullptr));
+        EXPECT_CALL(vulkan, vkDestroyQueryPool(_, second, nullptr));
+    }
+
+    void expectSampledCommandRecording(Sequence& flow)
+    {
+        auto* const pool = fakeVulkanHandle<VkQueryPool>(50);
+        EXPECT_CALL(vulkan, vkResetCommandPool(_, _, _))
+            .InSequence(flow)
+            .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+        EXPECT_CALL(vulkan, vkBeginCommandBuffer(_, NotNull()))
+            .InSequence(flow)
+            .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+        EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull()))
+            .InSequence(flow)
+            .WillOnce(testing::Action<decltype(vkCmdPipelineBarrier2)> {
+                [](VkCommandBuffer, const VkDependencyInfo* dependency) {
+                    panda::test::expectTransitionToColorAttachment(dependency);
+                }});
+        EXPECT_CALL(vulkan, vkCmdResetQueryPool(_, pool, 0, 2)).InSequence(flow);
+        EXPECT_CALL(
+            vulkan,
+            vkCmdWriteTimestamp2(_,
+                                 static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eColorAttachmentOutput),
+                                 pool,
+                                 0))
+            .InSequence(flow);
+        EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull())).InSequence(flow);
+        EXPECT_CALL(vulkan, vkCmdEndRendering(_)).InSequence(flow);
+        EXPECT_CALL(
+            vulkan,
+            vkCmdWriteTimestamp2(_,
+                                 static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eColorAttachmentOutput),
+                                 pool,
+                                 1))
+            .InSequence(flow);
+        EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull()))
+            .InSequence(flow)
+            .WillOnce(testing::Action<decltype(vkCmdPipelineBarrier2)> {
+                [](VkCommandBuffer, const VkDependencyInfo* dependency) {
+                    panda::test::expectTransitionToPresent(dependency);
+                }});
+        EXPECT_CALL(vulkan, vkEndCommandBuffer(_))
+            .InSequence(flow)
+            .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    }
+
+    void expectCompletedSampleReadback()
+    {
+        auto* const pool = fakeVulkanHandle<VkQueryPool>(50);
+        EXPECT_CALL(vulkan,
+                    vkGetQueryPoolResults(_,
+                                          pool,
+                                          0,
+                                          2,
+                                          sizeof(std::array<std::uint64_t, 4>),
+                                          NotNull(),
+                                          sizeof(std::uint64_t) * 2,
+                                          static_cast<VkQueryResultFlags>(vk::QueryResultFlagBits::e64 |
+                                                                          vk::QueryResultFlagBits::eWithAvailability)))
+            .WillOnce([](VkDevice,
+                         VkQueryPool,
+                         std::uint32_t,
+                         std::uint32_t,
+                         std::size_t,
+                         void* data,
+                         VkDeviceSize,
+                         VkQueryResultFlags) {
+                auto* const values = static_cast<std::array<std::uint64_t, 4>*>(data);
+                *values = {10, 1, 25, 1};
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
+    }
+
     void expectCompletionPoint(Sequence& flow)
     {
         EXPECT_CALL(submissions, getPoint(1)).InSequence(flow).WillOnce(Return(panda::CompletionPoint {}));
@@ -153,9 +256,21 @@ protected:
     }
 
     auto createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance maintenance =
-                                panda::ContextDeviceInfo::SwapchainMaintenance::Khr)
+                                panda::ContextDeviceInfo::SwapchainMaintenance::Khr,
+                            bool enableGpuTimestampSampling = false)
         -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
     {
+        if (enableGpuTimestampSampling)
+        {
+            _performance = std::make_unique<panda::detail::PerformanceManagerImpl>(
+                getDevice(),
+                panda::detail::TimestampProperties {.validBits = 64, .periodNanoseconds = 2.5F},
+                true);
+            if (const auto initialized = _performance->initialize(); !initialized)
+            {
+                return std::unexpected {initialized.error()};
+            }
+        }
         return panda::core::vulkan::Presentation::create({
             .physicalDevice = vk::PhysicalDevice {},
             .device = getDevice(),
@@ -166,14 +281,21 @@ protected:
                                                   .queueFamily = 0,
                                                   .presentQueueFamily = 0,
                                                   .swapchainMaintenance = maintenance},
-            .submissions = _submissions.emplace(getDevice(), 0)
+            .submissions = _submissions.emplace(getDevice(), 0),
+            .performance = _performance.get()
         });
+    }
+
+    auto performance() -> panda::detail::PerformanceManagerImpl&
+    {
+        return *_performance;
     }
 
     panda::test::ScopedMock<panda::test::SubmissionQueueMock> submissions;
 
 private:
     std::optional<panda::detail::SubmissionQueue> _submissions;
+    std::unique_ptr<panda::detail::PerformanceManagerImpl> _performance;
 };
 }
 
@@ -426,4 +548,34 @@ TEST_F(PresentationTest, SuboptimalPresentReturnsTheCommittedCompletionPoint)
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->status, panda::FrameResult::Status::RecreatePending);
     EXPECT_TRUE(presentation->get()->drain());
+}
+
+TEST_F(PresentationTest, RecordsGpuTimestampsAroundFrameRenderingAndPublishesSubmittedSample)
+{
+    expectWindowFrame();
+    expectPerformancePools();
+    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
+
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectSampledCommandRecording(flow);
+    expectFrameSubmit(flow);
+    EXPECT_CALL(vulkan, vkQueuePresentKHR(_, NotNull()))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    expectCompletionPoint(flow);
+
+    auto presentation = createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance::Khr, true);
+    ASSERT_TRUE(presentation);
+    const auto frame = presentation->get()->presentClearFrame();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+
+    expectCompletedSampleReadback();
+    const auto sample = performance().getLatestSample();
+    ASSERT_TRUE(sample);
+    ASSERT_TRUE(sample->has_value());
+    const auto sampleValue = sample->value_or(panda::FramePerformanceSample {});
+    EXPECT_EQ(sampleValue.frameIndex, 0U);
+    EXPECT_EQ(sampleValue.gpuExecutionDuration, std::chrono::nanoseconds {38});
 }

@@ -2,7 +2,10 @@
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 // clang-format on
 
+#include <optional>
+#include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
+#include <vector>
 
 #include "PerformanceManagerImpl.hpp"
 
@@ -12,8 +15,6 @@ PerformanceManager::PerformanceManager(detail::PerformanceManagerImpl& implement
     : _implementation {&implementation}
 {
 }
-
-PerformanceManager::~PerformanceManager() = default;
 
 auto PerformanceManager::getCapabilities() const noexcept -> PerformanceCapabilities
 {

@@ -329,6 +329,12 @@ public:
 
 private:
     [[nodiscard]] auto initializeDevice(const WindowSurface* surface, bool enableGpuTimestampSampling) -> Result<void>;
+    [[nodiscard]] auto initializeSelectedDevice(const WindowSurface* surface,
+                                                const vulkan::SelectedDevice& selected,
+                                                vk::SurfaceKHR nativeSurface,
+                                                bool enableGpuTimestampSampling) -> Result<void>;
+    [[nodiscard]] auto initializePerformance(const vulkan::SelectedDevice& selected, bool enableGpuTimestampSampling)
+        -> Result<void>;
     [[nodiscard]] auto ensureUploads() -> Result<void>;
     [[nodiscard]] auto collectUploads() -> Result<void>;
     void collectCompletedUploads();
@@ -387,25 +393,44 @@ auto Context::Impl::initializeDevice(const WindowSurface* surface, bool enableGp
         return std::unexpected {std::move(createdDevice.error())};
     }
     _device = std::move(*createdDevice);
+    return initializeSelectedDevice(surface, *selected, nativeSurface, enableGpuTimestampSampling);
+}
+
+auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
+                                             const vulkan::SelectedDevice& selected,
+                                             vk::SurfaceKHR nativeSurface,
+                                             bool enableGpuTimestampSampling) -> Result<void>
+{
     _memoryPool = resources::MemoryPool::create(_physicalDevice, _device);
-    auto performance = std::make_unique<detail::PerformanceManagerImpl>(_device,
-                                                                        selected->timestampValidBits,
-                                                                        selected->timestampPeriodNanoseconds,
-                                                                        enableGpuTimestampSampling);
-    if (const auto initialized = performance->initialize(); !initialized)
+    if (const auto initialized = initializePerformance(selected, enableGpuTimestampSampling); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
-    _performanceManagerImplementation = std::move(performance);
     if (surface != nullptr)
     {
-        const auto initialized = initializePresentation(*surface, *selected, nativeSurface);
+        const auto initialized = initializePresentation(*surface, selected, nativeSurface);
         if (!initialized)
         {
             return std::unexpected {initialized.error()};
         }
     }
-    _info = std::move(selected->info);
+    _info = selected.info;
+    return {};
+}
+
+auto Context::Impl::initializePerformance(const vulkan::SelectedDevice& selected, bool enableGpuTimestampSampling)
+    -> Result<void>
+{
+    auto performance = std::make_unique<detail::PerformanceManagerImpl>(
+        _device,
+        detail::TimestampProperties {.validBits = selected.timestampValidBits,
+                                     .periodNanoseconds = selected.timestampPeriodNanoseconds},
+        enableGpuTimestampSampling);
+    if (const auto initialized = performance->initialize(); !initialized)
+    {
+        return std::unexpected {initialized.error()};
+    }
+    _performanceManagerImplementation = std::move(performance);
     return {};
 }
 

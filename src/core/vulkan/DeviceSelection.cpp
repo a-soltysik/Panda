@@ -444,6 +444,23 @@ auto inspectPresentation(vk::PhysicalDevice physicalDevice,
     return **queues;
 }
 
+auto makeSelectedDevice(vk::PhysicalDevice physicalDevice,
+                        const DeviceProfile& profile,
+                        const QueueSelection& queues,
+                        const std::vector<vk::QueueFamilyProperties>& queueFamilies) -> SelectedDevice
+{
+    return SelectedDevice {
+        .physicalDevice = physicalDevice,
+        .info = {.name = profile.properties.deviceName.data(),
+                 .apiVersion = profile.properties.apiVersion,
+                 .queueFamily = queues.graphics,
+                 .presentQueueFamily = queues.present,
+                 .swapchainMaintenance = profile.maintenance},
+        .timestampValidBits = queueFamilies.at(queues.graphics).timestampValidBits,
+        .timestampPeriodNanoseconds = profile.properties.limits.timestampPeriod
+    };
+}
+
 auto inspectDevice(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
     -> std::expected<std::optional<SelectedDevice>, Error>
 {
@@ -466,20 +483,7 @@ auto inspectDevice(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, co
     {
         return std::nullopt;
     }
-    const auto& [properties, maintenance] = **profile;
-    const auto& selectedQueues = **presentation;
-    const auto graphics = selectedQueues.graphics;
-    const auto present = selectedQueues.present;
-    return std::optional {
-        SelectedDevice {.physicalDevice = physicalDevice,
-                        .info = {.name = properties.deviceName.data(),
-                                 .apiVersion = properties.apiVersion,
-                                 .queueFamily = graphics,
-                                 .presentQueueFamily = present,
-                                 .swapchainMaintenance = maintenance},
-                        .timestampValidBits = queueFamilies.at(graphics).timestampValidBits,
-                        .timestampPeriodNanoseconds = static_cast<double>(properties.limits.timestampPeriod)}
-    };
+    return std::optional {makeSelectedDevice(physicalDevice, **profile, **presentation, queueFamilies)};
 }
 
 auto isDeviceInspectionFailureFatal(ErrorCode code) -> bool

@@ -3,6 +3,7 @@
 #include <gmock/gmock.h>
 #include <vulkan/vulkan_core.h>
 
+#include <cstddef>
 #include <cstdint>
 
 namespace panda::test
@@ -148,6 +149,19 @@ public:
                 ());
 
     MOCK_METHOD(VkResult,
+                vkCreateQueryPool,
+                (VkDevice, const VkQueryPoolCreateInfo*, const VkAllocationCallbacks*, VkQueryPool*),
+                ());
+    MOCK_METHOD(void, vkDestroyQueryPool, (VkDevice, VkQueryPool, const VkAllocationCallbacks*), ());
+    // Vulkan fixes this entry point's eight-parameter C signature.
+    // NOLINTNEXTLINE(readability-function-size)
+    MOCK_METHOD(
+        VkResult,
+        vkGetQueryPoolResults,
+        (VkDevice, VkQueryPool, std::uint32_t, std::uint32_t, std::size_t, void*, VkDeviceSize, VkQueryResultFlags),
+        ());
+
+    MOCK_METHOD(VkResult,
                 vkCreateCommandPool,
                 (VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool*),
                 ());
@@ -173,6 +187,8 @@ public:
     MOCK_METHOD(VkResult, vkBeginCommandBuffer, (VkCommandBuffer, const VkCommandBufferBeginInfo*), ());
 
     MOCK_METHOD(void, vkCmdPipelineBarrier2, (VkCommandBuffer, const VkDependencyInfo*), ());
+    MOCK_METHOD(void, vkCmdResetQueryPool, (VkCommandBuffer, VkQueryPool, std::uint32_t, std::uint32_t), ());
+    MOCK_METHOD(void, vkCmdWriteTimestamp2, (VkCommandBuffer, VkPipelineStageFlags2, VkQueryPool, std::uint32_t), ());
     MOCK_METHOD(void, vkCmdCopyBuffer, (VkCommandBuffer, VkBuffer, VkBuffer, std::uint32_t, const VkBufferCopy*), ());
     MOCK_METHOD(void,
                 vkCmdCopyBufferToImage,

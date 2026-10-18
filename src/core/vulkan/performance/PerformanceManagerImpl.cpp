@@ -7,27 +7,28 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <expected>
+#include <iterator>
 #include <limits>
+#include <optional>
+#include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
-#include <ranges>
-#include <utility>
 #include <vector>
-
-#include "VulkanError.hpp"
 
 namespace panda::detail
 {
 PerformanceManagerImpl::PerformanceManagerImpl(const vk::raii::Device& device,
-                                               std::uint32_t timestampValidBits,
-                                               double timestampPeriodNanoseconds,
+                                               TimestampProperties timestamps,
                                                bool enableGpuTimestampSampling)
     : _device {device},
-      _capabilities {.hasGpuTimestampQueries = timestampValidBits != 0,
-                     .isGpuTimestampSamplingEnabled = enableGpuTimestampSampling && timestampValidBits != 0},
-      _timestampValidBits {timestampValidBits},
-      _timestampPeriodNanoseconds {timestampPeriodNanoseconds}
+      _capabilities {.hasGpuTimestampQueries = timestamps.validBits != 0,
+                     .isGpuTimestampSamplingEnabled = enableGpuTimestampSampling && timestamps.validBits != 0},
+      _timestampValidBits {timestamps.validBits},
+      _timestampPeriodNanoseconds {timestamps.periodNanoseconds}
 {
 }
 
@@ -37,19 +38,21 @@ auto PerformanceManagerImpl::initialize() -> Result<void>
     {
         return {};
     }
-    if (_timestampValidBits > 64 || !std::isfinite(_timestampPeriodNanoseconds) || _timestampPeriodNanoseconds <= 0.0)
+    if (_timestampValidBits > std::numeric_limits<std::uint64_t>::digits ||
+        !std::isfinite(_timestampPeriodNanoseconds) || _timestampPeriodNanoseconds <= 0.0F)
     {
         return std::unexpected {makeError(ErrorCode::BackendFailure, "Invalid Vulkan timestamp properties")};
     }
     static constexpr auto queryInfo = vk::QueryPoolCreateInfo {.queryType = vk::QueryType::eTimestamp, .queryCount = 2};
     for (auto& slot : _slots)
     {
-        auto pool = core::vulkan::detail::checkedCreation(_device.createQueryPool(queryInfo));
-        if (!pool)
+        auto queryPool = vk::QueryPool {};
+        const auto created = (*_device).createQueryPool(&queryInfo, nullptr, &queryPool, *_device.getDispatcher());
+        if (created != vk::Result::eSuccess)
         {
-            return std::unexpected {pool.error()};
+            return std::unexpected {makeVulkanError(created)};
         }
-        slot.pool = std::move(*pool);
+        slot.pool = vk::raii::QueryPool {_device, queryPool};
     }
     return {};
 }
@@ -62,12 +65,13 @@ auto PerformanceManagerImpl::getCapabilities() const noexcept -> PerformanceCapa
 auto PerformanceManagerImpl::duration(std::uint64_t start, std::uint64_t end) const -> Result<std::chrono::nanoseconds>
 {
     const auto validBits = _timestampValidBits;
-    const auto mask =
-        validBits == 64 ? std::numeric_limits<std::uint64_t>::max() : (std::uint64_t {1} << validBits) - 1;
+    const auto mask = validBits == std::numeric_limits<std::uint64_t>::digits
+                          ? std::numeric_limits<std::uint64_t>::max()
+                          : (std::uint64_t {1} << validBits) - 1;
     const auto ticks = static_cast<double>((end - start) & mask);
-    const auto nanoseconds = std::round(ticks * _timestampPeriodNanoseconds);
+    const auto nanoseconds = std::round(ticks * static_cast<double>(_timestampPeriodNanoseconds));
     if (!std::isfinite(nanoseconds) || nanoseconds < 0.0 ||
-        nanoseconds > static_cast<double>(std::numeric_limits<std::chrono::nanoseconds::rep>::max()))
+        nanoseconds >= static_cast<double>(std::numeric_limits<std::chrono::nanoseconds::rep>::max()))
     {
         return std::unexpected {makeError(ErrorCode::BackendFailure, "GPU timestamp duration is out of range")};
     }
@@ -81,6 +85,32 @@ auto PerformanceManagerImpl::collect(std::size_t slotIndex) -> Result<bool>
     {
         return false;
     }
+    const auto values = readReadyTimestamps(slot);
+    if (!values)
+    {
+        return std::unexpected {values.error()};
+    }
+    if (!*values)
+    {
+        return false;
+    }
+    const auto measured = duration(values->value().at(0), values->value().at(2));
+    if (!measured)
+    {
+        return std::unexpected {measured.error()};
+    }
+    const auto frameIndex = slot.frameIndex;
+    _readySamples.push_back({
+        .frameIndex = frameIndex,
+        .sample = {.frameIndex = frameIndex, .gpuExecutionDuration = *measured}
+    });
+    slot.submitted = false;
+    return true;
+}
+
+auto PerformanceManagerImpl::readReadyTimestamps(const QuerySlot& slot)
+    -> Result<std::optional<std::array<std::uint64_t, 4>>>
+{
     auto values = std::array<std::uint64_t, 4> {};
     static constexpr auto resultFlags = vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWithAvailability;
     const auto result = (*_device).getQueryPoolResults(*slot.pool,
@@ -94,22 +124,11 @@ auto PerformanceManagerImpl::collect(std::size_t slotIndex) -> Result<bool>
     {
         return std::unexpected {makeVulkanError(result)};
     }
-    if (values[1] == 0 || values[3] == 0)
+    if (values.at(1) == 0 || values.at(3) == 0)
     {
-        return false;
+        return std::optional<std::array<std::uint64_t, 4>> {};
     }
-    const auto measured = duration(values[0], values[2]);
-    if (!measured)
-    {
-        return std::unexpected {measured.error()};
-    }
-    const auto frameIndex = slot.frameIndex;
-    _readySamples.push_back({
-        .frameIndex = frameIndex,
-        .sample = {.frameIndex = frameIndex, .gpuExecutionDuration = *measured}
-    });
-    slot.submitted = false;
-    return true;
+    return std::optional {values};
 }
 
 auto PerformanceManagerImpl::recordStart(std::size_t slotIndex, vk::CommandBuffer command) -> Result<void>
@@ -189,9 +208,9 @@ auto PerformanceManagerImpl::takeNextSample() -> Result<std::optional<FramePerfo
     {
         return std::optional<FramePerformanceSample> {};
     }
-    auto sample = std::move(_readySamples.front().sample);
+    const auto sample = _readySamples.front().sample;
     _readySamples.erase(_readySamples.begin());
-    return std::optional<FramePerformanceSample> {std::move(sample)};
+    return std::optional<FramePerformanceSample> {sample};
 }
 
 auto PerformanceManagerImpl::takeAvailableSamples() -> Result<std::vector<FramePerformanceSample>>
@@ -202,10 +221,9 @@ auto PerformanceManagerImpl::takeAvailableSamples() -> Result<std::vector<FrameP
     }
     auto samples = std::vector<FramePerformanceSample> {};
     samples.reserve(_readySamples.size());
-    for (auto& ready : _readySamples)
-    {
-        samples.push_back(std::move(ready.sample));
-    }
+    std::ranges::transform(_readySamples, std::back_inserter(samples), [](const ReadySample& ready) {
+        return ready.sample;
+    });
     _readySamples.clear();
     return samples;
 }

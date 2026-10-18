@@ -27,7 +27,7 @@ struct SelectedDevice
     vk::PhysicalDevice physicalDevice;
     ContextDeviceInfo info;
     std::uint32_t timestampValidBits {0};
-    double timestampPeriodNanoseconds {0.0};
+    float timestampPeriodNanoseconds {0.0F};
 };
 
 [[nodiscard]] auto instanceExtensions(const WindowSurface* surface, bool enableValidation = false)

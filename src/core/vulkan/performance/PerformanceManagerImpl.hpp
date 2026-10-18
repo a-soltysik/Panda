@@ -14,12 +14,17 @@
 
 namespace panda::detail
 {
+struct TimestampProperties
+{
+    std::uint32_t validBits {0};
+    float periodNanoseconds {0.0F};
+};
+
 class PerformanceManagerImpl final
 {
 public:
     PerformanceManagerImpl(const vk::raii::Device& device,
-                           std::uint32_t timestampValidBits,
-                           double timestampPeriodNanoseconds,
+                           TimestampProperties timestamps,
                            bool enableGpuTimestampSampling);
 
     [[nodiscard]] auto initialize() -> Result<void>;
@@ -41,18 +46,20 @@ private:
 
     struct ReadySample
     {
-        std::uint64_t frameIndex;
+        std::uint64_t frameIndex {0};
         FramePerformanceSample sample;
     };
 
     [[nodiscard]] auto collect(std::size_t slotIndex) -> Result<bool>;
+    [[nodiscard]] auto readReadyTimestamps(const QuerySlot& slot)
+        -> Result<std::optional<std::array<std::uint64_t, 4>>>;
     [[nodiscard]] auto collectAvailableSamples() -> Result<void>;
     [[nodiscard]] auto duration(std::uint64_t start, std::uint64_t end) const -> Result<std::chrono::nanoseconds>;
 
     const vk::raii::Device& _device;
     PerformanceCapabilities _capabilities;
     std::uint32_t _timestampValidBits;
-    double _timestampPeriodNanoseconds;
+    float _timestampPeriodNanoseconds;
     std::array<QuerySlot, 2> _slots;
     std::vector<ReadySample> _readySamples;
     std::uint64_t _nextFrameIndex {0};

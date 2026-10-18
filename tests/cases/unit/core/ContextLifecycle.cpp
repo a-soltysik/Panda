@@ -42,6 +42,12 @@ using testing::Return;
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
 constexpr auto exhausted = static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory);
 
+struct TimestampScenario
+{
+    std::uint32_t validBits {0};
+    float periodNanoseconds {0.0F};
+};
+
 auto invalidMemoryIntent() -> panda::BufferMemory
 {
     // Deliberate invalid input to verify validation before native creation.
@@ -113,9 +119,9 @@ protected:
                 }});
     }
 
-    void expectAdapter(bool windowed, bool separateQueues = false)
+    void expectAdapter(bool windowed, bool separateQueues = false, TimestampScenario timestamps = {})
     {
-        expectEnumeration();
+        expectEnumeration(timestamps.periodNanoseconds);
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFeatures2(physical, NotNull()))
             .WillOnce(testing::Action<decltype(vkGetPhysicalDeviceFeatures2)> {
                 [windowed](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
@@ -131,14 +137,14 @@ protected:
                         maintenance->swapchainMaintenance1 = vk::True;
                     }
                 }});
-        expectQueueFamilies(separateQueues);
+        expectQueueFamilies(separateQueues, timestamps.validBits);
         if (windowed)
         {
             expectPresentationSupport(separateQueues);
         }
     }
 
-    void expectEnumeration()
+    void expectEnumeration(float timestampPeriod)
     {
         EXPECT_CALL(vulkan, vkEnumeratePhysicalDevices(instance, NotNull(), _))
             .Times(2)
@@ -152,19 +158,22 @@ protected:
             });
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(physical, NotNull()))
             .Times(2)
-            .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* output) {
+            .WillRepeatedly([timestampPeriod](VkPhysicalDevice, VkPhysicalDeviceProperties* output) {
                 *output = VkPhysicalDeviceProperties {};
                 output->apiVersion = vk::ApiVersion13;
                 output->deviceType = static_cast<VkPhysicalDeviceType>(vk::PhysicalDeviceType::eDiscreteGpu);
+                output->limits.timestampPeriod = timestampPeriod;
                 std::ranges::copy(std::string_view {"Unit GPU"}, std::span {output->deviceName}.begin());
             });
     }
 
-    void expectQueueFamilies(bool separate)
+    void expectQueueFamilies(bool separate, std::uint32_t timestampValidBits)
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceQueueFamilyProperties(physical, NotNull(), _))
             .Times(2)
-            .WillRepeatedly([separate](VkPhysicalDevice, std::uint32_t* count, VkQueueFamilyProperties* output) {
+            .WillRepeatedly([separate, timestampValidBits](VkPhysicalDevice,
+                                                           std::uint32_t* count,
+                                                           VkQueueFamilyProperties* output) {
                 *count = separate ? 2U : 1U;
                 if (output == nullptr)
                 {
@@ -174,7 +183,7 @@ protected:
                 families.front() = VkQueueFamilyProperties {
                     .queueFlags = static_cast<VkQueueFlags>(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute),
                     .queueCount = 1,
-                    .timestampValidBits = 0,
+                    .timestampValidBits = timestampValidBits,
                     .minImageTransferGranularity = {.width = 1, .height = 1, .depth = 1}
                 };
                 if (separate)
@@ -295,6 +304,34 @@ protected:
                     *output = device;
                     return result;
                 }});
+    }
+
+    void expectPerformancePools()
+    {
+        auto* const first = fakeVulkanHandle<VkQueryPool>(40);
+        auto* const second = fakeVulkanHandle<VkQueryPool>(41);
+        EXPECT_CALL(vulkan, vkCreateQueryPool(device, NotNull(), nullptr, NotNull()))
+            .Times(2)
+            .WillOnce([first](VkDevice,
+                              const VkQueryPoolCreateInfo* info,
+                              const VkAllocationCallbacks*,
+                              VkQueryPool* output) {
+                EXPECT_EQ(info->queryType, VK_QUERY_TYPE_TIMESTAMP);
+                EXPECT_EQ(info->queryCount, 2U);
+                *output = first;
+                return success;
+            })
+            .WillOnce([second](VkDevice,
+                               const VkQueryPoolCreateInfo* info,
+                               const VkAllocationCallbacks*,
+                               VkQueryPool* output) {
+                EXPECT_EQ(info->queryType, VK_QUERY_TYPE_TIMESTAMP);
+                EXPECT_EQ(info->queryCount, 2U);
+                *output = second;
+                return success;
+            });
+        EXPECT_CALL(vulkan, vkDestroyQueryPool(device, first, nullptr));
+        EXPECT_CALL(vulkan, vkDestroyQueryPool(device, second, nullptr));
     }
 
     void expectParentsDestroyed(bool hasDevice, bool hasSurface)
@@ -504,6 +541,55 @@ TEST_F(ContextLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOr
     const auto frame = moved.presentClearFrame();
     ASSERT_FALSE(frame.has_value());
     EXPECT_EQ(frame.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(ContextLifecycleTest, ExposesTimestampSupportButKeepsSamplingDisabledByDefault)
+{
+    expectInstance();
+    expectAdapter(false, false, TimestampScenario {.validBits = 64, .periodNanoseconds = 2.5F});
+    expectDevice(false);
+    expectParentsDestroyed(true, false);
+    auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+
+    auto& performance = context->getPerformanceManager();
+    const auto capabilities = performance.getCapabilities();
+    EXPECT_TRUE(capabilities.hasGpuTimestampQueries);
+    EXPECT_FALSE(capabilities.isGpuTimestampSamplingEnabled);
+    const auto latest = performance.getLatestSample();
+    ASSERT_TRUE(latest);
+    EXPECT_FALSE(*latest);
+    const auto next = performance.takeNextSample();
+    ASSERT_TRUE(next);
+    EXPECT_FALSE(*next);
+    const auto all = performance.takeAvailableSamples();
+    ASSERT_TRUE(all);
+    EXPECT_TRUE(all->empty());
+}
+
+TEST_F(ContextLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePublicManager)
+{
+    expectInstance();
+    expectAdapter(false, false, TimestampScenario {.validBits = 64, .periodNanoseconds = 2.5F});
+    expectDevice(false);
+    expectPerformancePools();
+    expectParentsDestroyed(true, false);
+    auto context = panda::Context::create({.enableGpuTimestampSampling = true});
+    ASSERT_TRUE(context);
+
+    auto& performance = context->getPerformanceManager();
+    const auto capabilities = performance.getCapabilities();
+    EXPECT_TRUE(capabilities.hasGpuTimestampQueries);
+    EXPECT_TRUE(capabilities.isGpuTimestampSamplingEnabled);
+    const auto latest = performance.getLatestSample();
+    ASSERT_TRUE(latest);
+    EXPECT_FALSE(*latest);
+    const auto next = performance.takeNextSample();
+    ASSERT_TRUE(next);
+    EXPECT_FALSE(*next);
+    const auto all = performance.takeAvailableSamples();
+    ASSERT_TRUE(all);
+    EXPECT_TRUE(all->empty());
 }
 
 TEST_F(ContextLifecycleTest, EmptyBufferAndInvalidDescriptionsNeverCreateNativeResources)

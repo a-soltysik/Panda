@@ -54,7 +54,7 @@ target_compile_definitions(panda_unit_core PRIVATE
 
 panda_add_test(panda_unit_context unit
     VULKAN_INTERNAL
-    SOURCES Context.cpp
+    SOURCES Context.cpp ContextLifecycle.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock PandaTest::SwapchainGenerationMock)
 
@@ -100,6 +100,13 @@ panda_add_test(panda_unit_upload_manager unit
 panda_add_test(panda_unit_submission_queue unit
     VULKAN_INTERNAL
     SOURCES SubmissionQueue.cpp
+    LIBRARIES Panda::Panda PandaTest::Support
+    MOCKS PandaTest::VulkanMock)
+
+panda_add_test(panda_unit_performance_manager unit
+    VULKAN_INTERNAL
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan/performance"
+    SOURCES PerformanceManager.cpp
     LIBRARIES Panda::Panda PandaTest::Support
     MOCKS PandaTest::VulkanMock)
 

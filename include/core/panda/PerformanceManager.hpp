@@ -46,7 +46,7 @@ public:
     auto operator=(const PerformanceManager&) -> PerformanceManager& = delete;
     PerformanceManager(PerformanceManager&&) = delete;
     auto operator=(PerformanceManager&&) -> PerformanceManager& = delete;
-    ~PerformanceManager();
+    ~PerformanceManager() = default;
 
     /// @brief Copies timestamp support and sampling state for this Context.
     /// @return GPU support and whether sampling is enabled; does not query or wait for GPU work.

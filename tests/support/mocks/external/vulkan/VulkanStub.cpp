@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string_view>
@@ -65,6 +66,39 @@ VKAPI_ATTR auto VKAPI_CALL vkCreateImage(VkDevice device,
                                                                                            pCreateInfo,
                                                                                            pAllocator,
                                                                                            pImage);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkCreateQueryPool(VkDevice device,
+                                             const VkQueryPoolCreateInfo* pCreateInfo,
+                                             const VkAllocationCallbacks* pAllocator,
+                                             VkQueryPool* pQueryPool) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateQueryPool(device,
+                                                                                               pCreateInfo,
+                                                                                               pAllocator,
+                                                                                               pQueryPool);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyQueryPool(VkDevice device,
+                                              VkQueryPool queryPool,
+                                              const VkAllocationCallbacks* pAllocator)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyQueryPool(device, queryPool, pAllocator);
+}
+
+// Vulkan fixes this entry point's eight-parameter C signature.
+// NOLINTNEXTLINE(readability-function-size)
+VKAPI_ATTR auto VKAPI_CALL vkGetQueryPoolResults(VkDevice device,
+                                                 VkQueryPool queryPool,
+                                                 std::uint32_t firstQuery,
+                                                 std::uint32_t queryCount,
+                                                 std::size_t dataSize,
+                                                 void* pData,
+                                                 VkDeviceSize stride,
+                                                 VkQueryResultFlags flags) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock()
+        .vkGetQueryPoolResults(device, queryPool, firstQuery, queryCount, dataSize, pData, stride, flags);
 }
 
 VKAPI_ATTR void VKAPI_CALL vkDestroyImage(VkDevice device, VkImage image, const VkAllocationCallbacks* pAllocator)
@@ -279,6 +313,28 @@ VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier2(VkCommandBuffer commandBuffer, 
 {
     panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdPipelineBarrier2(commandBuffer,
                                                                                             dependencyInfo);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdResetQueryPool(VkCommandBuffer commandBuffer,
+                                               VkQueryPool queryPool,
+                                               std::uint32_t firstQuery,
+                                               std::uint32_t queryCount)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdResetQueryPool(commandBuffer,
+                                                                                          queryPool,
+                                                                                          firstQuery,
+                                                                                          queryCount);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdWriteTimestamp2(VkCommandBuffer commandBuffer,
+                                                VkPipelineStageFlags2 pipelineStage,
+                                                VkQueryPool queryPool,
+                                                std::uint32_t query)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdWriteTimestamp2(commandBuffer,
+                                                                                           pipelineStage,
+                                                                                           queryPool,
+                                                                                           query);
 }
 
 VKAPI_ATTR void VKAPI_CALL vkCmdBeginRendering(VkCommandBuffer commandBuffer, const VkRenderingInfo* renderingInfo)
@@ -612,6 +668,9 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkGetDeviceQueue",                          .function = genericVulkanProc(&vkGetDeviceQueue)             },
     EntryPoint {.name = "vkGetDeviceProcAddr",                       .function = genericVulkanProc(&vkGetDeviceProcAddr)          },
     EntryPoint {.name = "vkCreateSemaphore",                         .function = genericVulkanProc(&vkCreateSemaphore)            },
+    EntryPoint {.name = "vkCreateQueryPool",                         .function = genericVulkanProc(&vkCreateQueryPool)            },
+    EntryPoint {.name = "vkDestroyQueryPool",                        .function = genericVulkanProc(&vkDestroyQueryPool)           },
+    EntryPoint {.name = "vkGetQueryPoolResults",                     .function = genericVulkanProc(&vkGetQueryPoolResults)        },
     EntryPoint {.name = "vkCreateCommandPool",                       .function = genericVulkanProc(&vkCreateCommandPool)          },
     EntryPoint {.name = "vkAllocateCommandBuffers",                  .function = genericVulkanProc(&vkAllocateCommandBuffers)     },
     EntryPoint {.name = "vkDestroySemaphore",                        .function = genericVulkanProc(&vkDestroySemaphore)           },
@@ -621,6 +680,8 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkAcquireNextImageKHR",                     .function = genericVulkanProc(&vkAcquireNextImageKHR)        },
     EntryPoint {.name = "vkBeginCommandBuffer",                      .function = genericVulkanProc(&vkBeginCommandBuffer)         },
     EntryPoint {.name = "vkCmdPipelineBarrier2",                     .function = genericVulkanProc(&vkCmdPipelineBarrier2)        },
+    EntryPoint {.name = "vkCmdResetQueryPool",                       .function = genericVulkanProc(&vkCmdResetQueryPool)          },
+    EntryPoint {.name = "vkCmdWriteTimestamp2",                      .function = genericVulkanProc(&vkCmdWriteTimestamp2)         },
     EntryPoint {.name = "vkCmdCopyBufferToImage",                    .function = genericVulkanProc(&vkCmdCopyBufferToImage)       },
     EntryPoint {.name = "vkCmdBeginRendering",                       .function = genericVulkanProc(&vkCmdBeginRendering)          },
     EntryPoint {.name = "vkCmdEndRendering",                         .function = genericVulkanProc(&vkCmdEndRendering)            },
