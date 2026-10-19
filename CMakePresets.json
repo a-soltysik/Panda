@@ -112,7 +112,9 @@
         "rhs": "Linux"
       },
       "cacheVariables": {
-        "PANDA_ENABLE_COVERAGE": "ON"
+        "PANDA_ENABLE_COVERAGE": "ON",
+        "PANDA_BUILD_TOOLS": "ON",
+        "PANDA_BUILD_BENCHMARKS": "ON"
       }
     },
     {

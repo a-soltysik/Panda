@@ -22,6 +22,7 @@ if(PANDA_ENABLE_COVERAGE)
             --root "${PROJECT_SOURCE_DIR}"
             --gcov-executable "${PANDA_GCOV_EXECUTABLE}"
             --filter "src/.*"
+            --filter "benchmarks/src/.*"
             --exclude-throw-branches
             --html-details "${panda_coverage_directory}/index.html"
             --cobertura "${panda_coverage_directory}/coverage.xml"

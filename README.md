@@ -90,8 +90,9 @@ These presets include native-window system tests when a display and Vulkan drive
 are available; unsupported environments are reported as skips.
 For runtime diagnostics, use `gcc-sanitizers` on Linux (ASan + UBSan) or
 `msvc-sanitizers` on Windows (ASan) with the same command sequence.
-The `gcc-coverage` preset instruments Linux CPU tests. The Tests workflow attaches
-an HTML and XML report named `panda-coverage`; the badge above reflects that run.
+The `gcc-coverage` preset instruments Linux CPU tests, including benchmark unit
+tests. The Tests workflow attaches an HTML and XML report named `panda-coverage`;
+the badge above reflects that run.
 No minimum percentage is required. Generated coverage files stay in the build
 directory.
 
