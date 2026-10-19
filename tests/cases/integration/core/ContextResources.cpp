@@ -316,6 +316,7 @@ protected:
         {
             expectMemoryPool();
         }
+        expectDriverProperties();
         EXPECT_CALL(vulkan, vkCreateDevice(physical, NotNull(), nullptr, NotNull()))
             .WillOnce(testing::Action<decltype(vkCreateDevice)> {
                 [this, windowed, result, separateQueues](VkPhysicalDevice,
@@ -429,6 +430,25 @@ protected:
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
                 ASSERT_NE(maintenance, nullptr);
                 maintenance->maxMemoryAllocationSize = std::uint64_t {128} * 1024 * 1024;
+            });
+    }
+
+    void expectDriverProperties()
+    {
+        EXPECT_CALL(
+            vulkan,
+            vkGetPhysicalDeviceProperties2(physical, testing::Truly([](const VkPhysicalDeviceProperties2* output) {
+                                               const auto* base = static_cast<const VkBaseOutStructure*>(output->pNext);
+                                               return base != nullptr &&
+                                                      base->sType ==
+                                                          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+                                           })))
+            .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                auto* driver = static_cast<VkPhysicalDeviceDriverProperties*>(output->pNext);
+                std::ranges::copy(std::string_view {"Integration Vulkan driver"},
+                                  std::span {driver->driverName}.begin());
+                std::ranges::copy(std::string_view {"Integration test driver 1.0"},
+                                  std::span {driver->driverInfo}.begin());
             });
     }
 
@@ -685,6 +705,8 @@ TEST_F(ContextResourcesIntegration, CreatesMovesAndDestroysHeadlessDeviceInDepen
     auto moved = std::move(*context);
     EXPECT_FALSE(context->isValid());
     EXPECT_EQ(moved.getDeviceInfo().name, "Unit GPU");
+    EXPECT_EQ(moved.getDeviceInfo().driverName, "Integration Vulkan driver");
+    EXPECT_EQ(moved.getDeviceInfo().driverInfo, "Integration test driver 1.0");
     EXPECT_EQ(moved.getDeviceInfo().queueFamily, 0U);
     const auto frame = moved.presentClearFrame();
     ASSERT_FALSE(frame.has_value());
