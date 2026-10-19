@@ -17,7 +17,9 @@
 
 namespace
 {
-using namespace std::chrono_literals;
+using std::chrono_literals::operator""ns;
+using std::chrono_literals::operator""s;
+using std::chrono_literals::operator""us;
 using panda_bench::Failure;
 using panda_bench::FrameStatus;
 using panda_bench::Options;
