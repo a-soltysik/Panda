@@ -9,11 +9,11 @@
 
 namespace
 {
-auto printError(std::string_view message) noexcept -> int
+auto printError(std::FILE* stream, std::string_view message) noexcept -> int
 {
     try
     {
-        std::println(stderr, "{}", message);
+        std::println(stream, "{}", message);
     }
     catch (...)
     {
@@ -42,10 +42,10 @@ auto main(int argumentCount, char** arguments) -> int
     }
     catch (const std::exception& error)
     {
-        return printError(error.what());
+        return printError(stderr, error.what());
     }
     catch (...)
     {
-        return printError("Unexpected benchmark failure");
+        return printError(stderr, "Unexpected benchmark failure");
     }
 }
