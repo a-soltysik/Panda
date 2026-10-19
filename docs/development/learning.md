@@ -37,7 +37,10 @@ learning handoff is clear and accept the task.
 | Performance | Reproduce a baseline and explain one measured bottleneck. |
 
 API comments belong at declarations, usage examples in compiled examples, and
-rationale in the owning specification. Follow the [quality policy](quality.md#public-api-and-learning).
+shared-rule rationale in the owning specification. [Use cases](../use-cases/README.md)
+connect those rules to code with flow-specific reading notes, following the
+[functional documentation conventions](functional-documentation.md).
+Follow the [quality policy](quality.md#public-api-and-learning).
 Examples evolve with the project: when a task changes the available capabilities
 or the normal way to use them, update a relevant runnable example or add one in
 that task. An old example that still compiles but teaches an obsolete workflow is

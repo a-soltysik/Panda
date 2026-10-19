@@ -13,6 +13,7 @@ import sys
 MIRROR_NAME = "Panda-wsl-build"
 MARKER_NAME = ".panda-wsl-build-mirror.json"
 PRESETS = {
+    "docs-checks",
     "gcc-development",
     "gcc-quality",
     "gcc-unity",
@@ -147,7 +148,7 @@ def configure_environment():
 def run_build(arguments, mirror):
     environment, use_ccache = configure_environment()
     configure = ["cmake", "--preset", arguments.preset]
-    if use_ccache:
+    if use_ccache and arguments.preset != "docs-checks":
         configure.extend([
             "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
             "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",

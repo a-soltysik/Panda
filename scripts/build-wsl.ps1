@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet(
+        "docs-checks",
         "gcc-development",
         "gcc-quality",
         "gcc-unity",

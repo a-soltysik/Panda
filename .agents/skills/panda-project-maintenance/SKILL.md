@@ -13,6 +13,8 @@ This procedure does not authorize engine work or acceptance of a later phase.
 
 - Identify the owner of each changed requirement, behavior, path or convention.
   Search its other mentions and links before changing it.
+- For use cases or changes to documented implementation flows, follow
+  [panda-functional-documentation](../panda-functional-documentation/SKILL.md).
 - Update the owner in place. Remove stale text and redundant pages; repair callers.
   Documentation is not release notes: no appended correction history, obsolete
   API examples, descriptions of removed mechanisms or empty decision backlogs.

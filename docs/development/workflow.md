@@ -74,6 +74,11 @@ near declarations and avoid duplicating the same rule across all three places.
 Planned interfaces are clearly labeled; instructions for current use name only
 available commands and files.
 
+Use cases connect behavior to the main classes and methods following the
+[functional documentation conventions](functional-documentation.md). Update affected
+scenarios when behavior or depicted collaboration changes, and add a new scenario
+only when its goal or extracted subflow warrants one. Keep the source readable on GitHub.
+
 Keep source docs, small test fixtures and curated benchmark baselines versioned.
 Exclude generated HTML, caches, local paths, private notes and raw runs. AI guidance
 and maintenance helpers live in `.agents/`, human documentation in `docs/`.

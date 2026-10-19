@@ -16,6 +16,25 @@ Public build/run guides use Windows and Linux sections with native commands for
 each platform. Environment-specific contributor helpers belong in `.agents/`;
 verification records still identify the environment that actually ran a check.
 
+For functional scenarios, code-reading notes and Mermaid diagrams, follow the
+[functional documentation conventions](functional-documentation.md).
+
+## Text and markup
+
+Use keyboard-friendly ASCII for documentation prose, source comments and diagram
+labels wherever possible. Use ordinary quotes, a hyphen (`-`) for separators and
+ranges, and three periods (`...`) for an ellipsis. Avoid typographic dashes, smart
+quotes, decorative Unicode arrows and nonbreaking spaces.
+
+Use Markdown syntax for emphasis, lists, headings and links, and let the renderer
+present them. Keep the source easy to edit with an ordinary keyboard; avoid raw
+HTML for text formatting and navigation.
+
+UTF-8 symbols are allowed when they carry necessary meaning, such as degrees
+Celsius, Greek letters and mathematical exponents. This exception does not extend
+to decorative punctuation. Apply the rule to new and edited text without mixing
+unrelated document-wide rewrites into a change.
+
 ## Names and declarations
 
 - Use `_window`-style names for private data members. Access members without

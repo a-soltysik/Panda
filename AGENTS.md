@@ -31,6 +31,8 @@ reported line. Do not weaken checks to make a result pass.
 ## Maintenance and handoff
 
 Use [panda-project-maintenance](.agents/skills/panda-project-maintenance/SKILL.md).
+For functional use cases or changes to their depicted flows, use
+[panda-functional-documentation](.agents/skills/panda-functional-documentation/SKILL.md).
 For local Windows and WSL builds, follow
 [panda-dual-platform-build](.agents/skills/panda-dual-platform-build/SKILL.md).
 Documentation describes the current project and intended behavior, not a release
