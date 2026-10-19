@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: >-
           xvfb-run -a env
-          VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           build-gcc-coverage-Linux/benchmarks/panda-bench
           --profile smoke
           --output "$RUNNER_TEMP/panda-bench-smoke"
