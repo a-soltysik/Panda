@@ -22,6 +22,7 @@
 #include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <string>
+#include <thread>
 
 #include "PresentationTestSupport.hpp"
 #include "ScopedMock.hpp"
@@ -257,10 +258,10 @@ protected:
 
     auto createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance maintenance =
                                 panda::ContextDeviceInfo::SwapchainMaintenance::Khr,
-                            bool enableGpuTimestampSampling = false)
+                            bool enableFramePerformanceSampling = false)
         -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
     {
-        if (enableGpuTimestampSampling)
+        if (enableFramePerformanceSampling)
         {
             _performance = std::make_unique<panda::detail::PerformanceManagerImpl>(
                 getDevice(),
@@ -277,6 +278,9 @@ protected:
             .surface = vk::SurfaceKHR {},
             .window = window,
             .deviceInfo = {.name = {},
+                                                  .driverName = {},
+                                                  .driverInfo = {},
+                                                  .driverVersion = 0,
                                                   .apiVersion = 0,
                                                   .queueFamily = 0,
                                                   .presentQueueFamily = 0,
@@ -431,7 +435,10 @@ TEST_F(PresentationTest, TimelineLimitRejectsFrameBeforeAcquiringAnotherImage)
     expectFrameSubmit(flow);
     EXPECT_CALL(vulkan, vkQueuePresentKHR(_, NotNull()))
         .InSequence(flow)
-        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+        .WillOnce([](VkQueue, const VkPresentInfoKHR*) {
+            std::this_thread::sleep_for(std::chrono::milliseconds {2});
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
     expectCompletionPoint(flow);
     expectPendingCounter(flow);
     expectTimelineWait(flow);
@@ -562,14 +569,19 @@ TEST_F(PresentationTest, RecordsGpuTimestampsAroundFrameRenderingAndPublishesSub
     expectFrameSubmit(flow);
     EXPECT_CALL(vulkan, vkQueuePresentKHR(_, NotNull()))
         .InSequence(flow)
-        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+        .WillOnce([](VkQueue, const VkPresentInfoKHR*) {
+            std::this_thread::sleep_for(std::chrono::milliseconds {2});
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
     expectCompletionPoint(flow);
 
     auto presentation = createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance::Khr, true);
     ASSERT_TRUE(presentation);
-    const auto frame = presentation->get()->presentClearFrame();
+    auto submittedPerformanceSlot = std::optional<std::size_t> {};
+    const auto frame = presentation->get()->presentClearFrame(submittedPerformanceSlot);
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+    EXPECT_EQ(submittedPerformanceSlot, 0U);
 
     expectCompletedSampleReadback();
     const auto sample = performance().getLatestSample();

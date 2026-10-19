@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <iostream>
+#include <ios>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -141,14 +141,6 @@ auto FileSink::write(const Entry& entry) noexcept -> std::expected<void, SinkErr
 auto FileSink::flush() noexcept -> std::expected<void, SinkError>
 {
     return flushStream(_stream);
-}
-
-Logger::Logger(bool console)
-{
-    if (console)
-    {
-        std::ignore = addSink(std::make_unique<StreamSink>(std::cerr));
-    }
 }
 
 Logger::~Logger()

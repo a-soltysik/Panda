@@ -125,8 +125,8 @@ public:
     /// @brief Identifier for a sink registered with one Logger instance.
     using SinkId = std::size_t;
 
-    /// @brief Starts enabled at Info with an optional stderr sink.
-    explicit Logger(bool console = true);
+    /// @brief Starts enabled at Info with no output sinks. Applications add the destinations they want.
+    Logger() = default;
 
     Logger(const Logger&) = delete;
 

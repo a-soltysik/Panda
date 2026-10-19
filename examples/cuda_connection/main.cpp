@@ -1,11 +1,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <iostream>
+#include <memory>
 #include <panda/Assert.hpp>
 #include <panda/Logger.hpp>
 #include <panda/cuda/Cuda.hpp>
 #include <print>
 #include <string_view>
+#include <tuple>
 
 #include "ProducerBoundary.hpp"
 
@@ -41,6 +44,7 @@ auto main() -> int
 {
     try
     {
+        std::ignore = panda::log::Logger::instance().addSink(std::make_unique<panda::log::StreamSink>(std::clog));
         const auto availability = panda::cuda::queryAvailability();
         if (!availability)
         {

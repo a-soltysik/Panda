@@ -57,3 +57,25 @@ if (PANDA_BUILD_TESTS)
         panda_enable_sanitizers(${target})
     endforeach()
 endif ()
+
+if (PANDA_BUILD_BENCHMARKS)
+    # argparse is private to the optional benchmark executable.
+    panda_add_dependency(argparse 3.2.0
+            GIT_TAG v3.2
+            GITHUB_REPOSITORY p-ranav/argparse
+            SYSTEM YES
+            OPTIONS
+            "ARGPARSE_BUILD_TESTS OFF"
+            "ARGPARSE_BUILD_SAMPLES OFF"
+            "ARGPARSE_INSTALL OFF"
+    )
+    # JSON reports are private to the optional benchmark executable.
+    panda_add_dependency(nlohmann_json 3.12.0
+            GIT_TAG v3.12.0
+            GITHUB_REPOSITORY nlohmann/json
+            SYSTEM YES
+            OPTIONS
+            "JSON_BuildTests OFF"
+            "JSON_Install OFF"
+    )
+endif ()

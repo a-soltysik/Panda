@@ -194,6 +194,7 @@ TEST_F(PerformanceManagerTest, ConvertsReadyTicksToNanosecondsAndLatestDoesNotCo
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
     manager.markSubmitted(0);
+    manager.recordCpuFrameDuration(0, std::chrono::nanoseconds {15});
     expectResults(pool0, {20, 1, 30, 1});
 
     const auto latest = manager.getLatestSample();
@@ -201,6 +202,7 @@ TEST_F(PerformanceManagerTest, ConvertsReadyTicksToNanosecondsAndLatestDoesNotCo
     ASSERT_TRUE(latest->has_value());
     const auto latestSample = latest->value_or(panda::FramePerformanceSample {});
     EXPECT_EQ(latestSample.frameIndex, 0U);
+    EXPECT_EQ(latestSample.cpuFrameDuration, std::chrono::nanoseconds {15});
     EXPECT_EQ(latestSample.gpuExecutionDuration, std::chrono::nanoseconds {25});
     const auto repeated = manager.getLatestSample();
     ASSERT_TRUE(repeated);
@@ -212,6 +214,7 @@ TEST_F(PerformanceManagerTest, ConvertsReadyTicksToNanosecondsAndLatestDoesNotCo
     ASSERT_TRUE(next);
     ASSERT_TRUE(next->has_value());
     const auto nextSample = next->value_or(panda::FramePerformanceSample {});
+    EXPECT_EQ(nextSample.cpuFrameDuration, std::chrono::nanoseconds {15});
     EXPECT_EQ(nextSample.gpuExecutionDuration, std::chrono::nanoseconds {25});
     const auto empty = manager.takeNextSample();
     ASSERT_TRUE(empty);

@@ -15,15 +15,21 @@ Specifications: [Frame reuse](../../design/contracts/resources.md#frame-and-wind
 
 ## Acceptance
 
-Capture a frame and retrieve its public GPU timestamp sample; test resize/skip/reuse and verify no routine device idle; run a short benchmark smoke profile through the public API.
+Capture a frame and retrieve its public paired CPU/GPU sample; test resize/skip/reuse and verify no routine device idle; run a short benchmark smoke profile through the public API.
 
-Learning: Explain what rendering work the GPU execution duration covers and how its timestamps are collected.
+Learning: Explain the CPU frame wall duration boundary, what the GPU execution duration covers, and how its timestamps are collected.
 
 ## Current verification
 
-- `cmake --build --preset msvc-quality --target panda_unit_performance_manager panda_unit_context panda_unit_core panda_unit_presentation --parallel 1` — passed, including formatting, clang-tidy and cppcheck checks.
-- Selected Windows tests for device selection, Context, PerformanceManager and Presentation — 74/74 passed.
-- `scripts/build-wsl.ps1 -Preset gcc-coverage -RunTests -Jobs 2` — 367/367 CPU tests passed (222 unit, 145 integration).
-- Fresh GCC coverage after clearing generated `.gcda` profiles: 94.9% lines, 97.5% functions and 83.9% branches. Changed production files: `Context.cpp` 93.5% lines / 90.3% branches; `DeviceSelection.cpp` 92.3% / 80.8%; `PerformanceManager.cpp` 100% / 100%; `PerformanceManagerImpl.cpp` 100% / 97.4%; `Presentation.cpp` 87.9% / 73.9%.
-- The CPU tests verify query recording, mocked readback and public sample delivery; they do not prove behavior on a real GPU. Frame capture and GPU checks for resize/skip/reuse remain pending. The public benchmark smoke profile is deferred to the benchmark change.
-- Documentation checker and `git diff --check` passed after this update.
+- MSVC quality builds for the benchmark, Context, common library and examples — passed with format, clang-tidy and cppcheck checks.
+- `ctest --test-dir build-msvc-quality -R "unit\.(Logger|FunctionName|HostInfo|Benchmark|DeviceSelection|Context|PerformanceManager|Presentation)" --output-on-failure` — 97/97 passed.
+- `scripts/build-wsl.ps1 -Preset gcc-quality -RunTests -TestRegex unit` — full GCC quality build passed; 228 tests passed (225 unit tests and three format checks).
+- Windows `Release` smoke run on an NVIDIA GeForce RTX 4070 Ti completed with 150 paired CPU/GPU frame samples. Schema 3 records the AMD Ryzen 5 7600 CPU, selected GPU, NVIDIA driver and startup/teardown durations. This validates the optimized execution and reporting path; the one-second run is not a performance baseline.
+- Example builds passed for `simple_scene`, `buffer_allocation` and CUDA-enabled `cuda_connection`. Each example registers a `StreamSink` to `std::clog` before using Panda's logger.
+- Frame samples pair CPU wall duration for Panda's complete frame call with asynchronous GPU execution duration; the CPU interval includes CPU-side waits and queuing presentation.
+- `ctest --test-dir build-msvc-quality -R "CreatesValidatedSurfaceAndDevice" --output-on-failure` — passed on Windows with Vulkan validation. The real surface rendered successive frames, resized, suspended, then resumed and rendered again.
+- A source/test search found no `waitIdle` or `deviceWaitIdle` calls.
+- `scripts/build-wsl.ps1 -Preset gcc-development -Target panda-bench` — passed with GCC warnings treated as errors.
+- WSL Linux smoke completed with 61 paired CPU/GPU samples and schema 3, but Vulkan selected `llvmpipe` (software rendering). WSL reports the RTX 4070 Ti through `nvidia-smi`, while its installed Vulkan ICDs do not expose NVIDIA; this verifies the Linux build and report path, not hardware GPU execution. A Linux smoke on a hardware Vulkan device remains pending.
+- Unit tests cover mocked frame reuse, skipped presentation and failure paths.
+- Documentation checker passed for 43 Markdown files; `git diff --check` passed.

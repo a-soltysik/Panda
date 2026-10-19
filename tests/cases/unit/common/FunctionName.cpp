@@ -91,7 +91,7 @@ TEST(FunctionName, RecognizesRealMethodsAndLambdas)
     EXPECT_EQ(lambdaName.view(), "<lambda>");
 
     auto stream = std::ostringstream {};
-    auto logger = panda::log::Logger {false};
+    auto logger = panda::log::Logger {};
     std::ignore = logger.addSink(std::make_unique<panda::log::StreamSink>(stream));
     logger.write(panda::log::Level::Info, "test", method);
     EXPECT_TRUE(stream.str().contains(" (FunctionNameProbe::method): test"));

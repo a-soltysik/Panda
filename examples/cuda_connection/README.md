@@ -5,6 +5,9 @@ Requires CUDA Toolkit, a compatible host compiler and an NVIDIA GPU to build
 (the GPU architecture is detected automatically). Missing drivers or devices at
 runtime are reported without failing the application.
 
+The example adds a `StreamSink` to `std::clog` before querying CUDA. The logger
+starts with no sinks, so applications choose where engine logs are written.
+
 Run from the repository root.
 
 Windows (MSVC):

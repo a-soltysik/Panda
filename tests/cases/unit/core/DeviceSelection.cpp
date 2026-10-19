@@ -88,9 +88,28 @@ void expectDeviceProperties(panda::test::VulkanMock& vulkan,
             properties->apiVersion = vk::ApiVersion13;
             properties->deviceType = static_cast<VkPhysicalDeviceType>(vk::PhysicalDeviceType::eDiscreteGpu);
             properties->limits.timestampPeriod = timestampPeriod;
+            properties->driverVersion = 123;
             const auto name =
                 device == scenario.brokenDevice ? std::string_view {"Broken GPU"} : std::string_view {"Usable GPU"};
             std::ranges::copy(name, std::span {properties->deviceName}.begin());
+        });
+}
+
+void expectDriverProperties(panda::test::VulkanMock& vulkan, const DeviceScenario& scenario)
+{
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
+        .WillRepeatedly([&scenario](VkPhysicalDevice device, VkPhysicalDeviceProperties2* properties) {
+            auto* const driver = static_cast<VkPhysicalDeviceDriverProperties*>(properties->pNext);
+            if (driver == nullptr)
+            {
+                return;
+            }
+            const auto name = device == scenario.usableDevice ? std::string_view {"Test Vulkan driver"}
+                                                              : std::string_view {"Broken Vulkan driver"};
+            const auto info = device == scenario.usableDevice ? std::string_view {"Driver version 1.2.3"}
+                                                              : std::string_view {"Broken driver"};
+            std::ranges::copy(name, std::span {driver->driverName}.begin());
+            std::ranges::copy(info, std::span {driver->driverInfo}.begin());
         });
 }
 
@@ -219,6 +238,7 @@ void expectTwoDeviceScenario(panda::test::VulkanMock& vulkan,
 {
     expectPhysicalDevices(vulkan, scenario);
     expectDeviceProperties(vulkan, scenario, timestamps.periodNanoseconds);
+    expectDriverProperties(vulkan, scenario);
     expectDeviceExtensions(vulkan, scenario);
     expectUsableDeviceFeatures(vulkan, scenario);
     expectUsableQueueFamily(vulkan, scenario, separateQueueFamilies, timestamps.validBits);
@@ -260,6 +280,9 @@ void expectSingleDeviceQueryFailure(panda::test::VulkanMock& vulkan, VkPhysicalD
             *properties = VkPhysicalDeviceProperties {};
             properties->apiVersion = vk::ApiVersion13;
             std::ranges::copy(std::string_view {"Broken GPU"}, std::span {properties->deviceName}.begin());
+        });
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(device, NotNull()))
+        .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2*) {
         });
     EXPECT_CALL(vulkan, vkEnumerateDeviceExtensionProperties(device, nullptr, NotNull(), _))
         .WillOnce(testing::Action<decltype(vkEnumerateDeviceExtensionProperties)> {
@@ -384,6 +407,23 @@ TEST(DeviceSelection, PreservesTimestampPropertiesFromTheSelectedGraphicsQueue)
     EXPECT_EQ(selected->timestampPeriodNanoseconds, timestampPeriod);
 }
 
+TEST(DeviceSelection, PreservesDriverPropertiesFromTheSelectedDevice)
+{
+    auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
+    const auto scenario = makeDeviceScenario();
+    expectTwoDeviceScenario(vulkan, scenario);
+
+    const auto selected = panda::core::vulkan::selectDevice(
+        vk::Instance {scenario.instance},
+        scenario.surface,
+        panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
+
+    ASSERT_TRUE(selected);
+    EXPECT_EQ(selected->info.driverName, "Test Vulkan driver");
+    EXPECT_EQ(selected->info.driverInfo, "Driver version 1.2.3");
+    EXPECT_EQ(selected->info.driverVersion, 123U);
+}
+
 TEST(DeviceSelection, RejectsWindowedDeviceWithoutMaintenanceExtensionVariant)
 {
     auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
@@ -391,6 +431,7 @@ TEST(DeviceSelection, RejectsWindowedDeviceWithoutMaintenanceExtensionVariant)
     scenario.extensions.at(1) = makeExtension("VK_EXT_unrelated");
     expectPhysicalDevices(vulkan, scenario);
     expectDeviceProperties(vulkan, scenario);
+    expectDriverProperties(vulkan, scenario);
     expectDeviceExtensions(vulkan, scenario, vk::Result::eSuccess);
 
     const auto selected = panda::core::vulkan::selectDevice(

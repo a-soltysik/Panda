@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <memory>
@@ -316,7 +317,7 @@ public:
     [[nodiscard]] auto initialize(const WindowSurface* surface, const ContextOptions& options) -> Result<void>;
     [[nodiscard]] auto getDeviceInfo() const -> const ContextDeviceInfo&;
     [[nodiscard]] auto getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&;
-    [[nodiscard]] auto presentClearFrame() -> Result<FrameResult>;
+    [[nodiscard]] auto presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>;
     [[nodiscard]] auto createBufferResource(const BufferDesc& description)
         -> Result<std::shared_ptr<detail::BufferResource>>;
     [[nodiscard]] auto createTextureResource(const TextureDesc& description)
@@ -328,13 +329,14 @@ public:
     void drain();
 
 private:
-    [[nodiscard]] auto initializeDevice(const WindowSurface* surface, bool enableGpuTimestampSampling) -> Result<void>;
+    [[nodiscard]] auto initializeDevice(const WindowSurface* surface, bool enableFramePerformanceSampling)
+        -> Result<void>;
     [[nodiscard]] auto initializeSelectedDevice(const WindowSurface* surface,
                                                 const vulkan::SelectedDevice& selected,
                                                 vk::SurfaceKHR nativeSurface,
-                                                bool enableGpuTimestampSampling) -> Result<void>;
-    [[nodiscard]] auto initializePerformance(const vulkan::SelectedDevice& selected, bool enableGpuTimestampSampling)
-        -> Result<void>;
+                                                bool enableFramePerformanceSampling) -> Result<void>;
+    [[nodiscard]] auto initializePerformance(const vulkan::SelectedDevice& selected,
+                                             bool enableFramePerformanceSampling) -> Result<void>;
     [[nodiscard]] auto ensureUploads() -> Result<void>;
     [[nodiscard]] auto collectUploads() -> Result<void>;
     void collectCompletedUploads();
@@ -375,10 +377,10 @@ auto Context::Impl::initialize(const WindowSurface* surface, const ContextOption
         return std::unexpected {std::move(services.error())};
     }
     _services = std::move(*services);
-    return initializeDevice(surface, options.enableGpuTimestampSampling);
+    return initializeDevice(surface, options.enableFramePerformanceSampling);
 }
 
-auto Context::Impl::initializeDevice(const WindowSurface* surface, bool enableGpuTimestampSampling) -> Result<void>
+auto Context::Impl::initializeDevice(const WindowSurface* surface, bool enableFramePerformanceSampling) -> Result<void>
 {
     const auto nativeSurface = _services.surface ? **_services.surface : vk::SurfaceKHR {};
     auto selected = vulkan::selectDevice(*_services.instance, nativeSurface, _services.extensions);
@@ -393,16 +395,16 @@ auto Context::Impl::initializeDevice(const WindowSurface* surface, bool enableGp
         return std::unexpected {std::move(createdDevice.error())};
     }
     _device = std::move(*createdDevice);
-    return initializeSelectedDevice(surface, *selected, nativeSurface, enableGpuTimestampSampling);
+    return initializeSelectedDevice(surface, *selected, nativeSurface, enableFramePerformanceSampling);
 }
 
 auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
                                              const vulkan::SelectedDevice& selected,
                                              vk::SurfaceKHR nativeSurface,
-                                             bool enableGpuTimestampSampling) -> Result<void>
+                                             bool enableFramePerformanceSampling) -> Result<void>
 {
     _memoryPool = resources::MemoryPool::create(_physicalDevice, _device);
-    if (const auto initialized = initializePerformance(selected, enableGpuTimestampSampling); !initialized)
+    if (const auto initialized = initializePerformance(selected, enableFramePerformanceSampling); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
@@ -418,14 +420,14 @@ auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
     return {};
 }
 
-auto Context::Impl::initializePerformance(const vulkan::SelectedDevice& selected, bool enableGpuTimestampSampling)
+auto Context::Impl::initializePerformance(const vulkan::SelectedDevice& selected, bool enableFramePerformanceSampling)
     -> Result<void>
 {
     auto performance = std::make_unique<detail::PerformanceManagerImpl>(
         _device,
         detail::TimestampProperties {.validBits = selected.timestampValidBits,
                                      .periodNanoseconds = selected.timestampPeriodNanoseconds},
-        enableGpuTimestampSampling);
+        enableFramePerformanceSampling);
     if (const auto initialized = performance->initialize(); !initialized)
     {
         return std::unexpected {initialized.error()};
@@ -497,14 +499,14 @@ auto Context::Impl::getPerformanceManagerImplementation() noexcept -> detail::Pe
     return *_performanceManagerImplementation;
 }
 
-auto Context::Impl::presentClearFrame() -> Result<FrameResult>
+auto Context::Impl::presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>
 {
     if (!_presentation)
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to present a frame")};
     }
     return collectUploads().and_then([&] {
-        return _presentation->presentClearFrame();
+        return _presentation->presentClearFrame(submittedPerformanceSlot);
     });
 }
 
@@ -632,7 +634,21 @@ auto Context::getPerformanceManager() -> PerformanceManager&
 auto Context::presentClearFrame() const -> Result<FrameResult>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    return _implementation->presentClearFrame();
+    auto frameStart = std::optional<std::chrono::steady_clock::time_point> {};
+    if (_performanceManager.getCapabilities().isGpuTimestampSamplingEnabled)
+    {
+        frameStart = std::chrono::steady_clock::now();
+    }
+    auto submittedPerformanceSlot = std::optional<std::size_t> {};
+    auto result = _implementation->presentClearFrame(submittedPerformanceSlot);
+    if (frameStart && submittedPerformanceSlot)
+    {
+        const auto duration =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - *frameStart);
+        _implementation->getPerformanceManagerImplementation().recordCpuFrameDuration(*submittedPerformanceSlot,
+                                                                                      duration);
+    }
+    return result;
 }
 
 auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer>

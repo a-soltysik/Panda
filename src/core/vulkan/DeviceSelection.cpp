@@ -392,6 +392,7 @@ auto supportsSurfaceFormats(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR su
 struct DeviceProfile
 {
     vk::PhysicalDeviceProperties properties;
+    vk::PhysicalDeviceDriverProperties driver;
     Maintenance maintenance;
 };
 
@@ -404,6 +405,8 @@ auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice,
     {
         return std::nullopt;
     }
+    const auto driverProperties =
+        physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceDriverProperties>();
     const auto variant = maintenanceVariant(physicalDevice, surface, extensions);
     if (!variant)
     {
@@ -414,7 +417,9 @@ auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice,
         return std::nullopt;
     }
     return std::optional {
-        DeviceProfile {.properties = properties, .maintenance = **variant}
+        DeviceProfile {.properties = properties,
+                       .driver = driverProperties.get<vk::PhysicalDeviceDriverProperties>(),
+                       .maintenance = **variant}
     };
 }
 
@@ -452,6 +457,9 @@ auto makeSelectedDevice(vk::PhysicalDevice physicalDevice,
     return SelectedDevice {
         .physicalDevice = physicalDevice,
         .info = {.name = profile.properties.deviceName.data(),
+                 .driverName = profile.driver.driverName.data(),
+                 .driverInfo = profile.driver.driverInfo.data(),
+                 .driverVersion = profile.properties.driverVersion,
                  .apiVersion = profile.properties.apiVersion,
                  .queueFamily = queues.graphics,
                  .presentQueueFamily = queues.present,

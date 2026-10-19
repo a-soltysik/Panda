@@ -6,6 +6,7 @@ option(PANDA_ENABLE_STACKTRACE "Include standard stack traces in requested diagn
 
 option(PANDA_BUILD_TESTS "Build Panda tests" OFF)
 option(PANDA_BUILD_EXAMPLES "Build Panda examples" OFF)
+option(PANDA_BUILD_BENCHMARKS "Build Panda benchmark tools" OFF)
 option(PANDA_BUILD_DOCS "Build Panda public API documentation" OFF)
 option(PANDA_ENABLE_UNITY "Use unity builds for Panda targets" OFF)
 option(PANDA_ENABLE_COVERAGE "Instrument Panda targets for GCC coverage reporting" OFF)

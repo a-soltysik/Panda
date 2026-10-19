@@ -25,7 +25,7 @@ class PerformanceManagerImpl final
 public:
     PerformanceManagerImpl(const vk::raii::Device& device,
                            TimestampProperties timestamps,
-                           bool enableGpuTimestampSampling);
+                           bool enableFramePerformanceSampling);
 
     [[nodiscard]] auto initialize() -> Result<void>;
     [[nodiscard]] auto getCapabilities() const noexcept -> PerformanceCapabilities;
@@ -35,6 +35,7 @@ public:
     [[nodiscard]] auto recordStart(std::size_t slotIndex, vk::CommandBuffer command) -> Result<void>;
     void recordEnd(std::size_t slotIndex, vk::CommandBuffer command);
     void markSubmitted(std::size_t slotIndex) noexcept;
+    void recordCpuFrameDuration(std::size_t slotIndex, std::chrono::nanoseconds duration) noexcept;
 
 private:
     struct QuerySlot
@@ -42,6 +43,7 @@ private:
         vk::raii::QueryPool pool {nullptr};
         bool submitted {false};
         std::uint64_t frameIndex {0};
+        std::chrono::nanoseconds cpuFrameDuration {};
     };
 
     struct ReadySample
