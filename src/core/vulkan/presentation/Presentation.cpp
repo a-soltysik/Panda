@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <memory>
@@ -144,7 +145,8 @@ Presentation::Presentation(const PresentationCreateInfo& info)
       _surface {info.surface},
       _window {info.window},
       _deviceInfo {info.deviceInfo},
-      _submissions {info.submissions}
+      _submissions {info.submissions},
+      _performance {info.performance}
 {
 }
 
@@ -233,7 +235,8 @@ auto Presentation::presentClearFrame() -> std::expected<FrameResult, Error>
 
 auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
 {
-    auto& slot = _slots.at(_nextSlot);
+    const auto slotIndex = _nextSlot;
+    auto& slot = _slots.at(slotIndex);
     const auto acquired = acquireFrame(slot);
     if (!acquired)
     {
@@ -243,17 +246,24 @@ auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
     {
         return *nonReady;
     }
-    auto& image = activeGeneration().images.at(acquired->index);
-    if (const auto waited = waitImage(slot, acquired->index); !waited)
+    return submitAcquiredFrame(slot, *acquired, slotIndex);
+}
+
+auto Presentation::submitAcquiredFrame(FrameSlot& slot, const AcquiredImage& acquired, std::size_t slotIndex)
+    -> std::expected<FrameResult, Error>
+{
+    auto& image = activeGeneration().images.at(acquired.index);
+    if (const auto waited = waitImage(slot, acquired.index); !waited)
     {
         return std::unexpected {waited.error()};
     }
-    const auto completion = submitFrame(slot, image, acquired->index);
+    const auto selection = FrameSelection {.slotIndex = slotIndex, .imageIndex = acquired.index};
+    const auto completion = submitFrame(slot, image, selection);
     if (!completion)
     {
         return std::unexpected {completion.error()};
     }
-    return presentFrame(image, acquired->index, *completion, acquired->suboptimal);
+    return presentFrame(image, acquired.index, *completion, acquired.suboptimal);
 }
 
 auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>
@@ -269,7 +279,17 @@ auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) -> std::opt
     return std::nullopt;
 }
 
-auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image) -> std::expected<void, Error>
+auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image, std::size_t slotIndex)
+    -> std::expected<void, Error>
+{
+    if (const auto commands = recordFrameCommands(slot); !commands)
+    {
+        return std::unexpected {commands.error()};
+    }
+    return recordFrameWork(slot, image, slotIndex);
+}
+
+auto Presentation::recordFrameCommands(FrameSlot& slot) -> std::expected<void, Error>
 {
     const auto reset = slot.pool.reset();
     if (reset != vk::Result::eSuccess)
@@ -281,8 +301,25 @@ auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image) -> 
     {
         return std::unexpected {makeVulkanError(begun)};
     }
+    return {};
+}
+
+auto Presentation::recordFrameWork(FrameSlot& slot, const SwapchainImage& image, std::size_t slotIndex)
+    -> std::expected<void, Error>
+{
     transitionToColorAttachment(slot.command, image);
+    if (_performance != nullptr)
+    {
+        if (const auto timestamp = _performance->recordStart(slotIndex, slot.command); !timestamp)
+        {
+            return std::unexpected {timestamp.error()};
+        }
+    }
     recordClearRendering(slot.command, image, activeGeneration().format, activeGeneration().extent);
+    if (_performance != nullptr)
+    {
+        _performance->recordEnd(slotIndex, slot.command);
+    }
     transitionToPresent(slot.command, image);
     const auto ended = slot.command.end();
     if (ended != vk::Result::eSuccess)
@@ -403,30 +440,45 @@ auto Presentation::submitRecordedFrame(const FrameSlot& slot, const SwapchainIma
     return _submissions.submit(slot.command, *slot.acquire, *image.renderFinished);
 }
 
-auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, std::uint32_t index)
+auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, FrameSelection selection)
     -> std::expected<std::uint64_t, Error>
 {
-    if (const auto recorded = recordClear(slot, image); !recorded)
+    if (const auto recorded = recordClear(slot, image, selection.slotIndex); !recorded)
     {
-        const auto cleanup = abortAcquire(slot, index);
-        return std::unexpected {cleanup ? recorded.error() : cleanup.error()};
+        return abortFrame(slot, selection.imageIndex, recorded.error());
     }
     const auto submitted = submitRecordedFrame(slot, image);
     if (!submitted)
     {
-        if (submitted.error().code == ErrorCode::DeviceLost)
-        {
-            _faulted = true;
-            return std::unexpected {submitted.error()};
-        }
-        const auto cleanup = abortAcquire(slot, index);
-        return std::unexpected {cleanup ? submitted.error() : cleanup.error()};
+        return handleSubmitFailure(slot, selection, submitted.error());
     }
     const auto completion = *submitted;
     slot.lastCompletion = completion;
+    if (_performance != nullptr)
+    {
+        _performance->markSubmitted(selection.slotIndex);
+    }
     image.initialized = true;
     _nextSlot = (_nextSlot + 1) % _slots.size();
     return completion;
+}
+
+auto Presentation::abortFrame(FrameSlot& slot, std::uint32_t imageIndex, const Error& cause)
+    -> std::expected<std::uint64_t, Error>
+{
+    const auto cleanup = abortAcquire(slot, imageIndex);
+    return std::unexpected {cleanup ? cause : cleanup.error()};
+}
+
+auto Presentation::handleSubmitFailure(FrameSlot& slot, FrameSelection selection, const Error& cause)
+    -> std::expected<std::uint64_t, Error>
+{
+    if (cause.code == ErrorCode::DeviceLost)
+    {
+        _faulted = true;
+        return std::unexpected {cause};
+    }
+    return abortFrame(slot, selection.imageIndex, cause);
 }
 
 auto Presentation::recoverPresentFailure(SwapchainImage& image,

@@ -10,6 +10,7 @@
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/PerformanceManager.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <string>
@@ -26,6 +27,9 @@ struct ContextOptions
     /// Enable the installed Khronos validation layer and route its debug-utils diagnostics
     /// to the Panda logger; failure is reported if the layer or debug-utils extension is absent.
     bool enableValidation {false};
+    /// Create timestamp query pools and collect GPU frame timings when the selected queue supports them.
+    /// Disabled by default to avoid measurement work in contexts that do not need it.
+    bool enableGpuTimestampSampling {false};
 };
 
 /// @brief Selected device and enabled core feature diagnostics.
@@ -109,6 +113,11 @@ public:
     /// @return Device information. Moved-from use is a fatal contract error.
     [[nodiscard]] auto getDeviceInfo() const -> ContextDeviceInfo;
 
+    /// @brief Borrows the Context-owned performance data manager.
+    /// @return A manager that exposes device capabilities and ready GPU samples;
+    /// it must not outlive this Context. Calls remain serialized with Context operations.
+    [[nodiscard]] auto getPerformanceManager() -> PerformanceManager&;
+
     /// @brief Creates an ordinary fixed-size buffer with undefined initial bytes.
     /// @return A shared resource owner or a validation/allocation/backend error.
     /// Context outlives all copies. May allocate; submits no work and does not wait.
@@ -154,6 +163,7 @@ private:
     explicit Context(std::unique_ptr<Impl> implementation) noexcept;
 
     std::unique_ptr<Impl> _implementation;
+    PerformanceManager _performanceManager;
 };
 
 }

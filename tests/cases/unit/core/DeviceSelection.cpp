@@ -46,6 +46,12 @@ struct DeviceScenario
     std::array<VkExtensionProperties, 2> extensions;
 };
 
+struct TimestampScenario
+{
+    std::uint32_t validBits {0};
+    float periodNanoseconds {0.0F};
+};
+
 auto makeDeviceScenario() -> DeviceScenario
 {
     return DeviceScenario {
@@ -72,13 +78,16 @@ void expectPhysicalDevices(panda::test::VulkanMock& vulkan, const DeviceScenario
         });
 }
 
-void expectDeviceProperties(panda::test::VulkanMock& vulkan, const DeviceScenario& scenario)
+void expectDeviceProperties(panda::test::VulkanMock& vulkan,
+                            const DeviceScenario& scenario,
+                            float timestampPeriod = 0.0F)
 {
     EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
-        .WillRepeatedly([&scenario](VkPhysicalDevice device, VkPhysicalDeviceProperties* properties) {
+        .WillRepeatedly([&scenario, timestampPeriod](VkPhysicalDevice device, VkPhysicalDeviceProperties* properties) {
             *properties = VkPhysicalDeviceProperties {};
             properties->apiVersion = vk::ApiVersion13;
             properties->deviceType = static_cast<VkPhysicalDeviceType>(vk::PhysicalDeviceType::eDiscreteGpu);
+            properties->limits.timestampPeriod = timestampPeriod;
             const auto name =
                 device == scenario.brokenDevice ? std::string_view {"Broken GPU"} : std::string_view {"Usable GPU"};
             std::ranges::copy(name, std::span {properties->deviceName}.begin());
@@ -135,9 +144,11 @@ auto usableQueueFamilies() -> std::array<VkQueueFamilyProperties, 2>
 
 void expectUsableQueueFamily(panda::test::VulkanMock& vulkan,
                              const DeviceScenario& scenario,
-                             bool separateFamilies = false)
+                             bool separateFamilies = false,
+                             std::uint32_t timestampValidBits = 0)
 {
-    const auto families = usableQueueFamilies();
+    auto families = usableQueueFamilies();
+    families.front().timestampValidBits = timestampValidBits;
     const auto familyCount = separateFamilies ? 2U : 1U;
     EXPECT_CALL(vulkan, vkGetPhysicalDeviceQueueFamilyProperties(scenario.usableDevice, NotNull(), _))
         .WillRepeatedly(
@@ -203,13 +214,14 @@ void expectUsablePresentModes(panda::test::VulkanMock& vulkan, const DeviceScena
 void expectTwoDeviceScenario(panda::test::VulkanMock& vulkan,
                              const DeviceScenario& scenario,
                              vk::Result surfaceSupportResult = vk::Result::eSuccess,
-                             bool separateQueueFamilies = false)
+                             bool separateQueueFamilies = false,
+                             TimestampScenario timestamps = {})
 {
     expectPhysicalDevices(vulkan, scenario);
-    expectDeviceProperties(vulkan, scenario);
+    expectDeviceProperties(vulkan, scenario, timestamps.periodNanoseconds);
     expectDeviceExtensions(vulkan, scenario);
     expectUsableDeviceFeatures(vulkan, scenario);
-    expectUsableQueueFamily(vulkan, scenario, separateQueueFamilies);
+    expectUsableQueueFamily(vulkan, scenario, separateQueueFamilies, timestamps.validBits);
     expectUsableSurfaceSupport(vulkan, scenario, surfaceSupportResult, separateQueueFamilies);
     if (surfaceSupportResult == vk::Result::eSuccess)
     {
@@ -348,6 +360,28 @@ TEST(DeviceSelection, SelectsSeparateGraphicsAndPresentQueueFamilies)
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->info.queueFamily, 0U);
     EXPECT_EQ(selected->info.presentQueueFamily, 1U);
+}
+
+TEST(DeviceSelection, PreservesTimestampPropertiesFromTheSelectedGraphicsQueue)
+{
+    auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
+    const auto scenario = makeDeviceScenario();
+    constexpr auto validBits = std::uint32_t {36};
+    constexpr auto timestampPeriod = 1.75F;
+    expectTwoDeviceScenario(vulkan,
+                            scenario,
+                            vk::Result::eSuccess,
+                            false,
+                            TimestampScenario {.validBits = validBits, .periodNanoseconds = timestampPeriod});
+
+    const auto selected = panda::core::vulkan::selectDevice(
+        vk::Instance {scenario.instance},
+        scenario.surface,
+        panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
+
+    ASSERT_TRUE(selected);
+    EXPECT_EQ(selected->timestampValidBits, validBits);
+    EXPECT_EQ(selected->timestampPeriodNanoseconds, timestampPeriod);
 }
 
 TEST(DeviceSelection, RejectsWindowedDeviceWithoutMaintenanceExtensionVariant)

@@ -32,6 +32,7 @@
 #include "DeviceSelection.hpp"
 #include "SubmissionQueue.hpp"
 #include "VulkanError.hpp"
+#include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/Presentation.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MeshResource.hpp"
@@ -314,6 +315,7 @@ class Context::Impl
 public:
     [[nodiscard]] auto initialize(const WindowSurface* surface, const ContextOptions& options) -> Result<void>;
     [[nodiscard]] auto getDeviceInfo() const -> const ContextDeviceInfo&;
+    [[nodiscard]] auto getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&;
     [[nodiscard]] auto presentClearFrame() -> Result<FrameResult>;
     [[nodiscard]] auto createBufferResource(const BufferDesc& description)
         -> Result<std::shared_ptr<detail::BufferResource>>;
@@ -326,7 +328,13 @@ public:
     void drain();
 
 private:
-    [[nodiscard]] auto initializeDevice(const WindowSurface* surface) -> Result<void>;
+    [[nodiscard]] auto initializeDevice(const WindowSurface* surface, bool enableGpuTimestampSampling) -> Result<void>;
+    [[nodiscard]] auto initializeSelectedDevice(const WindowSurface* surface,
+                                                const vulkan::SelectedDevice& selected,
+                                                vk::SurfaceKHR nativeSurface,
+                                                bool enableGpuTimestampSampling) -> Result<void>;
+    [[nodiscard]] auto initializePerformance(const vulkan::SelectedDevice& selected, bool enableGpuTimestampSampling)
+        -> Result<void>;
     [[nodiscard]] auto ensureUploads() -> Result<void>;
     [[nodiscard]] auto collectUploads() -> Result<void>;
     void collectCompletedUploads();
@@ -350,6 +358,7 @@ private:
     std::unique_ptr<resources::MemoryPool> _memoryPool;
     std::unique_ptr<detail::SubmissionQueue> _submissions;
     std::unique_ptr<upload::UploadManager> _uploads;
+    std::unique_ptr<detail::PerformanceManagerImpl> _performanceManagerImplementation;
     std::unique_ptr<vulkan::Presentation> _presentation;
     ContextDeviceInfo _info;
 };
@@ -366,10 +375,10 @@ auto Context::Impl::initialize(const WindowSurface* surface, const ContextOption
         return std::unexpected {std::move(services.error())};
     }
     _services = std::move(*services);
-    return initializeDevice(surface);
+    return initializeDevice(surface, options.enableGpuTimestampSampling);
 }
 
-auto Context::Impl::initializeDevice(const WindowSurface* surface) -> Result<void>
+auto Context::Impl::initializeDevice(const WindowSurface* surface, bool enableGpuTimestampSampling) -> Result<void>
 {
     const auto nativeSurface = _services.surface ? **_services.surface : vk::SurfaceKHR {};
     auto selected = vulkan::selectDevice(*_services.instance, nativeSurface, _services.extensions);
@@ -384,16 +393,44 @@ auto Context::Impl::initializeDevice(const WindowSurface* surface) -> Result<voi
         return std::unexpected {std::move(createdDevice.error())};
     }
     _device = std::move(*createdDevice);
+    return initializeSelectedDevice(surface, *selected, nativeSurface, enableGpuTimestampSampling);
+}
+
+auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
+                                             const vulkan::SelectedDevice& selected,
+                                             vk::SurfaceKHR nativeSurface,
+                                             bool enableGpuTimestampSampling) -> Result<void>
+{
     _memoryPool = resources::MemoryPool::create(_physicalDevice, _device);
+    if (const auto initialized = initializePerformance(selected, enableGpuTimestampSampling); !initialized)
+    {
+        return std::unexpected {initialized.error()};
+    }
     if (surface != nullptr)
     {
-        const auto initialized = initializePresentation(*surface, *selected, nativeSurface);
+        const auto initialized = initializePresentation(*surface, selected, nativeSurface);
         if (!initialized)
         {
             return std::unexpected {initialized.error()};
         }
     }
-    _info = std::move(selected->info);
+    _info = selected.info;
+    return {};
+}
+
+auto Context::Impl::initializePerformance(const vulkan::SelectedDevice& selected, bool enableGpuTimestampSampling)
+    -> Result<void>
+{
+    auto performance = std::make_unique<detail::PerformanceManagerImpl>(
+        _device,
+        detail::TimestampProperties {.validBits = selected.timestampValidBits,
+                                     .periodNanoseconds = selected.timestampPeriodNanoseconds},
+        enableGpuTimestampSampling);
+    if (const auto initialized = performance->initialize(); !initialized)
+    {
+        return std::unexpected {initialized.error()};
+    }
+    _performanceManagerImplementation = std::move(performance);
     return {};
 }
 
@@ -407,7 +444,8 @@ auto Context::Impl::initializePresentation(const WindowSurface& surface,
                                                       .surface = nativeSurface,
                                                       .window = surface,
                                                       .deviceInfo = selected.info,
-                                                      .submissions = *_submissions});
+                                                      .submissions = *_submissions,
+                                                      .performance = _performanceManagerImplementation.get()});
     if (!presentation)
     {
         return std::unexpected {presentation.error()};
@@ -452,6 +490,11 @@ void Context::Impl::collectCompletedUploads()
 auto Context::Impl::getDeviceInfo() const -> const ContextDeviceInfo&
 {
     return _info;
+}
+
+auto Context::Impl::getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&
+{
+    return *_performanceManagerImplementation;
 }
 
 auto Context::Impl::presentClearFrame() -> Result<FrameResult>
@@ -530,12 +573,14 @@ void Context::Impl::drain()
 }
 
 Context::Context(std::unique_ptr<Impl> implementation) noexcept
-    : _implementation {std::move(implementation)}
+    : _implementation {std::move(implementation)},
+      _performanceManager {_implementation->getPerformanceManagerImplementation()}
 {
 }
 
 Context::Context(Context&& other) noexcept
-    : _implementation {std::move(other._implementation)}
+    : _implementation {std::move(other._implementation)},
+      _performanceManager {_implementation->getPerformanceManagerImplementation()}
 {
 }
 
@@ -576,6 +621,12 @@ auto Context::getDeviceInfo() const -> ContextDeviceInfo
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
     return _implementation->getDeviceInfo();
+}
+
+auto Context::getPerformanceManager() -> PerformanceManager&
+{
+    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    return _performanceManager;
 }
 
 auto Context::presentClearFrame() const -> Result<FrameResult>

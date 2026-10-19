@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
+#include <cstdint>
 #include <expected>
 #include <panda/Context.hpp>
 #include <panda/WindowSurface.hpp>
@@ -25,6 +26,8 @@ struct SelectedDevice
 {
     vk::PhysicalDevice physicalDevice;
     ContextDeviceInfo info;
+    std::uint32_t timestampValidBits {0};
+    float timestampPeriodNanoseconds {0.0F};
 };
 
 [[nodiscard]] auto instanceExtensions(const WindowSurface* surface, bool enableValidation = false)

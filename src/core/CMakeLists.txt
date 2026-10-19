@@ -11,6 +11,8 @@ panda_add_component(panda_core
         UploadBatch.cpp
         vulkan/Context.cpp
         vulkan/DeviceSelection.cpp
+        vulkan/performance/PerformanceManager.cpp
+        vulkan/performance/PerformanceManagerImpl.cpp
         vulkan/presentation/Presentation.cpp
         vulkan/SubmissionQueue.cpp
         vulkan/upload/UploadBatchImpl.cpp
@@ -33,11 +35,13 @@ panda_add_component(panda_core
         panda/Error.hpp
         panda/Mesh.hpp
         panda/Panda.hpp
+        panda/PerformanceManager.hpp
         panda/Texture.hpp
         panda/UploadBatch.hpp
         panda/WindowSurface.hpp
     PRIVATE_HEADERS
         vulkan/DeviceSelection.hpp
+        vulkan/performance/PerformanceManagerImpl.hpp
         vulkan/presentation/Presentation.hpp
         vulkan/SubmissionQueue.hpp
         vulkan/presentation/SwapchainGeneration.hpp
