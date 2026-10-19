@@ -6,23 +6,18 @@
 #include <exception>
 #include <expected>
 #include <format>
-#include <glm/ext/vector_uint2.hpp>
 #include <iterator>
-#include <optional>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
-#include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <panda/WindowSurface.hpp>
-#include <panda/tools/gui/Window.hpp>
-#include <panda_bench/Arguments.hpp>
-#include <panda_bench/Report.hpp>
 #include <print>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include "SmokeRunBackend.hpp"
+#include "panda_bench/Arguments.hpp"
+#include "panda_bench/Report.hpp"
 
 namespace panda_bench
 {
@@ -45,76 +40,38 @@ auto invalidRun(std::string message) -> Failure
     return {.outcome = "invalid", .message = std::move(message)};
 }
 
-auto unsupported(std::string message) -> Failure
-{
-    return {.outcome = "unsupported", .message = std::move(message)};
-}
-
-auto failFromPanda(const panda::Error& error) -> Failure
-{
-    if (error.code == panda::ErrorCode::Unsupported)
-    {
-        return unsupported(error.message);
-    }
-    return failure(error.message);
-}
-
-auto statusName(panda::FrameResult::Status status) -> std::string_view
+auto statusName(FrameStatus status) -> std::string_view
 {
     switch (status)
     {
-    case panda::FrameResult::Status::Presented:
+    case FrameStatus::Presented:
         return "presented";
-    case panda::FrameResult::Status::Skipped:
+    case FrameStatus::Skipped:
         return "skipped";
-    case panda::FrameResult::Status::Suspended:
+    case FrameStatus::Suspended:
         return "suspended";
-    case panda::FrameResult::Status::RecreatePending:
+    case FrameStatus::RecreatePending:
         return "recreate pending";
     }
     return "unknown";
 }
-
 }
 
-SmokeRun::SmokeRun(const Options& options, RunReport& run, Report& report)
+SmokeRun::SmokeRun(const Options& options, RunReport& run, Report& report, SmokeRunBackend& backend)
     : _options {options},
       _report {report},
-      _run {run}
+      _run {run},
+      _backend {backend}
 {
 }
 
 auto SmokeRun::execute() -> std::expected<void, Failure>
 {
     auto execution = executeSafely();
-    teardown();
-    return execution;
-}
-
-void SmokeRun::teardown()
-{
     const auto teardownStart = Clock::now();
-    _context.reset();
-    _window.reset();
+    _backend.teardown();
     _run.teardownDuration = elapsed(teardownStart);
-}
-
-auto SmokeRun::checkedWindow() -> panda::tools::Window&
-{
-    if (!_window.has_value())
-    {
-        throw std::logic_error {"The benchmark window is not initialized"};
-    }
-    return *_window;
-}
-
-auto SmokeRun::checkedContext() -> panda::Context&
-{
-    if (!_context.has_value())
-    {
-        throw std::logic_error {"The benchmark context is not initialized"};
-    }
-    return *_context;
+    return execution;
 }
 
 auto SmokeRun::executeSafely() -> std::expected<void, Failure>
@@ -160,80 +117,22 @@ auto SmokeRun::initializeTimed() -> std::expected<void, Failure>
 
 auto SmokeRun::initialize() -> std::expected<void, Failure>
 {
-    if (const auto window = createWindow(); !window)
+    const auto environment = _backend.initialize(_options);
+    if (!environment)
     {
-        return window;
+        return std::unexpected {environment.error()};
     }
-    if (const auto context = createContext(); !context)
-    {
-        return context;
-    }
-    return captureInitialExtent();
-}
-
-auto SmokeRun::createWindow() -> std::expected<void, Failure>
-{
-    auto createdWindow =
-        panda::tools::Window::create(glm::uvec2 {_options.windowWidth, _options.windowHeight}, "Panda benchmark smoke");
-    if (!createdWindow)
-    {
-        return std::unexpected {failFromPanda(createdWindow.error())};
-    }
-    _window.emplace(std::move(*createdWindow));
-    return {};
-}
-
-auto SmokeRun::createContext() -> std::expected<void, Failure>
-{
-    auto createdContext = panda::Context::createWithSurface(
-        checkedWindow(),
-        {.applicationName = "Panda benchmark", .enableValidation = false, .enableFramePerformanceSampling = true});
-    if (!createdContext)
-    {
-        return std::unexpected {failFromPanda(createdContext.error())};
-    }
-    _context.emplace(std::move(*createdContext));
-    recordDeviceInfo();
-    return checkPerformanceCapabilities();
-}
-
-void SmokeRun::recordDeviceInfo()
-{
-    const auto deviceInfo = checkedContext().getDeviceInfo();
-    _report.gpuModel = deviceInfo.name;
-    if (!deviceInfo.driverName.empty())
-    {
-        _report.driver = DriverReport {.name = deviceInfo.driverName,
-                                       .info = deviceInfo.driverInfo,
-                                       .version = deviceInfo.driverVersion};
-    }
-    _report.vulkanApiVersion = deviceInfo.apiVersion;
-}
-
-auto SmokeRun::checkPerformanceCapabilities() -> std::expected<void, Failure>
-{
-    const auto capabilities = checkedContext().getPerformanceManager().getCapabilities();
-    if (!capabilities.hasGpuTimestampQueries || !capabilities.isGpuTimestampSamplingEnabled)
-    {
-        return std::unexpected {unsupported("The selected graphics queue does not support GPU timestamp sampling")};
-    }
-    return {};
-}
-
-auto SmokeRun::captureInitialExtent() -> std::expected<void, Failure>
-{
-    const auto extent = checkedWindow().getFramebufferExtent();
-    if (!extent)
-    {
-        return std::unexpected {failFromPanda(extent.error())};
-    }
-    if (extent->width == 0 || extent->height == 0)
+    const auto extent = environment->framebufferExtent;
+    if (extent.width == 0 || extent.height == 0)
     {
         return std::unexpected {invalidRun("The benchmark window is minimized")};
     }
-    _initialExtent = *extent;
-    _run.framebufferWidth = extent->width;
-    _run.framebufferHeight = extent->height;
+    _initialExtent = extent;
+    _run.framebufferWidth = extent.width;
+    _run.framebufferHeight = extent.height;
+    _report.gpuModel = environment->gpuModel;
+    _report.driver = environment->driver;
+    _report.vulkanApiVersion = environment->vulkanApiVersion;
     return {};
 }
 
@@ -307,7 +206,7 @@ auto SmokeRun::executeIteration(bool measuring) -> std::expected<void, Failure>
 
 auto SmokeRun::verifyWindowState() -> std::expected<void, Failure>
 {
-    if (checkedWindow().shouldClose())
+    if (_backend.shouldClose())
     {
         return std::unexpected {invalidRun("The benchmark window was closed before the run completed")};
     }
@@ -316,10 +215,10 @@ auto SmokeRun::verifyWindowState() -> std::expected<void, Failure>
 
 auto SmokeRun::checkExtent() -> std::expected<void, Failure>
 {
-    const auto extent = checkedWindow().getFramebufferExtent();
+    const auto extent = _backend.getFramebufferExtent();
     if (!extent)
     {
-        return std::unexpected {failFromPanda(extent.error())};
+        return std::unexpected {extent.error()};
     }
     if (extent->width == 0 || extent->height == 0)
     {
@@ -334,28 +233,18 @@ auto SmokeRun::checkExtent() -> std::expected<void, Failure>
 
 auto SmokeRun::submitFrame(bool measuring) -> std::expected<void, Failure>
 {
-    const auto frame = checkedContext().presentClearFrame();
+    const auto frame = _backend.submitFrame();
     if (!frame)
     {
-        return std::unexpected {failFromPanda(frame.error())};
+        return std::unexpected {frame.error()};
     }
-    if (frame->status != panda::FrameResult::Status::Presented)
+    if (*frame != FrameStatus::Presented)
     {
         return std::unexpected {
-            invalidRun(std::format("The frame was {} during the controlled run", statusName(frame->status)))};
+            invalidRun(std::format("The frame was {} during the controlled run", statusName(*frame)))};
     }
-    if (!frame->completion.isValid())
-    {
-        return std::unexpected {failure("A presented frame had no completion token")};
-    }
-    recordSubmission(*frame, measuring);
-    return {};
-}
-
-void SmokeRun::recordSubmission(const panda::FrameResult& frame, bool measuring)
-{
-    _lastCompletion = frame.completion;
     ++_submittedFrameCount;
+    _hasSubmittedFrame = true;
     if (measuring)
     {
         ++_run.measurementSubmittedFrames;
@@ -364,15 +253,15 @@ void SmokeRun::recordSubmission(const panda::FrameResult& frame, bool measuring)
     {
         ++_run.warmupSubmittedFrames;
     }
+    return {};
 }
 
 auto SmokeRun::collectAvailableSamples(bool measuring, std::uint64_t endFrame) -> std::expected<void, Failure>
 {
-    auto& performance = checkedContext().getPerformanceManager();
-    const auto samples = performance.takeAvailableSamples();
+    const auto samples = _backend.takeAvailableSamples();
     if (!samples)
     {
-        return std::unexpected {failFromPanda(samples.error())};
+        return std::unexpected {samples.error()};
     }
     if (measuring)
     {
@@ -391,17 +280,17 @@ void SmokeRun::appendMeasurementSamples(const std::vector<panda::FramePerformanc
 
 auto SmokeRun::processWindowEvents() -> std::expected<void, Failure>
 {
-    const auto input = checkedWindow().processInput();
+    const auto input = _backend.processInput();
     if (!input)
     {
-        return std::unexpected {failFromPanda(input.error())};
+        return std::unexpected {input.error()};
     }
     return checkExtent();
 }
 
 auto SmokeRun::finishMeasurement() -> std::expected<void, Failure>
 {
-    if (!_lastCompletion.isValid())
+    if (!_hasSubmittedFrame)
     {
         return std::unexpected {invalidRun("No frame was submitted during the run")};
     }
@@ -415,27 +304,19 @@ auto SmokeRun::finishMeasurement() -> std::expected<void, Failure>
 auto SmokeRun::waitForLastFrame() -> std::expected<void, Failure>
 {
     const auto start = Clock::now();
-    const auto waited = checkedContext().wait(_lastCompletion, std::chrono::seconds {30});
+    const auto waited = _backend.waitForLastFrame(std::chrono::seconds {30});
     _run.completionWaitDuration = elapsed(start);
-    if (!waited)
-    {
-        return std::unexpected {failFromPanda(waited.error())};
-    }
-    if (*waited == panda::WaitStatus::Timeout)
-    {
-        return std::unexpected {failure("The last submitted frame did not finish within 30 seconds")};
-    }
-    return {};
+    return waited;
 }
 
 auto SmokeRun::drainSamples() -> std::expected<void, Failure>
 {
     const auto start = Clock::now();
-    const auto remaining = checkedContext().getPerformanceManager().takeAvailableSamples();
+    const auto remaining = _backend.takeAvailableSamples();
     _run.sampleDrainDuration = elapsed(start);
     if (!remaining)
     {
-        return std::unexpected {failFromPanda(remaining.error())};
+        return std::unexpected {remaining.error()};
     }
     appendMeasurementSamples(*remaining, _measurementEndFrame);
     std::ranges::sort(_run.frameSamples, {}, &panda::FramePerformanceSample::frameIndex);
@@ -452,5 +333,4 @@ auto SmokeRun::verifySampleCount() const -> std::expected<void, Failure>
     }
     return {};
 }
-
 }

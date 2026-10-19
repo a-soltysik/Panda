@@ -7,6 +7,9 @@ add_executable(panda-bench
     src/Benchmark.hpp
     src/SmokeRun.cpp
     src/SmokeRun.hpp
+    src/SmokeRunBackend.hpp
+    src/VulkanSmokeRunBackend.cpp
+    src/VulkanSmokeRunBackend.hpp
     src/panda_bench/Arguments.hpp
     src/panda_bench/Report.hpp
     src/panda_bench/Statistics.hpp
@@ -40,4 +43,6 @@ panda_configure_target(panda-bench
     "${CMAKE_CURRENT_SOURCE_DIR}/src/panda_bench/Statistics.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Benchmark.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/SmokeRun.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/SmokeRunBackend.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/VulkanSmokeRunBackend.hpp"
 )

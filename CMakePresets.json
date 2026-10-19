@@ -69,6 +69,7 @@
       "inherits": "gcc-base",
       "cacheVariables": {
         "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_BENCHMARKS": "ON",
         "PANDA_VERIFY_PUBLIC_HEADERS": "ON"
       }
     },
@@ -137,6 +138,7 @@
       "inherits": "msvc-base",
       "cacheVariables": {
         "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_BENCHMARKS": "ON",
         "PANDA_VERIFY_PUBLIC_HEADERS": "ON"
       }
     },

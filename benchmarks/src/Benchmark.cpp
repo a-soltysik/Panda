@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "SmokeRun.hpp"
+#include "VulkanSmokeRunBackend.hpp"
 
 #ifndef PANDA_BENCH_REVISION
 #    define PANDA_BENCH_REVISION "unknown"
@@ -60,7 +61,8 @@ auto executeRuns(const Options& options, Report& report) -> bool
     {
         auto run = RunReport {};
         run.runIndex = static_cast<std::uint32_t>(index + 1);
-        const auto execution = SmokeRun {options, run, report}.execute();
+        auto backend = VulkanSmokeRunBackend {};
+        const auto execution = SmokeRun {options, run, report, backend}.execute();
         report.runs.push_back(std::move(run));
         if (!execution)
         {
