@@ -9,6 +9,9 @@ for its GPU work at normal shutdown, with a ten-second timeout. It does not wait
 after every frame. This point does not track display completion; Context still
 drains presentation during destruction.
 
+The example adds a `StreamSink` to `std::clog` before starting Panda. The logger
+starts with no sinks, so applications choose where engine logs are written.
+
 Run from the repository root.
 
 Windows (MSVC):

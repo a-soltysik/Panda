@@ -97,6 +97,14 @@ void verifyDeviceFeatures(const VkDeviceCreateInfo& info, bool windowed)
     }
 }
 
+void setDriverProperties(const VkPhysicalDeviceProperties2& output)
+{
+    auto* const driver = static_cast<VkPhysicalDeviceDriverProperties*>(output.pNext);
+    ASSERT_NE(driver, nullptr);
+    std::ranges::copy(std::string_view {"Unit Vulkan driver"}, std::span {driver->driverName}.begin());
+    std::ranges::copy(std::string_view {"Unit driver info"}, std::span {driver->driverInfo}.begin());
+}
+
 // Explicit Action types avoid gMock's OnceAction ownership adapter, which
 // triggers a spurious leak diagnostic in clang-tidy with MSVC headers.
 class ContextLifecycleTest : public testing::Test
@@ -164,6 +172,11 @@ protected:
                 output->deviceType = static_cast<VkPhysicalDeviceType>(vk::PhysicalDeviceType::eDiscreteGpu);
                 output->limits.timestampPeriod = timestampPeriod;
                 std::ranges::copy(std::string_view {"Unit GPU"}, std::span {output->deviceName}.begin());
+            });
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(physical, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                setDriverProperties(*output);
             });
     }
 
@@ -413,6 +426,11 @@ protected:
             .Times(testing::AnyNumber())
             .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
                 const auto* base = static_cast<const VkBaseOutStructure*>(output->pNext);
+                if (base->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES)
+                {
+                    setDriverProperties(*output);
+                    return;
+                }
                 if (base->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_PROPERTIES)
                 {
                     auto* timeline = static_cast<VkPhysicalDeviceTimelineSemaphoreProperties*>(output->pNext);
@@ -574,7 +592,7 @@ TEST_F(ContextLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePubli
     expectDevice(false);
     expectPerformancePools();
     expectParentsDestroyed(true, false);
-    auto context = panda::Context::create({.enableGpuTimestampSampling = true});
+    auto context = panda::Context::create({.enableFramePerformanceSampling = true});
     ASSERT_TRUE(context);
 
     auto& performance = context->getPerformanceManager();

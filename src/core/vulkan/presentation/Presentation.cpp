@@ -221,6 +221,14 @@ auto Presentation::recreate(FramebufferExtent requested) -> std::expected<void, 
 
 auto Presentation::presentClearFrame() -> std::expected<FrameResult, Error>
 {
+    auto submittedPerformanceSlot = std::optional<std::size_t> {};
+    return presentClearFrame(submittedPerformanceSlot);
+}
+
+auto Presentation::presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot)
+    -> std::expected<FrameResult, Error>
+{
+    submittedPerformanceSlot.reset();
     const auto ready = prepareWindowFrame();
     if (!ready)
     {
@@ -230,10 +238,11 @@ auto Presentation::presentClearFrame() -> std::expected<FrameResult, Error>
     {
         return FrameResult {.status = FrameResult::Status::Suspended, .completion = {}};
     }
-    return executeAcquiredFrame();
+    return executeAcquiredFrame(submittedPerformanceSlot);
 }
 
-auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
+auto Presentation::executeAcquiredFrame(std::optional<std::size_t>& submittedPerformanceSlot)
+    -> std::expected<FrameResult, Error>
 {
     const auto slotIndex = _nextSlot;
     auto& slot = _slots.at(slotIndex);
@@ -246,10 +255,13 @@ auto Presentation::executeAcquiredFrame() -> std::expected<FrameResult, Error>
     {
         return *nonReady;
     }
-    return submitAcquiredFrame(slot, *acquired, slotIndex);
+    return submitAcquiredFrame(slot, *acquired, slotIndex, submittedPerformanceSlot);
 }
 
-auto Presentation::submitAcquiredFrame(FrameSlot& slot, const AcquiredImage& acquired, std::size_t slotIndex)
+auto Presentation::submitAcquiredFrame(FrameSlot& slot,
+                                       const AcquiredImage& acquired,
+                                       std::size_t slotIndex,
+                                       std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
     auto& image = activeGeneration().images.at(acquired.index);
@@ -262,6 +274,10 @@ auto Presentation::submitAcquiredFrame(FrameSlot& slot, const AcquiredImage& acq
     if (!completion)
     {
         return std::unexpected {completion.error()};
+    }
+    if (_performance != nullptr && _performance->getCapabilities().isGpuTimestampSamplingEnabled)
+    {
+        submittedPerformanceSlot = slotIndex;
     }
     return presentFrame(image, acquired.index, *completion, acquired.suboptimal);
 }

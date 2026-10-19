@@ -1,5 +1,5 @@
 panda_add_test(panda_unit_common unit
-    SOURCES Logger.cpp Assert.cpp FunctionName.cpp StreamSink.cpp
+    SOURCES Logger.cpp Assert.cpp FunctionName.cpp HostInfo.cpp StreamSink.cpp
     LIBRARIES Panda::Panda PandaTest::LogCapture PandaTest::MockHeaders)
 target_include_directories(panda_unit_common PRIVATE "${PROJECT_SOURCE_DIR}/src/common")
 

@@ -22,6 +22,7 @@ application modules remain planned. See [the plan](development/PLAN.md) for curr
 | What must materials and shaders implement? | [Rendering](design/contracts/rendering.md) |
 | What physics is included? | [Prototype physics](design/contracts/physics.md) |
 | How do we measure and learn? | [Benchmarks](development/benchmarking.md), [learning](development/learning.md) |
+| How do I build and run the benchmark? | [Benchmark README](../benchmarks/README.md) |
 | Where are useful examples? | [Empty-window example](../examples/simple_scene/README.md), [buffer allocation](../examples/buffer_allocation/README.md), [CUDA connection](../examples/cuda_connection/README.md), [reference code](../legacy/README.md) |
 
 Read only the sections relevant to a change. Specifications describe intended

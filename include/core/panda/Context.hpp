@@ -27,9 +27,9 @@ struct ContextOptions
     /// Enable the installed Khronos validation layer and route its debug-utils diagnostics
     /// to the Panda logger; failure is reported if the layer or debug-utils extension is absent.
     bool enableValidation {false};
-    /// Create timestamp query pools and collect GPU frame timings when the selected queue supports them.
+    /// Create timestamp query pools and collect paired CPU and GPU frame timings when the selected queue supports them.
     /// Disabled by default to avoid measurement work in contexts that do not need it.
-    bool enableGpuTimestampSampling {false};
+    bool enableFramePerformanceSampling {false};
 };
 
 /// @brief Selected device and enabled core feature diagnostics.
@@ -45,6 +45,12 @@ struct ContextDeviceInfo
 
     /// Vulkan physical-device name.
     std::string name;
+    /// Vulkan physical-device driver name.
+    std::string driverName;
+    /// Driver-provided human-readable description and version.
+    std::string driverInfo;
+    /// Driver version as reported by Vulkan; its encoding is vendor-specific.
+    std::uint32_t driverVersion {0};
     /// Vulkan API version reported by the selected physical device.
     std::uint32_t apiVersion {0};
     /// Graphics and compute queue family selected for ordered work.
@@ -114,7 +120,7 @@ public:
     [[nodiscard]] auto getDeviceInfo() const -> ContextDeviceInfo;
 
     /// @brief Borrows the Context-owned performance data manager.
-    /// @return A manager that exposes device capabilities and ready GPU samples;
+    /// @return A manager that exposes device capabilities and ready per-frame CPU/GPU samples;
     /// it must not outlive this Context. Calls remain serialized with Context operations.
     [[nodiscard]] auto getPerformanceManager() -> PerformanceManager&;
 

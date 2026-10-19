@@ -46,6 +46,8 @@ public:
     ~Presentation();
 
     [[nodiscard]] auto presentClearFrame() -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot)
+        -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto drain() -> std::expected<void, Error>;
 
 private:
@@ -97,8 +99,12 @@ private:
     [[nodiscard]] auto ensureWindowGeneration(FramebufferExtent requested) -> std::expected<void, Error>;
     [[nodiscard]] auto prepareWindowFrame() -> std::expected<bool, Error>;
     [[nodiscard]] static auto nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>;
-    [[nodiscard]] auto executeAcquiredFrame() -> std::expected<FrameResult, Error>;
-    [[nodiscard]] auto submitAcquiredFrame(FrameSlot& slot, const AcquiredImage& acquired, std::size_t slotIndex)
+    [[nodiscard]] auto executeAcquiredFrame(std::optional<std::size_t>& submittedPerformanceSlot)
+        -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto submitAcquiredFrame(FrameSlot& slot,
+                                           const AcquiredImage& acquired,
+                                           std::size_t slotIndex,
+                                           std::optional<std::size_t>& submittedPerformanceSlot)
         -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage, Error>;
     [[nodiscard]] auto interpretAcquiredImage(vk::Result result, std::uint32_t index)

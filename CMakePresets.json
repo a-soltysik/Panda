@@ -69,6 +69,7 @@
       "inherits": "gcc-base",
       "cacheVariables": {
         "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_BENCHMARKS": "ON",
         "PANDA_VERIFY_PUBLIC_HEADERS": "ON"
       }
     },
@@ -112,7 +113,9 @@
         "rhs": "Linux"
       },
       "cacheVariables": {
-        "PANDA_ENABLE_COVERAGE": "ON"
+        "PANDA_ENABLE_COVERAGE": "ON",
+        "PANDA_BUILD_TOOLS": "ON",
+        "PANDA_BUILD_BENCHMARKS": "ON"
       }
     },
     {
@@ -135,6 +138,7 @@
       "inherits": "msvc-base",
       "cacheVariables": {
         "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_BENCHMARKS": "ON",
         "PANDA_VERIFY_PUBLIC_HEADERS": "ON"
       }
     },

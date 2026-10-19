@@ -1,22 +1,36 @@
 # Automated benchmark specification
 
-Accepted benchmark specification. The executable and profiles are planned; timing
-budgets remain provisional until measured on the reference system.
+Accepted benchmark specification. The smoke executable is implemented; full profiles
+remain planned, and timing budgets remain provisional until measured on the reference
+system.
 
 ## Execution model
 
 Provide a standalone `panda-bench`, enabled with `PANDA_BUILD_BENCHMARKS=ON` and
-disabled by default. A future optimized benchmark preset should retain symbols.
-Profiles select settings at runtime; changing a duration, particle count, or output
-directory must not require recompilation.
+disabled by default. The smoke profile is implemented; reference profiles remain
+planned. Profiles select settings at runtime; changing window extent, duration,
+workload size, or output directory must not require recompilation.
 
-The intended command-line shape is:
+The current smoke profile accepts:
 
 ```text
-panda-bench --profile reference-1080p --output results
+panda-bench --profile smoke --output results --width 1280 --height 720 --warmup-seconds 1 --measure-seconds 3 --runs 1
 ```
 
-This is a design example, not a command available in the current repository.
+`--width` and `--height` set the requested window extent in pixels. The defaults are
+1280 by 720; the report records both the requested and effective framebuffer extents.
+Development and quality presets use Debug and are for functional smoke checks only.
+Use an optimized Release build for performance comparisons. Use RelWithDebInfo when
+profiling needs symbols, and treat those results as a separate build configuration.
+Compare benchmark runs only when build type and compiler settings match.
+The `reference-1080p` profile remains a design target, not an available command.
+Engine logs are written to `panda-bench.log` in the selected output directory;
+the completion summary stays on the console and prints the paths to both the JSON
+report and engine log.
+The smoke report obtains the host CPU model through Panda's public `getHostInfo()`
+API and the selected Vulkan driver's name, description and vendor-specific version
+through `Context::getDeviceInfo()`. Environment values that cannot be collected are
+omitted from JSON.
 
 The full reference run automatically:
 
@@ -34,7 +48,7 @@ Use the same renderer and synchronization path as applications, not a special fa
 path that bypasses production behavior.
 
 `panda-bench` is an ordinary Panda API consumer. It enables
-`ContextOptions::enableGpuTimestampSampling`, obtains the Context-owned
+`ContextOptions::enableFramePerformanceSampling`, obtains the Context-owned
 `PerformanceManager` through `Context::getPerformanceManager()`, checks the public
 capabilities, and drains samples through `takeAvailableSamples()`. Applications use
 the same option and API; the benchmark has no private route to timestamp data.
@@ -42,8 +56,8 @@ the same option and API; the benchmark has no private route to timestamp data.
 ## Public performance collection
 
 Every valid Context exposes a `PerformanceManager`, including a headless Context.
-GPU timestamp sampling is disabled by default. Set
-`ContextOptions::enableGpuTimestampSampling` to enable it. `getCapabilities()` reports
+Frame performance sampling is disabled by default. Set
+`ContextOptions::enableFramePerformanceSampling` to enable it. `getCapabilities()` reports
 both whether the selected graphics queue supports timestamp queries and whether
 sampling is enabled for this Context. The manager handles counter wrapping and
 converts device ticks to nanoseconds internally. A queue without timestamp support
@@ -58,11 +72,17 @@ sampling is disabled, unsupported, or no sample is ready yet. Samples stay buffe
 until a `take` method returns them, so long-running applications should drain samples
 regularly.
 
-The first measurement is `gpuExecutionDuration`: GPU time from the start to the end
-of rendering work for a submitted frame, returned in nanoseconds. It excludes CPU
-work and presentation latency. Disabled sampling or unsupported timestamp queries
-produce no GPU samples; callers inspect capabilities instead of interpreting missing
-data as zero.
+Each sample pairs `cpuFrameDuration` with `gpuExecutionDuration` for the same
+submitted frame. Both are returned in nanoseconds. `cpuFrameDuration` is host
+wall-clock time from the start of Panda's frame call through its submission and
+presentation call. It includes CPU-side acquisition, waits, command recording and
+submission, so it exposes stalls that can limit frame throughput even when GPU time
+is short. It excludes application work outside Panda's call and display latency; it
+is elapsed time, not CPU execution time. `gpuExecutionDuration` is GPU time between
+the frame's GPU timestamp markers. It excludes CPU work and presentation latency.
+The paired sample becomes available when its GPU timestamp queries are ready.
+Disabled sampling or unsupported timestamp queries produce no paired samples;
+callers inspect capabilities instead of interpreting missing data as zero.
 
 Vulkan timestamp results live in query pools. Panda creates one pool for each of its
 two in-flight frame slots with `queryType = eTimestamp` and `queryCount = 2`. The
@@ -91,8 +111,9 @@ markers; GPU-side stalls between them can contribute to that elapsed time.
 
 ## Measurement rules
 
-- Measure active CPU render preparation separately from waiting, application solver
-  time, tools, asset loading, and pipeline warmup.
+- Measure CPU frame wall time across Panda's complete frame call, including
+  CPU-side waits. Keep application solver time, tools, asset loading, and pipeline
+  warmup outside that call and report them separately when measured.
 - Measure GPU passes with supported timestamp queries and asynchronous result
   collection. Do not add a per-pass or per-frame global wait to obtain timings.
 - Report shadow and camera/final-output work; presentation/display latency is a
@@ -147,7 +168,7 @@ must not be mistaken for the application rendering path.
 ## Reports and comparisons
 
 Produce a concise console summary and a machine-readable JSON report; optional CSV
-contains raw samples. Include case/profile/schema version, commit and dirty state,
+contains raw samples. Include case/profile/schema version and commit revision,
 CPU/GPU, OS, driver, compiler/build mode, requested and effective quality, seeds,
 durations, sample counts, per-run statistics, validation/profiler state, and outcome.
 
@@ -193,7 +214,7 @@ VSync/present waits are separately timed and excluded from active CPU preparatio
 GPU timestamps cover submitted shadow, camera and tone-map passes. Compare runs only
 with equal effective settings and present mode. A missing optional timestamp feature
 marks GPU duration unavailable rather than inventing zero; the GPU timing profile
-enables `ContextOptions::enableGpuTimestampSampling`, requires nonzero timestamp
+enables `ContextOptions::enableFramePerformanceSampling`, requires nonzero timestamp
 valid bits and fails clearly if unavailable.
 
 The built-in `reference-1080p-v1` fixture generates one indexed static grid mesh:
@@ -243,13 +264,13 @@ The synthetic update recomputes the same center from index/seed on GPU or reads 
 application-owned initial stream; it never consumes the previous rendered position.
 
 Sample one completed submitted frame at a time using asynchronous query retrieval,
-with no measurement-time global wait. A CPU render-preparation sample sums the
-active Panda work that extracts/culls scene draws, prepares graphics parameters and
-descriptors, and records shadow/camera/final-output commands for that frame. Start
-these scopes only after a successful image acquire; end them before submission.
-Measure frame-slot waits, acquire, compute callback and stage-scheduling CPU work,
-graphics submission, present, and administrative waits separately. None contributes
-to the render-preparation sample, even when it occurs between two preparation scopes.
+with no measurement-time global wait. Its CPU wall duration begins when Panda starts
+handling the frame and ends after submission and the presentation call return. This
+includes frame-slot waits, image acquisition, command recording, submission and
+queuing presentation; it does not include work the application performs outside
+Panda's frame call or time until the display shows the image. A skipped frame with
+no submitted work has no paired sample. This CPU value can include time when the GPU
+is running or when the CPU is blocked, so do not add it to the GPU duration.
 A GPU sample runs from the first shadow/camera command timestamp to the final
 tone-map command timestamp, plus named per-pass intervals; do not add overlapping
 intervals into frame duration.
@@ -259,10 +280,11 @@ fixture state and records its own samples/count/mean/p50/p95/p99/min/max. Quanti
 use sorted nearest-rank index `ceil(q*N)-1`. Also report pooled statistics and
 worst-run p95 for comparison; retain per-run values so disagreement is visible.
 
-JSON schema version 1 stores profile/fixture versions, code revision and dirty flag,
+JSON schema version 3 stores profile/fixture versions and code revision,
 OS/compiler/build, CPU/GPU/driver, Vulkan/CUDA availability, requested/effective
 settings and formats, image extent, seed, warmup/measurement durations, per-run
-sample counts/statistics, skipped cases and reasons, draw/submission counts, waits,
+paired per-frame CPU/GPU samples and statistics, skipped cases and reasons,
+draw/submission counts, waits,
 timestamp validity and calibration limitations, validation/profiler state, and
 outcome. Raw samples may be saved separately, outside curated source baselines.
 Exit codes: 0 complete, 2 unsupported requested capability, 3 invalid controlled

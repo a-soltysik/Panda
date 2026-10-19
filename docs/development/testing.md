@@ -102,8 +102,11 @@ ctest --test-dir <build-directory> --output-on-failure -L system
 
 Use `-LE system` for a noninteractive run that also selects registered formatting
 checks. Quality presets enable formatting; test presets disable it.
-The `gcc-coverage` preset runs the same noninteractive selection with GCC
-instrumentation. Run and report it with:
+The `gcc-coverage` preset runs the noninteractive CPU test selection with GCC
+instrumentation, including mocked benchmark orchestration tests. The Linux
+coverage job also runs `panda-bench` under Xvfb with Mesa lavapipe to exercise its
+CLI and Vulkan frame path for source coverage; its timings are not performance
+evidence. Run and report the CPU coverage preset with:
 
 ```sh
 cmake --preset gcc-coverage
@@ -114,8 +117,9 @@ cmake --build --preset gcc-coverage --target panda_coverage_report
 
 The target generates annotated HTML and Cobertura XML in the configured build
 directory's `coverage/` subdirectory. CI publishes these files as the
-`panda-coverage` artifact. The displayed percentage counts only the instrumented
-Linux CPU run; native-window and future GPU paths require separate evidence.
+`panda-coverage` artifact. The displayed percentage counts executed test paths.
+Lavapipe provides software Vulkan runtime coverage; native hardware rendering
+still requires separate evidence.
 GoogleTest death tests assert both process termination and the originating
 diagnostic. GoogleTest owns subprocess handling and platform differences; test
 files need no separate fatal executable, custom main or conditional process code.

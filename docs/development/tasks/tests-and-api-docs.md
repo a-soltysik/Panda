@@ -25,9 +25,9 @@ Specifications: [Quality](../quality.md), [learning](../learning.md).
 Run ordinary and unity builds, header-isolation checks and documentation generation.
 Demonstrate that missing public API documentation fails the documentation job.
 If analyzer wiring changes, verify its failure path through the quality build.
-Run instrumented CPU tests and inspect generated production-source coverage. CI
-uploads HTML and Cobertura XML as an artifact and sends the XML to Codecov for the
-badge; no minimum percentage gates the build.
+Run instrumented CPU tests and inspect generated Panda and benchmark source coverage.
+CI uploads HTML and Cobertura XML as an artifact and sends the XML to Codecov for
+the badge; no minimum percentage gates the build.
 Record actual local/CI results and unavailable environments.
 
 Learning: Explain which checks catch C++ errors and which require a real GPU.
@@ -46,11 +46,13 @@ Temporarily removing the `version()` API comment failed the documentation build;
 restoring it passed. `panda::detail` and `panda::log::detail` are excluded from
 the generated API.
 
-The Linux GCC coverage configuration passed 38 noninteractive cases. gcovr 7.2
-reported 88.9% production-source lines (367/413), 94.9% functions (56/59), and
-62.1% branches (261/420). This is a local CPU measurement, with native-window
-system scenarios excluded. Hosted CI uploaded the `panda-coverage` and
-`panda-api-docs` artifacts and passed its Codecov upload. Codecov reported
+The Linux GCC coverage preset passed all 383 non-system tests (238 unit and 145
+integration). gcovr 7.2 reported 85.7% lines (3226/3766), 90.2% functions
+(535/593), and 69.0% branches (2797/4053), including
+`benchmarks/src/Arguments.cpp`, `Report.cpp` and `Statistics.cpp`. This measures
+CPU test paths; the Vulkan smoke path is not exercised by this coverage run.
+Hosted CI uploaded the `panda-coverage` and `panda-api-docs` artifacts and passed
+its Codecov upload. Codecov reported
 64.61% for PR #51. The README badge targets `master`, so its published percentage
 remains to be observed after merge. No GPU behavior was exercised by these checks.
 

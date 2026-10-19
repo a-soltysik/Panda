@@ -19,6 +19,8 @@ jobs:
         with:
           compiler: gcc-16
           cache-key: gcc-coverage
+      - name: Install software Vulkan and headless display
+        run: sudo apt-get install -y mesa-vulkan-drivers xvfb xauth
       - name: Install report generator
         run: sudo apt-get install -y gcovr=7.2+really-2
       - name: Configure
@@ -27,6 +29,16 @@ jobs:
         run: cmake --build --preset gcc-coverage
       - name: Run CPU tests
         run: ctest --preset gcc-coverage
+      - name: Run benchmark smoke on lavapipe
+        shell: bash
+        run: >-
+          xvfb-run -a env
+          VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          build-gcc-coverage-Linux/benchmarks/panda-bench
+          --profile smoke
+          --output "$RUNNER_TEMP/panda-bench-smoke"
+          --width 320 --height 240
+          --warmup-seconds 0 --measure-seconds 1 --runs 1
       - name: Generate coverage report
         if: success() || failure()
         run: cmake --build --preset gcc-coverage --target panda_coverage_report
@@ -38,7 +50,7 @@ jobs:
           path: build-gcc-coverage-Linux/coverage/
           if-no-files-found: error
       - name: Update coverage badge
-        if: success()
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: codecov/codecov-action@v5
         with:
           use_oidc: true

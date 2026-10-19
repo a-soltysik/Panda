@@ -3,6 +3,8 @@
 #include <exception>
 #include <expected>
 #include <glm/ext/vector_uint2.hpp>
+#include <iostream>
+#include <memory>
 #include <panda/Assert.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
@@ -10,9 +12,12 @@
 #include <panda/Logger.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <string_view>
+#include <tuple>
 
 namespace
 {
+constexpr auto frameWaitTimeout = std::chrono::seconds {10};
+
 auto fail(std::string_view message) noexcept -> int
 {
     try
@@ -32,7 +37,7 @@ auto finishFrames(const panda::Context& context, panda::CompletionPoint last) ->
     {
         return {};
     }
-    return context.wait(last, std::chrono::seconds {10}).and_then([](panda::WaitStatus status) -> panda::Result<void> {
+    return context.wait(last, frameWaitTimeout).and_then([](panda::WaitStatus status) -> panda::Result<void> {
         if (status == panda::WaitStatus::Timeout)
         {
             return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Last frame did not finish in time")};
@@ -86,6 +91,7 @@ auto main() -> int
 {
     try
     {
+        std::ignore = panda::log::Logger::instance().addSink(std::make_unique<panda::log::StreamSink>(std::clog));
         return runApplication();
     }
     catch (const std::exception& error)

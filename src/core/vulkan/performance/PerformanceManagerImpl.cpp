@@ -23,10 +23,10 @@ namespace panda::detail
 {
 PerformanceManagerImpl::PerformanceManagerImpl(const vk::raii::Device& device,
                                                TimestampProperties timestamps,
-                                               bool enableGpuTimestampSampling)
+                                               bool enableFramePerformanceSampling)
     : _device {device},
       _capabilities {.hasGpuTimestampQueries = timestamps.validBits != 0,
-                     .isGpuTimestampSamplingEnabled = enableGpuTimestampSampling && timestamps.validBits != 0},
+                     .isGpuTimestampSamplingEnabled = enableFramePerformanceSampling && timestamps.validBits != 0},
       _timestampValidBits {timestamps.validBits},
       _timestampPeriodNanoseconds {timestamps.periodNanoseconds}
 {
@@ -102,7 +102,9 @@ auto PerformanceManagerImpl::collect(std::size_t slotIndex) -> Result<bool>
     const auto frameIndex = slot.frameIndex;
     _readySamples.push_back({
         .frameIndex = frameIndex,
-        .sample = {.frameIndex = frameIndex, .gpuExecutionDuration = *measured}
+        .sample = {.frameIndex = frameIndex,
+                   .cpuFrameDuration = slot.cpuFrameDuration,
+                   .gpuExecutionDuration = *measured}
     });
     slot.submitted = false;
     return true;
@@ -168,6 +170,19 @@ void PerformanceManagerImpl::markSubmitted(std::size_t slotIndex) noexcept
         auto& slot = _slots.at(slotIndex);
         slot.submitted = true;
         slot.frameIndex = _nextFrameIndex++;
+        slot.cpuFrameDuration = {};
+    }
+}
+
+void PerformanceManagerImpl::recordCpuFrameDuration(std::size_t slotIndex, std::chrono::nanoseconds duration) noexcept
+{
+    if (_capabilities.isGpuTimestampSamplingEnabled)
+    {
+        auto& slot = _slots.at(slotIndex);
+        if (slot.submitted)
+        {
+            slot.cpuFrameDuration = duration;
+        }
     }
 }
 

@@ -322,8 +322,13 @@ protected:
             .surface = surface,
             .requested = {.width = 320, .height = 240},
             .oldSwapchain = vk::SwapchainKHR {oldSwapchain},
-            .deviceInfo =
-                {.name = {}, .apiVersion = 0, .queueFamily = 2, .presentQueueFamily = separateQueues ? 3U : 2U}
+            .deviceInfo = {.name = {},
+                          .driverName = {},
+                          .driverInfo = {},
+                          .driverVersion = 0,
+                          .apiVersion = 0,
+                          .queueFamily = 2,
+                          .presentQueueFamily = separateQueues ? 3U : 2U}
         });
     }
 

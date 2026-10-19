@@ -9,6 +9,9 @@ Vulkan 1.3 and the Khronos validation layer; no display or CUDA toolkit is neede
 `BufferMemory::Upload` and `Readback` select host-visible memory; they do not
 expose a mapper or grant permission to access memory used by the GPU.
 
+The example adds a `StreamSink` to `std::clog` before creating the Context. The
+logger starts with no sinks, so applications choose where engine logs are written.
+
 Windows:
 
 ```powershell
