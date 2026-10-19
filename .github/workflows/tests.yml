@@ -50,7 +50,7 @@ jobs:
           path: build-gcc-coverage-Linux/coverage/
           if-no-files-found: error
       - name: Update coverage badge
-        if: success()
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: codecov/codecov-action@v5
         with:
           use_oidc: true
