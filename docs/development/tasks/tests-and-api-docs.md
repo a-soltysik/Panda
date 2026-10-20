@@ -34,6 +34,17 @@ Learning: Explain which checks catch C++ errors and which require a real GPU.
 
 ## Current evidence
 
+The CI quality jobs reuse one build directory for CUDA-off analysis with examples
+and the subsequent CUDA-on build without examples. Local Windows/MSVC and WSL/GCC
+configuration comparisons preserved all 153 and 155 shared compilation commands,
+respectively. Building `panda_common` before enabling CUDA and inspecting its
+subsequent Ninja build showed no repeated compilation or analysis. Both platforms
+built and analyzed the CUDA adapter and Runtime mock, then built the CUDA test
+executables with runtime presets and passed all seven CUDA cases. Workflow YAML
+parsing and the documentation checker passed. A complete quality rerun, the full
+CPU suite and hosted execution of this workflow arrangement remain unverified;
+these checks do not establish an end-to-end CI speedup.
+
 Local Windows MSVC 19.51 and WSL Ubuntu 26.04 GCC 16 ordinary builds passed;
 both ran 38 noninteractive CTest cases. The quality configuration's CMake
 `all_verify_interface_header_sets` target compiled each current public header

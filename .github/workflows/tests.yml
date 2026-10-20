@@ -84,6 +84,16 @@ jobs:
             os: windows-2025
             compiler: msvc
             preset: msvc-tests
+          - name: Linux GCC CUDA
+            os: ubuntu-26.04
+            compiler: gcc-16
+            preset: gcc-tests
+            cuda: true
+          - name: Windows MSVC CUDA
+            os: windows-2025
+            compiler: msvc
+            preset: msvc-tests
+            cuda: true
           - name: Linux GCC ASan and UBSan
             os: ubuntu-26.04
             compiler: gcc-16
@@ -97,10 +107,12 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           compiler: ${{ matrix.compiler }}
-          cache-key: ${{ matrix.preset }}
+          cuda: ${{ matrix.cuda && 'true' || 'false' }}
+          cache-key: ${{ matrix.preset }}${{ matrix.cuda && '-cuda' || '' }}
       - name: Configure
         run: >-
           cmake --preset ${{ matrix.preset }}
+          ${{ matrix.cuda && '-DPANDA_BUILD_CUDA=ON -DPANDA_BUILD_EXAMPLES=OFF' || '' }}
           ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
