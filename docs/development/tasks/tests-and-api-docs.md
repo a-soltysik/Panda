@@ -51,9 +51,17 @@ builds; Clang host analysis rejects a CMake native-only code generation flag, so
 the analysis preset keeps an explicit architecture. Deliberate host, device and
 owned-header defects each failed CUDA analysis; restoring them passed. The toolkit
 version warning stays visible while other errors fail the target. CI builds the
-project once with CUDA and analyzes only CUDA in the separate configuration.
-Hosted timing measurements remain unverified; local passes do not prove a CI
-speedup or GPU correctness.
+project once with CUDA and analyzes only CUDA in independent Linux/Windows jobs.
+PR #75's ordinary builds and C++ analysis passed on Linux and Windows, but both
+subsequent Clang CUDA compiler-identification steps failed. The revised workflow
+separates those jobs and retains CMake configuration logs on failure. CMake 4.4.3
+with the complete Linux LLVM 22.1.8 toolchain passed fresh configuration locally.
+Analysis presets limit compiler probes to host compilation; a device-only static
+assertion still failed the real clang-tidy target after its host pass succeeded.
+Hosted verification of the revision remains pending; the original runner failure
+did not preserve enough diagnostics to establish its exact cause. Local passes
+do not prove a CI speedup or GPU correctness. CI and presets now share the same
+archived `.cache/ccache` directory, without an arbitrary one-gigabyte override.
 
 The Mermaid preset checked 10 diagrams in 53 files. WSL API documentation, skill
 validators and the documentation checker passed. WSL synchronization ran from

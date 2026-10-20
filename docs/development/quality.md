@@ -157,16 +157,22 @@ technical correctness.
 
 [Quality](../../.github/workflows/quality.yml) compiles owned production, example,
 benchmark and test sources with warnings-as-errors, clang-tidy and cppcheck on
-Linux/GCC and Windows/MSVC. Each analysis job builds once with CUDA and examples
+Linux/GCC and Windows/MSVC. Each C++ analysis job builds once with CUDA and examples
 on, using explicit architecture 89 so compilation needs no GPU. The CUDA example
 is built and linked, never executed. Ordinary C++ sources use CMake's
 `CXX_CLANG_TIDY` and `CXX_CPPCHECK` properties.
 
-CUDA analysis uses a separate Clang CUDA configuration of the same target graph:
+Independent Linux and Windows CUDA analysis jobs run alongside C++ quality, with
+no job dependency. They use a separate Clang CUDA configuration of the same target graph:
 `cmake --preset clang-cuda-analysis` followed by
 `cmake --build --preset clang-cuda-analysis` on Linux; Windows uses the
 `clang-cuda-analysis-windows` preset. Its build preset selects only
 `panda_cuda_analysis`, without rebuilding or analyzing the C++ project again.
+Only these jobs select Clang as the compiler; C++ quality retains GCC or MSVC.
+Failed CUDA jobs upload CMake's configuration log for compiler-probe diagnostics.
+The analysis presets use `--cuda-host-only` for CMake's compiler probes, which need
+no device code generation. Each clang-tidy command explicitly selects its host or
+device pass, overriding that compilation-database flag for device analysis.
 clang-tidy reads Clang's compilation database in explicit host and device passes.
 CUDA translation units and their owned headers use clang-tidy only. cppcheck is
 reserved for ordinary C++ translation units through `CXX_CPPCHECK`; no CUDA
@@ -208,6 +214,9 @@ installed analysis tool versions. MSVC uses the runner's installed toolchain.
 Jobs build their own dependencies
 and executables; build directories and target outputs are not shared between jobs.
 CI installs ccache through setup-cpp and uses it through CMake's compiler launcher.
+CI and local presets use `.cache/ccache`, which the setup action restores, saves
+and reports; preset environment settings must not redirect compilation outside
+the archived directory.
 It saves compiler outputs in separate caches keyed by runner OS, compiler and build
 configuration and the setup action hash. MSVC CI uses
 embedded `/Z7` debug information, which retains symbols and allows those compilations

@@ -293,6 +293,7 @@
         "CMAKE_CXX_COMPILER": "clang++",
         "CMAKE_CUDA_COMPILER": "clang++",
         "CMAKE_CUDA_ARCHITECTURES": "89",
+        "CMAKE_CUDA_FLAGS": "--cuda-host-only",
         "PANDA_CUDA_CLANG_TIDY_OPTIONS": "--extra-arg=-Wno-error=unknown-cuda-version;--warnings-as-errors=-clang-diagnostic-unknown-cuda-version",
         "PANDA_BUILD_CUDA": "ON",
         "PANDA_BUILD_TOOLS": "ON",
@@ -316,7 +317,7 @@
         "CMAKE_C_COMPILER_TARGET": "x86_64-pc-windows-msvc",
         "CMAKE_CXX_COMPILER_TARGET": "x86_64-pc-windows-msvc",
         "CMAKE_CUDA_COMPILER_TARGET": "x86_64-pc-windows-msvc",
-        "CMAKE_CUDA_FLAGS": "--target=x86_64-pc-windows-msvc",
+        "CMAKE_CUDA_FLAGS": "--target=x86_64-pc-windows-msvc --cuda-host-only",
         "CMAKE_LINKER_TYPE": "MSVC"
       }
     }

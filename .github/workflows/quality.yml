@@ -99,12 +99,10 @@ jobs:
             os: ubuntu-26.04
             compiler: gcc
             preset: gcc-quality
-            cuda-analysis-preset: clang-cuda-analysis
           - name: Windows MSVC analysis
             os: windows-2025
             compiler: msvc
             preset: msvc-quality
-            cuda-analysis-preset: clang-cuda-analysis-windows
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
@@ -119,11 +117,6 @@ jobs:
           ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
       - name: Build and analyze
         run: cmake --build --preset ${{ matrix.preset }}
-      - name: Configure CUDA analysis
-        run: >-
-          cmake --preset ${{ matrix.cuda-analysis-preset }} -DCMAKE_CUDA_ARCHITECTURES=89
-      - name: Analyze CUDA host and device sources
-        run: cmake --build --preset ${{ matrix.cuda-analysis-preset }}
       - name: Compile public headers independently
         run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
       - name: Check formatting
@@ -135,3 +128,35 @@ jobs:
           if command -v ccache >/dev/null 2>&1; then
             ccache --show-stats
           fi
+
+  cuda-analysis:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux CUDA analysis
+            os: ubuntu-26.04
+            preset: clang-cuda-analysis
+          - name: Windows CUDA analysis
+            os: windows-2025
+            preset: clang-cuda-analysis-windows
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          compiler: llvm
+          analysis: 'true'
+          cuda: 'true'
+          cache-key: ${{ matrix.preset }}
+      - name: Configure CUDA analysis
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Analyze CUDA host and device sources
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Upload configuration failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuda-analysis-configure-${{ runner.os }}
+          path: build-*/cuda/CMakeFiles/CMakeConfigureLog.yaml
