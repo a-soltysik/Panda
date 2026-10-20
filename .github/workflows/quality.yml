@@ -109,60 +109,24 @@ jobs:
         with:
           compiler: ${{ matrix.compiler }}
           analysis: 'true'
+          cuda: 'true'
           cache-key: ${{ matrix.preset }}
       - name: Configure
         run: >-
-          cmake --preset ${{ matrix.preset }}
+          cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=OFF
           ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
       - name: Build and analyze
         run: cmake --build --preset ${{ matrix.preset }}
-      - name: Compile public headers independently
-        run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
-      - name: Check formatting
-        run: ctest --preset ${{ matrix.preset }} -L format
-      - name: Show compiler cache statistics
-        if: always()
-        shell: bash
-        run: |
-          if command -v ccache >/dev/null 2>&1; then
-            ccache --show-stats
-          fi
-
-  cuda:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux GCC CUDA analysis and tests
-            os: ubuntu-26.04
-            compiler: gcc-16
-            preset: gcc-quality
-          - name: Windows MSVC CUDA analysis and tests
-            os: windows-2025
-            compiler: msvc
-            preset: msvc-quality
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup
-        with:
-          compiler: ${{ matrix.compiler }}
-          analysis: 'true'
-          cuda: 'true'
-          cache-key: ${{ matrix.preset }}-cuda
-      - name: Configure CUDA without GPU-dependent examples
+      - name: Enable CUDA without GPU-dependent examples
         run: >-
           cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DPANDA_BUILD_EXAMPLES=OFF
           ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
-      - name: Build and analyze
+      - name: Build and analyze added CUDA targets
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Compile public headers independently
         run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
       - name: Check formatting
         run: ctest --preset ${{ matrix.preset }} -L format
-      - name: Test CUDA
-        run: ctest --preset ${{ matrix.preset }} -R Cuda
       - name: Show compiler cache statistics
         if: always()
         shell: bash

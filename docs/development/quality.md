@@ -141,18 +141,23 @@ technical correctness.
 
 [Quality](../../.github/workflows/quality.yml) compiles owned production, example,
 benchmark and test sources with warnings-as-errors, clang-tidy and cppcheck on
-Linux/GCC and Windows/MSVC. Separate CUDA jobs install Toolkit 13.4, analyze the optional
-module and its tests, and run the CUDA CTest cases without a GPU. They leave
-examples off because `cuda_connection` detects a native GPU architecture when
-building its kernel. Toolkit 13.4.92 files are cached separately per OS, so a
-cache hit skips the NVIDIA download and installation. The ordinary quality jobs
-build and analyze examples and `panda-bench`.
+Linux/GCC and Windows/MSVC. Each analysis job first builds with CUDA off, including
+examples and `panda-bench`, then reconfigures the same build directory with CUDA on
+and examples off. Ninja reuses the unchanged shared objects and analyzes the added
+CUDA module and test sources without repeating the whole-project analysis.
+The second configuration leaves examples off because `cuda_connection` detects a
+native GPU architecture when building its kernel. These hosted configurations do
+not analyze or build that CUDA example. Toolkit 13.4.92 files are cached separately
+per OS, so a cache hit skips the NVIDIA download and installation.
 When formatting is enabled, CTest registers one `format`-labeled check per source
 directory. Test presets disable formatting; quality presets enable it.
 [Tests](../../.github/workflows/tests.yml) runs unit and integration cases on
 Linux/GCC, Linux/Clang and Windows/MSVC, plus separate Linux ASan/UBSan and Windows
-ASan builds. Runtime presets disable static analysis and formatting to keep those
-results in the quality workflow. Native-display scenarios remain explicit local
+ASan builds. Additional Linux/GCC and Windows/MSVC CUDA variants build and run the
+CPU suite, including CUDA availability cases, with examples off and no GPU required.
+CUDA-off variants remain independent of the Toolkit. Runtime presets disable static
+analysis and formatting to keep those results in the quality workflow.
+Native-display scenarios remain explicit local
 system tests; hosted jobs do not claim native-window or rendering evidence.
 Quality also builds unity configurations on Linux/GCC and Windows/MSVC, verifies
 public headers independently in ordinary quality configurations, and generates
