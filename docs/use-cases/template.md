@@ -41,7 +41,7 @@ sequenceDiagram
     F-->>A: S3 - Published result
 ```
 
-## Reading notes
+## Notes
 
 **Ownership.** Explain who owns or borrows important objects and what must outlive them.
 

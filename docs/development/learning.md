@@ -38,7 +38,7 @@ learning handoff is clear and accept the task.
 
 API comments belong at declarations, usage examples in compiled examples, and
 shared-rule rationale in the owning specification. [Use cases](../use-cases/README.md)
-connect those rules to code with flow-specific reading notes, following the
+connect those rules to code with flow-specific notes, following the
 [functional documentation conventions](functional-documentation.md).
 Follow the [quality policy](quality.md#public-api-and-learning).
 Examples evolve with the project: when a task changes the available capabilities

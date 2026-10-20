@@ -16,7 +16,7 @@ Public build/run guides use Windows and Linux sections with native commands for
 each platform. Environment-specific contributor helpers belong in `.agents/`;
 verification records still identify the environment that actually ran a check.
 
-For functional scenarios, code-reading notes and Mermaid diagrams, follow the
+For functional scenarios, scenario notes and Mermaid diagrams, follow the
 [functional documentation conventions](functional-documentation.md).
 
 ## Text and markup
