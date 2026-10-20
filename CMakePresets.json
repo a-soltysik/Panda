@@ -2,6 +2,15 @@
   "version": 6,
   "configurePresets": [
     {
+      "name": "docs-checks",
+      "displayName": "Panda functional documentation checks",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-docs-checks",
+      "cacheVariables": {
+        "PANDA_DOCS_ONLY": "ON"
+      }
+    },
+    {
       "name": "base",
       "hidden": true,
       "generator": "Ninja",
@@ -241,6 +250,11 @@
     }
   ],
   "buildPresets": [
+    {
+      "name": "docs-checks",
+      "configurePreset": "docs-checks",
+      "targets": ["panda_check_diagrams"]
+    },
     {
       "name": "gcc-unity",
       "configurePreset": "gcc-unity"

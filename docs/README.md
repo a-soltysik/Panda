@@ -14,6 +14,8 @@ application modules remain planned. See [the plan](development/PLAN.md) for curr
 | What should I implement next? | [Plan and tasks](development/PLAN.md) |
 | How should I work and verify it? | [Workflow](development/workflow.md), [quality](development/quality.md) |
 | What code style does the maintainer prefer? | [Project conventions](development/conventions.md) |
+| How do application goals flow through the code? | [Use cases](use-cases/README.md) |
+| How should functional scenarios be written? | [Functional documentation conventions](development/functional-documentation.md), [template](use-cases/template.md) |
 | How are tests divided and dependencies mocked? | [Test organization](development/testing.md) |
 | How is Panda consumed and configured? | [Package and toolchain](design/package-and-toolchain.md) |
 | Who owns resources and completion? | [Resources and frames](design/contracts/resources.md) |

@@ -1,0 +1,11 @@
+{
+  "name": "panda-mermaid-check",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@mermaid-lint/cli": "0.53.1"
+  }
+}

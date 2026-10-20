@@ -1,12 +1,19 @@
 cmake_minimum_required(VERSION 3.28)
 
+include(cmake/Options.cmake)
+if(PANDA_DOCS_ONLY)
+    project(PandaDocumentation LANGUAGES NONE)
+    set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+    include(cmake/DocumentationChecks.cmake)
+    return()
+endif()
+
 include(cmake/MsvcEnvironment.cmake)
 project(Panda VERSION 0.1.0 LANGUAGES CXX)
 if(PROJECT_IS_TOP_LEVEL)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 endif()
 
-include(cmake/Options.cmake)
 if(PANDA_BUILD_EXAMPLES AND NOT PANDA_BUILD_TOOLS)
     message(FATAL_ERROR "PANDA_BUILD_EXAMPLES requires PANDA_BUILD_TOOLS=ON for simple_scene")
 endif()
@@ -46,6 +53,10 @@ endif()
 
 if(PANDA_BUILD_DOCS)
     add_subdirectory(docs/api)
+endif()
+
+if(PANDA_BUILD_DOC_CHECKS)
+    include(cmake/DocumentationChecks.cmake)
 endif()
 
 panda_finalize_format_checks()

@@ -130,6 +130,15 @@ limits remain errors, and nesting is held to the production limit.
 
 ## Continuous integration
 
+[Quality](../../.github/workflows/quality.yml) has an independent
+`Mermaid syntax` job using the `docs-checks` CMake/Ninja preset, without compiler,
+Vulkan SDK or GPU setup. It builds `panda_check_diagrams`, which runs the pinned
+`@mermaid-lint/cli` package pinned in `tools/documentation/` on maintained Markdown, including fenced
+Markdown templates. Syntax errors fail the job with
+file/line diagnostics. See the [functional documentation conventions](functional-documentation.md#maintenance-and-review)
+for scope, local commands and the distinction between parsing, rendering and
+technical correctness.
+
 [Quality](../../.github/workflows/quality.yml) compiles owned production, example,
 benchmark and test sources with warnings-as-errors, clang-tidy and cppcheck on
 Linux/GCC and Windows/MSVC. Separate CUDA jobs install Toolkit 13.4, analyze the optional
@@ -153,7 +162,7 @@ benchmark unit tests, and uploads the report to Codecov.
 Both workflows run for pull requests targeting `master` and pushes to `master`.
 Feature-branch pushes do not start a second run alongside the pull request.
 
-Both workflows use the small [setup action](../../.github/actions/setup/action.yml)
+The C++ jobs use the small [setup action](../../.github/actions/setup/action.yml)
 and matching CMake configure/build/test presets. They build their own dependencies
 and executables; build directories and target outputs are not shared between jobs.
 CI installs ccache through setup-cpp and uses it through CMake's compiler launcher.

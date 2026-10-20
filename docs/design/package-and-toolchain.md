@@ -53,6 +53,14 @@ for available features only. Planned defaults are:
 - `PANDA_BUILD_EXAMPLES`, `PANDA_BUILD_TESTS`, `PANDA_BUILD_BENCHMARKS`, `PANDA_BUILD_DOCS`.
 - `PANDA_ENABLE_SHADER_RELOAD`, `PANDA_ENABLE_UNITY`.
 
+Functional documentation uses the opt-in `PANDA_BUILD_DOC_CHECKS` switch and
+`panda_check_diagrams` target. The `docs-checks` preset instead selects
+`PANDA_DOCS_ONLY` to configure only that tooling, without a C++ compiler or engine
+dependencies. Node.js/npm are required only for these checks; their parser packages
+are pinned and installed in the build directory. See
+[functional documentation](../development/functional-documentation.md#maintenance-and-review)
+for local commands and check scope. `PANDA_BUILD_DOCS` remains the Doxygen API target.
+
 Warnings-as-errors, clang-tidy, cppcheck and clang-format checks are independently
 selectable. They default to ON for top-level Panda development and OFF when Panda
 is included by an application. The quality build enables all four. An example

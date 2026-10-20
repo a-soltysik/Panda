@@ -7,6 +7,23 @@ on:
     branches: [master]
 
 jobs:
+  documentation:
+    name: Mermaid syntax
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.20.0'
+          cache: npm
+          cache-dependency-path: tools/documentation/package-lock.json
+      - name: Configure documentation checks
+        run: cmake --preset docs-checks
+      - name: Check Mermaid syntax
+        run: cmake --build --preset docs-checks
+
   unity:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
