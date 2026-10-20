@@ -1,4 +1,4 @@
-#include <cstdio>
+#include <cstdio>  // IWYU pragma: keep (stderr)
 #include <cstdlib>
 #include <exception>
 #include <iostream>
@@ -61,7 +61,6 @@ auto main() -> int
             std::println("CUDA device unavailable; Panda core remains usable");
             return EXIT_SUCCESS;
         }
-
         return runKernel();
     }
     catch (const std::exception& error)

@@ -6,7 +6,8 @@ if(CMAKE_CXX_COMPILER)
 else()
     get_filename_component(compiler_name "$ENV{CXX}" NAME)
 endif()
-if(compiler_name AND NOT compiler_name MATCHES "^cl(\\.exe)?$")
+if(compiler_name AND NOT compiler_name MATCHES "^(cl|clang-cl)(\\.exe)?$"
+        AND NOT CMAKE_CXX_COMPILER_TARGET MATCHES "windows-msvc")
     return()
 endif()
 

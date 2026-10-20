@@ -311,8 +311,9 @@ The implemented `panda::cuda::queryAvailability()` reports `Available`,
 with the native code. It may initialize and block. This query does not select a
 device, create a session, or establish Vulkan/CUDA interop. The
 [`cuda_connection` example](../../examples/cuda_connection/README.md) owns its
-kernel and plain-data C++20 boundary. Its CUDA target uses the CMake/NVCC
-`native` architecture detection for the build machine's GPU.
+kernel and plain-data C++20 boundary. Its CUDA target defaults to CMake's
+`native` architecture detection. Set `CMAKE_CUDA_ARCHITECTURES` (or `CUDAARCHS`)
+explicitly to build without detecting a GPU; CI uses architecture 89.
 
 No owning STL containers, `std::function`, engine object graph, or exceptions cross
 the native adapter boundary. This is a source-level boundary using a compatible host

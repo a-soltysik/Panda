@@ -167,7 +167,7 @@ Windows MSVC and Linux WSL GCC.
   noncoherent memory-type variants were skipped because the GPU did not expose
   that memory type. Upload, mesh and texture system tests ran with the real Vulkan
   loader and validation.
-- `.\scripts\build-wsl.ps1 -Preset gcc-coverage -RunTests` passed all 281 unit and
+- `.\.agents\skills\panda-dual-platform-build\scripts\build-wsl.ps1 -Preset gcc-coverage -RunTests` passed all 281 unit and
   integration tests. The build reported stale `.gcda` checksum warnings while
   relinking; no fresh coverage percentage is recorded.
 - `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked

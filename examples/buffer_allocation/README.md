@@ -20,9 +20,10 @@ cmake --build --preset msvc-development --target buffer_allocation
 .\build-msvc-development\examples\buffer_allocation\buffer_allocation.exe
 ```
 
-Linux WSL:
+Linux:
 
-```powershell
-.\scripts\build-wsl.ps1 -Preset gcc-development -Target buffer_allocation
-wsl --distribution Ubuntu --exec bash -lc '~/src/Panda-wsl-build/build-gcc-development-Linux/examples/buffer_allocation/buffer_allocation'
+```sh
+cmake --preset gcc-development
+cmake --build --preset gcc-development --target buffer_allocation
+./build-gcc-development-Linux/examples/buffer_allocation/buffer_allocation
 ```

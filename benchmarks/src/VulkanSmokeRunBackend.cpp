@@ -21,7 +21,7 @@ namespace panda_bench
 {
 namespace
 {
-auto failure(std::string message) -> Failure
+auto backendFailure(std::string message) -> Failure
 {
     return {.message = std::move(message)};
 }
@@ -37,7 +37,7 @@ auto failFromPanda(const panda::Error& error) -> Failure
     {
         return unsupported(error.message);
     }
-    return failure(error.message);
+    return backendFailure(error.message);
 }
 
 auto statusFromPanda(panda::FrameResult::Status status) -> FrameStatus
@@ -94,7 +94,7 @@ auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
     }
     if (frame->status == panda::FrameResult::Status::Presented && !frame->completion.isValid())
     {
-        return std::unexpected {failure("A presented frame had no completion token")};
+        return std::unexpected {backendFailure("A presented frame had no completion token")};
     }
     if (frame->completion.isValid())
     {
@@ -132,7 +132,7 @@ auto VulkanSmokeRunBackend::waitForLastFrame(std::chrono::nanoseconds timeout) -
     }
     if (*waited == panda::WaitStatus::Timeout)
     {
-        return std::unexpected {failure("The last submitted frame did not finish within 30 seconds")};
+        return std::unexpected {backendFailure("The last submitted frame did not finish within 30 seconds")};
     }
     return {};
 }

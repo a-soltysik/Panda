@@ -30,7 +30,7 @@ auto elapsed(Clock::time_point start) -> std::chrono::nanoseconds
     return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start);
 }
 
-auto failure(std::string message) -> Failure
+auto runFailure(std::string message) -> Failure
 {
     return {.message = std::move(message)};
 }
@@ -82,11 +82,11 @@ auto SmokeRun::executeSafely() -> std::expected<void, Failure>
     }
     catch (const std::exception& error)
     {
-        return std::unexpected {failure(error.what())};
+        return std::unexpected {runFailure(error.what())};
     }
     catch (...)
     {
-        return std::unexpected {failure("Unexpected benchmark failure")};
+        return std::unexpected {runFailure("Unexpected benchmark failure")};
     }
 }
 

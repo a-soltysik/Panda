@@ -33,7 +33,7 @@ jobs:
         include:
           - name: Linux GCC unity
             os: ubuntu-26.04
-            compiler: gcc-16
+            compiler: gcc
             preset: gcc-unity
           - name: Windows MSVC unity
             os: windows-2025
@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
         with:
-          compiler: gcc-16
+          compiler: gcc
           cache-key: gcc-docs
       - name: Install Doxygen
         run: sudo apt-get install -y doxygen=1.15.0+ds1-1ubuntu3
@@ -97,12 +97,14 @@ jobs:
         include:
           - name: Linux GCC analysis
             os: ubuntu-26.04
-            compiler: gcc-16
+            compiler: gcc
             preset: gcc-quality
+            cuda-analysis-preset: clang-cuda-analysis
           - name: Windows MSVC analysis
             os: windows-2025
             compiler: msvc
             preset: msvc-quality
+            cuda-analysis-preset: clang-cuda-analysis-windows
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
@@ -113,16 +115,15 @@ jobs:
           cache-key: ${{ matrix.preset }}
       - name: Configure
         run: >-
-          cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=OFF
+          cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
           ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
       - name: Build and analyze
         run: cmake --build --preset ${{ matrix.preset }}
-      - name: Enable CUDA without GPU-dependent examples
+      - name: Configure CUDA analysis
         run: >-
-          cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DPANDA_BUILD_EXAMPLES=OFF
-          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
-      - name: Build and analyze added CUDA targets
-        run: cmake --build --preset ${{ matrix.preset }}
+          cmake --preset ${{ matrix.cuda-analysis-preset }} -DCMAKE_CUDA_ARCHITECTURES=89
+      - name: Analyze CUDA host and device sources
+        run: cmake --build --preset ${{ matrix.cuda-analysis-preset }}
       - name: Compile public headers independently
         run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
       - name: Check formatting

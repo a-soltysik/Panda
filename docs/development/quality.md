@@ -83,6 +83,22 @@ Only quality presets enable these extra targets by default. Quality CI builds th
 aggregate after ordinary targets to compile each public header independently with
 its component's usage requirements.
 
+The `gcc-fast` and `msvc-fast` presets build the complete project with tools,
+examples, benchmarks, tests and CUDA, using ccache and requesting unity where
+target rules permit it. Their CTest presets run the whole suite, including system
+tests. Quality presets enable the same features with ordinary translation units,
+analysis, format checks and public-header verification. These presets share
+`local-base` for ccache and native CUDA architecture detection. CUDA analysis and
+CI use architecture 89 to work without a GPU; explicit architecture also avoids
+CMake's native-only code generation flags in Clang's host analysis pass. Each platform uses a fast
+tree and a quality tree; the Clang CUDA analysis configuration is nested in the
+quality tree. MSVC fast and quality builds use embedded debug information for
+caching. CPU-only test and development presets retain their separate scope.
+Quality build presets limit parallelism to four jobs to bound analyzer memory use;
+omit `--parallel` to retain the preset limit. Run local Windows and WSL quality
+builds sequentially, without another build running. Fast builds retain automatic
+CPU-based parallelism; reduce concurrency if the environment requires it.
+
 ## Effective quality checks
 
 Strong compiler warnings, clang-tidy, cppcheck and formatting form the foundation.
@@ -141,14 +157,30 @@ technical correctness.
 
 [Quality](../../.github/workflows/quality.yml) compiles owned production, example,
 benchmark and test sources with warnings-as-errors, clang-tidy and cppcheck on
-Linux/GCC and Windows/MSVC. Each analysis job first builds with CUDA off, including
-examples and `panda-bench`, then reconfigures the same build directory with CUDA on
-and examples off. Ninja reuses the unchanged shared objects and analyzes the added
-CUDA module and test sources without repeating the whole-project analysis.
-The second configuration leaves examples off because `cuda_connection` detects a
-native GPU architecture when building its kernel. These hosted configurations do
-not analyze or build that CUDA example. Toolkit 13.4.92 files are cached separately
-per OS, so a cache hit skips the NVIDIA download and installation.
+Linux/GCC and Windows/MSVC. Each analysis job builds once with CUDA and examples
+on, using explicit architecture 89 so compilation needs no GPU. The CUDA example
+is built and linked, never executed. Ordinary C++ sources use CMake's
+`CXX_CLANG_TIDY` and `CXX_CPPCHECK` properties.
+
+CUDA analysis uses a separate Clang CUDA configuration of the same target graph:
+`cmake --preset clang-cuda-analysis` followed by
+`cmake --build --preset clang-cuda-analysis` on Linux; Windows uses the
+`clang-cuda-analysis-windows` preset. Its build preset selects only
+`panda_cuda_analysis`, without rebuilding or analyzing the C++ project again.
+clang-tidy reads Clang's compilation database in explicit host and device passes.
+CUDA translation units and their owned headers use clang-tidy only. cppcheck is
+reserved for ordinary C++ translation units through `CXX_CPPCHECK`; no CUDA
+suppression, manual include/definition forwarding or compiler argument adapter is
+needed. No source targets are cloned. Host-side CUDA/Vulkan coordination in `.cpp`
+continues to receive both analyzers.
+
+CI selects LLVM 22 and CUDA 13.4.92. Their probed compatibility exception leaves
+`clang-diagnostic-unknown-cuda-version` visible without promoting it to an error;
+other clang-tidy errors still fail analysis. The CUDA analysis preset declares this
+exception explicitly through `PANDA_CUDA_CLANG_TIDY_OPTIONS`, inherited on Windows.
+Review these options when changing the pinned toolchain; the analysis helper does
+not detect versions or choose compatibility exceptions. Toolkit files are cached
+separately per OS.
 When formatting is enabled, CTest registers one `format`-labeled check per source
 directory. Test presets disable formatting; quality presets enable it.
 [Tests](../../.github/workflows/tests.yml) runs unit and integration cases on
@@ -168,11 +200,16 @@ Both workflows run for pull requests targeting `master` and pushes to `master`.
 Feature-branch pushes do not start a second run alongside the pull request.
 
 The C++ jobs use the small [setup action](../../.github/actions/setup/action.yml)
-and matching CMake configure/build/test presets. They build their own dependencies
+and matching CMake configure/build/test presets. The setup action owns the GCC
+and LLVM major versions (`gcc-version` and `llvm-version` defaults). Workflow
+matrices select only compiler families. Clang, clang-tidy and clang-format share
+the LLVM version. Patch versions follow the installer repositories; CI logs the
+installed analysis tool versions. MSVC uses the runner's installed toolchain.
+Jobs build their own dependencies
 and executables; build directories and target outputs are not shared between jobs.
 CI installs ccache through setup-cpp and uses it through CMake's compiler launcher.
 It saves compiler outputs in separate caches keyed by runner OS, compiler and build
-configuration. MSVC CI uses
+configuration and the setup action hash. MSVC CI uses
 embedded `/Z7` debug information, which retains symbols and allows those compilations
 to be cached. Jobs print cache statistics after their checks. These entries are
 compiler results, not reusable build trees; ccache validates compiler inputs and
