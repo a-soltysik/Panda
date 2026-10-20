@@ -99,7 +99,7 @@ Follow the [project text and markup conventions](conventions.md#text-and-markup)
 | Plain text | Explanations and ordinary domain words | A memory pool can serve several resources |
 
 Begin numbered steps with a short bold label, such as **S5 - Allocate memory.**
-Begin reading notes with their main point, such as **Ownership** or **Failure guarantee**.
+Begin notes with their main point, such as **Ownership** or **Failure guarantee**.
 Bold failure identifiers in tables, such as **E6**, and use monospace for error codes.
 Keep explanations in ordinary prose with code symbols in monospace. Do not bold
 whole paragraphs, every class name or every occurrence of an important word.

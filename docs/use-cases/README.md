@@ -7,6 +7,8 @@ forwarding and helper calculations.
 
 | Flow | Boundary |
 | --- | --- |
+| [Create a Context](create-context.md) | Vulkan instance, device and services; headless and windowed initialization, ownership and partial failure cleanup |
+| [Select a compatible Vulkan device](select-vulkan-device.md) | Shared Context-creation subflow: required capabilities, work/present queues and window support |
 | [Create a buffer](create-buffer.md) | Worked example: positive sequence, ownership and binding-failure cleanup for an ordinary buffer |
 
 For authors, see the [conventions](../development/functional-documentation.md) and

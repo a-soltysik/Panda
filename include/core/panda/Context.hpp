@@ -89,13 +89,40 @@ class Context final
 public:
     /// @brief Creates a context without a window surface and selects a Vulkan 1.3
     /// graphics/compute device with dynamic rendering, synchronization2 and timeline semaphores enabled.
-    /// @return An owner or a capability/backend error. May allocate and block.
+    /// @param options Application name and optional validation or frame-sampling setup.
+    /// @return A fully initialized owner, or an Error. `Unsupported` means the
+    /// loader/device lacks required capabilities; select a compatible runtime/device.
+    /// If requested validation support is missing, install it or disable
+    /// `ContextOptions::enableValidation`. `ResourceExhausted` means other resources
+    /// may need to be released before retrying.
+    /// The error category is a value of `ErrorCode`; other native failures preserve
+    /// their cause in `Error::message`, optional `Error::native` and `Error::source`.
+    /// Inspect the category before choosing a recovery action.
+    /// No Context is returned on failure. May allocate and block.
+    /// @see Error for diagnostic fields.
+    /// @see ErrorCode for recovery categories.
     [[nodiscard]] static auto create(const ContextOptions& options = {}) -> Result<Context>;
 
     /// @brief Creates a context with a window surface using only platform operations from surface.
-    /// @param surface Borrowed window-system implementation; it must outlive Context.
-    /// @param options Context configuration.
-    /// @return An owner or a capability/backend/window-system error. May allocate and block.
+    /// @param surface Borrowed window-system implementation; its extension list must
+    /// include `VK_KHR_surface` and the platform surface extension. It and its native
+    /// window must outlive Context; calls follow its thread requirements.
+    /// @param options Application name and optional validation or frame-sampling setup.
+    /// @return A fully initialized owner, or an Error. `Unsupported` means required
+    /// surface/device capabilities or extensions are unavailable; use a compatible
+    /// runtime/device, or disable validation if its optional support is missing.
+    /// `InvalidArgument` can mean the surface extension list omits `VK_KHR_surface`;
+    /// include it and the platform-required extensions. Surface-provider errors,
+    /// including `SurfaceLost`, are propagated; recover or recreate the platform
+    /// surface before creating another Context. Provider errors can use any
+    /// `ErrorCode`.
+    /// `ResourceExhausted` means other resources may need to be released before retrying.
+    /// Other native failures preserve their cause in `Error::message`, optional
+    /// `Error::native` and `Error::source`. Inspect the category before choosing a
+    /// recovery action.
+    /// No Context is returned on failure. May allocate and block.
+    /// @see Error for diagnostic fields.
+    /// @see ErrorCode for recovery categories.
     [[nodiscard]] static auto createWithSurface(const WindowSurface& surface, const ContextOptions& options = {})
         -> Result<Context>;
 

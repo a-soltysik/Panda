@@ -98,7 +98,7 @@ sequenceDiagram
     C -->> A: S7 - Result containing Buffer
 ```
 
-## Reading notes
+## Notes
 
 **Publication guarantee.** The *publication point* is S7: no application handle escapes
 before allocation and binding succeed. Earlier native success does not imply operation success.
