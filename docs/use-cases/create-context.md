@@ -196,6 +196,8 @@ against the same runtime or surface will succeed.
 
 ## Related information
 
+- [Create and release a native window](create-window.md) explains the GLFW
+  lifetime and the `WindowSurface` owner borrowed by this flow.
 - [Select a compatible Vulkan device](select-vulkan-device.md) explains the
   capability and queue-family decision used at S3.
 - [Resource ownership](../design/contracts/resources.md#ownership) defines the
