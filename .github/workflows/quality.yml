@@ -129,6 +129,35 @@ jobs:
             ccache --show-stats
           fi
 
+  msvc-syntax-only-experiment:
+    name: Windows MSVC syntax-only experiment
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'experiment/msvc-syntax-only' }}
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          compiler: msvc
+          analysis: 'true'
+          cuda: 'true'
+          cache-key: msvc-quality
+      - name: Configure syntax-only experiment
+        run: >-
+          cmake --preset msvc-quality -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
+          -DPANDA_EXPERIMENT_MSVC_SYNTAX_ONLY=ON
+          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+      - name: Analyze and syntax-check Panda C++ sources without code generation
+        run: >-
+          python tools/ci/run_msvc_syntax_only_experiment.py
+          --project-dir . --build-dir build-msvc-quality --parallel 4
+      - name: Show compiler cache statistics
+        if: always()
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
+
   cuda-analysis:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}

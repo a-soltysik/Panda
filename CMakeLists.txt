@@ -14,6 +14,14 @@ if(PROJECT_IS_TOP_LEVEL)
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 endif()
 
+if(PANDA_EXPERIMENT_MSVC_SYNTAX_ONLY)
+    if(NOT MSVC OR NOT CMAKE_GENERATOR MATCHES "^Ninja")
+        message(FATAL_ERROR "PANDA_EXPERIMENT_MSVC_SYNTAX_ONLY requires MSVC with the Ninja generator")
+    endif()
+    message(STATUS
+        "MSVC syntax-only experiment is enabled; run only compile database object targets with the dedicated CI script")
+endif()
+
 if(PANDA_BUILD_EXAMPLES AND NOT PANDA_BUILD_TOOLS)
     message(FATAL_ERROR "PANDA_BUILD_EXAMPLES requires PANDA_BUILD_TOOLS=ON for simple_scene")
 endif()
