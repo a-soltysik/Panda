@@ -141,22 +141,44 @@ jobs:
           analysis: 'true'
           cuda: 'true'
           cache-key: msvc-quality
+          ccache: 'false'
+      - name: Configure full-codegen baseline
+        run: >-
+          cmake --preset msvc-quality -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
+          -DPANDA_EXPERIMENT_MSVC_SYNTAX_ONLY=OFF
+          -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER= -DCMAKE_CUDA_COMPILER_LAUNCHER=
+          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+      - name: Measure full-codegen object build
+        run: >-
+          python tools/ci/run_msvc_syntax_only_experiment.py
+          --project-dir . --build-dir build-msvc-quality --parallel 4 --mode full-codegen
+          --github-output "$env:GITHUB_ENV"
+      - name: Clean outputs before syntax-only pass
+        run: ninja -C build-msvc-quality -t clean
       - name: Configure syntax-only experiment
         run: >-
           cmake --preset msvc-quality -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
           -DPANDA_EXPERIMENT_MSVC_SYNTAX_ONLY=ON
+          -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER= -DCMAKE_CUDA_COMPILER_LAUNCHER=
           -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
       - name: Analyze and syntax-check Panda C++ sources without code generation
         run: >-
           python tools/ci/run_msvc_syntax_only_experiment.py
-          --project-dir . --build-dir build-msvc-quality --parallel 4
-      - name: Show compiler cache statistics
-        if: always()
-        shell: bash
+          --project-dir . --build-dir build-msvc-quality --parallel 4 --mode syntax-only
+          --github-output "$env:GITHUB_ENV"
+      - name: Summarize controlled comparison
+        shell: pwsh
         run: |
-          if command -v ccache >/dev/null 2>&1; then
-            ccache --show-stats
-          fi
+          $culture = [Globalization.CultureInfo]::InvariantCulture
+          $fullCodegen = [double]::Parse($env:FULL_CODEGEN_ANALYSIS_SECONDS, $culture)
+          $syntaxOnly = [double]::Parse($env:SYNTAX_ONLY_ANALYSIS_SECONDS, $culture)
+          if ($fullCodegen -le 0) { throw 'Full-codegen measurement must be greater than zero.' }
+          $reduction = ((1 - $syntaxOnly / $fullCodegen) * 100).ToString('F1', $culture)
+          $savedSeconds = ($fullCodegen - $syntaxOnly).ToString('F2', $culture)
+          "FULL_CODEGEN_ANALYSIS_SECONDS=$($fullCodegen.ToString('F2', $culture))"
+          "SYNTAX_ONLY_ANALYSIS_SECONDS=$($syntaxOnly.ToString('F2', $culture))"
+          "TIME_REDUCTION_SECONDS=$savedSeconds"
+          "TIME_REDUCTION_PERCENT=$reduction"
 
   cuda-analysis:
     name: ${{ matrix.name }}
