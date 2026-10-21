@@ -129,12 +129,22 @@ jobs:
             ccache --show-stats
           fi
 
-  msvc-syntax-only-experiment:
-    name: Windows MSVC syntax-only experiment
+  msvc-integrated-analysis-experiment:
+    name: Windows MSVC integrated analysis control
     if: ${{ github.event_name == 'pull_request' && github.head_ref == 'experiment/msvc-syntax-only' }}
     runs-on: windows-2025
+    outputs:
+      job_seconds: ${{ steps.total.outputs.job_seconds }}
+      build_seconds: ${{ steps.measure.outputs.elapsed_seconds }}
+      compile_fingerprint: ${{ steps.measure.outputs.compile_fingerprint }}
     steps:
       - uses: actions/checkout@v5
+      - id: start
+        name: Start end-to-end timer
+        shell: pwsh
+        run: |
+          $started = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "MSVC_ANALYSIS_JOB_START_MS=$started"
       - uses: ./.github/actions/setup
         with:
           compiler: msvc
@@ -142,43 +152,191 @@ jobs:
           cuda: 'true'
           cache-key: msvc-quality
           ccache: 'false'
-      - name: Configure full-codegen baseline
+      - name: Configure integrated analysis control
         run: >-
           cmake --preset msvc-quality -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
-          -DPANDA_EXPERIMENT_MSVC_SYNTAX_ONLY=OFF
+          -DPANDA_ENABLE_CLANG_TIDY=ON -DPANDA_ENABLE_CPPCHECK=ON
           -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER= -DCMAKE_CUDA_COMPILER_LAUNCHER=
           -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
-      - name: Measure full-codegen object build
+      - id: measure
+        name: Measure clean integrated build and analysis
+        shell: pwsh
         run: >-
-          python tools/ci/run_msvc_syntax_only_experiment.py
-          --project-dir . --build-dir build-msvc-quality --parallel 4 --mode full-codegen
-          --github-output "$env:GITHUB_ENV"
-      - name: Clean outputs before syntax-only pass
-        run: ninja -C build-msvc-quality -t clean
-      - name: Configure syntax-only experiment
-        run: >-
-          cmake --preset msvc-quality -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
-          -DPANDA_EXPERIMENT_MSVC_SYNTAX_ONLY=ON
-          -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER= -DCMAKE_CUDA_COMPILER_LAUNCHER=
-          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
-      - name: Analyze and syntax-check Panda C++ sources without code generation
-        run: >-
-          python tools/ci/run_msvc_syntax_only_experiment.py
-          --project-dir . --build-dir build-msvc-quality --parallel 4 --mode syntax-only
-          --github-output "$env:GITHUB_ENV"
-      - name: Summarize controlled comparison
+          python tools/ci/run_msvc_analysis_experiment.py build --mode integrated
+          --project-dir . --build-dir build-msvc-quality --github-output "$env:GITHUB_OUTPUT"
+      - id: total
+        name: Record end-to-end runner time
+        if: always()
         shell: pwsh
         run: |
+          $elapsedMilliseconds = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [long]$env:MSVC_ANALYSIS_JOB_START_MS
+          $value = ($elapsedMilliseconds / 1000.0).ToString('F2', [Globalization.CultureInfo]::InvariantCulture)
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "job_seconds=$value"
+
+  msvc-parallel-build-experiment:
+    name: Windows MSVC /WX build without analyzers
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'experiment/msvc-syntax-only' }}
+    runs-on: windows-2025
+    outputs:
+      job_seconds: ${{ steps.total.outputs.job_seconds }}
+      build_seconds: ${{ steps.measure.outputs.elapsed_seconds }}
+      compile_fingerprint: ${{ steps.measure.outputs.compile_fingerprint }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: start
+        name: Start end-to-end timer
+        shell: pwsh
+        run: |
+          $started = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "MSVC_ANALYSIS_JOB_START_MS=$started"
+      - uses: ./.github/actions/setup
+        with:
+          compiler: msvc
+          analysis: 'true'
+          cuda: 'true'
+          cache-key: msvc-quality
+          ccache: 'false'
+      - name: Configure compile-only treatment
+        run: >-
+          cmake --preset msvc-quality -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
+          -DPANDA_ENABLE_CLANG_TIDY=OFF -DPANDA_ENABLE_CPPCHECK=OFF
+          -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER= -DCMAKE_CUDA_COMPILER_LAUNCHER=
+          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+      - id: measure
+        name: Measure clean /WX build
+        shell: pwsh
+        run: >-
+          python tools/ci/run_msvc_analysis_experiment.py build --mode compile-only
+          --project-dir . --build-dir build-msvc-quality --github-output "$env:GITHUB_OUTPUT"
+      - id: total
+        name: Record end-to-end runner time
+        if: always()
+        shell: pwsh
+        run: |
+          $elapsedMilliseconds = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [long]$env:MSVC_ANALYSIS_JOB_START_MS
+          $value = ($elapsedMilliseconds / 1000.0).ToString('F2', [Globalization.CultureInfo]::InvariantCulture)
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "job_seconds=$value"
+
+  msvc-parallel-analysis-experiment:
+    name: Windows clang-tidy and Cppcheck from compile_commands
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'experiment/msvc-syntax-only' }}
+    runs-on: windows-2025
+    outputs:
+      job_seconds: ${{ steps.total.outputs.job_seconds }}
+      analysis_seconds: ${{ steps.analyze.outputs.analysis_seconds }}
+      clang_tidy_seconds: ${{ steps.analyze.outputs.clang_tidy_seconds }}
+      cppcheck_seconds: ${{ steps.analyze.outputs.cppcheck_seconds }}
+      compile_fingerprint: ${{ steps.analyze.outputs.compile_fingerprint }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: start
+        name: Start end-to-end timer
+        shell: pwsh
+        run: |
+          $started = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "MSVC_ANALYSIS_JOB_START_MS=$started"
+      - uses: ./.github/actions/setup
+        with:
+          compiler: msvc
+          analysis: 'true'
+          cuda: 'true'
+          cache-key: msvc-quality
+          ccache: 'false'
+      - name: Configure standalone analysis treatment
+        run: >-
+          cmake --preset msvc-quality -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
+          -DPANDA_ENABLE_CLANG_TIDY=ON -DPANDA_ENABLE_CPPCHECK=ON
+          -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER= -DCMAKE_CUDA_COMPILER_LAUNCHER=
+          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+      - id: analyze
+        name: Run clang-tidy and Cppcheck concurrently
+        shell: pwsh
+        run: |
+          $msvcEnvironment = (Resolve-Path 'build-msvc-quality/panda-msvc-environment.cmake').Path
+          $arguments = @(
+            "-DPANDA_MSVC_ENVIRONMENT=$msvcEnvironment"
+            '-P'
+            'cmake/MsvcRun.cmake'
+            '--'
+            'python'
+            'tools/ci/run_msvc_analysis_experiment.py'
+            'analyze'
+            '--project-dir'
+            '.'
+            '--build-dir'
+            'build-msvc-quality'
+            '--jobs'
+            '2'
+            '--github-output'
+            $env:GITHUB_OUTPUT
+          )
+          & cmake @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - id: total
+        name: Record end-to-end runner time
+        if: always()
+        shell: pwsh
+        run: |
+          $elapsedMilliseconds = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [long]$env:MSVC_ANALYSIS_JOB_START_MS
+          $value = ($elapsedMilliseconds / 1000.0).ToString('F2', [Globalization.CultureInfo]::InvariantCulture)
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "job_seconds=$value"
+
+  msvc-parallel-analysis-results:
+    name: Compare integrated and parallel MSVC analysis
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'experiment/msvc-syntax-only' }}
+    needs:
+      - msvc-integrated-analysis-experiment
+      - msvc-parallel-build-experiment
+      - msvc-parallel-analysis-experiment
+    runs-on: windows-2025
+    steps:
+      - name: Compare coverage and elapsed times
+        shell: pwsh
+        env:
+          INTEGRATED_BUILD: ${{ needs.msvc-integrated-analysis-experiment.outputs.build_seconds }}
+          INTEGRATED_JOB: ${{ needs.msvc-integrated-analysis-experiment.outputs.job_seconds }}
+          INTEGRATED_FINGERPRINT: ${{ needs.msvc-integrated-analysis-experiment.outputs.compile_fingerprint }}
+          PARALLEL_BUILD: ${{ needs.msvc-parallel-build-experiment.outputs.build_seconds }}
+          PARALLEL_BUILD_JOB: ${{ needs.msvc-parallel-build-experiment.outputs.job_seconds }}
+          PARALLEL_BUILD_FINGERPRINT: ${{ needs.msvc-parallel-build-experiment.outputs.compile_fingerprint }}
+          PARALLEL_ANALYSIS: ${{ needs.msvc-parallel-analysis-experiment.outputs.analysis_seconds }}
+          PARALLEL_ANALYSIS_JOB: ${{ needs.msvc-parallel-analysis-experiment.outputs.job_seconds }}
+          PARALLEL_ANALYSIS_FINGERPRINT: ${{ needs.msvc-parallel-analysis-experiment.outputs.compile_fingerprint }}
+          CLANG_TIDY_SECONDS: ${{ needs.msvc-parallel-analysis-experiment.outputs.clang_tidy_seconds }}
+          CPPCHECK_SECONDS: ${{ needs.msvc-parallel-analysis-experiment.outputs.cppcheck_seconds }}
+        run: |
+          $hashes = @($env:INTEGRATED_FINGERPRINT, $env:PARALLEL_BUILD_FINGERPRINT, $env:PARALLEL_ANALYSIS_FINGERPRINT) | Sort-Object -Unique
+          if ($hashes.Count -ne 1) {
+            throw 'Integrated build, compile-only build and standalone analysis use different Panda C++ compile entries.'
+          }
           $culture = [Globalization.CultureInfo]::InvariantCulture
-          $fullCodegen = [double]::Parse($env:FULL_CODEGEN_ANALYSIS_SECONDS, $culture)
-          $syntaxOnly = [double]::Parse($env:SYNTAX_ONLY_ANALYSIS_SECONDS, $culture)
-          if ($fullCodegen -le 0) { throw 'Full-codegen measurement must be greater than zero.' }
-          $reduction = ((1 - $syntaxOnly / $fullCodegen) * 100).ToString('F1', $culture)
-          $savedSeconds = ($fullCodegen - $syntaxOnly).ToString('F2', $culture)
-          "FULL_CODEGEN_ANALYSIS_SECONDS=$($fullCodegen.ToString('F2', $culture))"
-          "SYNTAX_ONLY_ANALYSIS_SECONDS=$($syntaxOnly.ToString('F2', $culture))"
-          "TIME_REDUCTION_SECONDS=$savedSeconds"
-          "TIME_REDUCTION_PERCENT=$reduction"
+          $integratedBuild = [double]::Parse($env:INTEGRATED_BUILD, $culture)
+          $parallelBuild = [double]::Parse($env:PARALLEL_BUILD, $culture)
+          $parallelAnalysis = [double]::Parse($env:PARALLEL_ANALYSIS, $culture)
+          $splitCriticalPath = [Math]::Max($parallelBuild, $parallelAnalysis)
+          $integratedJob = [double]::Parse($env:INTEGRATED_JOB, $culture)
+          $parallelBuildJob = [double]::Parse($env:PARALLEL_BUILD_JOB, $culture)
+          $parallelAnalysisJob = [double]::Parse($env:PARALLEL_ANALYSIS_JOB, $culture)
+          $parallelJob = [Math]::Max($parallelBuildJob, $parallelAnalysisJob)
+          $buildSaving = (($integratedBuild - $splitCriticalPath) / $integratedBuild * 100).ToString('F1', $culture)
+          $jobSaving = (($integratedJob - $parallelJob) / $integratedJob * 100).ToString('F1', $culture)
+          $summary = @(
+            '## MSVC static-analysis experiment',
+            '',
+            '| Measurement | Integrated | Parallel split |',
+            '| --- | ---: | ---: |',
+            "| Build and analysis phase | $($integratedBuild.ToString('F2', $culture)) s | $($splitCriticalPath.ToString('F2', $culture)) s |",
+            "| End-to-end runner time | $($integratedJob.ToString('F2', $culture)) s | $($parallelJob.ToString('F2', $culture)) s |",
+            "| Standalone clang-tidy | n/a | $($env:CLANG_TIDY_SECONDS) s |",
+            "| Standalone Cppcheck | n/a | $($env:CPPCHECK_SECONDS) s |",
+            '',
+            "Estimated phase change: $buildSaving%; end-to-end change: $jobSaving%.",
+            'All measured jobs disabled ccache; the clean build used four workers and both analyzers used two workers each.',
+            '',
+            "Matching Panda C++ compilation-entry fingerprint: $($env:INTEGRATED_FINGERPRINT)"
+          )
+          $summary | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          $summary
 
   cuda-analysis:
     name: ${{ matrix.name }}

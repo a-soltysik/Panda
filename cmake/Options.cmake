@@ -23,8 +23,6 @@ option(PANDA_WARNINGS_AS_ERRORS "Treat Panda target warnings as errors" ${panda_
 option(PANDA_ENABLE_CLANG_TIDY "Analyze Panda targets with clang-tidy" ${panda_is_top_level})
 option(PANDA_ENABLE_CPPCHECK "Analyze Panda targets with cppcheck" ${panda_is_top_level})
 option(PANDA_ENABLE_CLANG_FORMAT "Check Panda target formatting with clang-format" ${panda_is_top_level})
-option(PANDA_EXPERIMENT_MSVC_SYNTAX_ONLY
-    "EXPERIMENT: run MSVC analysis objects with syntax checking only; use the dedicated CI script" OFF)
 option(PANDA_ENABLE_SANITIZER_ADDRESS "Detect invalid memory accesses with AddressSanitizer" OFF)
 option(PANDA_ENABLE_SANITIZER_UNDEFINED_BEHAVIOR "Detect undefined behavior with UndefinedBehaviorSanitizer" OFF)
 option(PANDA_ENABLE_SANITIZER_THREAD "Detect data races with ThreadSanitizer (Linux)" OFF)
