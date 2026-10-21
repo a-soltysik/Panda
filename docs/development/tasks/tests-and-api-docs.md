@@ -53,15 +53,16 @@ owned-header defects each failed CUDA analysis; restoring them passed. The toolk
 version warning stays visible while other errors fail the target. CI builds the
 project once with CUDA and analyzes only CUDA in independent Linux/Windows jobs.
 PR #75's ordinary builds and C++ analysis passed on Linux and Windows, but both
-subsequent Clang CUDA compiler-identification steps failed. The revised workflow
-separates those jobs and retains CMake configuration logs on failure. CMake 4.4.3
-with the complete Linux LLVM 22.1.8 toolchain passed fresh configuration locally.
-Analysis presets limit compiler probes to host compilation; a device-only static
-assertion still failed the real clang-tidy target after its host pass succeeded.
-Hosted verification of the revision remains pending; the original runner failure
-did not preserve enough diagnostics to establish its exact cause. Local passes
-do not prove a CI speedup or GPU correctness. CI and presets now share the same
-archived `.cache/ccache` directory, without an arbitrary one-gigabyte override.
+Clang CUDA compiler-identification steps failed because the minimal toolkit lacked
+`curand_mtgp32_kernel.h`, included by Clang's CUDA runtime wrapper. Setup now
+installs the cuRAND development component and changes toolkit cache keys so CI
+does not restore the incomplete toolkit. The jobs retain CMake configuration logs
+on failure. CMake 4.4.3 with the complete Linux LLVM 22.1.8 toolchain passed fresh
+configuration locally. A device-only static assertion failed the actual clang-tidy
+target after its host pass succeeded. Hosted verification of the cuRAND fix remains
+pending. Local passes do not prove a CI speedup or GPU correctness. CI and presets
+share the archived `.cache/ccache` directory without an arbitrary one-gigabyte
+override.
 
 The Mermaid preset checked 10 diagrams in 53 files. WSL API documentation, skill
 validators and the documentation checker passed. WSL synchronization ran from

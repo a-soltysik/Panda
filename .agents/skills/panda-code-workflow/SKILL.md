@@ -79,15 +79,18 @@ without another build running. Reduce concurrency further if memory is tight. In
 
 ## Before committing
 
+Use incremental builds by default. Clean build outputs or caches only when a concrete
+toolchain/dependency change invalidates them or diagnostics show stale or corrupt
+artifacts.
+
 Run the complete sequence after final edits on Windows and the synchronized Linux
-mirror. `--clean-first` makes analysis visit unchanged translation units too;
-compilation still uses ccache. Stop on a failed command; do not proceed to commit.
+mirror. Stop on a failed command; do not proceed to commit.
 
 Windows:
 
 ```powershell
 cmake --preset msvc-quality
-cmake --build --preset msvc-quality --clean-first
+cmake --build --preset msvc-quality
 cmake --build --preset msvc-quality --target all_verify_interface_header_sets panda_format_checks
 cmake --preset clang-cuda-analysis-windows
 cmake --build --preset clang-cuda-analysis-windows
@@ -100,7 +103,7 @@ Linux:
 
 ```sh
 cmake --preset gcc-quality
-cmake --build --preset gcc-quality --clean-first
+cmake --build --preset gcc-quality
 cmake --build --preset gcc-quality --target all_verify_interface_header_sets panda_format_checks
 cmake --preset clang-cuda-analysis
 cmake --build --preset clang-cuda-analysis

@@ -170,9 +170,12 @@ no job dependency. They use a separate Clang CUDA configuration of the same targ
 `panda_cuda_analysis`, without rebuilding or analyzing the C++ project again.
 Only these jobs select Clang as the compiler; C++ quality retains GCC or MSVC.
 Failed CUDA jobs upload CMake's configuration log for compiler-probe diagnostics.
-The analysis presets use `--cuda-host-only` for CMake's compiler probes, which need
-no device code generation. Each clang-tidy command explicitly selects its host or
-device pass, overriding that compilation-database flag for device analysis.
+The CUDA analysis setup installs cuRAND development headers because Clang's CUDA
+runtime wrapper includes `curand_mtgp32_kernel.h` during compiler identification.
+CMake's CUDA compiler check compiles a probe but does not run a project kernel or
+require a GPU. The analysis preset sets `--cuda-host-only` as the default CUDA
+compilation mode; each clang-tidy command explicitly selects its host or device
+pass, so the device pass remains enabled.
 clang-tidy reads Clang's compilation database in explicit host and device passes.
 CUDA translation units and their owned headers use clang-tidy only. cppcheck is
 reserved for ordinary C++ translation units through `CXX_CPPCHECK`; no CUDA
@@ -180,7 +183,8 @@ suppression, manual include/definition forwarding or compiler argument adapter i
 needed. No source targets are cloned. Host-side CUDA/Vulkan coordination in `.cpp`
 continues to receive both analyzers.
 
-CI selects LLVM 22 and CUDA 13.4.92. Their probed compatibility exception leaves
+CI selects LLVM 22 and CUDA 13.4.92, including the cuRAND development component
+required by Clang's CUDA compiler. Their probed compatibility exception leaves
 `clang-diagnostic-unknown-cuda-version` visible without promoting it to an error;
 other clang-tidy errors still fail analysis. The CUDA analysis preset declares this
 exception explicitly through `PANDA_CUDA_CLANG_TIDY_OPTIONS`, inherited on Windows.
