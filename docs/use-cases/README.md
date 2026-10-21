@@ -11,6 +11,8 @@ forwarding and helper calculations.
 | [Select a compatible Vulkan device](select-vulkan-device.md) | Shared Context-creation subflow: required capabilities, work/present queues and window support |
 | [Create and release a native window](create-window.md) | Optional Panda::Tools/GLFW wrapper; applications may provide their own `WindowSurface` |
 | [Create a buffer](create-buffer.md) | Worked example: positive sequence, ownership and binding-failure cleanup for an ordinary buffer |
+| [Upload bytes into a buffer](upload-buffer.md) | Snapshot, ordered buffer writes, asynchronous submission and retry behavior |
+| [Reclaim completed upload packets](reclaim-completed-uploads.md) | Shared subflow: observe queue completion and release retained upload owners |
 
 For authors, see the [conventions](../development/functional-documentation.md) and
 [scenario template](template.md). The template is an authoring aid, not an

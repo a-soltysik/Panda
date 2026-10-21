@@ -9,6 +9,9 @@ its queue-family indices, selected swapchain-maintenance variant and diagnostic
 properties, or an error. Creating the logical device is the next step in
 [Context creation](create-context.md).
 
+`selectDevice()` runs synchronously as part of `Context::create()` or
+`Context::createWithSurface()`.
+
 This is implemented behavior for both headless and windowed Contexts. The selection
 uses capabilities queried from each physical device; it does not promise the
 highest-performing adapter. It prefers the first compatible discrete GPU and then
@@ -16,29 +19,32 @@ falls back to the first compatible device in Vulkan enumeration order.
 
 ## Preconditions
 
-The Vulkan instance is live. For a windowed Context, its owned `VkSurfaceKHR` and
-the resolved instance extensions are available during selection, including
-`VK_KHR_get_surface_capabilities2` and at least one KHR or EXT surface-maintenance
-variant. Selection is synchronous as part of `Context::create()` or
-`Context::createWithSurface()`. S2 and S3 filter physical devices against the
-device-side feature, extension, queue and surface requirements.
+1. **Instance.** A live Vulkan instance is available.
+2. **Windowed path.** When selecting for a windowed Context, Context setup has
+   created a live owned `VkSurfaceKHR` and resolved the instance-extension set
+   passed to selection.
 
 ## Main flow
 
-1. **S1 - Enumerate physical devices.** `selectDevice()` asks the Vulkan instance
-   for the physical devices exposed by the implementation.
-2. **S2 - Filter device capabilities.** Panda requires a device API version of at
+1. **Enumerate physical devices.** `Context::Impl` passes `selectDevice()`
+   the live instance, optional surface and resolved `InstanceExtensions`, then the
+   selection asks the Vulkan instance for its physical devices. For a windowed
+   Context, setup resolves and enables `VK_KHR_surface`, the provider's platform
+   surface extension, `VK_KHR_get_surface_capabilities2` and the available KHR or
+   EXT surface-maintenance1 instance extension(s); at least one maintenance variant
+   is required before selection begins.
+2. **Filter device capabilities.** Panda requires a device API version of at
    least 1.3 and queries support for timeline semaphores, dynamic rendering and
    synchronization2. A windowed candidate must also support
    `VK_KHR_swapchain`, a compatible KHR or EXT `swapchain_maintenance1` variant,
    and its maintenance feature bit.
-3. **S3 - Check queues and surface support.** Every selected work queue family must
+3. **Check queues and surface support.** Every selected work queue family must
    support both graphics and compute. Headless selection takes the first such
    family. Windowed selection prefers one family that also supports presentation;
    if none does, it uses the first graphics/compute family and first present family
    as a pair. The windowed candidate must also expose at least one surface format
    and present mode.
-4. **S4 - Choose and report one candidate.** Among compatible candidates, Panda
+4. **Choose and report one candidate.** Among compatible candidates, Panda
    chooses the first discrete GPU if present, otherwise the first candidate. It
    returns driver/device details, queue families, timestamp properties and the
    selected maintenance variant to `Context::Impl`.
@@ -49,14 +55,14 @@ sequenceDiagram
     participant S as Device selection
     participant I as Vulkan instance
     participant D as Physical device
-    C->>S: S1 - selectDevice(instance, optional surface, extensions)
+    C->>S: Step 1 - selectDevice(instance, optional surface, extensions)
     S->>I: Enumerate physical devices
     I-->>S: Candidate devices
     loop Each physical device
-        S->>D: S2 - Query API version, extensions, features and properties
+        S->>D: Step 2 - Query API version, extensions, features and properties
         D-->>S: Capability and diagnostic properties
         alt Required capabilities are supported
-            S->>D: S3 - Find graphics/compute queue family
+            S->>D: Step 3 - Find graphics/compute queue family
             opt Windowed Context
                 S->>D: Check presentation support for queue families
                 S->>D: Query surface formats and present modes
@@ -71,7 +77,7 @@ sequenceDiagram
             S->>S: Skip candidate
         end
     end
-    S->>S: S4 - Prefer first discrete candidate, otherwise first candidate
+    S->>S: Step 4 - Prefer first discrete candidate, otherwise first candidate
     S-->>C: Selected physical device, queues and properties
 ```
 
@@ -96,14 +102,14 @@ window/surface request rather than one adapter.
 
 ## Variants and failures
 
-| ID | Point and condition | Response | Resulting state and next action |
+|  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |
-| **E1** | S1: physical-device enumeration fails | Propagate the instance-level Vulkan error | No candidate is inspected; Context creation fails with no logical device |
-| **E2** | S2-S3: device lacks a required capability, queue, extension or usable surface format/present mode | Skip that device without treating the capability mismatch as an API error | Other devices remain eligible; if none qualify, continue to E5 or E6 |
-| **E3** | S2-S3: device inspection returns `SurfaceLost` or `InvalidArgument` | Stop selection and propagate the error | Context creation fails; surface repair or correcting the request is required before retry |
-| **E4** | S2-S3: another adapter inspection error occurs, and a later device is usable | Log and skip the failing adapter; return the compatible device | Context creation may proceed with the later device |
-| **E5** | S2-S3: no candidate qualifies, and at least one adapter inspection failed | Return the first recorded inspection error after all candidates are checked | Context creation fails with that error; resolve the backend/device issue before retry |
-| **E6** | S2-S3: no candidate qualifies and no inspection error occurred | Return `Unsupported` with a headless- or windowed-capability message | No logical device is created; use a compatible device/runtime or headless path |
+| **Error&nbsp;1** | Step 1: physical-device enumeration fails | Propagate the instance-level Vulkan error | No candidate is inspected; Context creation fails with no logical device |
+| **Variant&nbsp;1** | Steps 2–3: device lacks a required capability, queue, extension or usable surface format/present mode | Skip that device without treating the capability mismatch as an API error | Other devices remain eligible; if none qualify, continue to Error 4 or Error 5 |
+| **Error&nbsp;2** | Steps 2–3: device inspection returns `SurfaceLost` or `InvalidArgument` | Stop selection and propagate the error | Context creation fails; surface repair or correcting the request is required before retry |
+| **Error&nbsp;3** | Steps 2–3: another adapter inspection error occurs, and a later device is usable | Log and skip the failing adapter; return the compatible device | Context creation may proceed with the later device |
+| **Error&nbsp;4** | Steps 2–3: no candidate qualifies, and at least one adapter inspection failed | Return the first recorded inspection error after all candidates are checked | Context creation fails with that error; resolve the backend/device issue before retry |
+| **Error&nbsp;5** | Steps 2–3: no candidate qualifies and no inspection error occurred | Return `Unsupported` with a headless- or windowed-capability message | No logical device is created; use a compatible device/runtime or headless path |
 
 `DeviceLost`, `Timeout`, `ResourceExhausted`, `BackendFailure` and other
 nonfatal-to-selection inspection errors follow the skip-and-remember path. If a

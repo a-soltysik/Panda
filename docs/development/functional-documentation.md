@@ -62,12 +62,22 @@ Start from the [template](../use-cases/template.md) and compare the
 - Identify implemented or planned scope. Planned behavior must not appear as
   available API; separate it from current realization. Link the relevant task
   rather than copying its status or verification log.
-- State execution thread/phase, lifetimes and capabilities. Distinguish caller
-  obligations from invalid requests checked by the API.
-- Number main steps `S1`, `S2`, etc. Match these labels in prose, diagram messages
-  and failure references. Include a positive sequence for the realization.
+- Main participants are optional. Add a `Main participants` table only when a
+  compact role map clarifies responsibilities beyond the goal, flow and diagram.
+  Omit it when it repeats information already clear there.
+- Preconditions are optional. Include only short statements of state that must
+  already hold before the use case starts, such as a live `Context` before buffer
+  creation. If present, use a numbered list. Put checked inputs and capabilities
+  evaluated during the flow in its steps and variants; put later lifetime duties
+  with ownership or outcomes.
+- Number main-flow steps `1.`, `2.`, etc. without step prefixes in their labels.
+  Refer to a step as `Step 1` in prose and variants, and label corresponding
+  diagram messages `Step 1`, `Step 2`, etc. Include a positive sequence for the
+  realization.
 - Explain outcomes, publication, ownership and remaining duties. For asynchronous
   work distinguish accepted, submitted and completed work and observable completion.
+  Present outcome alternatives with bold labels or unnumbered bullets, not as an
+  ordered list.
 - Use short notes to explain invariants and decisions, not narrate trivial code.
   Explain what an operation acts on, who owns that state and why the step is needed.
   A method name such as `collect()` does not explain which resources are released
@@ -98,9 +108,12 @@ Follow the [project text and markup conventions](conventions.md#text-and-markup)
 | *Italics* | A conceptual term when first introduced | The *publication point* is the moment a prepared result becomes visible |
 | Plain text | Explanations and ordinary domain words | A memory pool can serve several resources |
 
-Begin numbered steps with a short bold label, such as **S5 - Allocate memory.**
+Begin numbered steps with a short bold action label, such as **Allocate memory.**
 Begin notes with their main point, such as **Ownership** or **Failure guarantee**.
-Bold failure identifiers in tables, such as **E6**, and use monospace for error codes.
+Bold table identifiers as **Error&nbsp;1** for failures and **Variant&nbsp;1** for
+ordinary alternatives. Number each kind separately. Leave the first table-header
+cell blank; the complete identifier in each row is sufficient. Use monospace for
+error codes.
 Keep explanations in ordinary prose with code symbols in monospace. Do not bold
 whole paragraphs, every class name or every occurrence of an important word.
 Do not combine bold and monospace for routine symbols. Keep Mermaid labels plain;
@@ -113,7 +126,7 @@ A newer local renderer alone does not establish GitHub compatibility. Place ordi
 Markdown links beside diagrams for navigation. Use a sequence note to identify a
 referenced subflow; PlantUML's `ref over` is not Mermaid syntax. A documentation
 website is optional and must use the same sources rather than a second content copy.
-Keep references to local steps as plain `S5`-style labels. Link to an ordinary
+Keep references to local steps as plain `Step 5` labels. Link to an ordinary
 section heading when navigation is useful; do not insert HTML anchors for each step.
 
 | Diagram | Useful question |
@@ -151,9 +164,11 @@ table and separate sequences; do not mix error handling into the main diagram.
 
 ## Variants and failures
 
-For each meaningful variant give an identifier (`E1`, `E2` for failures), the main
-step, condition, response, resulting state and permitted next action. Normal
-outcomes such as skipped frames are alternatives, not necessarily errors.
+For each meaningful failure or ordinary alternative give a distinct identifier
+(`Error 1`, `Error 2` for failures; `Variant 1`, `Variant 2` for ordinary
+alternatives), the main step, condition, response, resulting state and permitted
+next action. Number errors and variants separately. Keep outcomes such as skipped
+frames as variants when they describe a normal alternative, not a failure.
 Distinguish recoverable results, fatal contract violations and asynchronous faults.
 Do not imply that every error permits retry or restores the starting state.
 

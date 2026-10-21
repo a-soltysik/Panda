@@ -21,15 +21,8 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 
 ## Preconditions
 
-- **Execution.** Use a valid `Context` and serialize creation with its other operations on the
-  context execution thread. Moved-from `Context` use is a **fatal contract violation**.
-- **Lifetime.** `Context` must outlive every copy of the returned handle. Copying a `Buffer` retains
-  its resource; it neither extends `Context` lifetime nor synchronizes data access.
-- **Checked inputs.** Size must be nonzero; usage must be nonempty and supported; memory intent must
-  be `Device`, `Upload` or `Readback`. These inputs are checked and return errors
-  rather than being unchecked caller assumptions.
-
-No window, CUDA session or previously submitted work is required.
+1. **Context.** Use a live `Context` and serialize creation with its other
+   operations on the context execution thread.
 
 ## Main participants
 
@@ -44,27 +37,26 @@ No window, CUDA session or previously submitted work is required.
 
 ## Main flow
 
-1. **S1 - Request.** The application calls `Context::createBuffer(description)`.
+1. **Request.** The application calls `Context::createBuffer(description)`.
    `Context` requires live internal state.
-2. **S2 - Release completed upload resources.** `Context::Impl::createResource`
-   first calls `collectUploads()`. If an `UploadManager` exists, its `collect()`
-   checks GPU progress and removes completed upload packets from its pending list.
-   Destroying those packets releases their command resources, staging-buffer owners
-   and retained destination-resource owners. This lets `Context` reclaim resources
-   from earlier transfers before allocating the new buffer. Pending GPU work is
-   left intact, without waiting for it. Without a manager, this step does nothing.
-3. **S3 - Validate.** `BufferResource::create` checks the description before native
-   buffer creation. Supported usages are the ordinary transfer, vertex, index,
-   indirect, uniform/storage and texel-buffer flags.
-4. **S4 - Create native storage object.** A native Vulkan buffer is created and
+2. **Release completed upload resources.** `Context::Impl::createResource`
+   first calls `collectUploads()`. When an `UploadManager` exists, it uses the
+   [completed-upload subflow](reclaim-completed-uploads.md) to reclaim packets
+   covered by the queue's observed completion value. Pending GPU work is not
+   waited on; without a manager, this step is a no-op.
+3. **Validate.** `BufferResource::create` checks that size is nonzero, usage is
+   nonempty and supported, and memory intent is `Device`, `Upload` or `Readback`
+   before native buffer creation. Supported usages are the ordinary transfer,
+   vertex, index, indirect, uniform/storage and texel-buffer flags.
+4. **Create native storage object.** A native Vulkan buffer is created and
    adopted into unpublished `BufferResource` state. It is not yet memory-bound.
-5. **S5 - Allocate.** `BufferResource::bind` queries ordinary and dedicated memory
+5. **Allocate.** `BufferResource::bind` queries ordinary and dedicated memory
    requirements, translates memory intent to required/preferred properties and
    calls `MemoryPool::allocate`. The returned `MemoryAllocation` is moved into
    the resource. Pool selection, range placement and growth are summarized here;
    their policy is in the [allocation contract](../design/contracts/resources.md#allocation-uploads-and-descriptors).
-6. **S6 - Bind.** `bindBufferMemory2` binds the buffer at the allocation's offset.
-7. **S7 - Publish.** Only after successful binding does `Context` wrap the shared
+6. **Bind.** `bindBufferMemory2` binds the buffer at the allocation's offset.
+7. **Publish.** Only after successful binding does `Context` wrap the shared
    resource state in a public `Buffer` and return it.
 
 ```mermaid
@@ -75,49 +67,43 @@ sequenceDiagram
     participant R as BufferResource
     participant P as MemoryPool
     participant V as Vulkan device
-    A ->> C: S1 - createBuffer(description)
-    C ->> C: S2 - collectUploads()
+    A ->> C: Step 1 - createBuffer(description)
+    C ->> C: Step 2 - collectUploads()
     opt UploadManager exists
-        C ->> U: S2 - collect()
+        C ->> U: Step 2 - collect()
         Note over U: Checks GPU completion without waiting
         Note over U: Releases packets for completed transfers
         U -->> C: Success
     end
-    C ->> R: S3 - BufferResource::create(...)
+    C ->> R: Step 3 - BufferResource::create(...)
     Note over R: Validate description before creating a native buffer
-    R ->> V: S4 - createBuffer(...)
+    R ->> V: Step 4 - createBuffer(...)
     V -->> R: Native buffer
     Note over R: Unpublished state owns the native buffer
-    R ->> V: S5 - getBufferMemoryRequirements2(...)
+    R ->> V: Step 5 - getBufferMemoryRequirements2(...)
     V -->> R: Memory and dedicated requirements
-    R ->> P: S5 - allocate(request)
+    R ->> P: Step 5 - allocate(request)
     P -->> R: MemoryAllocation ownership
-    R ->> V: S6 - bindBufferMemory2(...)
+    R ->> V: Step 6 - bindBufferMemory2(...)
     V -->> R: Success
     R -->> C: Shared resource state
-    C -->> A: S7 - Result containing Buffer
+    C -->> A: Step 7 - Result containing Buffer
 ```
 
 ## Notes
 
-**Publication guarantee.** The *publication point* is S7: no application handle escapes
+**Publication guarantee.** The *publication point* is Step 7: no application handle escapes
 before allocation and binding succeed. Earlier native success does not imply operation success.
 
 **Lazy initialization.** `Context` creates its `UploadManager` on the first successful
 `createUploadBatch()` request through `Context::Impl::ensureUploads()`. Creating a
-buffer alone does not create that service. Before the first batch, S2 succeeds
+buffer alone does not create that service. Before the first batch, Step 2 succeeds
 without collection; afterwards it uses the existing manager to reclaim finished
 uploads. The manager remains owned by `Context` even when no batches are pending.
 
-**What collection releases.** A submitted upload must keep its staging bytes,
-destination resources and command resources alive while the GPU can still use
-them. `UploadManager` retains them in `UploadCommand` packets on behalf of `Context`.
-Here, `collect()` means reclaiming those retained resources after confirmed GPU
-completion, not gathering bytes for the new buffer. It checks the submission
-timeline through `SubmissionQueue` and removes only the completed prefix of its
-pending list. A destination resource stays alive if the application or another
-submitted packet still owns it. Completion permits releasing the upload's owners;
-it does not authorize deleting resources that other owners still need.
+**Completed uploads.** The shared [completed-upload subflow](reclaim-completed-uploads.md)
+explains what collection releases, how it observes the queue timeline and why
+resources with other owners remain alive.
 
 **Memory selection.** `BufferDesc::memory` tells Panda which memory properties to
 require and prefer. `Upload` and `Readback` require memory that Vulkan allows the
@@ -167,23 +153,23 @@ their retention is outside this creation flow and follows the
 
 ## Variants and failures
 
-| ID     | Point and condition                          | Response                                                                                                           | Resulting state and next action                                                                                                         |
+|  | Point and condition                          | Response                                                                                                           | Resulting state and next action                                                                                                         |
 |--------|----------------------------------------------|--------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| **E1** | S1: moved-from `Context`                     | Checked fatal diagnostic                                                                                           | No recoverable return; use a live `Context`                                                                                             |
-| **E2** | S2: upload collection fails                  | Propagate its error before attempting resource creation                                                            | No new buffer; follow the error's recovery category, not unconditional retry                                                            |
-| **E3** | S3: invalid description or unsupported usage | Return `InvalidArgument` or `Unsupported`                                                                          | No new native buffer; correct size, usage or intent                                                                                     |
-| **E4** | S4: native creation fails                    | Convert native status to Panda `Error`; do not adopt failed output                                                 | No published resource; inspect error category and native diagnostics                                                                    |
-| **E5** | S5: allocation fails                         | Destroy the unpublished native buffer and propagate allocation error                                               | No new handle or retained range for this request; existing resources remain owned; retry only if the cause is resolved                  |
-| **E6** | S6: binding fails                            | [Destroy the buffer, then release its allocation](#e6---cleanup-after-binding-failure); propagate the native error | No published handle; memory-pool cache/accounting need not return to their exact starting values; further use depends on error category |
+| **Error&nbsp;1** | Step 1: moved-from `Context`                     | Checked fatal diagnostic                                                                                           | No recoverable return; use a live `Context`                                                                                             |
+| **Error&nbsp;2** | Step 2: upload collection fails                  | Propagate its error before attempting resource creation                                                            | No new buffer; follow the error's recovery category, not unconditional retry                                                            |
+| **Error&nbsp;3** | Step 3: invalid size, usage or memory intent | Return `InvalidArgument` or `Unsupported`                                                                          | No new native buffer; correct size, usage or intent                                                                                     |
+| **Error&nbsp;4** | Step 4: native creation fails                    | Convert native status to Panda `Error`; do not adopt failed output                                                 | No published resource; inspect error category and native diagnostics                                                                    |
+| **Error&nbsp;5** | Step 5: allocation fails                         | Destroy the unpublished native buffer and propagate allocation error                                               | No new handle or retained range for this request; existing resources remain owned; retry only if the cause is resolved                  |
+| **Error&nbsp;6** | Step 6: binding fails                            | [Destroy the buffer, then release its allocation](#error-6---cleanup-after-binding-failure); propagate the native error | No published handle; memory-pool cache/accounting need not return to their exact starting values; further use depends on error category |
 
-**E2-E6** return errors through `Result`; that does not mean every category permits
-recovery on the same `Context`. **E1 is fatal.** Catastrophic host allocation failure
+**Errors 2–6** return errors through `Result`; that does not mean every category permits
+recovery on the same `Context`. **Error 1 is fatal.** Catastrophic host allocation failure
 follows the [shared error policy](../design/contracts/resources.md#errors).
 
-### E6 - Cleanup after binding failure
+### Error 6 - Cleanup after binding failure
 
-**Entry state.** S1-S5 completed. The unpublished `BufferResource` owns a native buffer and a
-`MemoryAllocation`. The bind call at S6 failed. No work was submitted by this operation
+**Entry state.** Steps 1–5 completed. The unpublished `BufferResource` owns a native buffer and a
+`MemoryAllocation`. The bind call at Step 6 failed. No work was submitted by this operation
 and no public `Buffer` exists. This path needs no GPU completion wait.
 
 ```mermaid
@@ -194,7 +180,7 @@ sequenceDiagram
     participant M as MemoryAllocation
     participant P as MemoryPool
     participant V as Vulkan device
-    V -->> R: E6 - bindBufferMemory2 failed
+    V -->> R: Error 6 - bindBufferMemory2 failed
     Note over R: bind() returns an error, create() releases unpublished state
     R ->> V: Destroy native buffer
     R ->> M: Release allocation owner
@@ -225,11 +211,13 @@ byte-for-byte restoration of pool caches, nor recover a lost device.
   [lifetime versus synchronization](../design/contracts/resources.md#lifetime-is-not-synchronization),
   and [handle boundary](../design/contracts/resources.md#handles-and-api-boundary)
   define the shared guarantees.
+- [Reclaim completed upload packets](reclaim-completed-uploads.md) explains the
+  shared collection performed before this allocation.
 - [Vulkan memory allocation](https://docs.vulkan.org/guide/latest/memory_allocation.html)
   explains device-memory allocation and why resources can share larger allocations.
 - [vkBindBufferMemory2](https://docs.vulkan.org/refpages/latest/refpages/source/vkBindBufferMemory2.html)
   specifies native memory binding, including compatible memory types, size and offset
-  requirements. Panda's S5 must obtain a range satisfying those requirements before S6.
+  requirements. Panda's Step 5 must obtain a range satisfying those requirements before Step 6.
 - [vkDestroyBuffer](https://docs.vulkan.org/refpages/latest/refpages/source/vkDestroyBuffer.html)
   specifies native destruction and the requirement to finish submitted uses first.
   This creation flow submits no work; later users must satisfy that lifetime rule.

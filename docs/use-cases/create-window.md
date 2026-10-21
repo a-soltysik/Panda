@@ -20,36 +20,27 @@ destroy the Context before releasing either this `Window` or its custom provider
 
 ## Preconditions
 
-To follow this wrapper-specific scenario, the optional `Panda::Tools` target must
-be enabled. Creation, use, movement and destruction happen on the GLFW-owning main
-thread and outside GLFW callbacks. While any Panda window is alive, the application
-must not independently initialize or terminate GLFW or replace its error callback.
-These GLFW constraints do not apply to an application-defined `WindowSurface`,
-which follows its own window system's thread and global-state rules.
-
-The requested size is a content size in screen coordinates. `Window::create()`
-validates that the title is non-null and each dimension is positive and no greater
-than `INT_MAX`; invalid requests return `InvalidArgument` before calling GLFW.
-Content dimensions are not framebuffer pixel dimensions. Query the framebuffer
-extent separately when presentation needs it.
+1. **Execution.** Run window creation, use, moves and destruction on the
+   GLFW-owning main thread, outside GLFW callbacks.
 
 ## Main flow
 
-1. **S1 - Request a window.** The application calls `Window::create()` with a
-   content size and a null-terminated UTF-8 title.
-2. **S2 - Acquire the shared GLFW session.** `GlfwSession::acquire()` shares a
+1. **Request a window.** The application calls `Window::create()` with a content
+   size and a null-terminated UTF-8 title. The method validates the title and
+   dimensions before making any GLFW call.
+2. **Acquire the shared GLFW session.** `GlfwSession::acquire()` shares a
    live session on its owning thread. If none exists, it saves the current GLFW
    error callback, installs Panda's reporting callback and initializes GLFW.
-3. **S3 - Set Panda's window hints.** Panda resets the global window hints and
+3. **Set Panda's window hints.** Panda resets the global window hints and
    requests `GLFW_NO_API`, so GLFW does not create an OpenGL context.
-4. **S4 - Create the native window.** GLFW returns a `GLFWwindow`; the `Window`
+4. **Create the native window.** GLFW returns a `GLFWwindow`; the `Window`
    stores that handle together with its shared session owner.
-5. **S5 - Publish the owner.** The application receives a move-only `Window`.
+5. **Publish the owner.** The application receives a move-only `Window`.
    Moving transfers both owners and leaves the source valid only for destruction
    or `isValid()`.
-6. **S6 - Destroy a window.** `Window::~Window()` destroys its native handle
+6. **Destroy a window.** `Window::~Window()` destroys its native handle
    before releasing its shared session owner.
-7. **S7 - Release the session when last.** If another Panda window still owns the
+7. **Release the session when last.** If another Panda window still owns the
    session, GLFW remains active. When the last owner releases it,
    `GlfwSession::~GlfwSession()` terminates GLFW and restores the callback that
    preceded the session.
@@ -62,9 +53,9 @@ sequenceDiagram
     participant W as Window
     participant S as GlfwSession
     participant G as GLFW
-    A->>W: S1 - create(contentSize, title)
+    A->>W: Step 1 - create(contentSize, title)
     W->>W: Validate title and dimensions
-    W->>S: S2 - Acquire shared session
+    W->>S: Step 2 - Acquire shared session
     alt A Panda window already owns the session
         S->>S: Check owning thread and share session
     else No live session
@@ -73,10 +64,10 @@ sequenceDiagram
         G-->>S: Initialized session
     end
     S-->>W: Shared session owner
-    W->>G: S3 - Reset hints and request GLFW_NO_API
-    W->>G: S4 - Create native window
+    W->>G: Step 3 - Reset hints and request GLFW_NO_API
+    W->>G: Step 4 - Create native window
     G-->>W: GLFWwindow handle
-    W-->>A: S5 - Result containing move-only Window
+    W-->>A: Step 5 - Result containing move-only Window
 ```
 
 ### Release the window and session
@@ -87,13 +78,13 @@ sequenceDiagram
     participant W as Window
     participant S as GlfwSession
     participant G as GLFW
-    A->>W: S6 - Destroy Window
+    A->>W: Step 6 - Destroy Window
     W->>G: Destroy native window
     W->>S: Release shared session owner
     alt Other Panda windows remain
         S->>S: Keep GLFW initialized and callback installed
     else Last session owner
-        S->>G: S7 - Terminate GLFW
+        S->>G: Step 7 - Terminate GLFW
         S->>G: Restore previous error callback
     end
 ```
@@ -104,7 +95,9 @@ sequenceDiagram
 strong owner that keeps GLFW initialized. A failed later window creation releases
 only its temporary session owner, so it cannot terminate GLFW while an existing
 window still owns the session. Destroying one of several windows destroys only
-that native window; the last release performs process-wide cleanup.
+that native window; the last release performs process-wide cleanup. While any
+Panda window is alive, the application must not independently initialize or
+terminate GLFW or replace its error callback.
 
 **Surface borrowing.** `Window::createSurface()` transfers the created Vulkan
 surface to the caller, while `Context::createWithSurface()` borrows the
@@ -122,13 +115,13 @@ release the RAII owner.
 
 ## Variants and failures
 
-| ID | Point and condition | Response | Resulting state and next action |
+|  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |
-| **E1** | S1: title is null, or a dimension is zero or greater than `INT_MAX` | Return `InvalidArgument` before any GLFW call | No session or native window is acquired; correct the request and call again |
-| **E2** | S2: GLFW initialization fails | Return the mapped GLFW error with its message and native status when available; release the uninitialized session and restore the previous callback | No `Window` is published and `glfwTerminate()` is not called for a failed initialization; resolve the platform/runtime cause before retrying |
-| **E3** | S3: configuring window hints reports an error | Return the GLFW error; release this call's session owner | No native window is created; the session is terminated and its callback restored only if this was the last owner; correct the reported cause before retrying |
-| **E4** | S4: GLFW cannot create the native window | Return the GLFW error; release this call's session owner | No `Window` is published; existing windows keep their session alive, otherwise last-owner cleanup runs; resolve the reported cause before retrying |
-| **E5** | S2-S6: an operation, move or destruction occurs on the wrong thread, or inside a GLFW callback | This violates the lifetime contract and is a fatal check, not a recoverable `Result` | Keep all operations and release on the owning main thread, outside callbacks; a process that reached the fatal check cannot recover in place |
+| **Error&nbsp;1** | Step 1: title is null, or a dimension is zero or greater than `INT_MAX` | Return `InvalidArgument` before any GLFW call | No session or native window is acquired; correct the request and call again |
+| **Error&nbsp;2** | Step 2: GLFW initialization fails | Return the mapped GLFW error with its message and native status when available; release the uninitialized session and restore the previous callback | No `Window` is published and `glfwTerminate()` is not called for a failed initialization; resolve the platform/runtime cause before retrying |
+| **Error&nbsp;3** | Step 3: configuring window hints reports an error | Return the GLFW error; release this call's session owner | No native window is created; the session is terminated and its callback restored only if this was the last owner; correct the reported cause before retrying |
+| **Error&nbsp;4** | Step 4: GLFW cannot create the native window | Return the GLFW error; release this call's session owner | No `Window` is published; existing windows keep their session alive, otherwise last-owner cleanup runs; resolve the reported cause before retrying |
+| **Error&nbsp;5** | Steps 2–6: an operation, move or destruction occurs on the wrong thread, or inside a GLFW callback | This violates the lifetime contract and is a fatal check, not a recoverable `Result` | Keep all operations and release on the owning main thread, outside callbacks; a process that reached the fatal check cannot recover in place |
 
 The error mapper categorizes GLFW's unavailable API, format, platform or version
 as `Unsupported`, out-of-memory as `ResourceExhausted`, and other failures as
