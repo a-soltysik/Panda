@@ -4,10 +4,11 @@
 
 An application creates a Vulkan `Context` by calling `Context::create()` for a
 headless context or `Context::createWithSurface()` for a windowed context. This
-implemented flow ends when Panda publishes a fully initialized, move-only owner or
-returns an error. The windowed path also initializes presentation resources and an
-initial swapchain generation when the framebuffer has a nonzero extent; a zero
-extent leaves presentation pending while the Context itself can still succeed.
+implemented flow runs synchronously, may allocate or block, and ends when Panda
+publishes a fully initialized, move-only owner or returns an error. The windowed
+path also initializes presentation resources and an initial swapchain generation
+when the framebuffer has a nonzero extent; a zero extent leaves presentation
+pending while the Context itself can still succeed.
 
 **Panda** owns the Vulkan instance, device, native surface and Context services.
 **The application** owns the `WindowSurface` and native window and keeps both alive
@@ -16,44 +17,32 @@ upload work.
 
 ## Preconditions
 
-Creation is synchronous and may allocate or block. Calls that use one Context are
-serialized. For a windowed Context, calls to the borrowed `WindowSurface` must obey
-its thread requirements and happen outside its callbacks. The surface provider and
-its native window must remain valid until the Context is destroyed.
-
-Panda checks these runtime requirements during creation:
-
-| Path | Required extensions and capabilities |
-| --- | --- |
-| Both paths | The Vulkan loader and selected physical device report Vulkan 1.3. The device supports `timelineSemaphore`, `dynamicRendering` and `synchronization2`, and has a queue family supporting both graphics and compute. |
-| Windowed only | `WindowSurface` supplies `VK_KHR_surface` and the platform surface extension. The instance exposes those names, `VK_KHR_get_surface_capabilities2` and at least one of `VK_KHR_surface_maintenance1` or `VK_EXT_surface_maintenance1`. The physical device supports `VK_KHR_swapchain`, the matching KHR or EXT swapchain-maintenance extension and feature, a graphics/compute queue, a present-capable queue, and nonempty surface-format and present-mode lists. |
-| Validation requested | `VK_LAYER_KHRONOS_validation` and `VK_EXT_debug_utils` are available, and the loader exposes the debug-messenger entry points. |
-
-The [device-selection subflow](select-vulkan-device.md) explains how Panda queries
-device capabilities and chooses the queue families.
+1. **Windowed path.** When using `Context::createWithSurface()`, provide a live
+   `WindowSurface`; calls to its methods follow its thread requirements and happen
+   outside its callbacks.
 
 ## Main flow
 
-1. **S1 - Choose the Context path.** The application supplies options and, for the
+1. **Choose the Context path.** The application supplies options and, for the
    windowed path, a live `WindowSurface` whose required instance extensions include
    `VK_KHR_surface` and the platform surface extension.
-2. **S2 - Build instance services.** Panda verifies Vulkan 1.3 support from the
+2. **Build instance services.** Panda verifies Vulkan 1.3 support from the
    loader, checks the validation layer when requested, resolves the required
    instance extensions, and creates the Vulkan instance. It then creates the
    optional debug messenger and, for a windowed Context, creates and owns the
    native `VkSurfaceKHR` returned by `WindowSurface`.
-3. **S3 - Select a compatible device.** Panda calls the
+3. **Select a compatible device.** Panda calls the
    [device-selection subflow](select-vulkan-device.md), which returns a physical
    device, queue families and the capabilities needed by this Context.
-4. **S4 - Create the logical device.** Panda enables the queried Vulkan 1.3
+4. **Create the logical device.** Panda enables the queried Vulkan 1.3
    features and creates the selected graphics/compute queue. A windowed Context
    also enables the selected present queue and swapchain-maintenance extension.
-5. **S5 - Initialize Context services.** Panda creates the memory pool and
+5. **Initialize Context services.** Panda creates the memory pool and
    performance manager. For a windowed Context it also initializes presentation
    frame resources and reads the framebuffer extent. A nonzero extent creates the
    initial swapchain generation; a zero extent records that presentation must be
    prepared later.
-6. **S6 - Publish the owner.** Only after initialization succeeds does
+6. **Publish the owner.** Only after initialization succeeds does
    `createInternal()` construct and return the public `Context`.
 
 The paths share the same creation steps but differ in instance and presentation
@@ -68,15 +57,15 @@ sequenceDiagram
     participant I as Context::Impl
     participant V as Vulkan instance and device
     participant D as Device selection
-    A->>C: S1 - create(options)
+    A->>C: Step 1 - create(options)
     C->>I: Initialize without a surface
-    I->>V: S2 - Verify loader and optional validation layer
+    I->>V: Step 2 - Verify loader and optional validation layer
     I->>V: Create instance and optional debug messenger
-    I->>D: S3 - Select headless-compatible physical device and queue
+    I->>D: Step 3 - Select headless-compatible physical device and queue
     D-->>I: Selected device, capabilities and queue families
-    I->>V: S4 - Create logical device with selected features and queues
-    I->>I: S5 - Create memory pool and performance manager
-    I->>C: S6 - Publish fully initialized Context
+    I->>V: Step 4 - Create logical device with selected features and queues
+    I->>I: Step 5 - Create memory pool and performance manager
+    I->>C: Step 6 - Publish fully initialized Context
     C-->>A: Result containing Context
 ```
 
@@ -91,18 +80,18 @@ sequenceDiagram
     participant V as Vulkan instance and device
     participant D as Device selection
     participant P as Presentation
-    A->>C: S1 - createWithSurface(window, options)
+    A->>C: Step 1 - createWithSurface(window, options)
     C->>I: Initialize with borrowed WindowSurface
-    I->>V: S2 - Verify loader and optional validation layer
+    I->>V: Step 2 - Verify loader and optional validation layer
     I->>W: Get required instance extensions
     W-->>I: Platform and surface extension names
     I->>V: Create instance and optional debug messenger
     I->>W: Create native Vulkan surface
     W-->>I: Transfer native surface ownership to Context
-    I->>D: S3 - Select surface-compatible physical device and queues
+    I->>D: Step 3 - Select surface-compatible physical device and queues
     D-->>I: Selected device, capabilities and queue families
-    I->>V: S4 - Create logical device with selected features and queues
-    I->>I: S5 - Create memory pool and performance manager
+    I->>V: Step 4 - Create logical device with selected features and queues
+    I->>I: Step 5 - Create memory pool and performance manager
     I->>P: Initialize frame resources and initial presentation
     P->>W: Query framebuffer extent
     W-->>P: Pixel extent
@@ -112,7 +101,7 @@ sequenceDiagram
         P->>P: Leave generation pending
     end
     P-->>I: Initial generation or zero-extent pending state
-    I->>C: S6 - Publish fully initialized Context
+    I->>C: Step 6 - Publish fully initialized Context
     C-->>A: Result containing Context
 ```
 
@@ -142,18 +131,18 @@ presentation. Upload support is initialized when an upload batch is first reques
 
 ## Variants and failures
 
-| ID | Point and condition | Response | Resulting state and next action |
+|  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |
-| **E1** | S2: loader is below Vulkan 1.3, or a requested validation layer/extension is unavailable | Return `Unsupported`; extension enumeration and provider errors keep their reported error | No Context is published; install or select a compatible Vulkan runtime, or disable optional validation |
-| **E2** | S2: required window extensions are malformed or unavailable, or instance, messenger or native-surface creation fails | Return `InvalidArgument`, `Unsupported` or the originating native/provider error; release any instance services already created | No Context is published; correct the provider/configuration or resolve the reported failure |
-| **E3** | S3: no compatible physical device is found, or device inspection cannot complete | Propagate the selection result; see [device-selection outcomes](select-vulkan-device.md#variants-and-failures) | No logical device or Context is published; respond to the reported capability or backend failure |
-| **E4** | S4: logical-device creation fails | Return the mapped Vulkan error without adopting a failed native output | No Context is published; retry only after resolving the reported cause |
-| **E5** | S5: performance-manager initialization fails | Return its error and release the local manager and other Context owners already created | No Context is published; investigate the reported device/backend failure before retry |
-| **E6** | S5: windowed presentation initialization fails | Return the originating error and release partial presentation state and Vulkan owners; see [E6 cleanup](#e6---release-partial-presentation-state) | No Context is published; no application Context is available |
+| **Error&nbsp;1** | Step 2: loader is below Vulkan 1.3, or a requested validation layer/extension is unavailable | Return `Unsupported`; extension enumeration and provider errors keep their reported error | No Context is published; install or select a compatible Vulkan runtime, or disable optional validation |
+| **Error&nbsp;2** | Step 2: required window extensions are malformed or unavailable, or instance, messenger or native-surface creation fails | Return `InvalidArgument`, `Unsupported` or the originating native/provider error; release any instance services already created | No Context is published; correct the provider/configuration or resolve the reported failure |
+| **Error&nbsp;3** | Step 3: no compatible physical device is found, or device inspection cannot complete | Propagate the selection result; see [device-selection outcomes](select-vulkan-device.md#variants-and-failures) | No logical device or Context is published; respond to the reported capability or backend failure |
+| **Error&nbsp;4** | Step 4: logical-device creation fails | Return the mapped Vulkan error without adopting a failed native output | No Context is published; retry only after resolving the reported cause |
+| **Error&nbsp;5** | Step 5: performance-manager initialization fails | Return its error and release the local manager and other Context owners already created | No Context is published; investigate the reported device/backend failure before retry |
+| **Error&nbsp;6** | Step 5: windowed presentation initialization fails | Return the originating error and release partial presentation state and Vulkan owners; see [Error 6 cleanup](#error-6---release-partial-presentation-state) | No Context is published; no application Context is available |
 
-### E6 - Release partial presentation state
+### Error 6 - Release partial presentation state
 
-**Entry state.** S1-S4 completed. The private implementation owns instance services,
+**Entry state.** Steps 1–4 completed. The private implementation owns instance services,
 the selected physical device wrapper, the logical device, memory pool and initialized
 performance manager. Presentation setup may have created frame resources or attempted
 the initial swapchain generation. No public Context has been published and this
@@ -167,9 +156,9 @@ sequenceDiagram
     participant P as Presentation::create
     participant D as Logical device and Context services
     participant S as Owned surface and instance services
-    C->>I: S5 - Initialize Context services
+    C->>I: Step 5 - Initialize Context services
     I->>P: Create frame resources and initial generation
-    P-->>I: E6 - Initialization error
+    P-->>I: Error 6 - Initialization error
     Note over P: The unpublished Presentation owner releases its partial state
     I-->>C: Propagate Error, no Context facade exists
     Note over C,I: The unpublished Impl releases its remaining RAII owners
@@ -199,7 +188,7 @@ against the same runtime or surface will succeed.
 - [Create and release a native window](create-window.md) explains the GLFW
   lifetime and the `WindowSurface` owner borrowed by this flow.
 - [Select a compatible Vulkan device](select-vulkan-device.md) explains the
-  capability and queue-family decision used at S3.
+  capability and queue-family decision used at Step 3.
 - [Resource ownership](../design/contracts/resources.md#ownership) defines the
   required Context, resource and window lifetimes.
 - [Frame and window state](../design/contracts/resources.md#frame-and-window-state)
