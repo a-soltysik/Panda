@@ -266,7 +266,7 @@ jobs:
             '--build-dir'
             'build-msvc-quality'
             '--jobs'
-            '2'
+            '4'
             '--github-output'
             $env:GITHUB_OUTPUT
           )
@@ -331,7 +331,7 @@ jobs:
             "| Standalone Cppcheck | n/a | $($env:CPPCHECK_SECONDS) s |",
             '',
             "Estimated phase change: $buildSaving%; end-to-end change: $jobSaving%.",
-            'All measured jobs disabled ccache; the clean build used four workers and both analyzers used two workers each.',
+            'All measured jobs disabled ccache; the clean build and both analyzers used four workers each.',
             '',
             "Matching Panda C++ compilation-entry fingerprint: $($env:INTEGRATED_FINGERPRINT)"
           )
