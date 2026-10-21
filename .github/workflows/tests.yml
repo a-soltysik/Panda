@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
         with:
-          compiler: gcc-16
+          compiler: gcc
           cache-key: gcc-coverage
       - name: Install software Vulkan and headless display
         run: sudo apt-get install -y mesa-vulkan-drivers xvfb xauth
@@ -74,11 +74,11 @@ jobs:
         include:
           - name: Linux GCC
             os: ubuntu-26.04
-            compiler: gcc-16
+            compiler: gcc
             preset: gcc-tests
           - name: Linux Clang
             os: ubuntu-26.04
-            compiler: llvm-22.1.8
+            compiler: llvm
             preset: clang-tests
           - name: Windows MSVC
             os: windows-2025
@@ -86,7 +86,7 @@ jobs:
             preset: msvc-tests
           - name: Linux GCC CUDA
             os: ubuntu-26.04
-            compiler: gcc-16
+            compiler: gcc
             preset: gcc-tests
             cuda: true
           - name: Windows MSVC CUDA
@@ -96,7 +96,7 @@ jobs:
             cuda: true
           - name: Linux GCC ASan and UBSan
             os: ubuntu-26.04
-            compiler: gcc-16
+            compiler: gcc
             preset: gcc-sanitizers
           - name: Windows MSVC ASan
             os: windows-2025

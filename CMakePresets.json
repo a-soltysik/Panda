@@ -26,6 +26,23 @@
       }
     },
     {
+      "name": "local-base",
+      "hidden": true,
+      "environment": {
+        "CCACHE_DIR": "${sourceDir}/.cache/ccache"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CUDA_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CUDA_ARCHITECTURES": "native",
+        "PANDA_BUILD_TOOLS": "ON",
+        "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_BENCHMARKS": "ON",
+        "PANDA_BUILD_CUDA": "ON"
+      }
+    },
+    {
       "name": "gcc-base",
       "hidden": true,
       "inherits": "base",
@@ -75,7 +92,7 @@
     {
       "name": "gcc-quality",
       "displayName": "Panda GCC quality build",
-      "inherits": "gcc-base",
+      "inherits": ["local-base", "gcc-base"],
       "cacheVariables": {
         "PANDA_BUILD_EXAMPLES": "ON",
         "PANDA_BUILD_BENCHMARKS": "ON",
@@ -144,8 +161,9 @@
     {
       "name": "msvc-quality",
       "displayName": "Panda MSVC quality build",
-      "inherits": "msvc-base",
+      "inherits": ["local-base", "msvc-base"],
       "cacheVariables": {
+        "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT": "Embedded",
         "PANDA_BUILD_EXAMPLES": "ON",
         "PANDA_BUILD_BENCHMARKS": "ON",
         "PANDA_VERIFY_PUBLIC_HEADERS": "ON"
@@ -247,9 +265,72 @@
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++"
       }
+    },
+    {
+      "name": "gcc-fast",
+      "displayName": "Panda GCC complete fast build",
+      "inherits": ["local-base", "gcc-tests"],
+      "cacheVariables": {
+        "PANDA_ENABLE_UNITY": "ON"
+      }
+    },
+    {
+      "name": "msvc-fast",
+      "displayName": "Panda MSVC complete fast build",
+      "inherits": ["local-base", "msvc-tests"],
+      "cacheVariables": {
+        "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT": "Embedded",
+        "PANDA_ENABLE_UNITY": "ON"
+      }
+    },
+    {
+      "name": "clang-cuda-analysis",
+      "displayName": "Panda Clang CUDA analysis",
+      "inherits": ["local-base", "base"],
+      "binaryDir": "${sourceDir}/build-gcc-quality-${hostSystemName}/cuda",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CUDA_COMPILER": "clang++",
+        "CMAKE_CUDA_ARCHITECTURES": "89",
+        "CMAKE_CUDA_FLAGS": "--cuda-host-only",
+        "PANDA_CUDA_CLANG_TIDY_OPTIONS": "--extra-arg=-Wno-error=unknown-cuda-version;--warnings-as-errors=-clang-diagnostic-unknown-cuda-version",
+        "PANDA_BUILD_CUDA": "ON",
+        "PANDA_BUILD_TOOLS": "ON",
+        "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_TESTS": "OFF",
+        "PANDA_BUILD_BENCHMARKS": "OFF",
+        "PANDA_ENABLE_CPPCHECK": "OFF",
+        "PANDA_ENABLE_CLANG_FORMAT": "OFF"
+      }
+    },
+    {
+      "name": "clang-cuda-analysis-windows",
+      "inherits": "clang-cuda-analysis",
+      "binaryDir": "${sourceDir}/build-msvc-quality/cuda",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_TARGET": "x86_64-pc-windows-msvc",
+        "CMAKE_CXX_COMPILER_TARGET": "x86_64-pc-windows-msvc",
+        "CMAKE_CUDA_COMPILER_TARGET": "x86_64-pc-windows-msvc",
+        "CMAKE_CUDA_FLAGS": "--target=x86_64-pc-windows-msvc --cuda-host-only",
+        "CMAKE_LINKER_TYPE": "MSVC"
+      }
     }
   ],
   "buildPresets": [
+    {
+      "name": "gcc-fast",
+      "configurePreset": "gcc-fast"
+    },
+    {
+      "name": "msvc-fast",
+      "configurePreset": "msvc-fast"
+    },
     {
       "name": "docs-checks",
       "configurePreset": "docs-checks",
@@ -278,7 +359,8 @@
     },
     {
       "name": "gcc-quality",
-      "configurePreset": "gcc-quality"
+      "configurePreset": "gcc-quality",
+      "jobs": 4
     },
     {
       "name": "msvc-development",
@@ -286,7 +368,8 @@
     },
     {
       "name": "msvc-quality",
-      "configurePreset": "msvc-quality"
+      "configurePreset": "msvc-quality",
+      "jobs": 4
     },
     {
       "name": "gcc-sanitizers",
@@ -311,6 +394,20 @@
     {
       "name": "clang-tests",
       "configurePreset": "clang-tests"
+    },
+    {
+      "name": "clang-cuda-analysis",
+      "configurePreset": "clang-cuda-analysis",
+      "targets": [
+        "panda_cuda_analysis"
+      ]
+    },
+    {
+      "name": "clang-cuda-analysis-windows",
+      "configurePreset": "clang-cuda-analysis-windows",
+      "targets": [
+        "panda_cuda_analysis"
+      ]
     }
   ],
   "testPresets": [
@@ -323,6 +420,16 @@
       "execution": {
         "noTestsAction": "error"
       }
+    },
+    {
+      "name": "gcc-fast",
+      "inherits": "base",
+      "configurePreset": "gcc-fast"
+    },
+    {
+      "name": "msvc-fast",
+      "inherits": "base",
+      "configurePreset": "msvc-fast"
     },
     {
       "name": "gcc-quality",

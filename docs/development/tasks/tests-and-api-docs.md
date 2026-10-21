@@ -34,16 +34,40 @@ Learning: Explain which checks catch C++ errors and which require a real GPU.
 
 ## Current evidence
 
-The CI quality jobs reuse one build directory for CUDA-off analysis with examples
-and the subsequent CUDA-on build without examples. Local Windows/MSVC and WSL/GCC
-configuration comparisons preserved all 153 and 155 shared compilation commands,
-respectively. Building `panda_common` before enabling CUDA and inspecting its
-subsequent Ninja build showed no repeated compilation or analysis. Both platforms
-built and analyzed the CUDA adapter and Runtime mock, then built the CUDA test
-executables with runtime presets and passed all seven CUDA cases. Workflow YAML
-parsing and the documentation checker passed. A complete quality rerun, the full
-CPU suite and hosted execution of this workflow arrangement remain unverified;
-these checks do not establish an end-to-end CI speedup.
+Windows MSVC 19.51 with LLVM 22.1.8 and WSL GCC 16 with LLVM 22.1.2 passed complete
+CUDA-enabled quality builds, clang-tidy, cppcheck, public-header isolation and
+format checks. The clean builds resumed with four jobs after automatic concurrency
+caused host memory pressure. Quality presets now set four jobs, and the agent workflow
+runs Windows and WSL quality sequentially. Both fast presets built all production,
+example, benchmark and test targets with ccache and native CUDA architecture
+detection. Each platform ran all 419 cases: 416 passed and three noncoherent-memory
+system cases skipped unavailable memory types. Distinct benchmark helper names
+resolved a unity-build collision without changing behavior.
+
+Both platforms passed the separate Clang CUDA host/device analysis with Toolkit
+13.4.92 and explicit architecture 89. The MSVC/NVCC and GCC/NVCC builds linked
+`cuda_connection` without executing it. Native architecture works for ordinary
+builds; Clang host analysis rejects a CMake native-only code generation flag, so
+the analysis preset keeps an explicit architecture. Deliberate host, device and
+owned-header defects each failed CUDA analysis; restoring them passed. The toolkit
+version warning stays visible while other errors fail the target. CI builds the
+project once with CUDA and analyzes only CUDA in independent Linux/Windows jobs.
+PR #75's ordinary builds and C++ analysis passed on Linux and Windows, but both
+Clang CUDA compiler-identification steps failed because the minimal toolkit lacked
+`curand_mtgp32_kernel.h`, included by Clang's CUDA runtime wrapper. Setup now
+installs the cuRAND development component and changes toolkit cache keys so CI
+does not restore the incomplete toolkit. The jobs retain CMake configuration logs
+on failure. CMake 4.4.3 with the complete Linux LLVM 22.1.8 toolchain passed fresh
+configuration locally. A device-only static assertion failed the actual clang-tidy
+target after its host pass succeeded. Hosted verification of the cuRAND fix remains
+pending. Local passes do not prove a CI speedup or GPU correctness. CI and presets
+share the archived `.cache/ccache` directory without an arbitrary one-gigabyte
+override.
+
+The Mermaid preset checked 10 diagrams in 53 files. WSL API documentation, skill
+validators and the documentation checker passed. WSL synchronization ran from
+the helpers' private skill location, and ccache statistics confirmed cached
+compilation on both platforms.
 
 Local Windows MSVC 19.51 and WSL Ubuntu 26.04 GCC 16 ordinary builds passed;
 both ran 38 noninteractive CTest cases. The quality configuration's CMake

@@ -91,6 +91,20 @@ window startup.
 
 ## Commands
 
+For a complete build and unfiltered test run, use `gcc-fast` on Linux or
+`msvc-fast` on Windows:
+
+```sh
+cmake --preset gcc-fast
+cmake --build --preset gcc-fast --parallel
+ctest --preset gcc-fast
+```
+
+Fast presets include tools, examples, benchmarks and CUDA, require ccache, and
+request unity only where the existing target rules permit it. Quality presets
+provide ordinary compilation and analysis. Fast CTest presets include system
+tests; CPU test and sanitizer presets retain their noninteractive selection.
+
 From a configured build with tests enabled:
 
 ```sh
@@ -150,7 +164,7 @@ cmake --build --preset gcc-tests --parallel
 ctest --preset gcc-tests
 ```
 
-CTest presets exclude tests labelled `system`. Run native smoke cases explicitly
+CPU test and sanitizer presets exclude tests labelled `system`. Run native smoke cases explicitly
 with `ctest --test-dir <build-directory> -L system --output-on-failure`.
 
 The real GLFW null-platform integration check needs no display. The native smoke

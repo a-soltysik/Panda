@@ -27,7 +27,7 @@ if ($Jobs -lt 0) {
     throw "-Jobs must be 0 (automatic) or a positive integer."
 }
 
-$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "../../../..")).Path
 $wslPathArgument = $repositoryRoot.Replace("\", "/")
 $wslRepositoryRoot = [string](& wsl.exe -d $Distro -- wslpath -a -u $wslPathArgument)
 if ($LASTEXITCODE -ne 0 -or -not $wslRepositoryRoot) {
@@ -35,7 +35,7 @@ if ($LASTEXITCODE -ne 0 -or -not $wslRepositoryRoot) {
 }
 $wslRepositoryRoot = $wslRepositoryRoot.Trim()
 
-$wslScript = "$wslRepositoryRoot/scripts/wsl_build.py"
+$wslScript = "$wslRepositoryRoot/.agents/skills/panda-dual-platform-build/scripts/wsl_build.py"
 $arguments = @("--source", $wslRepositoryRoot, "--preset", $Preset)
 if ($Jobs -gt 0) {
     $arguments += @("--jobs", "$Jobs")

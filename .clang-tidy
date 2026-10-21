@@ -23,6 +23,8 @@ WarningsAsErrors: "*,
 
 FormatStyle: none
 HeaderFilterRegex: '(^|[/\\])(include|src|tests|examples)[/\\]'
+HeaderFileExtensions: ['', h, hh, hpp, hxx, cuh]
+ImplementationFileExtensions: [c, cc, cpp, cxx, cu]
 
 CheckOptions:
   - key: readability-identifier-length.IgnoredVariableNames

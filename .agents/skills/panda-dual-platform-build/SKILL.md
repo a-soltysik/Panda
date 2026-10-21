@@ -8,36 +8,47 @@ description: Build and test Panda efficiently with the Windows checkout and a sy
 Keep the Windows checkout as the editable source of truth. Read
 [`docs/development/testing.md`](../../../docs/development/testing.md) for the
 project's build and test policy. Use the checked-in
-[`scripts/build-wsl.ps1`](../../../scripts/build-wsl.ps1) for WSL builds; it
+[`scripts/build-wsl.ps1`](scripts/build-wsl.ps1) for WSL synchronization; it
 synchronizes source into a managed mirror under `~/src` on the Linux filesystem.
 Do not edit the mirror. It has no Git metadata, and each sync replaces its source
 files with the Windows checkout while preserving Linux build directories and
 caches.
 
-## Common commands
+## Preset commands
 
-Run these from the repository root in PowerShell:
+Follow [panda-code-workflow](../panda-code-workflow/SKILL.md) for complete iteration
+and pre-commit checks. Native CMake/CTest presets own configurations and paths;
+ccache is required. On Windows, for example:
 
 ```powershell
-cmake --preset msvc-development
-cmake --build --preset msvc-development --parallel
-
-cmake --preset msvc-tests
-cmake --build --preset msvc-tests --parallel
-ctest --preset msvc-tests
-
-.\scripts\build-wsl.ps1 -Preset gcc-development -Target simple_scene
-.\scripts\build-wsl.ps1 -Preset gcc-tests -RunTests
-.\scripts\build-wsl.ps1 -Preset gcc-tests -IncludeSystemTests
+cmake --preset msvc-fast
+cmake --build --preset msvc-fast --parallel
+ctest --preset msvc-fast
 ```
 
-The helper configures with an installed `ccache` and keeps its cache in the WSL
-home directory. It chooses a conservative parallel job count from available
-memory and CPU count; pass `-Jobs N` to override it. Pass `-SyncOnly` to update
-the WSL mirror without building. `-TestRegex` selects CTest cases. The `gcc-tests`,
-`gcc-coverage` and sanitizer test presets exclude `system` tests by default.
-The `gcc-quality` and `msvc-quality` presets do not filter them.
-`-IncludeSystemTests` runs all tests registered by the selected test-enabled preset.
+After every source edit, synchronize from the Windows checkout before using the
+native Linux commands in the mirror:
+
+```powershell
+.\.agents\skills\panda-dual-platform-build\scripts\build-wsl.ps1 -SyncOnly
+wsl.exe -d Ubuntu -- bash -lc 'cd "$HOME/src/Panda-wsl-build" && cmake --preset gcc-fast'
+wsl.exe -d Ubuntu -- bash -lc 'cd "$HOME/src/Panda-wsl-build" && cmake --build --preset gcc-fast --parallel'
+wsl.exe -d Ubuntu -- bash -lc 'cd "$HOME/src/Panda-wsl-build" && ctest --preset gcc-fast'
+```
+
+Run the code workflow's full Linux quality/CUDA sequence in that same mirror.
+Both platforms retain the fast and quality preset trees; CUDA analysis is nested
+inside quality. Presets share `.cache/ccache` within each native source tree;
+the Linux mirror keeps its cache on the Linux filesystem, outside `/mnt/c`.
+Fast builds use `--parallel` for Ninja's automatic CPU-based parallelism. Quality
+presets use four jobs; omit `--parallel` to preserve that limit. Run the two
+platforms' quality builds sequentially, without another build running, to avoid
+exhausting host memory. Reduce concurrency further when needed.
+
+The older helper's optional uncached fallback and default `system` exclusion do
+not satisfy agent verification. Do not use `-Target` to reduce build scope.
+`-TestRegex` is permitted only for test-only iteration, never pre-commit checks.
+Fast test presets run the full suite without filters.
 
 ## Verification and handoff
 

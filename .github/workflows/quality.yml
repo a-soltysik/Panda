@@ -33,7 +33,7 @@ jobs:
         include:
           - name: Linux GCC unity
             os: ubuntu-26.04
-            compiler: gcc-16
+            compiler: gcc
             preset: gcc-unity
           - name: Windows MSVC unity
             os: windows-2025
@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
         with:
-          compiler: gcc-16
+          compiler: gcc
           cache-key: gcc-docs
       - name: Install Doxygen
         run: sudo apt-get install -y doxygen=1.15.0+ds1-1ubuntu3
@@ -97,7 +97,7 @@ jobs:
         include:
           - name: Linux GCC analysis
             os: ubuntu-26.04
-            compiler: gcc-16
+            compiler: gcc
             preset: gcc-quality
           - name: Windows MSVC analysis
             os: windows-2025
@@ -113,15 +113,9 @@ jobs:
           cache-key: ${{ matrix.preset }}
       - name: Configure
         run: >-
-          cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=OFF
+          cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
           ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
       - name: Build and analyze
-        run: cmake --build --preset ${{ matrix.preset }}
-      - name: Enable CUDA without GPU-dependent examples
-        run: >-
-          cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DPANDA_BUILD_EXAMPLES=OFF
-          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
-      - name: Build and analyze added CUDA targets
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Compile public headers independently
         run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
@@ -134,3 +128,35 @@ jobs:
           if command -v ccache >/dev/null 2>&1; then
             ccache --show-stats
           fi
+
+  cuda-analysis:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux CUDA analysis
+            os: ubuntu-26.04
+            preset: clang-cuda-analysis
+          - name: Windows CUDA analysis
+            os: windows-2025
+            preset: clang-cuda-analysis-windows
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          compiler: llvm
+          analysis: 'true'
+          cuda: 'true'
+          cache-key: ${{ matrix.preset }}
+      - name: Configure CUDA analysis
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Analyze CUDA host and device sources
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Upload configuration failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuda-analysis-configure-${{ runner.os }}
+          path: build-*/cuda/CMakeFiles/CMakeConfigureLog.yaml

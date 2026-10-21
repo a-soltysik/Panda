@@ -1,9 +1,11 @@
 # CUDA connection example
 
 `cuda_connection` checks CUDA availability and runs a kernel that produces `42`.
-Requires CUDA Toolkit, a compatible host compiler and an NVIDIA GPU to build
-(the GPU architecture is detected automatically). Missing drivers or devices at
-runtime are reported without failing the application.
+Requires CUDA Toolkit and a compatible host compiler. By default, building detects
+the local GPU architecture; pass `-DCMAKE_CUDA_ARCHITECTURES=89` (or another explicit
+architecture) to configure and build without a GPU. Running the kernel needs an
+NVIDIA GPU. Missing drivers or devices at runtime are reported without failing the
+application. CI builds and analyzes the example without running it.
 
 The example adds a `StreamSink` to `std::clog` before querying CUDA. The logger
 starts with no sinks, so applications choose where engine logs are written.

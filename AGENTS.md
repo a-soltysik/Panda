@@ -30,6 +30,8 @@ reported line. Do not weaken checks to make a result pass.
 
 ## Maintenance and handoff
 
+For code/build changes and before every commit, follow
+[panda-code-workflow](.agents/skills/panda-code-workflow/SKILL.md).
 Use [panda-project-maintenance](.agents/skills/panda-project-maintenance/SKILL.md).
 For functional use cases or changes to their depicted flows, use
 [panda-functional-documentation](.agents/skills/panda-functional-documentation/SKILL.md).
