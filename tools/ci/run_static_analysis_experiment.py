@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure integrated MSVC analysis against parallel compile-database analysis."""
+"""Measure integrated static analysis against parallel compile-database analysis."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def compilation_fingerprint(entries: list[dict[str, str]], project_dir: Path, bu
 
 
 def read_inputs(
-    project_dir: Path, build_dir: Path, expected_analysis: bool
+    project_dir: Path, build_dir: Path, expected_analysis: bool, compiler_family: str
 ) -> tuple[dict[str, str], list[dict[str, str]]]:
     cache_path = build_dir / "CMakeCache.txt"
     database_path = build_dir / "compile_commands.json"
@@ -87,7 +87,7 @@ def read_inputs(
         raise ValueError(f"Expected CMakeCache.txt and compile_commands.json in {build_dir}")
     cache = cmake_cache(cache_path)
     if cache.get("PANDA_WARNINGS_AS_ERRORS", "").upper() != "ON":
-        raise ValueError("PANDA_WARNINGS_AS_ERRORS must be ON for the MSVC experiment")
+        raise ValueError("PANDA_WARNINGS_AS_ERRORS must be ON for this experiment")
     for language in ("C", "CXX", "CUDA"):
         launcher = cache.get(f"CMAKE_{language}_COMPILER_LAUNCHER", "")
         if launcher.strip():
@@ -110,10 +110,17 @@ def read_inputs(
     missing_wx = [
         str(absolute_source(entry))
         for entry in entries
-        if "/WX" not in compile_command_text(entry).upper()
+        if (
+            "/WX" not in compile_command_text(entry).upper()
+            if compiler_family == "msvc"
+            else "-Werror" not in compile_command_text(entry).split()
+        )
     ]
     if missing_wx:
-        raise ValueError("Panda C++ compilation entries missing /WX:\n" + "\n".join(missing_wx))
+        warning_flag = "/WX" if compiler_family == "msvc" else "-Werror"
+        raise ValueError(
+            f"Panda C++ compilation entries missing {warning_flag}:\n" + "\n".join(missing_wx)
+        )
     if any("ccache" in compile_command_text(entry).casefold() for entry in entries):
         raise ValueError("The Panda C++ compilation database invokes ccache")
     return cache, entries
@@ -144,14 +151,20 @@ def measure_build(args: argparse.Namespace) -> int:
     project_dir = args.project_dir.resolve()
     build_dir = args.build_dir.resolve()
     try:
-        _, entries = read_inputs(project_dir, build_dir, expected_analysis=args.mode == "integrated")
+        _, entries = read_inputs(
+            project_dir,
+            build_dir,
+            expected_analysis=args.mode == "integrated",
+            compiler_family=args.compiler,
+        )
         fingerprint = compilation_fingerprint(entries, project_dir, build_dir)
         inspect_ninja_commands(build_dir)
     except (KeyError, OSError, json.JSONDecodeError, ValueError, RuntimeError) as error:
-        print(f"Cannot prepare MSVC build measurement: {error}", file=sys.stderr)
+        print(f"Cannot prepare build measurement: {error}", file=sys.stderr)
         return 2
 
-    print(f"Panda C++ compile entries with /WX: {len(entries)}")
+    warning_flag = "/WX" if args.compiler == "msvc" else "-Werror"
+    print(f"Panda C++ compile entries with {warning_flag}: {len(entries)}")
     unique_sources = {absolute_source(entry) for entry in entries}
     print(f"Unique Panda C++ sources: {len(unique_sources)}")
     print(f"Panda C++ compile-entry fingerprint: {fingerprint}")
@@ -160,7 +173,7 @@ def measure_build(args: argparse.Namespace) -> int:
     clean = subprocess.run(["ninja", "-C", str(build_dir), "-t", "clean"], check=False)
     if clean.returncode:
         return clean.returncode
-    command = ["cmake", "--build", "--preset", "msvc-quality", "--parallel", "4"]
+    command = ["cmake", "--build", "--preset", args.preset, "--parallel", str(args.jobs)]
     print("Running: " + subprocess.list2cmdline(command))
     started = perf_counter()
     result = subprocess.run(command, cwd=project_dir, check=False)
@@ -173,25 +186,38 @@ def measure_build(args: argparse.Namespace) -> int:
     return result.returncode
 
 
-def clang_tidy_command(source: Path, clang_tidy: str, build_dir: Path, cxx_flags: str) -> list[str]:
+def clang_tidy_command(
+    source: Path,
+    clang_tidy: str,
+    build_dir: Path,
+    cxx_flags: str,
+    compiler_family: str,
+) -> list[str]:
     command = [
         clang_tidy,
         "-p",
         str(build_dir),
         "--extra-arg=-Wno-unknown-warning-option",
         f"--exclude-header-filter={EXCLUDE_HEADER_FILTER}",
-        "--extra-arg=--target=x86_64-pc-windows-msvc",
-        "--extra-arg-before=--driver-mode=cl",
     ]
-    exception_flag = re.search(r"(/EH[^ ]+)", cxx_flags)
-    if exception_flag:
-        command.append(f"--extra-arg={exception_flag.group(1)}")
+    if compiler_family == "msvc":
+        command.extend(
+            ("--extra-arg=--target=x86_64-pc-windows-msvc", "--extra-arg-before=--driver-mode=cl")
+        )
+        exception_flag = re.search(r"(/EH[^ ]+)", cxx_flags)
+        if exception_flag:
+            command.append(f"--extra-arg={exception_flag.group(1)}")
     command.append(str(source))
     return command
 
 
 def run_clang_tidy(
-    sources: list[Path], executable: str, build_dir: Path, cxx_flags: str, jobs: int
+    sources: list[Path],
+    executable: str,
+    build_dir: Path,
+    cxx_flags: str,
+    compiler_family: str,
+    jobs: int,
 ) -> tuple[float, int]:
     started = perf_counter()
     failures = 0
@@ -199,7 +225,7 @@ def run_clang_tidy(
         pending = {
             executor.submit(
                 subprocess.run,
-                clang_tidy_command(source, executable, build_dir, cxx_flags),
+                clang_tidy_command(source, executable, build_dir, cxx_flags, compiler_family),
                 cwd=build_dir.parent,
                 capture_output=True,
                 check=False,
@@ -250,11 +276,13 @@ def run_analysis(args: argparse.Namespace) -> int:
     project_dir = args.project_dir.resolve()
     build_dir = args.build_dir.resolve()
     try:
-        cache, entries = read_inputs(project_dir, build_dir, expected_analysis=True)
+        cache, entries = read_inputs(
+            project_dir, build_dir, expected_analysis=True, compiler_family=args.compiler
+        )
         fingerprint = compilation_fingerprint(entries, project_dir, build_dir)
         inspect_ninja_commands(build_dir)
     except (KeyError, OSError, json.JSONDecodeError, ValueError, RuntimeError) as error:
-        print(f"Cannot prepare standalone MSVC analysis: {error}", file=sys.stderr)
+        print(f"Cannot prepare standalone analysis: {error}", file=sys.stderr)
         return 2
 
     clang_tidy = shutil.which("clang-tidy")
@@ -272,7 +300,9 @@ def run_analysis(args: argparse.Namespace) -> int:
 
     started = perf_counter()
     with ThreadPoolExecutor(max_workers=2) as executor:
-        tidy_future = executor.submit(run_clang_tidy, sources, clang_tidy, build_dir, cxx_flags, args.jobs)
+        tidy_future = executor.submit(
+            run_clang_tidy, sources, clang_tidy, build_dir, cxx_flags, args.compiler, args.jobs
+        )
         cppcheck_future = executor.submit(run_cppcheck, entries, build_dir, cppcheck, args.jobs)
         tidy_seconds, tidy_failures = tidy_future.result()
         cppcheck_seconds, cppcheck_code = cppcheck_future.result()
@@ -304,12 +334,16 @@ def main() -> int:
 
     build_parser = commands.add_parser("build", help="measure a fresh quality build")
     build_parser.add_argument("--mode", choices=("integrated", "compile-only"), required=True)
+    build_parser.add_argument("--compiler", choices=("gcc", "msvc"), required=True)
+    build_parser.add_argument("--preset", required=True)
+    build_parser.add_argument("--jobs", type=int, default=4)
     build_parser.add_argument("--project-dir", type=Path, required=True)
     build_parser.add_argument("--build-dir", type=Path, required=True)
     build_parser.add_argument("--github-output", type=Path)
     build_parser.set_defaults(run=measure_build)
 
     analysis_parser = commands.add_parser("analyze", help="run standalone analyzers concurrently")
+    analysis_parser.add_argument("--compiler", choices=("gcc", "msvc"), required=True)
     analysis_parser.add_argument("--project-dir", type=Path, required=True)
     analysis_parser.add_argument("--build-dir", type=Path, required=True)
     analysis_parser.add_argument("--jobs", type=int, default=2)
