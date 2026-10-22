@@ -49,6 +49,7 @@ public:
 
     [[nodiscard]] auto allocate(const MemoryRequest& request) -> Result<MemoryAllocation>;
     [[nodiscard]] auto getStats() const -> const MemoryPoolStats&;
+    [[nodiscard]] auto getPhysicalDevice() const noexcept -> const vk::raii::PhysicalDevice&;
 
 private:
     friend class MemoryAllocation;

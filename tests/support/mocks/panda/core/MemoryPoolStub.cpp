@@ -64,6 +64,11 @@ auto MemoryPool::getStats() const -> const MemoryPoolStats&
     return test::ScopedMock<test::MemoryPoolMock>::getActiveMock().getStats(*this);
 }
 
+auto MemoryPool::getPhysicalDevice() const noexcept -> const vk::raii::PhysicalDevice&
+{
+    return _physicalDevice;
+}
+
 void MemoryPool::release(std::uint64_t id) noexcept
 {
     try

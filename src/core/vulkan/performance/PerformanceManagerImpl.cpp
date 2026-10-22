@@ -19,12 +19,16 @@
 #include <panda/PerformanceManager.hpp>
 #include <vector>
 
+#include "SubmissionQueue.hpp"
+
 namespace panda::detail
 {
 PerformanceManagerImpl::PerformanceManagerImpl(const vk::raii::Device& device,
+                                               SubmissionQueue* submissions,
                                                TimestampProperties timestamps,
                                                bool enableFramePerformanceSampling)
     : _device {device},
+      _submissions {submissions},
       _capabilities {.hasGpuTimestampQueries = timestamps.validBits != 0,
                      .isGpuTimestampSamplingEnabled = enableFramePerformanceSampling && timestamps.validBits != 0},
       _timestampValidBits {timestamps.validBits},
@@ -85,6 +89,29 @@ auto PerformanceManagerImpl::collect(std::size_t slotIndex) -> Result<bool>
     {
         return false;
     }
+    const auto completed = isSubmissionComplete(slot);
+    if (!completed)
+    {
+        return std::unexpected {completed.error()};
+    }
+    if (!*completed)
+    {
+        return false;
+    }
+    return collectCompleted(slot);
+}
+
+auto PerformanceManagerImpl::isSubmissionComplete(const QuerySlot& slot) -> Result<bool>
+{
+    if (_submissions == nullptr)
+    {
+        return std::unexpected {makeError(ErrorCode::BackendFailure, "Submitted timestamp sample has no queue")};
+    }
+    return _submissions->poll(slot.submissionPoint);
+}
+
+auto PerformanceManagerImpl::collectCompleted(QuerySlot& slot) -> Result<bool>
+{
     const auto values = readReadyTimestamps(slot);
     if (!values)
     {
@@ -163,12 +190,13 @@ void PerformanceManagerImpl::recordEnd(std::size_t slotIndex, vk::CommandBuffer 
     }
 }
 
-void PerformanceManagerImpl::markSubmitted(std::size_t slotIndex) noexcept
+void PerformanceManagerImpl::markSubmitted(std::size_t slotIndex, CompletionPoint submissionPoint) noexcept
 {
     if (_capabilities.isGpuTimestampSamplingEnabled)
     {
         auto& slot = _slots.at(slotIndex);
         slot.submitted = true;
+        slot.submissionPoint = submissionPoint;
         slot.frameIndex = _nextFrameIndex++;
         slot.cpuFrameDuration = {};
     }

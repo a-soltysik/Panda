@@ -93,8 +93,28 @@ protected:
         std::ignore = instance.release();
     }
 
-    void expectImageCreation(VkImage image, vk::Format format)
+    void expectImageCreation(VkImage image, vk::Format format, vk::ImageUsageFlags usage)
     {
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceImageFormatProperties(physicalHandle,
+                                                             static_cast<VkFormat>(format),
+                                                             VK_IMAGE_TYPE_2D,
+                                                             VK_IMAGE_TILING_OPTIMAL,
+                                                             static_cast<VkImageUsageFlags>(usage),
+                                                             0,
+                                                             NotNull()))
+            .InSequence(creationOrder)
+            .WillOnce([](VkPhysicalDevice,
+                         VkFormat,
+                         VkImageType,
+                         VkImageTiling,
+                         VkImageUsageFlags,
+                         VkImageCreateFlags,
+                         VkImageFormatProperties* output) {
+                *output = VkImageFormatProperties {};
+                output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                return success;
+            });
         EXPECT_CALL(vulkan, vkCreateImage(deviceHandle, NotNull(), nullptr, NotNull()))
             .InSequence(creationOrder)
             .WillOnce([image,
@@ -178,7 +198,7 @@ protected:
                            VkImageAspectFlags aspect,
                            VkResult viewResult = success)
     {
-        expectImageCreation(image, format);
+        expectImageCreation(image, format, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled);
         expectImageMemoryRequirements(image);
         expectImageAllocation(image, memory);
         expectImageBinding(image, memory);

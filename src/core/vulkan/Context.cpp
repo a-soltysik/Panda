@@ -404,6 +404,10 @@ auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
                                              bool enableFramePerformanceSampling) -> Result<void>
 {
     _memoryPool = resources::MemoryPool::create(_physicalDevice, _device);
+    if (surface != nullptr)
+    {
+        _submissions = std::make_unique<detail::SubmissionQueue>(_device, selected.info.queueFamily);
+    }
     if (const auto initialized = initializePerformance(selected, enableFramePerformanceSampling); !initialized)
     {
         return std::unexpected {initialized.error()};
@@ -425,6 +429,7 @@ auto Context::Impl::initializePerformance(const vulkan::SelectedDevice& selected
 {
     auto performance = std::make_unique<detail::PerformanceManagerImpl>(
         _device,
+        _submissions.get(),
         detail::TimestampProperties {.validBits = selected.timestampValidBits,
                                      .periodNanoseconds = selected.timestampPeriodNanoseconds},
         enableFramePerformanceSampling);
@@ -440,7 +445,6 @@ auto Context::Impl::initializePresentation(const WindowSurface& surface,
                                            const vulkan::SelectedDevice& selected,
                                            vk::SurfaceKHR nativeSurface) -> Result<void>
 {
-    _submissions = std::make_unique<detail::SubmissionQueue>(_device, selected.info.queueFamily);
     auto presentation = vulkan::Presentation::create({.physicalDevice = selected.physicalDevice,
                                                       .device = _device,
                                                       .surface = nativeSurface,

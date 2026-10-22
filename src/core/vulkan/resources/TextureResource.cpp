@@ -42,7 +42,48 @@ auto validateDescription(const TextureDesc& description) -> Result<void>
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Texture usage requires an unsupported feature")};
     }
+    constexpr auto viewCapable =
+        vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eColorAttachment |
+        vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eInputAttachment;
+    if (!(description.usage & viewCapable))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture usage cannot create an image view")};
+    }
     return {};
+}
+
+auto validateFormatAndExtent(const vk::raii::PhysicalDevice& physicalDevice, const TextureDesc& description)
+    -> Result<void>
+{
+    const auto support = physicalDevice.getImageFormatProperties(description.format,
+                                                                 vk::ImageType::e2D,
+                                                                 vk::ImageTiling::eOptimal,
+                                                                 description.usage,
+                                                                 {});
+    if (support.result == vk::Result::eErrorFormatNotSupported)
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Texture format and usage are unsupported")};
+    }
+    if (support.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {makeVulkanError(support.result)};
+    }
+    if (description.extent.width > support.value.maxExtent.width ||
+        description.extent.height > support.value.maxExtent.height)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture extent exceeds device limits")};
+    }
+    return {};
+}
+
+auto validateTextureRequest(const vk::raii::PhysicalDevice& physicalDevice, const TextureDesc& description)
+    -> Result<void>
+{
+    if (const auto valid = validateDescription(description); !valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    return validateFormatAndExtent(physicalDevice, description);
 }
 
 auto createNativeImage(const vk::raii::Device& device, const TextureDesc& description) -> Result<vk::raii::Image>
@@ -112,7 +153,7 @@ auto TextureResource::getResource(const Texture& texture) -> const std::shared_p
 auto TextureResource::create(const vk::raii::Device& device, MemoryPool& pool, const TextureDesc& description)
     -> Result<std::shared_ptr<TextureResource>>
 {
-    const auto valid = validateDescription(description);
+    const auto valid = validateTextureRequest(pool.getPhysicalDevice(), description);
     if (!valid)
     {
         return std::unexpected {valid.error()};

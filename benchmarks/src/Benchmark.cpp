@@ -7,8 +7,6 @@
 #include <exception>
 #include <expected>
 #include <filesystem>
-#include <fstream>
-#include <ios>
 #include <panda/HostInfo.hpp>
 #include <panda/Logger.hpp>
 #include <panda_bench/Arguments.hpp>
@@ -100,29 +98,6 @@ auto addLogFileSink(const std::filesystem::path& directory) -> std::expected<std
     return logPath;
 }
 
-auto writeReport(const Options& options, const Report& report) -> std::expected<std::filesystem::path, std::string>
-{
-    try
-    {
-        auto outputPath = options.outputDirectory / "panda-bench-smoke.json";
-        auto output = std::ofstream {outputPath, std::ios::binary};
-        if (!output)
-        {
-            return std::unexpected {"Could not open benchmark report: " + outputPath.string()};
-        }
-        output << serialize(report);
-        if (!output)
-        {
-            return std::unexpected {"Could not write benchmark report: " + outputPath.string()};
-        }
-        return outputPath;
-    }
-    catch (const std::exception& error)
-    {
-        return std::unexpected {error.what()};
-    }
-}
-
 void printSummary(const Report& report, const std::filesystem::path& outputPath, const std::filesystem::path& logPath)
 {
     for (const auto& run : report.runs)
@@ -165,7 +140,7 @@ auto runBenchmark(const Options& options) -> int
         return EXIT_FAILURE;
     }
     const auto runsSucceeded = executeRuns(options, report);
-    const auto outputPath = writeReport(options, report);
+    const auto outputPath = writeReport(options.outputDirectory / "panda-bench-smoke.json", report);
     if (!outputPath)
     {
         std::println(stderr, "{}", outputPath.error());

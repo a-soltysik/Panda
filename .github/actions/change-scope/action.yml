@@ -1,0 +1,44 @@
+name: Detect changed file scope
+description: Mark a change as code-related unless every changed file is documentation.
+outputs:
+  code:
+    description: Whether code, build or workflow checks should run.
+    value: ${{ steps.classify.outputs.code }}
+runs:
+  using: composite
+  steps:
+    - id: classify
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PUSH_BEFORE_SHA: ${{ github.event.before }}
+        PUSH_HEAD_SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+
+        if [[ "$EVENT_NAME" == "pull_request" ]]; then
+          base="$PR_BASE_SHA"
+          head="$PR_HEAD_SHA"
+        else
+          base="$PUSH_BEFORE_SHA"
+          head="$PUSH_HEAD_SHA"
+        fi
+
+        if [[ -z "$base" || "$base" =~ ^0+$ || -z "$head" ]] || \
+          ! git diff --name-only -z "$base...$head" > "$RUNNER_TEMP/panda-changed-paths"; then
+          echo "code=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        changed=false
+        while IFS= read -r -d '' path; do
+          changed=true
+          case "$path" in
+            *.md|*.mmd|*.svg|*.png|*.jpg|*.jpeg|*.webp|*.pdf) ;;
+            *) echo "code=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+        done < "$RUNNER_TEMP/panda-changed-paths"
+
+        echo "code=$([[ "$changed" == true ]] && echo false || echo true)" >> "$GITHUB_OUTPUT"

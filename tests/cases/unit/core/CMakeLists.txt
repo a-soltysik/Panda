@@ -108,7 +108,7 @@ panda_add_test(panda_unit_performance_manager unit
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan/performance"
     SOURCES PerformanceManager.cpp
     LIBRARIES Panda::Panda PandaTest::Support
-    MOCKS PandaTest::VulkanMock)
+    MOCKS PandaTest::VulkanMock PandaTest::SubmissionQueueMock)
 
 panda_add_test(panda_unit_presentation unit
     VULKAN_INTERNAL

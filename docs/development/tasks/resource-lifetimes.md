@@ -70,10 +70,13 @@ live reserved ranges. Each Context owns one manager for Panda allocations.
 memory-requirement selection, pooled/dedicated allocation and binding succeed.
 Shared resource state destroys `VkBuffer` before its `MemoryAllocation` releases
 the range. Context has stable heap-owned state; moving it preserves buffer owners.
-`Context::createTexture` follows the same lifecycle for an optimal-tiled, single-mip,
-single-layer 2D image: validate, create, query image memory requirements, allocate
-device-local memory from the image partition, bind, create one default 2D image view,
-then publish a copyable `Texture`. The default view spans the sole mip/layer and uses
+`Context::createTexture` rejects invalid dimensions, formats and unsupported usage,
+including usage that cannot support its required default image view. Before creating
+the optimal-tiled, single-mip, single-layer 2D image, it checks the requested format,
+usage and extent against the physical device. It then queries image memory
+requirements, allocates device-local memory from the image partition, binds, creates
+one default 2D image view and only then publishes a copyable `Texture`. The default
+view spans the sole mip/layer and uses
 the format's color, depth or stencil aspect; combined depth/stencil formats use depth.
 Member order destroys `VkImageView` before `VkImage`, then `MemoryAllocation` releases
 its range. Vulkan device, buffer and image-view handles remain private to the backend.
@@ -158,23 +161,20 @@ by this scenario.
 
 ## Verification
 
-The upload lifetime and within-batch staging-page changes were verified with
-Windows MSVC and Linux WSL GCC.
+The current texture validation and resource changes pass the full fast build and
+test suites on Windows and WSL.
 
-- `cmake --build --preset msvc-quality --parallel` passed, including formatting,
-  static analysis and compilation of all targets.
-- `ctest --preset msvc-quality --output-on-failure` passed all 357 tests. Three
-  noncoherent memory-type variants were skipped because the GPU did not expose
-  that memory type. Upload, mesh and texture system tests ran with the real Vulkan
-  loader and validation.
-- `.\.agents\skills\panda-dual-platform-build\scripts\build-wsl.ps1 -Preset gcc-coverage -RunTests` passed all 281 unit and
-  integration tests. The build reported stale `.gcda` checksum warnings while
-  relinking; no fresh coverage percentage is recorded.
+- Windows: `cmake --build --preset msvc-fast --parallel` and
+  `ctest --preset msvc-fast` passed. CTest registered 425 tests: 421 passed and
+  four were skipped (the Linux-only buffered-close test and three unavailable
+  noncoherent memory variants).
+- WSL GCC: `cmake --build --preset gcc-fast --parallel` and
+  `ctest --preset gcc-fast` passed. CTest registered 425 tests: 422 passed and
+  three noncoherent memory variants were skipped because the device did not expose
+  that memory type. The Linux buffered-close failure test passed.
 - `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
-  44 Markdown files and the task queue successfully; `git diff --check` passed.
-
-Native noncoherent cache operations remain unverified because no tested GPU
-exposed a compatible memory type; controlled Vulkan callbacks cover those paths.
+  all 54 Markdown files and the task queue; `git diff --check` and Clang format
+  validation passed.
 
 ## Remaining work
 

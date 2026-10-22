@@ -90,7 +90,10 @@ query type tells Vulkan what each pool entry stores; the recorded `writeTimestam
 commands choose the measurement points. Query 0 marks the beginning of the frame's
 measured rendering work and query 1 marks its end. Both timestamps use the
 color-attachment output stage. A slot's previous result is collected before its pool
-is reset for a new frame. These are GPU-written device timestamps, not CPU stopwatch readings
+is reset for a new frame. Before reading results, the manager nonblockingly confirms
+completion of that slot's exact frame submission on the shared timeline. Availability
+left by an earlier use of the query slot cannot be attributed to the new frame.
+These are GPU-written device timestamps, not CPU stopwatch readings
 ([`vkCmdWriteTimestamp2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdWriteTimestamp2.html)).
 
 The manager requests 64-bit results with an availability value for each query, without
@@ -288,7 +291,8 @@ draw/submission counts, waits,
 timestamp validity and calibration limitations, validation/profiler state, and
 outcome. Raw samples may be saved separately, outside curated source baselines.
 Exit codes: 0 complete, 2 unsupported requested capability, 3 invalid controlled
-run (resize/minimize/quality change/missing query), 4 setup or backend failure.
+run (resize/minimize/quality change/missing query), 4 setup, backend or report
+output failure.
 An unavailable optional case is a reported skip with exit 0 for the remaining cases.
 
 First-version acceptance criteria are structural: same production path; no

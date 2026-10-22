@@ -197,11 +197,14 @@ until confirmed completion. Context drains these internal owners before checking
 for remaining external resource owners. Unsubmitted upload batches still borrow
 Context and must be destroyed before it.
 
-`TextureDesc` currently provides a 2D extent, Vulkan format and image usage. Texture
-creation fixes optimal tiling, one mip, one array layer and one sample, with undefined
-initial contents. `Context::createTexture` creates the image, queries ordinary and
-dedicated requirements, requests device-local memory from the image partition of the
-Context pool and binds the image at that range's offset. Failure publishes no handle.
+`TextureDesc` provides a 2D extent, Vulkan format and image usage. Texture creation
+fixes optimal tiling, one mip, one array layer and one sample, with undefined initial
+contents. Because each texture owns a default image view, usage must include at least
+one supported view-capable bit. `Context::createTexture` checks optimal-tiling
+format/usage support and the requested extent against the physical device before
+creating the image. It then queries ordinary and dedicated requirements, requests
+device-local memory from the image partition of the Context pool and binds the image
+at that range's offset. Failure publishes no handle.
 A successful creation also gives the texture one internal default 2D image view
 spanning its sole mip and layer. The view selects color, depth or stencil from the
 format; combined depth/stencil formats use a depth-only view. The Texture retains

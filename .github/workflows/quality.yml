@@ -7,6 +7,18 @@ on:
     branches: [master]
 
 jobs:
+  changes:
+    name: Classify changed files
+    runs-on: ubuntu-26.04
+    outputs:
+      code: ${{ steps.scope.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/change-scope
+        id: scope
+
   documentation:
     name: Mermaid syntax
     runs-on: ubuntu-26.04
@@ -26,6 +38,8 @@ jobs:
 
   unity:
     name: ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -61,6 +75,8 @@ jobs:
 
   api-docs:
     name: Public API documentation
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
@@ -90,6 +106,8 @@ jobs:
 
   quality:
     name: ${{ matrix.name }} analysis
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -125,6 +143,8 @@ jobs:
 
   cuda-analysis:
     name: ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

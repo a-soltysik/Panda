@@ -69,6 +69,21 @@ protected:
                 ASSERT_NE(maintenance, nullptr);
                 maintenance->maxMemoryAllocationSize = 4096;
             });
+        EXPECT_CALL(
+            vulkan,
+            vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice,
+                               VkFormat,
+                               VkImageType,
+                               VkImageTiling,
+                               VkImageUsageFlags,
+                               VkImageCreateFlags,
+                               VkImageFormatProperties* output) {
+                *output = VkImageFormatProperties {};
+                output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                return success;
+            });
         EXPECT_CALL(poolMock, destroy(_));
         pool = MemoryPool::create(physical, device);
     }
@@ -172,6 +187,10 @@ protected:
 
 TEST_F(TextureResourceTest, RejectsInvalidDescriptionsBeforeCreatingNativeObjects)
 {
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
+        .Times(0);
+    EXPECT_CALL(vulkan, vkCreateImage(_, _, _, _)).Times(0);
     const auto empty = TextureResource::create(
         device,
         *pool,
@@ -188,6 +207,61 @@ TEST_F(TextureResourceTest, RejectsInvalidDescriptionsBeforeCreatingNativeObject
     ASSERT_FALSE(undefined);
     EXPECT_EQ(empty.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_EQ(undefined.error().code, panda::ErrorCode::InvalidArgument);
+
+    const auto transferOnly = TextureResource::create(device,
+                                                      *pool,
+                                                      {
+                                                          .extent = {.width = 1, .height = 1},
+                                                          .format = vk::Format::eR8G8B8A8Unorm,
+                                                          .usage = vk::ImageUsageFlagBits::eTransferDst
+    });
+    ASSERT_FALSE(transferOnly);
+    EXPECT_EQ(transferOnly.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(TextureResourceTest, RejectsUnsupportedFormatUsageAndExtentBeforeCreatingImage)
+{
+    const auto desc = description();
+    EXPECT_CALL(
+        vulkan,
+        vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, NotNull()))
+        .WillOnce([](VkPhysicalDevice,
+                     VkFormat,
+                     VkImageType,
+                     VkImageTiling,
+                     VkImageUsageFlags,
+                     VkImageCreateFlags,
+                     VkImageFormatProperties*) {
+            return static_cast<VkResult>(vk::Result::eErrorFormatNotSupported);
+        });
+    EXPECT_CALL(vulkan, vkCreateImage(_, _, _, _)).Times(0);
+    const auto unsupported = TextureResource::create(device, *pool, desc);
+    ASSERT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(TextureResourceTest, RejectsExtentBeyondDeviceLimitBeforeCreatingImage)
+{
+    EXPECT_CALL(
+        vulkan,
+        vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, NotNull()))
+        .WillOnce([](VkPhysicalDevice,
+                     VkFormat,
+                     VkImageType,
+                     VkImageTiling,
+                     VkImageUsageFlags,
+                     VkImageCreateFlags,
+                     VkImageFormatProperties* output) {
+            *output = VkImageFormatProperties {};
+            output->maxExtent = {.width = 31, .height = 16, .depth = 1};
+            return success;
+        });
+    EXPECT_CALL(vulkan, vkCreateImage(_, _, _, _)).Times(0);
+    auto desc = description();
+    desc.extent.width = 32;
+    const auto oversized = TextureResource::create(device, *pool, desc);
+    ASSERT_FALSE(oversized);
+    EXPECT_EQ(oversized.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST_F(TextureResourceTest, PreservesImageCreationFailureWithoutDestroyingItsUndefinedOutput)

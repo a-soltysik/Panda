@@ -302,4 +302,9 @@ auto MemoryPool::getStats() const -> const MemoryPoolStats&
 {
     return _stats;
 }
+
+auto MemoryPool::getPhysicalDevice() const noexcept -> const vk::raii::PhysicalDevice&
+{
+    return _physicalDevice;
+}
 }

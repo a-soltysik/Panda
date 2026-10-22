@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <panda/Context.hpp>
@@ -198,7 +199,14 @@ protected:
             .InSequence(flow)
             .WillOnce(testing::Action<decltype(vkAcquireNextImageKHR)> {
                 [result](VkDevice, VkSwapchainKHR, std::uint64_t, VkSemaphore, VkFence, std::uint32_t* index) {
-                    *index = 0;
+                    if (result == vk::Result::eSuccess || result == vk::Result::eSuboptimalKHR)
+                    {
+                        *index = 0;
+                    }
+                    else
+                    {
+                        EXPECT_EQ(*index, std::numeric_limits<std::uint32_t>::max());
+                    }
                     return static_cast<VkResult>(result);
                 }});
     }

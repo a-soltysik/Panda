@@ -473,6 +473,26 @@ protected:
         expectInstance();
         expectAdapter(false);
         expectDevice(false);
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceImageFormatProperties(physical,
+                                                             _,
+                                                             VK_IMAGE_TYPE_2D,
+                                                             VK_IMAGE_TILING_OPTIMAL,
+                                                             _,
+                                                             0,
+                                                             NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice,
+                               VkFormat,
+                               VkImageType,
+                               VkImageTiling,
+                               VkImageUsageFlags,
+                               VkImageCreateFlags,
+                               VkImageFormatProperties* output) {
+                *output = VkImageFormatProperties {};
+                output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                return success;
+            });
     }
 
     void expectBuffer(VkBuffer buffer,
@@ -543,6 +563,26 @@ protected:
 
     void expectImageCreation(VkImage image, const panda::TextureDesc& description)
     {
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceImageFormatProperties(physical,
+                                                             static_cast<VkFormat>(description.format),
+                                                             VK_IMAGE_TYPE_2D,
+                                                             VK_IMAGE_TILING_OPTIMAL,
+                                                             static_cast<VkImageUsageFlags>(description.usage),
+                                                             0,
+                                                             NotNull()))
+            .InSequence(imageCreationOrder)
+            .WillOnce([](VkPhysicalDevice,
+                         VkFormat,
+                         VkImageType,
+                         VkImageTiling,
+                         VkImageUsageFlags,
+                         VkImageCreateFlags,
+                         VkImageFormatProperties* output) {
+                *output = VkImageFormatProperties {};
+                output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                return success;
+            });
         EXPECT_CALL(vulkan, vkCreateImage(device, NotNull(), nullptr, NotNull()))
             .InSequence(imageCreationOrder)
             .WillOnce(

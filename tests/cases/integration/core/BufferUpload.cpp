@@ -202,6 +202,7 @@ protected:
 
     void configureImages()
     {
+        configureImageFormatProperties();
         EXPECT_CALL(vulkan, vkCreateImage(_, NotNull(), nullptr, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly(
@@ -241,6 +242,27 @@ protected:
                 }));
                 EXPECT_EQ(images.erase(image), 1);
                 destruction.push_back('i');
+            });
+    }
+
+    void configureImageFormatProperties()
+    {
+        EXPECT_CALL(
+            vulkan,
+            vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice,
+                               VkFormat,
+                               VkImageType,
+                               VkImageTiling,
+                               VkImageUsageFlags,
+                               VkImageCreateFlags,
+                               VkImageFormatProperties* output) {
+                *output = VkImageFormatProperties {};
+                output->maxExtent = {.width = std::numeric_limits<std::uint32_t>::max(),
+                                     .height = std::numeric_limits<std::uint32_t>::max(),
+                                     .depth = 1};
+                return success;
             });
     }
 
@@ -993,11 +1015,11 @@ TEST_F(BufferUploadIntegration, InvalidTextureRegionsAndSourceLayoutsAreRejected
 
 TEST_F(BufferUploadIntegration, TextureWritesRequireSupportedFormatAndBothUsageFlags)
 {
-    const auto transferOnly = texture(vk::Extent2D {.width = 8, .height = 6},
-                                      vk::Format::eR8G8B8A8Unorm,
-                                      vk::ImageUsageFlagBits::eTransferDst);
     const auto sampledOnly =
         texture(vk::Extent2D {.width = 8, .height = 6}, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled);
+    const auto noSampled = texture(vk::Extent2D {.width = 8, .height = 6},
+                                   vk::Format::eR8G8B8A8Unorm,
+                                   vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment);
     const auto depth = texture(vk::Extent2D {.width = 8, .height = 6},
                                vk::Format::eD32Sfloat,
                                vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled);
@@ -1007,8 +1029,8 @@ TEST_F(BufferUploadIntegration, TextureWritesRequireSupportedFormatAndBothUsageF
         .extent = vk::Extent2D {.width = 1, .height = 1}
     };
 
-    EXPECT_FALSE(batch->write(transferOnly, bytes, region));
     EXPECT_FALSE(batch->write(sampledOnly, bytes, region));
+    EXPECT_FALSE(batch->write(noSampled, bytes, region));
     EXPECT_FALSE(batch->write(depth, bytes, region));
     EXPECT_EQ(bufferCreations, 0);
 }

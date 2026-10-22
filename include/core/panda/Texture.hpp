@@ -20,9 +20,10 @@ struct TextureDesc
 {
     /// Nonzero width and height in texels.
     vk::Extent2D extent {};
-    /// Concrete Vulkan format; format and usage support is checked by Vulkan.
+    /// Concrete format; format/usage support and extent are checked before image creation.
     vk::Format format {vk::Format::eUndefined};
-    /// Transfer, sampled, storage, input-attachment or color/depth-attachment usage.
+    /// Include a sampled, storage, input-attachment or color/depth-attachment usage.
+    /// Transfer-only usage cannot support the required default image view.
     vk::ImageUsageFlags usage;
 };
 
