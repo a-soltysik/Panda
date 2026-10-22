@@ -32,13 +32,23 @@ Learning: Trace acquire, submission completion and presentation lifetime separat
 
 ## Current verification
 
-- Windows MSVC 14.51 with Vulkan SDK 1.4.341.1: `cmake --build build-msvc-tests -j 2` succeeds; `ctest --test-dir build-msvc-tests --output-on-failure -LE system` passes all 91 unit/integration tests. The unit boundary keeps Context, device selection and swapchain creation real while substituting native Vulkan calls; 22 added cases cover complete owners, staged failures, destruction ordering, undefined failed enumeration outputs and incomplete-result retry.
-- Windows real-device smoke: `ctest --test-dir build-msvc-tests --output-on-failure -V -R 'system.*ContextSystem'` passes all three context/window tests without skips on NVIDIA GeForce RTX 4070 Ti. Remove `VK_INSTANCE_LAYERS`, `VK_LAYER_DEBUG_ACTION` and `VK_LAYER_LOG_FILENAME`; set `VK_LOADER_LAYERS_DISABLE=~implicit~` for this test process to isolate installed overlays while Context requests Khronos validation. Logs contain no Vulkan VUID or validation error. The window test presents, resizes, suspends/restores and destroys a moved Context.
-- WSL GCC 16.0.1 with Vulkan headers 1.4.341: `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -Preset gcc-tests -IncludeSystemTests -Jobs 2` passes all 95 tests without skips. Native Vulkan tests use llvmpipe (LLVM 21.1.8), a software implementation; this is Linux lifecycle evidence, not Linux hardware-GPU evidence. Their logs contain no Vulkan VUID or validation error.
-- WSL ASan/UBSan: `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -Preset gcc-sanitizers -RunTests -Jobs 2` passes all 91 non-system tests. Failure cases prevent dispatcher creation for a failed instance, never publish or destroy nonnull failed native outputs, release previously created resources, and preserve acquire/present/recreation recovery.
-- WSL CPU coverage: `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -Preset gcc-coverage -RunTests -Jobs 2` passes all 91 non-system tests. gcovr 7.2 with `--gcov-executable gcov-16 --filter 'src/.*'` and the managed mirror as `--root` reports lines 88.0% (1286/1462), functions 98.5% (191/194), and branches 58.6% (920/1569). HTML, Cobertura XML and JSON reports remain in ignored cache/build directories. Context.cpp has 93.7% line coverage and SwapchainGeneration.cpp 99.1%. Counts come from reset profiles and a fresh 91-test run. The filter matches CI and excludes SDK/dependency code; native GPU tests are not part of this measurement.
-- Windows quality with clang-tidy 22.1.8 and cppcheck 2.19.0: the complete `cmake --build --preset msvc-quality --parallel 2` and `all_verify_interface_header_sets` builds pass with CUDA both enabled and disabled. `ctest --preset msvc-quality -LE system` passes 112 checks without CUDA (91 behavior tests and 21 formatting checks), and 127 with CUDA 13.4.92 (98 behavior tests and 29 formatting checks). Context lifecycle callbacks use explicit copyable gMock Actions while retaining `WillOnce` cardinality; this avoids a false ownership diagnostic in the OnceAction adapter with MSVC headers.
-- WSL quality with clang-tidy 22.1.2 and cppcheck 2.19.0: `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -Preset gcc-quality -Target panda_core,panda_unit_context,panda_unit_presentation,panda_unit_core,panda_system_windowed_context,all_verify_interface_header_sets -Jobs 2` succeeds, including isolated public-header compilation and formatting checks. `misc-use-internal-linkage` remains enabled; the private nested instance-services type needs no suppression.
-- Examples: `cmake --build build-msvc-quality --target simple_scene -j 2` and `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -Preset gcc-quality -Target simple_scene -Jobs 2` succeed with clang-tidy and cppcheck. `simple_scene_format` passes. The monadic creation/loop chain keeps the window alive until Context teardown and propagates failures to one logger call. A Windows native launch followed by a normal close request exits with zero and no validation errors with implicit overlay layers disabled for that process. The ordinary launch also closes successfully, but the installed ReShade layer reports a library-load failure. This is lifecycle evidence, not visual inspection or a RenderDoc capture. Legacy sources/assets remain outside these targets.
-- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checks all 44 Markdown files and the task queue without structural errors.
-- No new RenderDoc capture has been made. Previously observed capture-only `VUID-vkCmdDraw-None-09600` and `VUID-VkPresentInfoKHR-pImageIndices-01430` remain an integration limitation to recheck; the current standalone smoke runs do not reproduce them. The RAII ownership change does not alter the clear-frame barriers or introduce drawing.
+- Windows: `cmake --build --preset msvc-fast --parallel` and
+  `ctest --preset msvc-fast` passed. CTest registered 425 tests: 421 passed and
+  four were skipped (the Linux-only buffered-close test and three unavailable
+  noncoherent memory variants). Acquire timeout, not-ready, out-of-date and device
+  loss paths leave the image index unused.
+- WSL GCC: `cmake --build --preset gcc-fast --parallel` and
+  `ctest --preset gcc-fast` passed. CTest registered 425 tests: 422 passed and
+  three noncoherent memory variants were skipped because the device did not expose
+  that memory type.
+- Existing Windows Vulkan validation smoke presents, resizes, suspends/restores and
+  destroys a moved Context on an NVIDIA GeForce RTX 4070 Ti. WSL system tests are
+  Linux lifecycle evidence, not proof of hardware-GPU behavior.
+- No new RenderDoc capture has been made. Previously observed capture-only
+  `VUID-vkCmdDraw-None-09600` and
+  `VUID-VkPresentInfoKHR-pImageIndices-01430` remain an integration limitation
+  to recheck; the acquire-output change does not alter rendering barriers or draw
+  commands.
+- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
+  all 54 Markdown files and the task queue; `git diff --check` and Clang format
+  validation passed.

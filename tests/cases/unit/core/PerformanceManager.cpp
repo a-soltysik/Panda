@@ -12,18 +12,22 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <tuple>
 
 #include "PerformanceManagerImpl.hpp"
 #include "ScopedMock.hpp"
+#include "SubmissionQueue.hpp"
 #include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
+#include "panda/core/SubmissionQueueMock.hpp"
 
 namespace
 {
 using panda::detail::PerformanceManagerImpl;
+using panda::detail::SubmissionQueue;
 using panda::detail::TimestampProperties;
 using panda::test::fakeVulkanHandle;
 using testing::_;
@@ -43,6 +47,17 @@ protected:
           physicalDevice {instance, fakeVulkanHandle<VkPhysicalDevice>(2)},
           device {physicalDevice, fakeVulkanHandle<VkDevice>(3)}
     {
+    }
+
+    void SetUp() override
+    {
+        EXPECT_CALL(submissionQueue, construct(_, 0)).Times(testing::AnyNumber());
+        EXPECT_CALL(submissionQueue, getPoint(_))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly(testing::Return(panda::CompletionPoint {}));
+        EXPECT_CALL(submissionQueue, poll(_))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly(testing::Return(panda::Result<bool> {true}));
     }
 
     void TearDown() override
@@ -109,9 +124,24 @@ protected:
     {
         return PerformanceManagerImpl {
             device,
+            &getSubmissionQueue(),
             TimestampProperties {.validBits = validBits, .periodNanoseconds = period},
             enabled
         };
+    }
+
+    auto getSubmissionQueue() -> SubmissionQueue&
+    {
+        if (!_submissions)
+        {
+            _submissions.emplace(device, 0);
+        }
+        return *_submissions;
+    }
+
+    void markSubmitted(PerformanceManagerImpl& manager, std::size_t slotIndex)
+    {
+        manager.markSubmitted(slotIndex, getSubmissionQueue().getPoint(_nextSubmissionValue++));
     }
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
@@ -119,9 +149,14 @@ protected:
     vk::raii::Instance instance;
     vk::raii::PhysicalDevice physicalDevice;
     vk::raii::Device device;
+    panda::test::ScopedMock<panda::test::SubmissionQueueMock> submissionQueue;
     vk::CommandBuffer command {fakeVulkanHandle<VkCommandBuffer>(7)};
     VkQueryPool pool0 {fakeVulkanHandle<VkQueryPool>(5)};
     VkQueryPool pool1 {fakeVulkanHandle<VkQueryPool>(6)};
+
+private:
+    std::optional<SubmissionQueue> _submissions;
+    std::uint64_t _nextSubmissionValue {1};
 };
 }
 
@@ -134,7 +169,7 @@ TEST_F(PerformanceManagerTest, DisabledOrUnsupportedSamplingCreatesNoPoolsAndRet
     EXPECT_FALSE(capabilities.isGpuTimestampSamplingEnabled);
     EXPECT_TRUE(disabled.recordStart(0, command));
     disabled.recordEnd(0, command);
-    disabled.markSubmitted(0);
+    markSubmitted(disabled, 0);
     EXPECT_TRUE(disabled.takeNextSample());
     ASSERT_TRUE(disabled.takeAvailableSamples());
     EXPECT_TRUE(disabled.takeAvailableSamples()->empty());
@@ -185,7 +220,7 @@ TEST_F(PerformanceManagerTest, CreatesTwoTimestampPoolsAndRecordsFrameMarkers)
                              1));
     ASSERT_TRUE(manager.recordStart(0, command));
     manager.recordEnd(0, command);
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
 }
 
 TEST_F(PerformanceManagerTest, ConvertsReadyTicksToNanosecondsAndLatestDoesNotConsume)
@@ -193,7 +228,7 @@ TEST_F(PerformanceManagerTest, ConvertsReadyTicksToNanosecondsAndLatestDoesNotCo
     expectPools();
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     manager.recordCpuFrameDuration(0, std::chrono::nanoseconds {15});
     expectResults(pool0, {20, 1, 30, 1});
 
@@ -221,12 +256,94 @@ TEST_F(PerformanceManagerTest, ConvertsReadyTicksToNanosecondsAndLatestDoesNotCo
     EXPECT_FALSE(empty->has_value());
 }
 
+TEST_F(PerformanceManagerTest, ReusedQuerySlotWaitsForItsNewSubmissionBeforeReadingOldAvailability)
+{
+    expectPools();
+    auto manager = makeManager();
+    ASSERT_TRUE(manager.initialize());
+    markSubmitted(manager, 0);
+    manager.recordCpuFrameDuration(0, std::chrono::nanoseconds {15});
+    EXPECT_CALL(submissionQueue, poll(_))
+        .Times(3)
+        .WillOnce(testing::Return(panda::Result<bool> {true}))
+        .WillOnce(testing::Return(panda::Result<bool> {false}))
+        .WillOnce(testing::Return(panda::Result<bool> {true}));
+    EXPECT_CALL(vulkan,
+                vkGetQueryPoolResults(_,
+                                      pool0,
+                                      0,
+                                      2,
+                                      sizeof(std::array<std::uint64_t, 4>),
+                                      _,
+                                      sizeof(std::uint64_t) * 2,
+                                      resultFlags))
+        .Times(2)
+        .WillOnce([](VkDevice,
+                     VkQueryPool,
+                     std::uint32_t,
+                     std::uint32_t,
+                     std::size_t,
+                     void* output,
+                     VkDeviceSize,
+                     VkQueryResultFlags) {
+            const auto values = std::array<std::uint64_t, 4> {10, 1, 20, 1};
+            std::memcpy(output, values.data(), sizeof(values));
+            return success;
+        })
+        .WillOnce([](VkDevice,
+                     VkQueryPool,
+                     std::uint32_t,
+                     std::uint32_t,
+                     std::size_t,
+                     void* output,
+                     VkDeviceSize,
+                     VkQueryResultFlags) {
+            const auto values = std::array<std::uint64_t, 4> {30, 1, 50, 1};
+            std::memcpy(output, values.data(), sizeof(values));
+            return success;
+        });
+
+    const auto oldSample = manager.takeNextSample();
+    ASSERT_TRUE(oldSample);
+    ASSERT_TRUE(oldSample->has_value());
+    EXPECT_EQ(oldSample->value_or(panda::FramePerformanceSample {}).frameIndex, 0U);
+
+    EXPECT_CALL(vulkan, vkCmdResetQueryPool(static_cast<VkCommandBuffer>(command), pool0, 0, 2));
+    EXPECT_CALL(
+        vulkan,
+        vkCmdWriteTimestamp2(static_cast<VkCommandBuffer>(command),
+                             static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eColorAttachmentOutput),
+                             pool0,
+                             0));
+    EXPECT_CALL(
+        vulkan,
+        vkCmdWriteTimestamp2(static_cast<VkCommandBuffer>(command),
+                             static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eColorAttachmentOutput),
+                             pool0,
+                             1));
+    ASSERT_TRUE(manager.recordStart(0, command));
+    manager.recordEnd(0, command);
+    markSubmitted(manager, 0);
+    manager.recordCpuFrameDuration(0, std::chrono::nanoseconds {25});
+
+    const auto pending = manager.takeNextSample();
+    ASSERT_TRUE(pending);
+    EXPECT_FALSE(pending->has_value());
+
+    const auto newSample = manager.takeAvailableSamples();
+    ASSERT_TRUE(newSample);
+    ASSERT_EQ(newSample->size(), 1U);
+    EXPECT_EQ(newSample->at(0).frameIndex, 1U);
+    EXPECT_EQ(newSample->at(0).cpuFrameDuration, std::chrono::nanoseconds {25});
+    EXPECT_EQ(newSample->at(0).gpuExecutionDuration, std::chrono::nanoseconds {50});
+}
+
 TEST_F(PerformanceManagerTest, KeepsPartiallyAvailableQueriesPendingUntilBothMarkersAreReady)
 {
     expectPools();
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {20, 1, 30, 0}, unavailable);
     const auto pending = manager.getLatestSample();
     ASSERT_TRUE(pending);
@@ -245,7 +362,7 @@ TEST_F(PerformanceManagerTest, KeepsSamplePendingWhenTheStartMarkerIsUnavailable
     expectPools();
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {20, 0, 30, 1}, unavailable);
 
     const auto sample = manager.getLatestSample();
@@ -259,7 +376,7 @@ TEST_F(PerformanceManagerTest, AppliesQueueValidBitsWhenTheTimestampCounterWraps
     expectPools();
     auto manager = makeManager(8);
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {250, 1, 6, 1});
 
     const auto sample = manager.takeNextSample();
@@ -274,8 +391,8 @@ TEST_F(PerformanceManagerTest, DrainsSamplesInFrameOrderAfterOutOfOrderAvailabil
     expectPools();
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
-    manager.markSubmitted(1);
+    markSubmitted(manager, 0);
+    markSubmitted(manager, 1);
     expectResults(pool0, {100, 1, 110, 0}, unavailable);
     expectResults(pool1, {200, 1, 208, 1});
 
@@ -301,7 +418,7 @@ TEST_F(PerformanceManagerTest, ReportsQueryReadbackFailure)
     expectPools();
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {}, VK_ERROR_DEVICE_LOST);
 
     const auto sample = manager.getLatestSample();
@@ -314,7 +431,7 @@ TEST_F(PerformanceManagerTest, RecordStartPropagatesQueryReadbackFailure)
     expectPools();
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {}, VK_ERROR_DEVICE_LOST);
 
     const auto recorded = manager.recordStart(0, command);
@@ -328,7 +445,7 @@ TEST_F(PerformanceManagerTest, RecordStartRejectsSubmittedSamplesWhoseQueriesAre
     expectPools();
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {20, 1, 30, 0}, unavailable);
 
     const auto recorded = manager.recordStart(0, command);
@@ -342,7 +459,7 @@ TEST_F(PerformanceManagerTest, RejectsNanosecondDurationsOutsideTheSupportedRang
     expectPools();
     auto manager = makeManager(64, std::numeric_limits<float>::max());
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {20, 1, 21, 1});
 
     const auto sample = manager.getLatestSample();
@@ -356,7 +473,7 @@ TEST_F(PerformanceManagerTest, RejectsNanosecondDurationAtTheRoundedInt64Limit)
     expectPools();
     auto manager = makeManager(64, 9223372036854775808.0F);
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {20, 1, 21, 1});
 
     const auto sample = manager.getLatestSample();
@@ -370,7 +487,7 @@ TEST_F(PerformanceManagerTest, NextSamplePropagatesQueryReadbackFailure)
     expectPools();
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {}, VK_ERROR_DEVICE_LOST);
 
     const auto sample = manager.takeNextSample();
@@ -384,7 +501,7 @@ TEST_F(PerformanceManagerTest, AvailableSamplesPropagatesQueryReadbackFailure)
     expectPools();
     auto manager = makeManager();
     ASSERT_TRUE(manager.initialize());
-    manager.markSubmitted(0);
+    markSubmitted(manager, 0);
     expectResults(pool0, {}, VK_ERROR_DEVICE_LOST);
 
     const auto samples = manager.takeAvailableSamples();

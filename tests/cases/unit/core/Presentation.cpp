@@ -201,6 +201,7 @@ protected:
 
     void expectCompletedSampleReadback()
     {
+        EXPECT_CALL(submissions, poll(_)).WillOnce(Return(panda::Result<bool> {true}));
         auto* const pool = fakeVulkanHandle<VkQueryPool>(50);
         EXPECT_CALL(vulkan,
                     vkGetQueryPoolResults(_,
@@ -261,10 +262,12 @@ protected:
                             bool enableFramePerformanceSampling = false)
         -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
     {
+        auto& submissionQueue = _submissions.emplace(getDevice(), 0);
         if (enableFramePerformanceSampling)
         {
             _performance = std::make_unique<panda::detail::PerformanceManagerImpl>(
                 getDevice(),
+                &submissionQueue,
                 panda::detail::TimestampProperties {.validBits = 64, .periodNanoseconds = 2.5F},
                 true);
             if (const auto initialized = _performance->initialize(); !initialized)
@@ -285,7 +288,7 @@ protected:
                                                   .queueFamily = 0,
                                                   .presentQueueFamily = 0,
                                                   .swapchainMaintenance = maintenance},
-            .submissions = _submissions.emplace(getDevice(), 0),
+            .submissions = submissionQueue,
             .performance = _performance.get()
         });
     }
@@ -535,6 +538,45 @@ TEST_F(PresentationTest, OutOfDateAcquireReturnsNoCompletionPoint)
     EXPECT_FALSE(frame->completion.isValid());
 }
 
+TEST_F(PresentationTest, TimeoutAndNotReadyAcquiresSkipWithoutUsingTheImageIndex)
+{
+    expectQueueLookup();
+    expectReleaseEntryPoint();
+    expectFrameResources(3);
+    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 4, .swapchains = 1});
+    expectExtentReads(3);
+    expectInitialGeneration(700);
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eTimeout);
+    expectAcquiredImage(flow, vk::Result::eNotReady);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+
+    const auto timedOut = presentation->get()->presentClearFrame();
+    ASSERT_TRUE(timedOut);
+    EXPECT_EQ(timedOut->status, panda::FrameResult::Status::Skipped);
+    EXPECT_FALSE(timedOut->completion.isValid());
+    const auto notReady = presentation->get()->presentClearFrame();
+    ASSERT_TRUE(notReady);
+    EXPECT_EQ(notReady->status, panda::FrameResult::Status::Skipped);
+    EXPECT_FALSE(notReady->completion.isValid());
+}
+
+TEST_F(PresentationTest, DeviceLostAcquireReturnsTheNativeErrorWithoutUsingTheImageIndex)
+{
+    expectWindowFrame();
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eErrorDeviceLost);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+
+    const auto failed = presentation->get()->presentClearFrame();
+
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::DeviceLost);
+    EXPECT_FALSE(presentation->get()->presentClearFrame());
+}
+
 TEST_F(PresentationTest, SuboptimalPresentReturnsTheCommittedCompletionPoint)
 {
     expectWindowFrame();
@@ -567,6 +609,7 @@ TEST_F(PresentationTest, RecordsGpuTimestampsAroundFrameRenderingAndPublishesSub
     expectAcquiredImage(flow, vk::Result::eSuccess);
     expectSampledCommandRecording(flow);
     expectFrameSubmit(flow);
+    EXPECT_CALL(submissions, getPoint(1)).InSequence(flow).WillOnce(Return(panda::CompletionPoint {}));
     EXPECT_CALL(vulkan, vkQueuePresentKHR(_, NotNull()))
         .InSequence(flow)
         .WillOnce([](VkQueue, const VkPresentInfoKHR*) {

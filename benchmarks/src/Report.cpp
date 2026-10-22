@@ -1,5 +1,10 @@
 #include <algorithm>
 #include <chrono>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <fstream>
+#include <ios>
 #include <iterator>
 #include <nlohmann/json.hpp>  // IWYU pragma: keep
 #include <nlohmann/json_fwd.hpp>
@@ -125,5 +130,29 @@ auto serialize(const Report& report) -> std::string
     }
                .dump(2) +
            "\n";
+}
+
+auto writeReport(const std::filesystem::path& outputPath, const Report& report)
+    -> std::expected<std::filesystem::path, std::string>
+{
+    try
+    {
+        auto output = std::ofstream {outputPath, std::ios::binary};
+        if (!output)
+        {
+            return std::unexpected {"Could not open benchmark report: " + outputPath.string()};
+        }
+        output << serialize(report);
+        output.close();
+        if (!output)
+        {
+            return std::unexpected {"Could not write benchmark report: " + outputPath.string()};
+        }
+        return outputPath;
+    }
+    catch (const std::exception& error)
+    {
+        return std::unexpected {error.what()};
+    }
 }
 }

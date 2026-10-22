@@ -57,6 +57,18 @@ public:
 
     MOCK_METHOD(void, vkGetPhysicalDeviceProperties, (VkPhysicalDevice, VkPhysicalDeviceProperties*), ());
     MOCK_METHOD(void, vkGetPhysicalDeviceProperties2, (VkPhysicalDevice, VkPhysicalDeviceProperties2*), ());
+    // Vulkan fixes this entry point's seven-parameter C signature.
+    // NOLINTNEXTLINE(readability-function-size)
+    MOCK_METHOD(VkResult,
+                vkGetPhysicalDeviceImageFormatProperties,
+                (VkPhysicalDevice,
+                 VkFormat,
+                 VkImageType,
+                 VkImageTiling,
+                 VkImageUsageFlags,
+                 VkImageCreateFlags,
+                 VkImageFormatProperties*),
+                ());
     MOCK_METHOD(void, vkGetPhysicalDeviceMemoryProperties, (VkPhysicalDevice, VkPhysicalDeviceMemoryProperties*), ());
     MOCK_METHOD(VkResult,
                 vkCreateBuffer,

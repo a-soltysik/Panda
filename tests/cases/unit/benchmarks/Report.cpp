@@ -80,3 +80,15 @@ TEST(BenchmarkReport, OmitsEnvironmentValuesThatWereNotCollected)
     EXPECT_FALSE(environment.contains("driver"));
     EXPECT_FALSE(environment.contains("vulkanApiVersion"));
 }
+
+TEST(BenchmarkReport, ReportsBufferedWriteFailureWhenClosingOutput)
+{
+#ifdef __linux__
+    const auto result = panda_bench::writeReport("/dev/full", panda_bench::Report {});
+
+    ASSERT_FALSE(result);
+    EXPECT_NE(result.error().find("Could not write benchmark report"), std::string::npos);
+#else
+    GTEST_SKIP() << "The buffered write failure device is Linux-specific";
+#endif
+}

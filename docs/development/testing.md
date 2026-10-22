@@ -134,6 +134,13 @@ directory's `coverage/` subdirectory. CI publishes these files as the
 `panda-coverage` artifact. The displayed percentage counts executed test paths.
 Lavapipe provides software Vulkan runtime coverage; native hardware rendering
 still requires separate evidence.
+
+On pushes to `master` and pull requests targeting it, CI keeps the Mermaid check
+active but skips build, test, coverage, API-doc generation and code-analysis jobs
+when every changed path is documentation (Markdown, Mermaid, image or PDF).
+Any other path, including source, build or workflow files, runs those jobs; if
+the changed paths cannot be determined, CI runs them as well.
+
 GoogleTest death tests assert both process termination and the originating
 diagnostic. GoogleTest owns subprocess handling and platform differences; test
 files need no separate fatal executable, custom main or conditional process code.

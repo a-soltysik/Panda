@@ -1,10 +1,13 @@
 #include "presentation/Presentation.hpp"
 
+#include <vulkan/vulkan_core.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -395,8 +398,15 @@ auto Presentation::acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage,
         return std::unexpected {ready.error()};
     }
     static constexpr auto timeoutNanoseconds = std::uint64_t {1'000'000'000};
-    const auto acquired = activeGeneration().swapchain.acquireNextImage(timeoutNanoseconds, *slot.acquire);
-    return interpretAcquiredImage(acquired.result, acquired.value);
+    auto index = std::numeric_limits<std::uint32_t>::max();
+    const auto result =
+        _device.getDispatcher()->vkAcquireNextImageKHR(static_cast<VkDevice>(*_device),
+                                                       static_cast<VkSwapchainKHR>(*activeGeneration().swapchain),
+                                                       timeoutNanoseconds,
+                                                       static_cast<VkSemaphore>(*slot.acquire),
+                                                       VkFence {},
+                                                       &index);
+    return interpretAcquiredImage(static_cast<vk::Result>(result), index);
 }
 
 auto Presentation::interpretAcquiredImage(vk::Result result, std::uint32_t index) -> std::expected<AcquiredImage, Error>
@@ -472,7 +482,7 @@ auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, FrameSele
     slot.lastCompletion = completion;
     if (_performance != nullptr)
     {
-        _performance->markSubmitted(selection.slotIndex);
+        _performance->markSubmitted(selection.slotIndex, _submissions.getPoint(completion));
     }
     image.initialized = true;
     _nextSlot = (_nextSlot + 1) % _slots.size();

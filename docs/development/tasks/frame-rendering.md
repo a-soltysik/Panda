@@ -21,15 +21,24 @@ Learning: Explain the CPU frame wall duration boundary, what the GPU execution d
 
 ## Current verification
 
-- MSVC quality builds for the benchmark, Context, common library and examples — passed with format, clang-tidy and cppcheck checks.
-- `ctest --test-dir build-msvc-quality -R "unit\.(Logger|FunctionName|HostInfo|Benchmark|DeviceSelection|Context|PerformanceManager|Presentation)" --output-on-failure` — 97/97 passed.
-- `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -Preset gcc-quality -RunTests -TestRegex unit` — full GCC quality build passed; 228 tests passed (225 unit tests and three format checks).
-- Windows `Release` smoke run on an NVIDIA GeForce RTX 4070 Ti completed with 150 paired CPU/GPU frame samples. Schema 3 records the AMD Ryzen 5 7600 CPU, selected GPU, NVIDIA driver and startup/teardown durations. This validates the optimized execution and reporting path; the one-second run is not a performance baseline.
-- Example builds passed for `simple_scene`, `buffer_allocation` and CUDA-enabled `cuda_connection`. Each example registers a `StreamSink` to `std::clog` before using Panda's logger.
-- Frame samples pair CPU wall duration for Panda's complete frame call with asynchronous GPU execution duration; the CPU interval includes CPU-side waits and queuing presentation.
-- `ctest --test-dir build-msvc-quality -R "CreatesValidatedSurfaceAndDevice" --output-on-failure` — passed on Windows with Vulkan validation. The real surface rendered successive frames, resized, suspended, then resumed and rendered again.
-- A source/test search found no `waitIdle` or `deviceWaitIdle` calls.
-- `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -Preset gcc-development -Target panda-bench` — passed with GCC warnings treated as errors.
-- WSL Linux smoke completed with 61 paired CPU/GPU samples and schema 3, but Vulkan selected `llvmpipe` (software rendering). WSL reports the RTX 4070 Ti through `nvidia-smi`, while its installed Vulkan ICDs do not expose NVIDIA; this verifies the Linux build and report path, not hardware GPU execution. A Linux smoke on a hardware Vulkan device remains pending.
-- Unit tests cover mocked frame reuse, skipped presentation and failure paths.
-- Documentation checker passed for 43 Markdown files; `git diff --check` passed.
+- Windows: `cmake --build --preset msvc-fast --parallel` and
+  `ctest --preset msvc-fast` passed. CTest registered 425 tests: 421 passed and
+  four were skipped (the Linux-only buffered-close test and three unavailable
+  noncoherent memory variants).
+- WSL GCC: `cmake --build --preset gcc-fast --parallel` and
+  `ctest --preset gcc-fast` passed. CTest registered 425 tests: 422 passed and
+  three noncoherent memory variants were skipped because the device did not expose
+  that memory type. The Linux buffered-write/close failure test passed.
+- Unit coverage now exercises stale query availability while reusing a slot,
+  confirms that CPU/GPU timestamps stay paired to the submitted frame, and checks
+  acquire errors with untouched image output and report close failure.
+- A Windows Release smoke run on an NVIDIA GeForce RTX 4070 Ti completed with 150
+  paired CPU/GPU samples; this one-second run is not a performance baseline.
+  A WSL smoke run produced 61 paired samples on llvmpipe, so it verifies the Linux
+  reporting path rather than hardware GPU execution.
+- The full build also builds `simple_scene`, `buffer_allocation`,
+  `cuda_connection` and `panda-bench`. No new visual GPU inspection or
+  RenderDoc capture was made.
+- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
+  all 54 Markdown files and the task queue; `git diff --check` and Clang format
+  validation passed.

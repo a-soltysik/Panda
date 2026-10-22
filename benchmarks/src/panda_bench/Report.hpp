@@ -2,6 +2,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <expected>
+#include <filesystem>
 #include <optional>
 #include <panda/PerformanceManager.hpp>
 #include <string>
@@ -53,4 +55,6 @@ struct Report
 };
 
 [[nodiscard]] auto serialize(const Report& report) -> std::string;
+[[nodiscard]] auto writeReport(const std::filesystem::path& outputPath, const Report& report)
+    -> std::expected<std::filesystem::path, std::string>;
 }
