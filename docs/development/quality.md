@@ -111,8 +111,8 @@ are reported. Keep analyzer invocation and file selection in CMake rather than
 duplicating them in scripts.
 
 `.clang-tidy` owns the checks, diagnostic severity and inclusion filter for headers
-under `include/`, `src/`, `tests/` and `examples/`. CMake attaches the tools privately
-to owned targets, excludes `_deps/` and `legacy/`, and supplies compiler compatibility
+under `include/`, `src/`, `tests/` and `examples/`. CMake configures the tools privately
+for owned targets, excludes `_deps/` and `legacy/`, and supplies compiler compatibility
 arguments. Dependencies use system includes; system-header diagnostics remain disabled.
 MSVC analysis uses the Windows MSVC target and the configured exception mode,
 including when the installed LLVM tools default to MinGW. cppcheck's command-line
@@ -155,12 +155,27 @@ file/line diagnostics. See the [functional documentation conventions](functional
 for scope, local commands and the distinction between parsing, rendering and
 technical correctness.
 
-[Quality](../../.github/workflows/quality.yml) compiles owned production, example,
-benchmark and test sources with warnings-as-errors, clang-tidy and cppcheck on
-Linux/GCC and Windows/MSVC. Each C++ analysis job builds once with CUDA and examples
-on, using explicit architecture 89 so compilation needs no GPU. The CUDA example
-is built and linked, never executed. Ordinary C++ sources use CMake's
-`CXX_CLANG_TIDY` and `CXX_CPPCHECK` properties.
+[Quality](../../.github/workflows/quality.yml) runs independent build and C++ analysis
+jobs on Linux/GCC and Windows/MSVC. Both configure the same `gcc-quality-ci` or
+`msvc-quality-ci` preset, with CUDA, examples, benchmarks and tests enabled and
+explicit CUDA architecture 89. Build jobs compile with warnings as errors, verify
+public headers independently and check formatting. The CUDA example is built and
+linked, never executed.
+
+The CI presets enable `PANDA_SEPARATE_STATIC_ANALYSIS`. Ordinary compilation then
+runs without analyzers; analysis jobs build the explicit `panda_static_analysis`
+target with the same preset. CMake creates checks from owned target source lists.
+Both tools read the real `compile_commands.json`; Cppcheck filters it to each owned
+C++ source. Sources shared by targets are scheduled once, retaining their database
+configurations. Analysis needs configuration and dependency headers, without building
+Panda objects or linking executables. Four Ninja workers bound the total number of
+analyzer processes; clang-tidy and Cppcheck run sequentially for each source.
+Analyzer failures fail their job independently of compiler failures.
+
+Local quality presets retain integrated analysis through `CXX_CLANG_TIDY` and
+`CXX_CPPCHECK`. Analyzer options and source selection are owned by CMake in both
+modes; no CI script duplicates them. CUDA translation units retain their separate
+host and device analysis path.
 
 Independent Linux and Windows CUDA analysis jobs run alongside C++ quality, with
 no job dependency. They use a separate Clang CUDA configuration of the same target graph:
@@ -178,7 +193,7 @@ compilation mode; each clang-tidy command explicitly selects its host or device
 pass, so the device pass remains enabled.
 clang-tidy reads Clang's compilation database in explicit host and device passes.
 CUDA translation units and their owned headers use clang-tidy only. cppcheck is
-reserved for ordinary C++ translation units through `CXX_CPPCHECK`; no CUDA
+reserved for ordinary C++ translation units; no CUDA
 suppression, manual include/definition forwarding or compiler argument adapter is
 needed. No source targets are cloned. Host-side CUDA/Vulkan coordination in `.cpp`
 continues to receive both analyzers.

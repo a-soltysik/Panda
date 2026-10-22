@@ -320,6 +320,28 @@
         "CMAKE_CUDA_FLAGS": "--target=x86_64-pc-windows-msvc --cuda-host-only",
         "CMAKE_LINKER_TYPE": "MSVC"
       }
+    },
+    {
+      "name": "ci-quality-base",
+      "hidden": true,
+      "cacheVariables": {
+        "PANDA_SEPARATE_STATIC_ANALYSIS": "ON",
+        "CMAKE_CUDA_ARCHITECTURES": "89"
+      }
+    },
+    {
+      "name": "gcc-quality-ci",
+      "inherits": [
+        "ci-quality-base",
+        "gcc-quality"
+      ]
+    },
+    {
+      "name": "msvc-quality-ci",
+      "inherits": [
+        "ci-quality-base",
+        "msvc-quality"
+      ]
     }
   ],
   "buildPresets": [
@@ -408,6 +430,16 @@
       "targets": [
         "panda_cuda_analysis"
       ]
+    },
+    {
+      "name": "gcc-quality-ci",
+      "configurePreset": "gcc-quality-ci",
+      "jobs": 4
+    },
+    {
+      "name": "msvc-quality-ci",
+      "configurePreset": "msvc-quality-ci",
+      "jobs": 4
     }
   ],
   "testPresets": [

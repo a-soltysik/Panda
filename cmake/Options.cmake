@@ -22,6 +22,7 @@ option(PANDA_VERIFY_PUBLIC_HEADERS "Add CMake targets that compile public header
 option(PANDA_WARNINGS_AS_ERRORS "Treat Panda target warnings as errors" ${panda_is_top_level})
 option(PANDA_ENABLE_CLANG_TIDY "Analyze Panda targets with clang-tidy" ${panda_is_top_level})
 option(PANDA_ENABLE_CPPCHECK "Analyze Panda targets with cppcheck" ${panda_is_top_level})
+option(PANDA_SEPARATE_STATIC_ANALYSIS "Run C++ analyzers through panda_static_analysis instead of compilation" OFF)
 option(PANDA_ENABLE_CLANG_FORMAT "Check Panda target formatting with clang-format" ${panda_is_top_level})
 option(PANDA_ENABLE_SANITIZER_ADDRESS "Detect invalid memory accesses with AddressSanitizer" OFF)
 option(PANDA_ENABLE_SANITIZER_UNDEFINED_BEHAVIOR "Detect undefined behavior with UndefinedBehaviorSanitizer" OFF)
