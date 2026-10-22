@@ -320,6 +320,53 @@
         "CMAKE_CUDA_FLAGS": "--target=x86_64-pc-windows-msvc --cuda-host-only",
         "CMAKE_LINKER_TYPE": "MSVC"
       }
+    },
+    {
+      "name": "ci-base",
+      "hidden": true,
+      "inherits": "local-base",
+      "cacheVariables": {
+        "CMAKE_CUDA_ARCHITECTURES": "89"
+      }
+    },
+    {
+      "name": "gcc-quality-ci",
+      "inherits": [
+        "ci-base",
+        "gcc-quality"
+      ],
+      "cacheVariables": {
+        "PANDA_SEPARATE_STATIC_ANALYSIS": "ON"
+      }
+    },
+    {
+      "name": "msvc-quality-ci",
+      "inherits": [
+        "ci-base",
+        "msvc-quality"
+      ],
+      "cacheVariables": {
+        "PANDA_SEPARATE_STATIC_ANALYSIS": "ON"
+      }
+    },
+    {
+      "name": "gcc-tests-ci",
+      "displayName": "Panda GCC complete CI build and CPU tests",
+      "inherits": [
+        "ci-base",
+        "gcc-tests"
+      ]
+    },
+    {
+      "name": "msvc-tests-ci",
+      "displayName": "Panda MSVC complete CI build and CPU tests",
+      "inherits": [
+        "ci-base",
+        "msvc-tests"
+      ],
+      "cacheVariables": {
+        "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT": "Embedded"
+      }
     }
   ],
   "buildPresets": [
@@ -408,6 +455,24 @@
       "targets": [
         "panda_cuda_analysis"
       ]
+    },
+    {
+      "name": "gcc-quality-ci",
+      "configurePreset": "gcc-quality-ci",
+      "jobs": 4
+    },
+    {
+      "name": "msvc-quality-ci",
+      "configurePreset": "msvc-quality-ci",
+      "jobs": 4
+    },
+    {
+      "name": "gcc-tests-ci",
+      "configurePreset": "gcc-tests-ci"
+    },
+    {
+      "name": "msvc-tests-ci",
+      "configurePreset": "msvc-tests-ci"
     }
   ],
   "testPresets": [
@@ -510,6 +575,16 @@
           "label": "system"
         }
       }
+    },
+    {
+      "name": "gcc-tests-ci",
+      "inherits": "gcc-tests",
+      "configurePreset": "gcc-tests-ci"
+    },
+    {
+      "name": "msvc-tests-ci",
+      "inherits": "msvc-tests",
+      "configurePreset": "msvc-tests-ci"
     }
   ]
 }

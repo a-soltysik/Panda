@@ -89,20 +89,18 @@ jobs:
           if-no-files-found: error
 
   quality:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.name }} analysis
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Linux GCC analysis
+          - compiler: gcc
+            name: Linux GCC
             os: ubuntu-26.04
-            compiler: gcc
-            preset: gcc-quality
-          - name: Windows MSVC analysis
+          - compiler: msvc
+            name: Windows MSVC
             os: windows-2025
-            compiler: msvc
-            preset: msvc-quality
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
@@ -110,17 +108,13 @@ jobs:
           compiler: ${{ matrix.compiler }}
           analysis: 'true'
           cuda: 'true'
-          cache-key: ${{ matrix.preset }}
+          cache-key: ${{ matrix.compiler }}-quality-ci
       - name: Configure
-        run: >-
-          cmake --preset ${{ matrix.preset }} -DPANDA_BUILD_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
-          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
-      - name: Build and analyze
-        run: cmake --build --preset ${{ matrix.preset }}
-      - name: Compile public headers independently
-        run: cmake --build --preset ${{ matrix.preset }} --target all_verify_interface_header_sets
-      - name: Check formatting
-        run: ctest --preset ${{ matrix.preset }} -L format
+        run: cmake --preset ${{ matrix.compiler }}-quality-ci
+      - name: Analyze C++ sources
+        run: cmake --build --preset ${{ matrix.compiler }}-quality-ci --target panda_static_analysis
+      - name: Verify public headers and formatting
+        run: cmake --build --preset ${{ matrix.compiler }}-quality-ci --target all_verify_interface_header_sets panda_format_checks
       - name: Show compiler cache statistics
         if: always()
         shell: bash

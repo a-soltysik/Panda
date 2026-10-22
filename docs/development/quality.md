@@ -111,8 +111,8 @@ are reported. Keep analyzer invocation and file selection in CMake rather than
 duplicating them in scripts.
 
 `.clang-tidy` owns the checks, diagnostic severity and inclusion filter for headers
-under `include/`, `src/`, `tests/` and `examples/`. CMake attaches the tools privately
-to owned targets, excludes `_deps/` and `legacy/`, and supplies compiler compatibility
+under `include/`, `src/`, `tests/` and `examples/`. CMake configures the tools privately
+for owned targets, excludes `_deps/` and `legacy/`, and supplies compiler compatibility
 arguments. Dependencies use system includes; system-header diagnostics remain disabled.
 MSVC analysis uses the Windows MSVC target and the configured exception mode,
 including when the installed LLVM tools default to MinGW. cppcheck's command-line
@@ -155,12 +155,27 @@ file/line diagnostics. See the [functional documentation conventions](functional
 for scope, local commands and the distinction between parsing, rendering and
 technical correctness.
 
-[Quality](../../.github/workflows/quality.yml) compiles owned production, example,
-benchmark and test sources with warnings-as-errors, clang-tidy and cppcheck on
-Linux/GCC and Windows/MSVC. Each C++ analysis job builds once with CUDA and examples
-on, using explicit architecture 89 so compilation needs no GPU. The CUDA example
-is built and linked, never executed. Ordinary C++ sources use CMake's
-`CXX_CLANG_TIDY` and `CXX_CPPCHECK` properties.
+[Tests](../../.github/workflows/tests.yml) owns ordinary builds with warnings as
+errors and runtime tests. Quality does not repeat those builds. Its Linux/GCC and
+Windows/MSVC C++ jobs use `gcc-quality-ci` and `msvc-quality-ci` to run static
+analysis, verify public headers independently and check formatting. These jobs and
+the complete test variants configure the same target graph with CUDA, examples,
+benchmarks and tests; `ci-base` selects explicit CUDA architecture 89.
+
+The quality CI presets enable `PANDA_SEPARATE_STATIC_ANALYSIS`; their jobs select
+`panda_static_analysis` instead of the default build target. CMake creates checks
+from owned target source lists. Both tools read the real `compile_commands.json`;
+Cppcheck filters it to each owned C++ source. Sources shared by targets are
+scheduled once, retaining their database configurations. Analysis needs
+configuration and dependency headers, without building Panda objects or linking
+executables. Four Ninja workers bound the total number of analyzer processes;
+clang-tidy and Cppcheck run sequentially for each source. Analyzer failures fail
+Quality independently of compilation and test failures in Tests.
+
+Local quality presets retain integrated analysis through `CXX_CLANG_TIDY` and
+`CXX_CPPCHECK`. Analyzer options and source selection are owned by CMake in both
+modes; no CI script duplicates them. CUDA translation units retain their separate
+host and device analysis path.
 
 Independent Linux and Windows CUDA analysis jobs run alongside C++ quality, with
 no job dependency. They use a separate Clang CUDA configuration of the same target graph:
@@ -178,7 +193,7 @@ compilation mode; each clang-tidy command explicitly selects its host or device
 pass, so the device pass remains enabled.
 clang-tidy reads Clang's compilation database in explicit host and device passes.
 CUDA translation units and their owned headers use clang-tidy only. cppcheck is
-reserved for ordinary C++ translation units through `CXX_CPPCHECK`; no CUDA
+reserved for ordinary C++ translation units; no CUDA
 suppression, manual include/definition forwarding or compiler argument adapter is
 needed. No source targets are cloned. Host-side CUDA/Vulkan coordination in `.cpp`
 continues to receive both analyzers.
@@ -195,9 +210,11 @@ When formatting is enabled, CTest registers one `format`-labeled check per sourc
 directory. Test presets disable formatting; quality presets enable it.
 [Tests](../../.github/workflows/tests.yml) runs unit and integration cases on
 Linux/GCC, Linux/Clang and Windows/MSVC, plus separate Linux ASan/UBSan and Windows
-ASan builds. Additional Linux/GCC and Windows/MSVC CUDA variants build and run the
-CPU suite, including CUDA availability cases, with examples off and no GPU required.
-CUDA-off variants remain independent of the Toolkit. Runtime presets disable static
+ASan builds. The Linux/GCC and Windows/MSVC CUDA variants use `gcc-tests-ci` and
+`msvc-tests-ci`: they compile the complete project with warnings as errors, including
+examples and benchmarks, then run the CPU suite including CUDA availability and
+benchmark cases. The CUDA example is built and linked, never executed; no GPU is
+required. CUDA-off variants remain independent of the Toolkit. Runtime presets disable static
 analysis and formatting to keep those results in the quality workflow.
 Native-display scenarios remain explicit local
 system tests; hosted jobs do not claim native-window or rendering evidence.

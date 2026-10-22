@@ -63,7 +63,10 @@ for local commands and check scope. `PANDA_BUILD_DOCS` remains the Doxygen API t
 
 Warnings-as-errors, clang-tidy, cppcheck and clang-format checks are independently
 selectable. They default to ON for top-level Panda development and OFF when Panda
-is included by an application. The quality build enables all four. An example
+is included by an application. The quality build enables all four.
+`PANDA_SEPARATE_STATIC_ANALYSIS` moves C++ analysis from compilation to the explicit
+`panda_static_analysis` target, using the exported compilation database. CI quality
+presets enable this mode; local quality presets retain integrated analysis. An example
 requested with a disabled required module fails configuration clearly.
 
 `PANDA_BUILD_TESTS=ON` enables implemented CPU-only modules, currently including
