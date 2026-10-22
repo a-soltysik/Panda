@@ -89,39 +89,32 @@ jobs:
           if-no-files-found: error
 
   quality:
-    name: ${{ matrix.name }} ${{ matrix.check }}
+    name: ${{ matrix.name }} analysis
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        platform: [gcc, msvc]
-        check: [build, analysis]
         include:
-          - platform: gcc
+          - compiler: gcc
             name: Linux GCC
             os: ubuntu-26.04
-          - platform: msvc
+          - compiler: msvc
             name: Windows MSVC
             os: windows-2025
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
         with:
-          compiler: ${{ matrix.platform }}
+          compiler: ${{ matrix.compiler }}
           analysis: 'true'
           cuda: 'true'
-          cache-key: ${{ matrix.platform }}-quality-ci-${{ matrix.check }}
+          cache-key: ${{ matrix.compiler }}-quality-ci
       - name: Configure
-        run: cmake --preset ${{ matrix.platform }}-quality-ci
-      - name: Build with warnings as errors
-        if: matrix.check == 'build'
-        run: cmake --build --preset ${{ matrix.platform }}-quality-ci
+        run: cmake --preset ${{ matrix.compiler }}-quality-ci
       - name: Analyze C++ sources
-        if: matrix.check == 'analysis'
-        run: cmake --build --preset ${{ matrix.platform }}-quality-ci --target panda_static_analysis
+        run: cmake --build --preset ${{ matrix.compiler }}-quality-ci --target panda_static_analysis
       - name: Verify public headers and formatting
-        if: matrix.check == 'build'
-        run: cmake --build --preset ${{ matrix.platform }}-quality-ci --target all_verify_interface_header_sets panda_format_checks
+        run: cmake --build --preset ${{ matrix.compiler }}-quality-ci --target all_verify_interface_header_sets panda_format_checks
       - name: Show compiler cache statistics
         if: always()
         shell: bash

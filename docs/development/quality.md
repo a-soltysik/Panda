@@ -155,22 +155,22 @@ file/line diagnostics. See the [functional documentation conventions](functional
 for scope, local commands and the distinction between parsing, rendering and
 technical correctness.
 
-[Quality](../../.github/workflows/quality.yml) runs independent build and C++ analysis
-jobs on Linux/GCC and Windows/MSVC. Both configure the same `gcc-quality-ci` or
-`msvc-quality-ci` preset, with CUDA, examples, benchmarks and tests enabled and
-explicit CUDA architecture 89. Build jobs compile with warnings as errors, verify
-public headers independently and check formatting. The CUDA example is built and
-linked, never executed.
+[Tests](../../.github/workflows/tests.yml) owns ordinary builds with warnings as
+errors and runtime tests. Quality does not repeat those builds. Its Linux/GCC and
+Windows/MSVC C++ jobs use `gcc-quality-ci` and `msvc-quality-ci` to run static
+analysis, verify public headers independently and check formatting. These jobs and
+the complete test variants configure the same target graph with CUDA, examples,
+benchmarks and tests; `ci-base` selects explicit CUDA architecture 89.
 
-The CI presets enable `PANDA_SEPARATE_STATIC_ANALYSIS`. Ordinary compilation then
-runs without analyzers; analysis jobs build the explicit `panda_static_analysis`
-target with the same preset. CMake creates checks from owned target source lists.
-Both tools read the real `compile_commands.json`; Cppcheck filters it to each owned
-C++ source. Sources shared by targets are scheduled once, retaining their database
-configurations. Analysis needs configuration and dependency headers, without building
-Panda objects or linking executables. Four Ninja workers bound the total number of
-analyzer processes; clang-tidy and Cppcheck run sequentially for each source.
-Analyzer failures fail their job independently of compiler failures.
+The quality CI presets enable `PANDA_SEPARATE_STATIC_ANALYSIS`; their jobs select
+`panda_static_analysis` instead of the default build target. CMake creates checks
+from owned target source lists. Both tools read the real `compile_commands.json`;
+Cppcheck filters it to each owned C++ source. Sources shared by targets are
+scheduled once, retaining their database configurations. Analysis needs
+configuration and dependency headers, without building Panda objects or linking
+executables. Four Ninja workers bound the total number of analyzer processes;
+clang-tidy and Cppcheck run sequentially for each source. Analyzer failures fail
+Quality independently of compilation and test failures in Tests.
 
 Local quality presets retain integrated analysis through `CXX_CLANG_TIDY` and
 `CXX_CPPCHECK`. Analyzer options and source selection are owned by CMake in both
@@ -210,9 +210,11 @@ When formatting is enabled, CTest registers one `format`-labeled check per sourc
 directory. Test presets disable formatting; quality presets enable it.
 [Tests](../../.github/workflows/tests.yml) runs unit and integration cases on
 Linux/GCC, Linux/Clang and Windows/MSVC, plus separate Linux ASan/UBSan and Windows
-ASan builds. Additional Linux/GCC and Windows/MSVC CUDA variants build and run the
-CPU suite, including CUDA availability cases, with examples off and no GPU required.
-CUDA-off variants remain independent of the Toolkit. Runtime presets disable static
+ASan builds. The Linux/GCC and Windows/MSVC CUDA variants use `gcc-tests-ci` and
+`msvc-tests-ci`: they compile the complete project with warnings as errors, including
+examples and benchmarks, then run the CPU suite including CUDA availability and
+benchmark cases. The CUDA example is built and linked, never executed; no GPU is
+required. CUDA-off variants remain independent of the Toolkit. Runtime presets disable static
 analysis and formatting to keep those results in the quality workflow.
 Native-display scenarios remain explicit local
 system tests; hosted jobs do not claim native-window or rendering evidence.

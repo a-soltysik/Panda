@@ -322,26 +322,51 @@
       }
     },
     {
-      "name": "ci-quality-base",
+      "name": "ci-base",
       "hidden": true,
+      "inherits": "local-base",
       "cacheVariables": {
-        "PANDA_SEPARATE_STATIC_ANALYSIS": "ON",
         "CMAKE_CUDA_ARCHITECTURES": "89"
       }
     },
     {
       "name": "gcc-quality-ci",
       "inherits": [
-        "ci-quality-base",
+        "ci-base",
         "gcc-quality"
-      ]
+      ],
+      "cacheVariables": {
+        "PANDA_SEPARATE_STATIC_ANALYSIS": "ON"
+      }
     },
     {
       "name": "msvc-quality-ci",
       "inherits": [
-        "ci-quality-base",
+        "ci-base",
         "msvc-quality"
+      ],
+      "cacheVariables": {
+        "PANDA_SEPARATE_STATIC_ANALYSIS": "ON"
+      }
+    },
+    {
+      "name": "gcc-tests-ci",
+      "displayName": "Panda GCC complete CI build and CPU tests",
+      "inherits": [
+        "ci-base",
+        "gcc-tests"
       ]
+    },
+    {
+      "name": "msvc-tests-ci",
+      "displayName": "Panda MSVC complete CI build and CPU tests",
+      "inherits": [
+        "ci-base",
+        "msvc-tests"
+      ],
+      "cacheVariables": {
+        "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT": "Embedded"
+      }
     }
   ],
   "buildPresets": [
@@ -440,6 +465,14 @@
       "name": "msvc-quality-ci",
       "configurePreset": "msvc-quality-ci",
       "jobs": 4
+    },
+    {
+      "name": "gcc-tests-ci",
+      "configurePreset": "gcc-tests-ci"
+    },
+    {
+      "name": "msvc-tests-ci",
+      "configurePreset": "msvc-tests-ci"
     }
   ],
   "testPresets": [
@@ -542,6 +575,16 @@
           "label": "system"
         }
       }
+    },
+    {
+      "name": "gcc-tests-ci",
+      "inherits": "gcc-tests",
+      "configurePreset": "gcc-tests-ci"
+    },
+    {
+      "name": "msvc-tests-ci",
+      "inherits": "msvc-tests",
+      "configurePreset": "msvc-tests-ci"
     }
   ]
 }
