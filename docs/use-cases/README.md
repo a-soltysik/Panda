@@ -19,17 +19,20 @@ forwarding and helper calculations.
 | [UC Upload bytes into a buffer](upload-buffer.md) | Snapshot, ordered buffer writes, asynchronous submission and retry behavior |
 | [UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md) | Byte-staging path: aligned slices, noncoherent flush and caller-byte lifetime |
 | [UC Upload texture contents or regions](upload-texture.md) | Full-image and pitched-region validation, one-batch reservation, image transitions and immutable submitted contents |
+| [UC Upload a complete mesh payload into a batch](upload-mesh-payload.md) | Stage full vertex and optional index data before appending either write |
 | [UC Observe or wait for submitted GPU work](observe-completion.md) | Context-scoped completion queries, bounded waits and upload retirement |
 | [UC Reclaim completed upload packets](reclaim-completed-uploads.md) | Observe queue completion and release retained upload owners |
 | [UC Render and present a diagnostic clear frame](render-clear-frame.md) | Acquire, record, submit and present; frame and image synchronization outcomes |
 | [UC Collect paired CPU and GPU frame timings](collect-frame-timings.md) | Opt-in timestamp collection, CPU/GPU pairing and nonblocking sample retrieval |
 | [UC Execute a controlled benchmark smoke run and save a report](benchmark-smoke-run.md) | Validate a stable clear-frame run, collect only measured samples and write JSON/log output |
+| [UC Configure and receive application/backend diagnostics](configure-diagnostics.md) | Register synchronous log sinks, filter entries and receive Vulkan validation messages |
 | [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md) | Framebuffer changes, minimized windows and failed swapchain replacement |
 | [UC Commit work to the Context submission timeline](commit-context-submission.md) | Queue acceptance and timeline value publication |
 | [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | Consume acquire semaphore and release an unused image |
 | [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md) | Retire the GPU producer and replace unused present signaling |
 | [UC Drain frame and presentation use](drain-presentation.md) | Wait for queue completion and presentation fences |
 | [UC Shut down a Context safely](shutdown-context.md) | Release caller-owned handles, drain internal work and tear down Context services |
+| [UC Query CUDA Runtime availability](query-cuda-availability.md) | Map Runtime device-count and initialization status to an availability result |
 
 For authors, see the [conventions](../development/functional-documentation.md) and
 [scenario template](template.md). The template is an authoring aid, not an
