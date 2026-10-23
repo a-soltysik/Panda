@@ -163,9 +163,15 @@ It does not depend on Vulkan-layer environment variables. Requesting validation 
 the layer or debug-utils extension is unavailable returns an `Unsupported` error.
 
 `Result<T>` means `std::expected<T, Error>`, not another result framework.
-`CompletionPoint` is an opaque context identity plus committed Vulkan timeline
-value. A default token means no submitted work; empty and foreign tokens are
-rejected by poll/wait. Moving Context preserves its issued tokens.
+`CompletionPoint` is an opaque Context identity plus a committed value from its
+`SubmissionQueue`. That queue owns one Vulkan timeline semaphore whose increasing
+integer counter orders all submissions sent through it, including upload, frame
+and presentation-recovery work. Each accepted submission signals the next value;
+when the counter reaches N, queue work through that signal is complete. The counter
+covers queue work only. Presentation-engine use of swapchain images is tracked
+separately by per-image present fences. A default token means no submitted work;
+empty and foreign tokens are rejected by poll/wait. Moving Context preserves its
+issued tokens.
 No public API lets a caller signal it, fabricate future values, or use it after
 context destruction. `Error` has an action category, owned message, optional native
 backend status and source location; it does not retain references to temporary strings.
@@ -414,12 +420,18 @@ to that chain. Do not apply the ordinary buffer replacement guarantee to WSI.
 If a frame aborts after acquire but before its normal submission, consume the
 acquire semaphore in a cleanup submission when the device is healthy, wait for
 that submitted completion, and release the unused image through maintenance1.
-Track whether acquire was already consumed; never wait on a binary semaphore twice.
+Once that cleanup submission commits, retain the acquired image index and
+completion until release succeeds; `drain()` must finish this release before it
+can report success. If the release call returns an error, its effect is unconfirmed:
+keep the generation undrained rather than reporting success or issuing the release
+again. Track whether acquire was already consumed; never wait on a binary semaphore
+twice.
 For present errors, distinguish an enqueued request (including out-of-date/surface-lost)
 from a failure to enqueue: only the former has a presentation completion producer.
 If no present was enqueued, destroy/replace the unused signaled render-finished
-semaphore after its GPU producer completes and release the image; do not signal it
-again without a consuming wait, or wait on a nonexistent present fence.
+semaphore after its GPU producer completes and release the image. Retain this
+recovery across a timeout or semaphore-creation error, and do not signal the old
+semaphore again without a consuming wait or wait on a nonexistent present fence.
 
 References: [presentation semaphore lifetime](https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html),
 [presentation fences](https://docs.vulkan.org/refpages/latest/refpages/source/VkSwapchainPresentFenceInfoKHR.html),

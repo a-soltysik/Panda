@@ -129,13 +129,13 @@ window-frame preparation handles that state; see the
 service setup without querying window extensions, creating a surface or initializing
 presentation. Upload support is initialized when an upload batch is first requested.
 
-## Variants and failures
+## Variants and errors
 
 |  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |
 | **Error&nbsp;1** | Step 2: loader is below Vulkan 1.3, or a requested validation layer/extension is unavailable | Return `Unsupported`; extension enumeration and provider errors keep their reported error | No Context is published; install or select a compatible Vulkan runtime, or disable optional validation |
 | **Error&nbsp;2** | Step 2: required window extensions are malformed or unavailable, or instance, messenger or native-surface creation fails | Return `InvalidArgument`, `Unsupported` or the originating native/provider error; release any instance services already created | No Context is published; correct the provider/configuration or resolve the reported failure |
-| **Error&nbsp;3** | Step 3: no compatible physical device is found, or device inspection cannot complete | Propagate the selection result; see [device-selection outcomes](select-vulkan-device.md#variants-and-failures) | No logical device or Context is published; respond to the reported capability or backend failure |
+| **Error&nbsp;3** | Step 3: no compatible physical device is found, or device inspection cannot complete | Propagate the selection result; see [device-selection outcomes](select-vulkan-device.md#variants-and-errors) | No logical device or Context is published; respond to the reported capability or backend failure |
 | **Error&nbsp;4** | Step 4: logical-device creation fails | Return the mapped Vulkan error without adopting a failed native output | No Context is published; retry only after resolving the reported cause |
 | **Error&nbsp;5** | Step 5: performance-manager initialization fails | Return its error and release the local manager and other Context owners already created | No Context is published; investigate the reported device/backend failure before retry |
 | **Error&nbsp;6** | Step 5: windowed presentation initialization fails | Return the originating error and release partial presentation state and Vulkan owners; see [Error 6 cleanup](#error-6---release-partial-presentation-state) | No Context is published; no application Context is available |

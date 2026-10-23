@@ -374,15 +374,16 @@ auto Presentation::abortAcquire(FrameSlot& slot, std::uint32_t index) -> std::ex
     }
     const auto completion = *submitted;
     slot.lastCompletion = completion;
+    _pendingImageRecovery = PendingImageRecovery {.index = index, .replaceRenderFinished = false};
     if (const auto waited = waitCompletion(completion); !waited)
     {
         _faulted = true;
         return std::unexpected {waited.error()};
     }
-    if (const auto released = releaseImage(index); !released)
+    if (const auto recovered = finishPendingImageRecovery(); !recovered)
     {
         _faulted = true;
-        return std::unexpected {released.error()};
+        return std::unexpected {recovered.error()};
     }
     return {};
 }
@@ -507,31 +508,64 @@ auto Presentation::handleSubmitFailure(FrameSlot& slot, FrameSelection selection
     return abortFrame(slot, selection.imageIndex, cause);
 }
 
-auto Presentation::recoverPresentFailure(SwapchainImage& image,
-                                         std::uint32_t index,
-                                         vk::Result result,
-                                         std::uint64_t completion) -> std::expected<FrameResult, Error>
+auto Presentation::recoverPresentFailure(std::uint32_t index, vk::Result result, std::uint64_t completion)
+    -> std::expected<FrameResult, Error>
 {
+    _pendingImageRecovery = PendingImageRecovery {.index = index, .replaceRenderFinished = true};
     if (const auto waited = waitCompletion(completion); !waited)
     {
         _faulted = true;
         return std::unexpected {waited.error()};
     }
-    const auto replacementInfo = vk::SemaphoreCreateInfo {};
-    auto replacement = checkedCreation(_device.createSemaphore(replacementInfo));
-    if (!replacement)
+    if (const auto recovered = finishPendingImageRecovery(); !recovered)
     {
         _faulted = true;
-        return std::unexpected {std::move(replacement.error())};
-    }
-    image.renderFinished = std::move(*replacement);
-    if (const auto released = releaseImage(index); !released)
-    {
-        _faulted = true;
-        return std::unexpected {released.error()};
+        return std::unexpected {recovered.error()};
     }
     _recreatePending = true;
     return std::unexpected {makeVulkanError(result)};
+}
+
+auto Presentation::finishPendingImageRecovery() -> std::expected<void, Error>
+{
+    if (!_pendingImageRecovery)
+    {
+        return {};
+    }
+    auto& pending = *_pendingImageRecovery;
+    if (pending.releaseFailed)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::BackendFailure, "Swapchain image release left its acquisition state unconfirmed")};
+    }
+    if (const auto replaced = replacePendingRenderFinishedSemaphore(); !replaced)
+    {
+        return std::unexpected {replaced.error()};
+    }
+    if (const auto released = releaseImage(pending.index); !released)
+    {
+        pending.releaseFailed = true;
+        return std::unexpected {released.error()};
+    }
+    _pendingImageRecovery.reset();
+    return {};
+}
+
+auto Presentation::replacePendingRenderFinishedSemaphore() -> std::expected<void, Error>
+{
+    if (!_pendingImageRecovery || !_pendingImageRecovery->replaceRenderFinished)
+    {
+        return {};
+    }
+    auto& pending = *_pendingImageRecovery;
+    auto replacement = checkedCreation(_device.createSemaphore(vk::SemaphoreCreateInfo {}));
+    if (!replacement)
+    {
+        return std::unexpected {std::move(replacement.error())};
+    }
+    activeGeneration().images.at(pending.index).renderFinished = std::move(*replacement);
+    pending.replaceRenderFinished = false;
+    return {};
 }
 
 auto Presentation::queuePresent(const SwapchainImage& image, std::uint32_t index) -> vk::Result
@@ -577,7 +611,7 @@ auto Presentation::presentFrame(SwapchainImage& image,
         _faulted = true;
         return std::unexpected {makeVulkanError(presented)};
     }
-    return recoverPresentFailure(image, index, presented, completion);
+    return recoverPresentFailure(index, presented, completion);
 }
 
 auto Presentation::verifyReleaseFunction() const -> std::expected<void, Error>
@@ -707,6 +741,10 @@ auto Presentation::drain() -> std::expected<void, Error>
     if (const auto waited = waitCompletion(lastCompletion); !waited)
     {
         return std::unexpected {waited.error()};
+    }
+    if (const auto recovered = finishPendingImageRecovery(); !recovered)
+    {
+        return std::unexpected {recovered.error()};
     }
     return waitPresentation();
 }

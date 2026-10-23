@@ -100,7 +100,7 @@ categories, allowing another candidate to qualify. `SurfaceLost` and
 `InvalidArgument` are fatal to the whole selection because they describe the
 window/surface request rather than one adapter.
 
-## Variants and failures
+## Variants and errors
 
 |  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |

@@ -252,12 +252,12 @@ protected:
             .WillOnce(Return(static_cast<VkResult>(result)));
     }
 
-    void expectImageRelease(const Sequence& flow)
+    void expectImageRelease(const Sequence& flow, vk::Result result = vk::Result::eSuccess)
     {
         EXPECT_CALL(vulkan, vkReleaseSwapchainImagesKHR(_, NotNull()))
             .InSequence(flow)
             .WillOnce(testing::Action<decltype(vkReleaseSwapchainImagesKHR)> {
-                [](VkDevice, const VkReleaseSwapchainImagesInfoKHR* releaseInfo) {
+                [result](VkDevice, const VkReleaseSwapchainImagesInfoKHR* releaseInfo) {
                     EXPECT_EQ(releaseInfo->imageIndexCount, 1U);
                     if (releaseInfo->imageIndexCount != 1U || releaseInfo->pImageIndices == nullptr)
                     {
@@ -265,7 +265,7 @@ protected:
                         return static_cast<VkResult>(vk::Result::eErrorUnknown);
                     }
                     EXPECT_EQ(*releaseInfo->pImageIndices, 0U);
-                    return static_cast<VkResult>(vk::Result::eSuccess);
+                    return static_cast<VkResult>(result);
                 }});
     }
 

@@ -110,8 +110,9 @@ Follow the [project text and markup conventions](conventions.md#text-and-markup)
 
 Begin numbered steps with a short bold action label, such as **Allocate memory.**
 Begin notes with their main point, such as **Ownership** or **Failure guarantee**.
-Bold table identifiers as **Error&nbsp;1** for failures and **Variant&nbsp;1** for
-ordinary alternatives. Number each kind separately. Leave the first table-header
+Use **Error&nbsp;1** to identify an error case and **Variant&nbsp;1** for an ordinary
+alternative. Number each kind separately. *Failure* describes an unsuccessful path
+or outcome; it is not a synonym for a returned `Error`. Leave the first table-header
 cell blank; the complete identifier in each row is sufficient. Use monospace for
 error codes.
 Keep explanations in ordinary prose with code symbols in monospace. Do not bold
@@ -162,13 +163,14 @@ short `alt` may show mutually exclusive successful paths when needed to explain
 the collaboration. Substantial alternatives and failures belong in the variants
 table and separate sequences; do not mix error handling into the main diagram.
 
-## Variants and failures
+## Variants and errors
 
-For each meaningful failure or ordinary alternative give a distinct identifier
-(`Error 1`, `Error 2` for failures; `Variant 1`, `Variant 2` for ordinary
+For each meaningful error case or ordinary alternative give a distinct identifier
+(`Error 1`, `Error 2` for error cases; `Variant 1`, `Variant 2` for ordinary
 alternatives), the main step, condition, response, resulting state and permitted
 next action. Number errors and variants separately. Keep outcomes such as skipped
-frames as variants when they describe a normal alternative, not a failure.
+frames as variants when they describe a normal alternative. Use *failure* for an
+unsuccessful path or outcome, not as a synonym for an error case.
 Distinguish recoverable results, fatal contract violations and asynchronous faults.
 Do not imply that every error permits retry or restores the starting state.
 

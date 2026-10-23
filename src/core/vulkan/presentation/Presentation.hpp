@@ -79,6 +79,13 @@ private:
         std::uint32_t imageIndex {0};
     };
 
+    struct PendingImageRecovery
+    {
+        std::uint32_t index;
+        bool replaceRenderFinished;
+        bool releaseFailed {false};
+    };
+
     explicit Presentation(const PresentationCreateInfo& info);
 
     [[nodiscard]] auto initialize() -> std::expected<void, Error>;
@@ -122,10 +129,10 @@ private:
                                     std::uint64_t completion,
                                     bool acquireSuboptimal) -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto queuePresent(const SwapchainImage& image, std::uint32_t index) -> vk::Result;
-    [[nodiscard]] auto recoverPresentFailure(SwapchainImage& image,
-                                             std::uint32_t index,
-                                             vk::Result result,
-                                             std::uint64_t completion) -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto recoverPresentFailure(std::uint32_t index, vk::Result result, std::uint64_t completion)
+        -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto finishPendingImageRecovery() -> std::expected<void, Error>;
+    [[nodiscard]] auto replacePendingRenderFinishedSemaphore() -> std::expected<void, Error>;
     [[nodiscard]] auto releaseImage(std::uint32_t index) const -> std::expected<void, Error>;
     [[nodiscard]] auto abortAcquire(FrameSlot& slot, std::uint32_t index) -> std::expected<void, Error>;
 
@@ -143,6 +150,7 @@ private:
     bool _recreatePending {false};
     bool _faulted {false};
     bool _acquireRetirementFailed {false};
+    std::optional<PendingImageRecovery> _pendingImageRecovery;
 };
 
 }

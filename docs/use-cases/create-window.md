@@ -113,7 +113,7 @@ failure.
 destroy the native window. The application decides when to leave its loop and
 release the RAII owner.
 
-## Variants and failures
+## Variants and errors
 
 |  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |
