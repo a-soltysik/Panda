@@ -34,8 +34,8 @@ sequenceDiagram
     V-->>Q: Accepted and committed value
     Q-->>P: Retirement value
     P->>Q: Step 3 - wait for retirement value
-    Q->>V: Wait on Context timeline
-    V-->>Q: Completed
+    Q->>V: Host waits for the committed retirement value
+    V-->>Q: GPU signals after completing retirement work
     P->>V: Step 4 - release acquired image index
     V-->>P: Release result
 ```

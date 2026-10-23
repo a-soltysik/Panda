@@ -106,6 +106,8 @@ drain.
 **Drain boundary.** Resize/recreation drains queue timeline work and outstanding
 presentation fences before replacing the generation. The [presentation drain
 subflow](drain-presentation.md) distinguishes these two completion sources.
+The [swapchain recreation use case](recreate-swapchain.md) explains when a frame
+call detects a window change and what remains after replacement fails.
 
 ## Variants and errors
 

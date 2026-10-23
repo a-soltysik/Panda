@@ -73,7 +73,8 @@ forcing a device-wide idle.
 **Ownership after release.** A packet's references are only one set of owners.
 The destination remains alive while an application handle or another in-flight
 packet still holds it. The resource's ordinary RAII cleanup then returns memory
-to the pool after its final owner releases it. Context owns the `UploadManager`
+to the pool after its final owner releases it; the [memory-range subflow](release-memory-range.md)
+explains that release and the pool's empty-block policy. Context owns the `UploadManager`
 and `SubmissionQueue`; their lifetimes are bounded by the device, pool and queue
 services they borrow.
 

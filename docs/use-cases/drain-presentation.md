@@ -38,8 +38,8 @@ sequenceDiagram
         P-->>R: BackendFailure, unsafe drain refused
     else Retirement submissions are committed
         P->>Q: Step 2 - check/wait until completed value reaches or exceeds max slot value
-        Q->>V: Wait on Context timeline
-        V-->>Q: GPU submissions completed
+        Q->>V: Host waits for the already-submitted queue value
+        V-->>Q: GPU signals after reaching that value
         opt Pending acquired-image recovery
             P->>V: Step 3 - replace unused render-finished semaphore if needed
             P->>V: Step 3 - release acquired image
@@ -55,16 +55,17 @@ sequenceDiagram
 
 ## Notes
 
-**Two sources of completion.** The Context's Vulkan timeline semaphore retires
-submitted queue work. A presentation fence retires resources referenced by a
-present request. A queue timeline value by itself does not make present wait
-semaphores safe to destroy. See the [completion-point contract](../design/contracts/resources.md#handles-and-api-boundary).
+**Two sources of completion.** `SubmissionQueue` tracks Context submissions with
+a Vulkan timeline semaphore that the GPU signals as queued work completes. A
+presentation fence retires resources referenced by a present request. A queue
+timeline value by itself does not make present wait semaphores safe to destroy.
+See the [completion-point contract](../design/contracts/resources.md#handles-and-api-boundary).
 The Vulkan present-fence guarantee permits destruction after the associated
 fence signals, even though that signal does not promise that presentation has
 finished on screen.
 
-**Separate acquisition state.** Waiting for the Context timeline proves that
-submitted queue work is complete; it does not return an acquired swapchain image.
+**Separate acquisition state.** Waiting for a committed queue value proves that
+submitted GPU work is complete; it does not return an acquired swapchain image.
 `Presentation` retains the image index and remaining cleanup action until release
 succeeds. A release error leaves the acquisition unconfirmed, so `drain()` fails
 instead of claiming the generation is safe or repeating an ambiguous release.
