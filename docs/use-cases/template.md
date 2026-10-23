@@ -2,7 +2,7 @@
 
 Copy the skeleton below into a descriptively named page and replace its instructions.
 Follow the [conventions](../development/functional-documentation.md) and compare
-the [worked example](create-buffer.md). The diagram's participants and calls are
+the worked example [UC Create a buffer](create-buffer.md). The diagram's participants and calls are
 placeholders, not Panda API. Adapt step counts to the code. Optional state, decision
 or ownership diagrams belong beside the behavior they explain.
 Keep diagram notation guidance in the conventions. Do not add explanations of
@@ -61,8 +61,9 @@ sequenceDiagram
 
 **Publication guarantee.** Identify the *publication point* and what must succeed
 before the result becomes visible. Adapt note labels to the actual invariant or
-non-obvious decision. Refer to a subflow with an ordinary link and summarize its
-required outcome here. Explain facts the diagram does not already communicate.
+non-obvious decision. Refer to another use case with a link labeled `UC <title>`
+and summarize its required outcome here. Use the same name in a sequence note and
+explain facts the diagram does not already communicate.
 Use emphasis sparingly; do not bold whole explanations.
 
 ## Variants and errors

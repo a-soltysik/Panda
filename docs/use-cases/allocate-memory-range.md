@@ -80,7 +80,7 @@ sequenceDiagram
 memory type and the same buffer-or-image partition. The texture creator requests
 device-local memory from the image partition. Mesh vertex and index storage
 uses the buffer partition through `BufferResource`; buffer memory intent maps
-to its own required/preferred properties in [Create a buffer](create-buffer.md).
+to its own required/preferred properties in [UC Create a buffer](create-buffer.md).
 
 **Block size and dedicated requests.** Ordinary blocks are nominally 8 MiB for
 host-visible memory and 64 MiB otherwise, capped by the selected heap and the
@@ -94,7 +94,7 @@ host-memory mapping failure, the pool makes one exact-size dedicated attempt.
 Device loss is returned immediately. A failed request may reclaim empty cached
 blocks, but it does not alter existing live allocations. At most one empty
 ordinary block is retained for each memory-type/resource-kind partition; the
-[memory-range subflow](release-memory-range.md) describes that policy after an
+[UC Return a resource memory range](release-memory-range.md) describes that policy after an
 owner releases its range.
 
 **Ownership.** `MemoryAllocation` borrows the pool and identifies its reserved
@@ -147,17 +147,18 @@ sequenceDiagram
 **Success.** The caller owns a move-only reservation satisfying the native
 requirements and can bind the resource at its offset. Pool ownership keeps the
 block alive; destroying the resource releases the range through the
-[memory-range subflow](release-memory-range.md).
+[UC Return a resource memory range](release-memory-range.md).
 
 **Failure.** No new range owner escapes. Empty cached blocks may have been
 released to meet a budget, but live allocations are not evicted or moved.
 
 ## Related information
 
-- [Create a buffer](create-buffer.md), [Create a texture and its default view](create-texture.md)
-  and [Create mesh storage with optional indices](create-mesh.md) show how
-  resource-specific requirements use this shared allocation flow.
-- [Return a resource memory range](release-memory-range.md) explains range
+- [UC Create a buffer](create-buffer.md), [UC Create a texture and its default view](create-texture.md),
+  [UC Create mesh storage with optional indices](create-mesh.md) and
+  [UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md)
+  show how resource-specific requirements use this allocation flow.
+- [UC Return a resource memory range](release-memory-range.md) explains range
   release and empty-block retention after the resource's last owner is gone.
 - [Allocation, uploads and descriptors](../design/contracts/resources.md#allocation-uploads-and-descriptors)
   owns the pool policy and the requirement that submitted work retain resources.

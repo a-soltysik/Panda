@@ -7,7 +7,7 @@ queue and signals its timeline semaphore on every accepted submission. Its
 monotonically increasing counter orders those submissions in queue order. It does
 not track presentation-engine use of swapchain images; per-image present fences
 track that separately. The [CompletionPoint contract](../design/contracts/resources.md#handles-and-api-boundary)
-defines when a counter value confirms completed queue work. This subflow starts
+defines when a counter value confirms completed queue work. This UC starts
 when a caller has prepared queue work and ends when `vkQueueSubmit2` accepts it or
 returns an error.
 
@@ -61,15 +61,18 @@ presentation-engine references.
 |  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |
 | **Error&nbsp;1** | Step 1: timeline is lost, exhausted or has no available outstanding capacity | Return an error before queue submit | No new value or work is committed; caller may retry only if the reported condition is recoverable |
-| **Error&nbsp;2** | Step 2: `vkQueueSubmit2` rejects work | Return the Vulkan error; mark the queue lost on device loss | Candidate value remains uncommitted; a binary acquire wait that did not commit needs the caller's failure policy, described by [acquired-image retirement](retire-acquired-image.md) |
+| **Error&nbsp;2** | Step 2: `vkQueueSubmit2` rejects work | Return the Vulkan error; mark the queue lost on device loss | Candidate value remains uncommitted; a binary acquire wait that did not commit needs the caller's failure policy, described by [UC Retire an acquired image after frame work fails](retire-acquired-image.md) |
 
 ## Related information
 
-- [Upload bytes into a buffer](upload-buffer.md) shows upload work and retained
+- [UC Upload bytes into a buffer](upload-buffer.md) shows upload work and retained
   owners crossing this commit boundary.
-- [Render and present a diagnostic clear frame](render-clear-frame.md) shows
+- [UC Upload texture contents or regions](upload-texture.md) and
+  [UC Retire an acquired image after frame work fails](retire-acquired-image.md)
+  use the same queue-acceptance rule for texture upload and acquire cleanup.
+- [UC Render and present a diagnostic clear frame](render-clear-frame.md) shows
   acquire waits, render-finished signals and presentation use.
-- [Observe or wait for submitted GPU work](observe-completion.md) defines the
+- [UC Observe or wait for submitted GPU work](observe-completion.md) defines the
   public completion-token behavior.
 - [Handles and API boundary](../design/contracts/resources.md#handles-and-api-boundary)
   defines `CompletionPoint` identity and the relationship between its value and

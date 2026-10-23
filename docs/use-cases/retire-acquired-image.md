@@ -4,7 +4,7 @@
 
 If a swapchain image was acquired but normal frame submission does not happen,
 Panda must consume the image's binary acquire semaphore and return the unused
-image through swapchain maintenance. This subflow starts after successful image
+image through swapchain maintenance. This UC starts after successful image
 acquisition and ends with cleanup success or a faulted presentation state.
 
 ## Main flow
@@ -15,6 +15,8 @@ acquisition and ends with cleanup success or a faulted presentation state.
    waits on the slot's acquire semaphore and signals the Context timeline. On
    queue acceptance, `Presentation` stores the image index as pending recovery
    and records the returned value as the slot's last completion.
+   [UC Commit work to the Context submission timeline](commit-context-submission.md)
+   defines when that value is committed.
 3. **Wait for the retirement submission.** `Presentation::waitCompletion()` waits
    for that committed value before release. If the wait times out, the pending
    recovery remains for `drain()`.
@@ -30,6 +32,7 @@ sequenceDiagram
     Note over P: Image acquired and normal frame submission did not happen
     P->>P: Step 2 - retain image index for recovery
     P->>Q: Step 2 - empty submit waits on acquire semaphore
+    Note over P,Q: Step 2 - UC Commit work to the Context submission timeline
     Q->>V: vkQueueSubmit2(signals Context timeline)
     V-->>Q: Accepted and committed value
     Q-->>P: Retirement value
@@ -71,9 +74,9 @@ to destroy.
 
 ## Related information
 
-- [Render and present a diagnostic clear frame](render-clear-frame.md) identifies
-  which pre-submit failures enter this subflow.
-- [Drain frame and presentation use](drain-presentation.md) explains shutdown and
+- [UC Render and present a diagnostic clear frame](render-clear-frame.md) identifies
+  which pre-submit failures enter this UC.
+- [UC Drain frame and presentation use](drain-presentation.md) explains shutdown and
   generation waits after a committed cleanup submission.
 - The [unused-image release specification](https://docs.vulkan.org/refpages/latest/refpages/source/VkReleaseSwapchainImagesInfoKHR.html)
   requires that all uses of the released image have completed.

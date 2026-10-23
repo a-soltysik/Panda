@@ -82,9 +82,9 @@ to destroy.
 
 ## Related information
 
-- [Render and present a diagnostic clear frame](render-clear-frame.md) shows the
-  successful frame prefix and status returned by this subflow.
-- [Drain frame and presentation use](drain-presentation.md) explains when present
+- [UC Render and present a diagnostic clear frame](render-clear-frame.md) shows the
+  successful frame prefix and status returned by this UC.
+- [UC Drain frame and presentation use](drain-presentation.md) explains when present
   fences are waited.
 - [Resources and frames](../design/contracts/resources.md#frame-and-window-state)
   defines the acquired-image and semaphore lifetime requirements.

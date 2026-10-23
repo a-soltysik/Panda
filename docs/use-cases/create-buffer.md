@@ -29,11 +29,8 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 1. **Request.** The application calls `Context::createBuffer(description)`.
    `Context` requires live internal state.
 2. **Release completed upload resources.** `Context::Impl::createResource`
-   first calls `collectUploads()`. When an `UploadManager` exists, it uses the
-   [completed-upload subflow](reclaim-completed-uploads.md) to reclaim packets
-   whose completion values are no greater than the queue's observed completed
-   value. It does not wait for packets with greater values; without a manager,
-   this step is a no-op.
+   calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+   explains which packets can be released; without an `UploadManager`, this is a no-op.
 3. **Validate.** `BufferResource::create` checks that size is nonzero, usage is
    nonempty and supported, and memory intent is `Device`, `Upload` or `Readback`
    before native buffer creation. Supported usages are the ordinary transfer,
@@ -43,7 +40,7 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 5. **Allocate.** `BufferResource::bind` queries ordinary and dedicated memory
    requirements, translates memory intent to required/preferred properties and
    calls `MemoryPool::allocate`. The returned `MemoryAllocation` is moved into
-   the resource. The shared [memory-allocation subflow](allocate-memory-range.md)
+   the resource. [UC Allocate a compatible device-memory range](allocate-memory-range.md)
    explains type selection, range reuse, block growth and dedicated fallback;
    pool policy remains in the
    [allocation contract](../design/contracts/resources.md#allocation-uploads-and-descriptors).
@@ -63,8 +60,7 @@ sequenceDiagram
     C ->> C: Step 2 - collectUploads()
     opt UploadManager exists
         C ->> U: Step 2 - collect()
-        Note over U: Checks GPU completion without waiting
-        Note over U: Releases packets for completed transfers
+        Note over C,U: Step 2 - UC Reclaim completed upload packets
         U -->> C: Success
     end
     C ->> R: Step 3 - BufferResource::create(...)
@@ -75,7 +71,7 @@ sequenceDiagram
     R ->> V: Step 5 - getBufferMemoryRequirements2(...)
     V -->> R: Memory and dedicated requirements
     R ->> P: Step 5 - allocate(request)
-    Note over R,P: Shared memory-allocation subflow
+    Note over R,P: Step 5 - UC Allocate a compatible device-memory range
     P -->> R: MemoryAllocation ownership
     R ->> V: Step 6 - bindBufferMemory2(...)
     V -->> R: Success
@@ -94,13 +90,8 @@ buffer alone does not create that service. Before the first batch, Step 2 succee
 without collection; afterwards it uses the existing manager to reclaim finished
 uploads. The manager remains owned by `Context` even when no batches are pending.
 
-**Completed uploads.** The shared [completed-upload subflow](reclaim-completed-uploads.md)
-explains what collection releases, how it observes the queue timeline and why
-resources with other owners remain alive.
-
 **Memory selection.** `BufferDesc::memory` tells Panda which memory properties to
-require and prefer; the shared [memory-allocation subflow](allocate-memory-range.md)
-selects a compatible type and range. `Upload` and `Readback` require memory that
+require and prefer. `Upload` and `Readback` require memory that
 Vulkan allows the CPU to access. The returned `Buffer` is still an owning handle,
 not a CPU pointer; Panda's current public API writes buffer data through `UploadBatch`.
 
@@ -139,7 +130,7 @@ Copying a `Buffer` retains the same state rather than allocating or copying buff
 **Lifetime requirement.** No owning edge links `Buffer` to `Context`. `Context` must outlive all these handles;
 moving `Context` preserves its stable internal services. Releasing one `Buffer` only
 drops one shared owner. Once no owner remains, `BufferResource` destroys the native
-buffer before releasing its range; the [memory-range subflow](release-memory-range.md)
+buffer before releasing its range; [UC Return a resource memory range](release-memory-range.md)
 explains how that range returns to the pool. Submitted uses can retain additional owners;
 their retention is outside this creation flow and follows the
 [resource lifetime contract](../design/contracts/resources.md#frame-contexts-and-retirement).
@@ -177,13 +168,13 @@ sequenceDiagram
     Note over R: bind() returns an error, create() releases unpublished state
     R ->> V: Destroy native buffer
     R ->> M: Release allocation owner
-    M ->> P: release(id)
-    P -->> M: Range returned
+    M ->> P: Return allocation range
+    Note over M,P: UC Return a resource memory range
     R -->> C: Error, no shared resource published
     C -->> A: Result containing Error
 ```
 
-The [memory-range subflow](release-memory-range.md) explains the empty-block
+[UC Return a resource memory range](release-memory-range.md) explains the empty-block
 policy after this cleanup. The native error category/status survives propagation.
 
 ## Outcomes
@@ -203,9 +194,9 @@ byte-for-byte restoration of pool caches, nor recover a lost device.
   [lifetime versus synchronization](../design/contracts/resources.md#lifetime-is-not-synchronization),
   and [handle boundary](../design/contracts/resources.md#handles-and-api-boundary)
   define the shared guarantees.
-- [Reclaim completed upload packets](reclaim-completed-uploads.md) explains the
+- [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains the
   shared collection performed before this allocation.
-- [Allocate a compatible device-memory range](allocate-memory-range.md) explains
+- [UC Allocate a compatible device-memory range](allocate-memory-range.md) explains
   the shared type-selection, reuse, growth and dedicated-allocation path.
 - [Vulkan memory allocation](https://docs.vulkan.org/guide/latest/memory_allocation.html)
   explains device-memory allocation and why resources can share larger allocations.

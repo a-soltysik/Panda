@@ -11,12 +11,14 @@ terminated and the previous callback is restored.
 
 The application owns each `Window`. Panda owns one shared GLFW session while any
 Panda window is alive. This scenario covers this wrapper's creation and release,
-not the event loop or rendering. The general windowed Context API accepts any
-application-defined `panda::WindowSurface`; it does not require `Panda::Tools` or
-GLFW. That provider supplies required instance extensions, creates a Vulkan
-surface and reports framebuffer extent. See the [Context scenario](create-context.md)
-for the shared contract. A Context borrows its provider, so the application must
-destroy the Context before releasing either this `Window` or its custom provider.
+not the event loop or rendering. [UC Run a window event loop](run-window-event-loop.md)
+explains event processing and close/minimize handling. The general windowed
+Context API accepts any application-defined `panda::WindowSurface`; it does not
+require `Panda::Tools` or GLFW. That provider supplies required instance
+extensions, creates a Vulkan surface and reports framebuffer extent. See the
+[UC Create a Context](create-context.md) for the shared contract. A Context borrows
+its provider, so the application must destroy the Context before releasing
+either this `Window` or its custom provider.
 
 ## Preconditions
 
@@ -102,7 +104,7 @@ terminate GLFW or replace its error callback.
 **Surface borrowing.** `Window::createSurface()` transfers the created Vulkan
 surface to the caller, while `Context::createWithSurface()` borrows the
 `WindowSurface`. Keep the `Window` alive until that Context is destroyed; the
-[Context scenario](create-context.md) follows that ownership boundary.
+[UC Create a Context](create-context.md) follows that ownership boundary.
 
 **Dimensions.** The requested and queried window sizes use content coordinates.
 Framebuffer extents use pixels and can differ on high-DPI displays. A zero
@@ -140,9 +142,11 @@ window is destroyed, Panda terminates GLFW and restores the prior error callback
 
 ## Related information
 
-- [Create a Context](create-context.md) explains how a windowed Context borrows a
+- [UC Create a Context](create-context.md) explains how a windowed Context borrows a
   `WindowSurface`, including an application-defined implementation, and must be
   destroyed before its provider.
+- [UC Run a window event loop](run-window-event-loop.md) explains event processing,
+  close requests and suspended presentation.
 - [Window wrapper](../design/package-and-toolchain.md#window-wrapper) defines the
   optional Tools target, thread restrictions and GLFW ownership boundary.
 - [GLFW window wrapper](../development/tasks/window-wrapper.md) records the

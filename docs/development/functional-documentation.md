@@ -124,8 +124,9 @@ Markdown formatting in surrounding prose need not be reproduced inside diagrams.
 
 Use fenced `mermaid` blocks in Markdown, with syntax supported by GitHub's renderer.
 A newer local renderer alone does not establish GitHub compatibility. Place ordinary
-Markdown links beside diagrams for navigation. Use a sequence note to identify a
-referenced subflow; PlantUML's `ref over` is not Mermaid syntax. A documentation
+Markdown links beside diagrams for navigation. Label a link to another use case as
+`UC <title>` and use that same name in a sequence note when the diagram delegates
+part of its path. PlantUML's `ref over` is not Mermaid syntax. A documentation
 website is optional and must use the same sources rather than a second content copy.
 Keep references to local steps as plain `Step 5` labels. Link to an ordinary
 section heading when navigation is useful; do not insert HTML anchors for each step.

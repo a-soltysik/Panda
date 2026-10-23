@@ -2,19 +2,18 @@
 
 ## Goal and boundary
 
-This shared subflow releases Context-owned upload packets after the GPU has
+This UC releases Context-owned upload packets after the GPU has
 completed the work they retain. It is triggered when a Context operation
 opportunistically collects uploads, when `Context::poll()` or `Context::wait()`
 updates the shared completion counter, or when Context drains pending uploads
-during shutdown. The subflow ends when completed packet owners are released or
+during shutdown. It ends when completed packet owners are released or
 when a query/wait error is returned with the relevant pending state preserved.
 
 Each pending packet owns its recorded command resources, staging pages and
 destination references. The returned `CompletionPoint` identifies queue work but
-does not itself own those resources. This subflow explains buffer-upload
-retirement used by [Upload bytes into a buffer](upload-buffer.md) and
-[Create a buffer](create-buffer.md); resource creation, frame submission and
-Context shutdown invoke the same manager behavior.
+does not itself own those resources. This UC explains packet retirement used by
+[UC Upload bytes into a buffer](upload-buffer.md), [UC Upload texture contents or regions](upload-texture.md),
+and resource creation, frame submission, completion observation and Context shutdown.
 
 ## Preconditions
 
@@ -73,7 +72,7 @@ forcing a device-wide idle.
 **Ownership after release.** A packet's references are only one set of owners.
 The destination remains alive while an application handle or another in-flight
 packet still holds it. The resource's ordinary RAII cleanup then returns memory
-to the pool after its final owner releases it; the [memory-range subflow](release-memory-range.md)
+to the pool after its final owner releases it; [UC Return a resource memory range](release-memory-range.md)
 explains that release and the pool's empty-block policy. Context owns the `UploadManager`
 and `SubmissionQueue`; their lifetimes are bounded by the device, pool and queue
 services they borrow.
@@ -101,8 +100,16 @@ this flow does not promise general recovery from device loss.
 
 ## Related information
 
-- [Upload bytes into a buffer](upload-buffer.md) and [Create a buffer](create-buffer.md)
-  show callers that collect completed upload packets.
+- [UC Create a buffer](create-buffer.md), [UC Create a texture and its default view](create-texture.md)
+  and [UC Create mesh storage with optional indices](create-mesh.md) collect before
+  publishing new resource storage.
+- [UC Upload bytes into a buffer](upload-buffer.md) and
+  [UC Observe or wait for submitted GPU work](observe-completion.md) collect while
+  working with submitted uploads.
+- [UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md)
+  collects before staging-page reuse or allocation.
+- [UC Render and present a diagnostic clear frame](render-clear-frame.md) and
+  [UC Shut down a Context safely](shutdown-context.md) collect before frame work or teardown.
 - [Ownership](../design/contracts/resources.md#ownership),
   [lifetime is not synchronization](../design/contracts/resources.md#lifetime-is-not-synchronization),
   and [allocation, uploads and descriptors](../design/contracts/resources.md#allocation-uploads-and-descriptors)

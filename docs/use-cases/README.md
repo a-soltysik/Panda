@@ -7,24 +7,27 @@ forwarding and helper calculations.
 
 | Flow | Boundary |
 | --- | --- |
-| [Create a Context](create-context.md) | Vulkan instance, device and services; headless and windowed initialization, ownership and partial failure cleanup |
-| [Select a compatible Vulkan device](select-vulkan-device.md) | Shared Context-creation subflow: required capabilities, work/present queues and window support |
-| [Create and release a native window](create-window.md) | Optional Panda::Tools/GLFW wrapper; applications may provide their own `WindowSurface` |
-| [Create a buffer](create-buffer.md) | Worked example: positive sequence, ownership and binding-failure cleanup for an ordinary buffer |
-| [Allocate a compatible device-memory range](allocate-memory-range.md) | Shared subflow: compatible memory type, pooled/dedicated range and bounded fallback |
-| [Create a texture and its default view](create-texture.md) | Validate, allocate, bind and create the internal view before publishing a 2D image |
-| [Create mesh storage with optional indices](create-mesh.md) | Derive sizes and publish vertex/optional index buffers only when all succeed |
-| [Return a resource memory range](release-memory-range.md) | Shared subflow: final owner release, range coalescing and empty-block policy |
-| [Upload bytes into a buffer](upload-buffer.md) | Snapshot, ordered buffer writes, asynchronous submission and retry behavior |
-| [Observe or wait for submitted GPU work](observe-completion.md) | Context-scoped completion queries, bounded waits and upload retirement |
-| [Reclaim completed upload packets](reclaim-completed-uploads.md) | Shared subflow: observe queue completion and release retained upload owners |
-| [Render and present a diagnostic clear frame](render-clear-frame.md) | Acquire, record, submit and present; frame and image synchronization outcomes |
-| [Suspend presentation and recreate the swapchain](recreate-swapchain.md) | Framebuffer changes, minimized windows and failed swapchain replacement |
-| [Commit work to the Context submission timeline](commit-context-submission.md) | Shared subflow: queue acceptance and timeline value publication |
-| [Retire an acquired image after frame work fails](retire-acquired-image.md) | Shared subflow: consume acquire semaphore and release an unused image |
-| [Recover from a presentation failure](recover-presentation-failure.md) | Shared subflow: retire the GPU producer and replace unused present signaling |
-| [Drain frame and presentation use](drain-presentation.md) | Shared subflow: wait for queue completion and presentation fences |
-| [Shut down a Context safely](shutdown-context.md) | Release caller-owned handles, drain internal work and tear down Context services |
+| [UC Create a Context](create-context.md) | Vulkan instance, device and services; headless and windowed initialization, ownership and partial failure cleanup |
+| [UC Select a compatible Vulkan device](select-vulkan-device.md) | Required capabilities, work and present queues, and window-surface support |
+| [UC Create and release a native window](create-window.md) | Optional Panda::Tools/GLFW wrapper; applications may provide their own `WindowSurface` |
+| [UC Run a window event loop](run-window-event-loop.md) | Process input and close requests; poll while active and wait while presentation is suspended |
+| [UC Create a buffer](create-buffer.md) | Worked example: positive sequence, ownership and binding-failure cleanup for an ordinary buffer |
+| [UC Allocate a compatible device-memory range](allocate-memory-range.md) | Compatible memory type, pooled or dedicated range, and bounded fallback |
+| [UC Create a texture and its default view](create-texture.md) | Validate, allocate, bind and create the internal view before publishing a 2D image |
+| [UC Create mesh storage with optional indices](create-mesh.md) | Derive sizes and publish vertex/optional index buffers only when all succeed |
+| [UC Return a resource memory range](release-memory-range.md) | Final owner release, range coalescing and empty-block policy |
+| [UC Upload bytes into a buffer](upload-buffer.md) | Snapshot, ordered buffer writes, asynchronous submission and retry behavior |
+| [UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md) | Byte-staging path: aligned slices, noncoherent flush and caller-byte lifetime |
+| [UC Upload texture contents or regions](upload-texture.md) | Full-image and pitched-region validation, one-batch reservation, image transitions and immutable submitted contents |
+| [UC Observe or wait for submitted GPU work](observe-completion.md) | Context-scoped completion queries, bounded waits and upload retirement |
+| [UC Reclaim completed upload packets](reclaim-completed-uploads.md) | Observe queue completion and release retained upload owners |
+| [UC Render and present a diagnostic clear frame](render-clear-frame.md) | Acquire, record, submit and present; frame and image synchronization outcomes |
+| [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md) | Framebuffer changes, minimized windows and failed swapchain replacement |
+| [UC Commit work to the Context submission timeline](commit-context-submission.md) | Queue acceptance and timeline value publication |
+| [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | Consume acquire semaphore and release an unused image |
+| [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md) | Retire the GPU producer and replace unused present signaling |
+| [UC Drain frame and presentation use](drain-presentation.md) | Wait for queue completion and presentation fences |
+| [UC Shut down a Context safely](shutdown-context.md) | Release caller-owned handles, drain internal work and tear down Context services |
 
 For authors, see the [conventions](../development/functional-documentation.md) and
 [scenario template](template.md). The template is an authoring aid, not an

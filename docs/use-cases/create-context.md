@@ -32,7 +32,7 @@ upload work.
    optional debug messenger and, for a windowed Context, creates and owns the
    native `VkSurfaceKHR` returned by `WindowSurface`.
 3. **Select a compatible device.** Panda calls the
-   [device-selection subflow](select-vulkan-device.md), which returns a physical
+   [UC Select a compatible Vulkan device](select-vulkan-device.md), which returns a physical
    device, queue families and the capabilities needed by this Context.
 4. **Create the logical device.** Panda enables the queried Vulkan 1.3
    features and creates the selected graphics/compute queue. A windowed Context
@@ -62,6 +62,7 @@ sequenceDiagram
     I->>V: Step 2 - Verify loader and optional validation layer
     I->>V: Create instance and optional debug messenger
     I->>D: Step 3 - Select headless-compatible physical device and queue
+    Note over I,D: Step 3 - UC Select a compatible Vulkan device
     D-->>I: Selected device, capabilities and queue families
     I->>V: Step 4 - Create logical device with selected features and queues
     I->>I: Step 5 - Create memory pool and performance manager
@@ -89,6 +90,7 @@ sequenceDiagram
     I->>W: Create native Vulkan surface
     W-->>I: Transfer native surface ownership to Context
     I->>D: Step 3 - Select surface-compatible physical device and queues
+    Note over I,D: Step 3 - UC Select a compatible Vulkan device
     D-->>I: Selected device, capabilities and queue families
     I->>V: Step 4 - Create logical device with selected features and queues
     I->>I: Step 5 - Create memory pool and performance manager
@@ -111,7 +113,7 @@ sequenceDiagram
 that a physical device exposes every feature Panda needs. Device selection queries
 and enables dynamic rendering, synchronization2 and timeline semaphores explicitly.
 Windowed contexts additionally require compatible surface support and swapchain
-maintenance1. The full rules live in the [selection subflow](select-vulkan-device.md).
+maintenance1. The full rules live in [UC Select a compatible Vulkan device](select-vulkan-device.md).
 
 **Ownership.** `WindowSurface` is borrowed, while the native surface it creates is
 owned by the Context. Partial initialization never publishes a facade: if a later
@@ -135,7 +137,7 @@ presentation. Upload support is initialized when an upload batch is first reques
 | --- | --- | --- | --- |
 | **Error&nbsp;1** | Step 2: loader is below Vulkan 1.3, or a requested validation layer/extension is unavailable | Return `Unsupported`; extension enumeration and provider errors keep their reported error | No Context is published; install or select a compatible Vulkan runtime, or disable optional validation |
 | **Error&nbsp;2** | Step 2: required window extensions are malformed or unavailable, or instance, messenger or native-surface creation fails | Return `InvalidArgument`, `Unsupported` or the originating native/provider error; release any instance services already created | No Context is published; correct the provider/configuration or resolve the reported failure |
-| **Error&nbsp;3** | Step 3: no compatible physical device is found, or device inspection cannot complete | Propagate the selection result; see [device-selection outcomes](select-vulkan-device.md#variants-and-errors) | No logical device or Context is published; respond to the reported capability or backend failure |
+| **Error&nbsp;3** | Step 3: no compatible physical device is found, or device inspection cannot complete | Propagate the selection result; see [UC Select a compatible Vulkan device](select-vulkan-device.md#variants-and-errors) | No logical device or Context is published; respond to the reported capability or backend failure |
 | **Error&nbsp;4** | Step 4: logical-device creation fails | Return the mapped Vulkan error without adopting a failed native output | No Context is published; retry only after resolving the reported cause |
 | **Error&nbsp;5** | Step 5: performance-manager initialization fails | Return its error and release the local manager and other Context owners already created | No Context is published; investigate the reported device/backend failure before retry |
 | **Error&nbsp;6** | Step 5: windowed presentation initialization fails | Return the originating error and release partial presentation state and Vulkan owners; see [Error 6 cleanup](#error-6---release-partial-presentation-state) | No Context is published; no application Context is available |
@@ -185,9 +187,9 @@ against the same runtime or surface will succeed.
 
 ## Related information
 
-- [Create and release a native window](create-window.md) explains the GLFW
+- [UC Create and release a native window](create-window.md) explains the GLFW
   lifetime and the `WindowSurface` owner borrowed by this flow.
-- [Select a compatible Vulkan device](select-vulkan-device.md) explains the
+- [UC Select a compatible Vulkan device](select-vulkan-device.md) explains the
   capability and queue-family decision used at Step 3.
 - [Resource ownership](../design/contracts/resources.md#ownership) defines the
   required Context, resource and window lifetimes.

@@ -22,12 +22,12 @@ identifies submitted GPU work; it does not say that the image has been displayed
 ## Main flow
 
 1. **Request a frame.** The application calls `Context::presentClearFrame()`.
-   `Context::Impl` first collects upload packets whose completion values are no
-   greater than the known completed value, then delegates to `Presentation`.
+   `Context::Impl` collects completed uploads before delegating to `Presentation`;
+   [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains that collection.
 2. **Prepare the window generation.** `Presentation::prepareWindowFrame()` checks
-   the framebuffer extent. A zero width or height suspends this call without
-   acquiring an image. Otherwise, a missing, resized or recreation-pending
-   generation is drained and replaced before frame work begins.
+   the framebuffer extent and returns `Suspended` when either dimension is zero.
+   [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md)
+   explains generation reuse, draining and replacement.
 3. **Acquire an image.** `Presentation::acquireFrame()` waits for the selected
    frame slot's `lastCompletion` value before reusing the slot. If the timeline's
    known completed value is already at least `lastCompletion`, this check returns
@@ -46,28 +46,32 @@ identifies submitted GPU work; it does not say that the image has been displayed
    the acquire semaphore and signaling the image's render-finished semaphore plus
    the Context timeline. Only a successful queue submission commits its timeline
    value. Panda stores that value on the frame slot, marks the image initialized
-   and advances the slot. See the [submission subflow](commit-context-submission.md).
+   and advances the slot. See [UC Commit work to the Context submission timeline](commit-context-submission.md).
 7. **Queue presentation.** `Presentation::presentFrame()` queues the image with a
    per-image presentation fence. A normal result returns `Presented` with a valid
    point for Step 6. A suboptimal/out-of-date present, or a suboptimal acquire
    followed by a successfully enqueued present, returns `RecreatePending` with
    that same valid point; recreation happens at the next safe boundary. See
-   [presentation recovery](recover-presentation-failure.md) for other
+   [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md) for other
    queue-present errors.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
     participant C as Context / Impl
+    participant U as UploadManager
     participant P as Presentation
     participant Q as SubmissionQueue
     participant V as Vulkan
     A->>C: Step 1 - presentClearFrame()
     opt UploadManager exists
-        C->>C: Collect packets no greater than known completed value
+        C->>U: Step 1 - collect completed packets
+        Note over C,U: Step 1 - UC Reclaim completed upload packets
+        U-->>C: Collection result
     end
     C->>P: Step 2 - prepare window frame
     P->>V: Read framebuffer extent and recreate if needed
+    Note over C,P: Step 2 - UC Suspend presentation and recreate the swapchain
     V-->>P: Nonzero extent and usable generation
     P->>Q: Step 3 - wait until slot lastCompletion is complete, then check capacity
     P->>V: Step 3 - acquire image, signal slot semaphore
@@ -75,6 +79,7 @@ sequenceDiagram
     P->>V: Step 4 - wait/reset image present fence
     P->>V: Step 5 - record clear and image transitions
     P->>Q: Step 6 - submit, wait acquire, signal render-finished and timeline
+    Note over P,Q: Step 6 - UC Commit work to the Context submission timeline
     Q-)V: Queue accepts frame work and timeline signal
     Q-->>P: Committed timeline value
     P->>V: Step 7 - present image, wait render-finished, signal present fence
@@ -99,15 +104,15 @@ presentation fence does not promise that display has finished; see the
 
 **Failure before submit.** Once acquire succeeds, any later record or enqueue
 failure must consume the acquire semaphore and retire the acquired image. The
-[acquired-image subflow](retire-acquired-image.md) explains how committed cleanup
+[UC Retire an acquired image after frame work fails](retire-acquired-image.md) explains how committed cleanup
 is retained across a timeout and why an unconfirmed release prevents a successful
 drain.
 
 **Drain boundary.** Resize/recreation drains queue timeline work and outstanding
-presentation fences before replacing the generation. The [presentation drain
-subflow](drain-presentation.md) distinguishes these two completion sources.
-The [swapchain recreation use case](recreate-swapchain.md) explains when a frame
-call detects a window change and what remains after replacement fails.
+presentation fences before replacing the generation. [UC Drain frame and presentation use](drain-presentation.md)
+distinguishes these two completion sources. [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md)
+explains when a frame call detects a window change and what remains after
+replacement fails.
 
 ## Variants and errors
 
@@ -118,9 +123,9 @@ call detects a window change and what remains after replacement fails.
 | **Variant&nbsp;3** | Step 3: acquire reports out-of-date | Set recreation pending and return `RecreatePending` without a completion point | No acquired image is assumed; the next frame call attempts recreation |
 | **Variant&nbsp;4** | Step 3 or 7: acquire is suboptimal and present is successfully enqueued, or present is suboptimal/out-of-date | Finish the submitted work and return `RecreatePending` | The result retains the submitted completion point; the next frame call recreates |
 | **Error&nbsp;1** | Step 1: Context has no window presentation service | Return `Unsupported` | No frame work starts; use a windowed Context |
-| **Error&nbsp;2** | Step 2 through 6: extent query, acquire, recording, submit or cleanup fails | Return the relevant error; pre-submit failures follow the [acquired-image subflow](retire-acquired-image.md) | Device loss or failed retirement faults presentation; `drain()` succeeds only after committed cleanup is confirmed, and refuses an uncommitted retirement |
+| **Error&nbsp;2** | Step 2 through 6: extent query, acquire, recording, submit or cleanup fails | Return the relevant error; pre-submit failures follow the [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | Device loss or failed retirement faults presentation; `drain()` succeeds only after committed cleanup is confirmed, and refuses an uncommitted retirement |
 | **Error&nbsp;3** | Step 7: surface is lost or device is lost | Return the Vulkan error and fault presentation | No automatic surface/device reconstruction is promised; Context teardown still attempts its drain |
-| **Error&nbsp;4** | Step 7: another present error means the request was not enqueued | Wait for the submitted GPU producer, replace its unconsumed render-finished semaphore, release the image and mark recreation pending | Return the original present error; cleanup failures fault presentation. See [presentation recovery](recover-presentation-failure.md) |
+| **Error&nbsp;4** | Step 7: another present error means the request was not enqueued | Wait for the submitted GPU producer, replace its unconsumed render-finished semaphore, release the image and mark recreation pending | Return the original present error; cleanup failures fault presentation. See [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md) |
 
 ## Outcomes
 
@@ -145,9 +150,10 @@ error does not imply that already submitted work was rolled back.
 - [Allocation, uploads and resource lifetimes](../development/tasks/resource-lifetimes.md)
   describes the shared Context timeline and the separation between GPU completion
   and presentation completion.
-- [Observe or wait for submitted GPU work](observe-completion.md) explains how an
+- [UC Observe or wait for submitted GPU work](observe-completion.md) explains how an
   application observes a returned `CompletionPoint`.
-- The [submission](commit-context-submission.md), [acquired-image
-  retirement](retire-acquired-image.md), [presentation recovery](recover-presentation-failure.md)
-  and [presentation drain](drain-presentation.md) subflows explain the separate
+- [UC Commit work to the Context submission timeline](commit-context-submission.md),
+  [UC Retire an acquired image after frame work fails](retire-acquired-image.md),
+  [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md) and
+  [UC Drain frame and presentation use](drain-presentation.md) explain the separate
   synchronization and recovery boundaries.
