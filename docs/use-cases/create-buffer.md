@@ -42,8 +42,9 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 2. **Release completed upload resources.** `Context::Impl::createResource`
    first calls `collectUploads()`. When an `UploadManager` exists, it uses the
    [completed-upload subflow](reclaim-completed-uploads.md) to reclaim packets
-   covered by the queue's observed completion value. Pending GPU work is not
-   waited on; without a manager, this step is a no-op.
+   whose completion values are no greater than the queue's observed completed
+   value. It does not wait for packets with greater values; without a manager,
+   this step is a no-op.
 3. **Validate.** `BufferResource::create` checks that size is nonzero, usage is
    nonempty and supported, and memory intent is `Device`, `Upload` or `Readback`
    before native buffer creation. Supported usages are the ordinary transfer,
@@ -151,7 +152,7 @@ buffer before releasing its range. Submitted uses can retain additional owners;
 their retention is outside this creation flow and follows the
 [resource lifetime contract](../design/contracts/resources.md#frame-contexts-and-retirement).
 
-## Variants and failures
+## Variants and errors
 
 |  | Point and condition                          | Response                                                                                                           | Resulting state and next action                                                                                                         |
 |--------|----------------------------------------------|--------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|

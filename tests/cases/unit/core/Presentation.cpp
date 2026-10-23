@@ -508,7 +508,7 @@ TEST_F(PresentationTest, FailedRetirementSubmitPreservesErrorWithoutWaitingOnUnc
     EXPECT_FALSE(presentation->get()->drain());
 }
 
-TEST_F(PresentationTest, RetirementTimeoutKeepsTheCommittedWorkForDrain)
+TEST_F(PresentationTest, RetirementTimeoutDrainReleasesTheAcquiredImage)
 {
     expectWindowFrame();
     auto flow = Sequence {};
@@ -517,11 +517,73 @@ TEST_F(PresentationTest, RetirementTimeoutKeepsTheCommittedWorkForDrain)
     expectRetirementSubmit(flow);
     expectTimelineWait(flow, vk::Result::eTimeout);
     expectTimelineWait(flow);
+    expectImageRelease(flow);
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
     const auto failed = presentation->get()->presentClearFrame();
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::Timeout);
+    EXPECT_TRUE(presentation->get()->drain());
+}
+
+TEST_F(PresentationTest, FailedImageReleaseKeepsDrainUnsuccessful)
+{
+    expectWindowFrame();
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectCommandPoolResetFailure(flow);
+    expectRetirementSubmit(flow);
+    expectTimelineWait(flow);
+    expectImageRelease(flow, vk::Result::eErrorUnknown);
+    expectTimelineWait(flow);
+
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    const auto failed = presentation->get()->presentClearFrame();
+    ASSERT_FALSE(failed);
+    ASSERT_TRUE(failed.error().native.has_value());
+    const auto native = failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorUnknown));
+    EXPECT_FALSE(presentation->get()->drain());
+}
+
+TEST_F(PresentationTest, PresentRecoverySurvivesProducerAndReplacementFailures)
+{
+    expectQueueLookup();
+    expectReleaseEntryPoint();
+    expectFrameResources(3);
+    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 5, .swapchains = 1});
+    expectExtentReads(2);
+    expectInitialGeneration(700);
+    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
+
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectCommandRecording(flow);
+    expectFrameSubmit(flow);
+    expectPresentFailure(flow);
+    expectTimelineWait(flow, vk::Result::eTimeout);
+    expectTimelineWait(flow);
+    EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory)));
+    expectTimelineWait(flow);
+    EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
+        .InSequence(flow)
+        .WillOnce([](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* semaphore) {
+            *semaphore = fakeVulkanHandle<VkSemaphore>(1000);
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
+    expectImageRelease(flow);
+
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    const auto failed = presentation->get()->presentClearFrame();
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::Timeout);
+    const auto replacementFailure = presentation->get()->drain();
+    ASSERT_FALSE(replacementFailure);
+    EXPECT_EQ(replacementFailure.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_TRUE(presentation->get()->drain());
 }
 

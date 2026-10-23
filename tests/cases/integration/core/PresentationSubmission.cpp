@@ -379,7 +379,7 @@ TEST_F(PresentationSubmissionIntegration, FailedRetirementSubmitPreservesErrorWi
     EXPECT_FALSE(presentation->get()->drain());
 }
 
-TEST_F(PresentationSubmissionIntegration, RetirementTimeoutKeepsTheCommittedWorkForDrain)
+TEST_F(PresentationSubmissionIntegration, RetirementTimeoutDrainReleasesTheAcquiredImage)
 {
     expectWindowFrame();
     auto flow = Sequence {};
@@ -388,6 +388,7 @@ TEST_F(PresentationSubmissionIntegration, RetirementTimeoutKeepsTheCommittedWork
     expectRetirementSubmit(flow);
     expectTimelineWait(flow, vk::Result::eTimeout);
     expectTimelineWait(flow);
+    expectImageRelease(flow);
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
     const auto failed = presentation->get()->presentClearFrame();

@@ -12,7 +12,13 @@ forwarding and helper calculations.
 | [Create and release a native window](create-window.md) | Optional Panda::Tools/GLFW wrapper; applications may provide their own `WindowSurface` |
 | [Create a buffer](create-buffer.md) | Worked example: positive sequence, ownership and binding-failure cleanup for an ordinary buffer |
 | [Upload bytes into a buffer](upload-buffer.md) | Snapshot, ordered buffer writes, asynchronous submission and retry behavior |
+| [Observe or wait for submitted GPU work](observe-completion.md) | Context-scoped completion queries, bounded waits and upload retirement |
 | [Reclaim completed upload packets](reclaim-completed-uploads.md) | Shared subflow: observe queue completion and release retained upload owners |
+| [Render and present a diagnostic clear frame](render-clear-frame.md) | Acquire, record, submit and present; frame and image synchronization outcomes |
+| [Commit work to the Context submission timeline](commit-context-submission.md) | Shared subflow: queue acceptance and timeline value publication |
+| [Retire an acquired image after frame work fails](retire-acquired-image.md) | Shared subflow: consume acquire semaphore and release an unused image |
+| [Recover from a presentation failure](recover-presentation-failure.md) | Shared subflow: retire the GPU producer and replace unused present signaling |
+| [Drain frame and presentation use](drain-presentation.md) | Shared subflow: wait for queue completion and presentation fences |
 
 For authors, see the [conventions](../development/functional-documentation.md) and
 [scenario template](template.md). The template is an authoring aid, not an

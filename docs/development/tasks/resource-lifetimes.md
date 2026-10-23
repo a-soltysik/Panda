@@ -139,8 +139,11 @@ and a published sampled texture is immutable.
 
 Presentation checks clock capacity before acquire. Failed acquire retirement
 without a committed value rejects drain; current Context destruction treats
-unsafe teardown as fatal. A timed-out committed retirement can be drained again.
-The window example waits for its last frame at normal shutdown. The
+unsafe teardown as fatal. After a cleanup submission commits, presentation retains
+the image index and completion until maintenance release succeeds; drain resumes
+that work after a timeout. Present-failure recovery also retains the pending
+semaphore replacement and image release. An unconfirmed release error keeps drain
+failed. The window example waits for its last frame at normal shutdown.
 [buffer example](../../../examples/buffer_allocation/README.md) creates a storage
 buffer, uploads four values through the public API, waits and releases its owners.
 Explicit buffer initialization policies and labels remain planned. Frame-local
@@ -161,20 +164,19 @@ by this scenario.
 
 ## Verification
 
-The current texture validation and resource changes pass the full fast build and
-test suites on Windows and WSL.
+The resource and presentation-recovery changes pass the Windows and WSL checks.
 
-- Windows: `cmake --build --preset msvc-fast --parallel` and
-  `ctest --preset msvc-fast` passed. CTest registered 425 tests: 421 passed and
-  four were skipped (the Linux-only buffered-close test and three unavailable
+- Windows: quality build and analysis, header/format checks, CUDA analysis, fast
+  build and `ctest --preset msvc-fast` passed. CTest registered 427 tests: 423
+  passed and four were skipped (the buffered-close test and three unavailable
   noncoherent memory variants).
-- WSL GCC: `cmake --build --preset gcc-fast --parallel` and
-  `ctest --preset gcc-fast` passed. CTest registered 425 tests: 422 passed and
-  three noncoherent memory variants were skipped because the device did not expose
-  that memory type. The Linux buffered-close failure test passed.
-- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
-  all 54 Markdown files and the task queue; `git diff --check` and Clang format
-  validation passed.
+- WSL GCC: quality build and analysis, header/format checks, CUDA analysis, fast
+  build and `ctest --preset gcc-fast` passed. CTest registered 427 tests: 424
+  passed; three noncoherent memory variants were skipped because the device did
+  not expose that memory type.
+- The documentation checker checked 60 Markdown files and the task queue; Mermaid
+  validation accepted 18 diagrams; API documentation generation and
+  `git diff --check` passed. Clang format checks passed on both platforms.
 
 ## Remaining work
 

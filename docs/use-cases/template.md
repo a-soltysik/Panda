@@ -65,7 +65,7 @@ non-obvious decision. Refer to a subflow with an ordinary link and summarize its
 required outcome here. Explain facts the diagram does not already communicate.
 Use emphasis sparingly; do not bold whole explanations.
 
-## Variants and failures
+## Variants and errors
 
 |  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |

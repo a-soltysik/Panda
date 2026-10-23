@@ -91,7 +91,7 @@ sequenceDiagram
     U->>K: Record copies and memory barriers
     K-->>U: Recorded command retaining resources
     U->>Q: Submit command
-    Q->>V: Step 4 - Submit and signal next timeline value
+    Q->>V: Step 4 - Submit and signal next monotonically increasing timeline value
     V-->>Q: Queue accepted work
     Q-->>U: Committed value
     U-->>B: CompletionPoint
@@ -119,15 +119,16 @@ that packet.
 **Completion.** The returned point identifies committed work on the Context's
 shared timeline. It is a copyable token and does not retain Context or resources;
 the issuing Context must remain alive while the application observes it. Use
-`Context::poll()` or `Context::wait()` to observe GPU completion when needed;
-submission itself does not block for completion. Uploads use explicit barriers
+`Context::poll()` or `Context::wait()` to observe GPU completion when needed; the
+[completion flow](observe-completion.md) explains their results and limits.
+Submission itself does not block for completion. Uploads use explicit barriers
 around the copies, so queue order alone is not treated as a memory dependency.
 
 **Lazy service.** `Context::createUploadBatch()` creates the upload service on
 first use. Headless Contexts also initialize their shared submission timeline at
 that point; windowed Contexts use the timeline already shared with presentation.
 
-## Variants and failures
+## Variants and errors
 
 |  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |
