@@ -30,10 +30,8 @@ data. The implemented scope follows
 1. **Request.** The application calls `Context::createMesh(description)`.
    `Context` requires live internal state.
 2. **Release completed upload resources.** `Context::Impl::createResource`
-   first calls `collectUploads()`. When an `UploadManager` exists, it uses the
-   [completed-upload subflow](reclaim-completed-uploads.md) to release packets
-   whose completion is already observable; it does not wait for unfinished
-   packets. Without a manager, this step is a no-op.
+   calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+   explains which packets can be released; without an `UploadManager`, this is a no-op.
 3. **Validate and derive storage sizes.** `MeshLayout::create` requires a
    nonzero vertex count and stride. If indices are present, their count must be
    nonzero and their type must be `UInt16` or `UInt32`. It derives vertex bytes
@@ -41,8 +39,8 @@ data. The implemented scope follows
    the index description creates a non-indexed mesh.
 4. **Create vertex storage.** `MeshResource` creates an unpublished
    `BufferResource` sized for all vertices, with transfer-destination and
-   vertex-buffer usage. The shared [buffer-creation flow](create-buffer.md)
-   allocates and binds it using the Context's memory pool.
+   vertex-buffer usage. The allocation and binding path in
+   [UC Create a buffer](create-buffer.md) is reused for these mesh buffers.
 5. **Create optional index storage.** When the description includes indices,
    `MeshResource` creates a second `BufferResource` with transfer-destination
    and index-buffer usage. It uses two bytes per `UInt16` index or four bytes
@@ -68,7 +66,7 @@ sequenceDiagram
     C ->> C: Step 2 - collectUploads()
     opt UploadManager exists
         C ->> U: Step 2 - collect()
-        Note over U: Checks completion without waiting
+        Note over C,U: Step 2 - UC Reclaim completed upload packets
         U -->> C: Success
     end
     C ->> M: Step 3 - create(description)
@@ -78,7 +76,7 @@ sequenceDiagram
     B ->> V: Step 4 - create buffer and query requirements
     V -->> B: Native buffer and memory requirements
     B ->> P: Step 4 - allocate compatible range
-    Note over B,P: Shared memory-allocation subflow
+    Note over B,P: Step 4 - UC Allocate a compatible device-memory range
     P -->> B: MemoryAllocation
     B ->> V: Step 4 - bind vertex buffer
     V -->> B: Success
@@ -107,8 +105,9 @@ attributes or inspect index values.
 
 **Shared buffer path.** Each mesh buffer is a device-local `BufferResource`.
 The buffer-creation flow owns native creation, compatible memory selection and
-binding; [SF02](allocate-memory-range.md) explains the pool's shared range
-allocation. The vertex and index ranges may use the same ordinary memory block.
+binding. [UC Allocate a compatible device-memory range](allocate-memory-range.md)
+explains range allocation; the vertex and index ranges may use the same ordinary
+memory block.
 
 **Publication and cleanup.** The application never receives a mesh with only
 one of its requested buffers. If index-buffer creation fails, the unpublished
@@ -160,12 +159,13 @@ sequenceDiagram
     M ->> B: Release vertex BufferResource owner
     B ->> V: Destroy native vertex buffer
     B ->> P: Release vertex MemoryAllocation
-    P ->> P: Return range and apply SF09 policy
+    P ->> P: Return allocation range
+    Note over B,P: UC Return a resource memory range
     M -->> C: Error, no MeshResource published
     C -->> A: Result containing Error
 ```
 
-The [memory-range subflow](release-memory-range.md) explains how the pool
+[UC Return a resource memory range](release-memory-range.md) explains how the pool
 coalesces and retains or frees the returned range.
 
 ## Outcomes
@@ -179,11 +179,11 @@ an index failure is destroyed and its range released through ordinary RAII.
 
 ## Related information
 
-- [Create a buffer](create-buffer.md) explains the native buffer creation,
+- [UC Create a buffer](create-buffer.md) explains the native buffer creation,
   allocation and binding flow used for each mesh component.
-- [Allocate a compatible device-memory range](allocate-memory-range.md)
+- [UC Allocate a compatible device-memory range](allocate-memory-range.md)
   explains the shared pool policy used by those buffers.
-- [Return a resource memory range](release-memory-range.md) explains cleanup
+- [UC Return a resource memory range](release-memory-range.md) explains cleanup
   after the final buffer owner is released.
 - [Allocation, uploads and descriptors](../design/contracts/resources.md#allocation-uploads-and-descriptors)
   defines mesh storage and later payload-upload behavior.

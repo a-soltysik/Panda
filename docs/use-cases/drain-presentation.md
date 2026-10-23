@@ -69,8 +69,8 @@ submitted GPU work is complete; it does not return an acquired swapchain image.
 `Presentation` retains the image index and remaining cleanup action until release
 succeeds. A release error leaves the acquisition unconfirmed, so `drain()` fails
 instead of claiming the generation is safe or repeating an ambiguous release.
-See [acquired-image retirement](retire-acquired-image.md#notes) and
-[presentation recovery](recover-presentation-failure.md#notes).
+See [UC Retire an acquired image after frame work fails](retire-acquired-image.md#notes) and
+[UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md#notes).
 
 **Fatal caller boundary.** `Context::Impl::drain()` uses `expect` for presentation
 drain failure. Context teardown therefore treats an unprovable presentation drain
@@ -88,10 +88,14 @@ as fatal rather than destroying state under uncertain submitted work.
 
 ## Related information
 
-- [Render and present a diagnostic clear frame](render-clear-frame.md) shows how
+- [UC Render and present a diagnostic clear frame](render-clear-frame.md) shows how
   normal submissions and present fences enter this drain.
-- [Retire an acquired image after frame work fails](retire-acquired-image.md)
+- [UC Retire an acquired image after frame work fails](retire-acquired-image.md)
   describes the other acquire-related cleanup state.
+- [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md)
+  describes the submitted-work cleanup state. [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md)
+  and [UC Shut down a Context safely](shutdown-context.md) call this drain before
+  releasing presentation resources.
 - [Resources and frames](../design/contracts/resources.md#frame-and-window-state)
   defines the intended image-release and generation-drain rules.
 - The [swapchain destruction specification](https://docs.vulkan.org/refpages/latest/refpages/source/vkDestroySwapchainKHR.html)

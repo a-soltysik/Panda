@@ -25,25 +25,23 @@ buffer-only writes; texture and mesh writes add layout and atomicity rules.
    Context lazily creates its upload manager and, when needed, the shared queue
    timeline. The returned move-only batch borrows Context, submits no work and
    performs no completion wait.
-2. **Snapshot each write.** For every range, the application calls
-   `UploadBatch::write(destination, offset, bytes)`. Panda rejects an empty byte
-   span, a foreign or empty buffer, missing transfer-destination usage or a range
-   outside the buffer. It then checks for completed packets through the
-   [completed-upload subflow](reclaim-completed-uploads.md), copies the bytes into
-   the batch's mapped staging page and flushes noncoherent memory. It reuses the
-   current page when it fits or creates another page. Only after staging succeeds
-   does the batch append the copy, retaining both the page and destination.
-   Writes retain insertion order, including overlapping ranges. The source bytes
-   can be changed or released after `write()` returns.
+2. **Validate and stage each write.** `UploadBatch::write()` checks the buffer
+   and range. The batch appends the copy operation after staging succeeds, in
+   call order. The caller may release the source bytes after `write()` returns.
 3. **Prepare the upload.** `UploadBatch::submit()` asks `UploadManager` to
-   check completed packets, verify queue capacity and record the batch's copies
-   and memory barriers in an `UploadCommand`. The packet owns the staging pages
-   and destination resources needed by the queued work.
+   collect completed packets, check queue capacity and record the batch's copies
+   and memory barriers in an `UploadCommand`.
+   [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains
+   the collection; the command retains its staging pages and destinations.
 4. **Submit and publish completion.** `SubmissionQueue` submits the command
    on the Context's graphics/compute queue. Only after Vulkan accepts it does the
    queue commit the timeline value and return a `CompletionPoint`. Success
    consumes the public `UploadBatch`; Context retains the packet until a later
-   collection observes GPU completion.
+   collection observes GPU completion. [UC Commit work to the Context submission timeline](commit-context-submission.md)
+   explains the queue-acceptance boundary.
+
+The shared byte-staging path is documented in
+[UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md).
 
 ```mermaid
 sequenceDiagram
@@ -51,8 +49,6 @@ sequenceDiagram
     participant C as Context / Impl
     participant B as UploadBatch / Impl
     participant U as UploadManager
-    participant R as BufferResource
-    participant P as MemoryPool
     participant Q as SubmissionQueue
     participant K as UploadCommand
     participant V as Vulkan queue
@@ -68,29 +64,18 @@ sequenceDiagram
         A->>B: Step 2 - write(destination, offset, bytes)
         B->>U: Validate Context, usage and range
         U-->>B: Valid destination
-        B->>U: Check and reclaim completed uploads
-        U-->>B: Collection result
-        alt Current staging page has room
-            B->>R: Copy bytes into mapped page and flush
-            R-->>B: Staged range
-        else A new page is required
-            B->>U: Create transfer-source staging buffer
-            U->>R: Create mapped BufferResource
-            R->>P: Allocate buffer memory
-            P-->>R: Memory range
-            R-->>B: Staging page
-            B->>R: Copy bytes into mapped page and flush
-            R-->>B: Staged range
-        end
-        B->>B: Append ordered copy and retain its owners
+        Note over B,U: Step 2 - UC Snapshot caller bytes into batch-owned staging
+        B->>B: Retain destination and append ordered copy
         B-->>A: Write accepted, source bytes may be released
     end
     A->>B: Step 3 - submit()
     B->>U: Prepare all queued writes
-    U->>U: Check completed uploads and queue capacity
+    U->>U: Collect completed uploads and check queue capacity
+    Note over B,U: Step 3 - UC Reclaim completed upload packets
     U->>K: Record copies and memory barriers
     K-->>U: Recorded command retaining resources
     U->>Q: Submit command
+    Note over U,Q: Step 4 - UC Commit work to the Context submission timeline
     Q->>V: Step 4 - Submit and signal next monotonically increasing timeline value
     V-->>Q: Queue accepted work
     Q-->>U: Committed value
@@ -111,8 +96,8 @@ defines the copy barriers and visibility to later queue consumers.
 **Ownership.** Before submission, the batch owns its staging pages and retains
 each destination while borrowing Context. Destroying it before submit cancels
 the queued writes and releases those owners without submitting this batch's work.
-Their ranges are returned when the resources lose their final owner; see the
-[memory-range subflow](release-memory-range.md).
+Their ranges are returned when the resources lose their final owner; see
+[UC Return a resource memory range](release-memory-range.md).
 After successful submission, Context's pending packet retains the command, pages
 and destinations until collection observes completion. Releasing the
 application's `Buffer` handle does not release a destination still retained by
@@ -121,8 +106,9 @@ that packet.
 **Completion.** The returned point identifies committed work on the Context's
 shared timeline. It is a copyable token and does not retain Context or resources;
 the issuing Context must remain alive while the application observes it. Use
-`Context::poll()` or `Context::wait()` to observe GPU completion when needed; the
-[completion flow](observe-completion.md) explains their results and limits.
+`Context::poll()` or `Context::wait()` to observe GPU completion when needed;
+[UC Observe or wait for submitted GPU work](observe-completion.md) explains
+their results and limits.
 Submission itself does not block for completion. Uploads use explicit barriers
 around the copies, so queue order alone is not treated as a memory dependency.
 
@@ -154,8 +140,10 @@ lifetime violation.
 
 ## Related information
 
-- [Reclaim completed upload packets](reclaim-completed-uploads.md) explains when
+- [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains when
   Context releases the owners retained by submitted uploads.
+- [UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md)
+  explains staging-page reuse, cache flushes and source-byte lifetime.
 - [Resource ownership, lifetime and synchronization](../design/contracts/resources.md#ownership)
   and [allocation, uploads and descriptors](../design/contracts/resources.md#allocation-uploads-and-descriptors)
   define the shared resource and upload guarantees.

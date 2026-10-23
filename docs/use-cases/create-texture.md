@@ -30,10 +30,8 @@ for every `Texture` owner. The implemented scope follows
 1. **Request.** The application calls `Context::createTexture(description)`.
    `Context` requires live internal state.
 2. **Release completed upload resources.** `Context::Impl::createResource`
-   first calls `collectUploads()`. When an `UploadManager` exists, it uses the
-   [completed-upload subflow](reclaim-completed-uploads.md) to release packets
-   whose completion is already observable; it does not wait for unfinished
-   packets. Without a manager, this step is a no-op.
+   calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+   explains which packets can be released; without an `UploadManager`, this is a no-op.
 3. **Validate.** `TextureResource::create` requires nonzero dimensions, a
    concrete format and nonempty supported usage. Usage must include a
    view-capable use such as sampled, storage or attachment; transfer-only usage
@@ -45,7 +43,7 @@ for every `Texture` owner. The implemented scope follows
    contents are not initialized.
 5. **Allocate and bind.** `TextureResource` queries the image's ordinary and
    dedicated requirements and requests device-local memory from the image
-   partition. The shared [memory-allocation subflow](allocate-memory-range.md)
+   partition. [UC Allocate a compatible device-memory range](allocate-memory-range.md)
    returns an aligned range; the creator binds the image at its offset.
 6. **Create the default view.** Vulkan creates an internal 2D image view over
    the sole mip and layer. Its aspect comes from the format: stencil for
@@ -66,7 +64,7 @@ sequenceDiagram
     C ->> C: Step 2 - collectUploads()
     opt UploadManager exists
         C ->> U: Step 2 - collect()
-        Note over U: Checks completion without waiting
+        Note over C,U: Step 2 - UC Reclaim completed upload packets
         U -->> C: Success
     end
     C ->> T: Step 3 - create(description)
@@ -79,7 +77,7 @@ sequenceDiagram
     T ->> V: Step 5 - getImageMemoryRequirements2(...)
     V -->> T: Memory and dedicated requirements
     T ->> P: Step 5 - allocate device-local image range
-    Note over T,P: Shared memory-allocation subflow
+    Note over T,P: Step 5 - UC Allocate a compatible device-memory range
     P -->> T: MemoryAllocation ownership
     T ->> V: Step 5 - bindImageMemory2(...)
     V -->> T: Success
@@ -100,16 +98,11 @@ spans the single mip and layer; combined depth/stencil formats use a depth-only
 aspect. The public handle reports extent, format and usage, but does not expose
 the native image or view.
 
-**Memory selection.** Texture creation requires device-local memory and supplies
-the image handle and Vulkan dedicated-allocation hints to the image partition.
-The [memory-allocation subflow](allocate-memory-range.md) explains type
-selection, range reuse, dedicated allocation and its limited fallback.
-
 **Contents and lifetime.** Image creation does not initialize texels or enqueue
 work. A copied `Texture` retains the same resource state; it does not copy image
 contents. `Context` must outlive every copy. The final owner must not release the
 image while submitted work still uses it; the [resource contract](../design/contracts/resources.md#frame-contexts-and-retirement)
-and [memory-range subflow](release-memory-range.md) define those boundaries.
+and [UC Return a resource memory range](release-memory-range.md) define those boundaries.
 
 ## Variants and errors
 
@@ -149,18 +142,20 @@ sequenceDiagram
         V -->> T: bindImageMemory2 error
         T ->> V: Destroy image
         T ->> P: Release MemoryAllocation
-        P ->> P: Return range and apply SF09 policy
+        P ->> P: Return allocation range
+        Note over T,P: UC Return a resource memory range
     else Step 6 view creation fails
         V -->> T: createImageView error
         Note over T: Failed view output is not adopted
         T ->> V: Destroy image
         T ->> P: Release MemoryAllocation
-        P ->> P: Return range and apply SF09 policy
+        P ->> P: Return allocation range
+        Note over T,P: UC Return a resource memory range
     end
     T -->> C: Error, no resource state published
 ```
 
-The [memory-range subflow](release-memory-range.md) explains range release after
+[UC Return a resource memory range](release-memory-range.md) explains range release after
 image destruction. The original allocation or Vulkan error is propagated.
 
 ## Outcomes
@@ -175,12 +170,14 @@ but existing live ranges are not evicted.
 
 ## Related information
 
-- [Allocate a compatible device-memory range](allocate-memory-range.md) explains
+- [UC Allocate a compatible device-memory range](allocate-memory-range.md) explains
   how the image obtains an aligned range from the Context pool.
-- [Return a resource memory range](release-memory-range.md) explains destruction
+- [UC Return a resource memory range](release-memory-range.md) explains destruction
   and range release after the last shared owner is gone.
-- [Create a buffer](create-buffer.md) shows the corresponding resource-creation
+- [UC Create a buffer](create-buffer.md) shows the corresponding resource-creation
   flow and caller-specific memory intent.
+- [UC Upload texture contents or regions](upload-texture.md) explains how a caller
+  initializes the image and how uncovered texels remain undefined.
 - [Ownership](../design/contracts/resources.md#ownership),
   [allocation, uploads and descriptors](../design/contracts/resources.md#allocation-uploads-and-descriptors)
   and [frame contexts and retirement](../design/contracts/resources.md#frame-contexts-and-retirement)

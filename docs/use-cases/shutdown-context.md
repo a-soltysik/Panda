@@ -30,17 +30,17 @@ error or promise general recovery from device loss.
    `Context::~Context()` calls `Context::Impl::drain()` before its implementation
    can release the device services.
 3. **Drain submitted uploads.** If the lazy `UploadManager` exists,
-   `Context::Impl::drain()` first requires that no unsubmitted batches remain.
-   It then waits up to ten seconds for the greatest pending upload completion
-   value and releases completed packets. See [reclaim completed upload
-   packets](reclaim-completed-uploads.md).
+   `Context::Impl::drain()` first requires that no unsubmitted batches remain,
+   then waits up to ten seconds for pending uploads.
+   [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains
+   when the retained owners can be released.
 4. **Drain presentation.** If this is a windowed Context,
-   `Presentation::drain()` waits for submitted frame work, finishes retained
-   acquired-image recovery and waits for pending presentation fences. See
-   [drain frame and presentation use](drain-presentation.md).
+   `Presentation::drain()` settles submitted frame and presentation use.
+   [UC Drain frame and presentation use](drain-presentation.md) explains the
+   required completion checks.
 5. **Check resource owners.** The memory pool must report `liveBytes == 0`.
    This means all resource allocation owners are gone after internal upload
-   packets have released their references. The [memory-range subflow](release-memory-range.md)
+   packets have released their references. [UC Return a resource memory range](release-memory-range.md)
    explains how final owners return their ranges.
 6. **Release Context services.** After `drain()` returns, normal RAII destruction
    releases the Context-owned presentation, upload, queue, pool, device and
@@ -53,10 +53,8 @@ sequenceDiagram
     participant C as Context
     participant I as Context::Impl
     participant U as UploadManager
-    participant Q as SubmissionQueue
     participant P as Presentation
     participant M as MemoryPool
-    participant V as Vulkan
     A->>H: Step 1 - release handles and submit or destroy batches
     A->>C: Step 2 - end Context lifetime
     C->>I: Step 2 - drain()
@@ -64,20 +62,13 @@ sequenceDiagram
         I->>U: Step 3 - require no active batches
         opt Pending upload packets
             I->>U: Step 3 - drain with a ten-second wait
-            U->>Q: Wait for greatest pending completion value
-            Q->>V: Host waits for the already-submitted upload value
-            V-->>Q: GPU signals after reaching that value
-            Q-->>U: Completed value
-            U->>U: Release completed packet owners
+            Note over I,U: Step 3 - UC Reclaim completed upload packets
+            U-->>I: Completed packets released, or drain error
         end
     end
     opt Windowed Context
         I->>P: Step 4 - drain()
-        P->>Q: Wait for submitted frame completion
-        Q->>V: Host waits for the already-submitted frame value
-        V-->>Q: GPU signals after reaching that value
-        P->>V: Finish image recovery and wait pending present fences
-        V-->>P: Presentation references retired
+        Note over I,P: Step 4 - UC Drain frame and presentation use
         P-->>I: Drain succeeded
     end
     I->>M: Step 5 - require liveBytes == 0
@@ -91,7 +82,7 @@ sequenceDiagram
 **Caller and internal owners are different.** A copied handle still owns the
 same resource state. A submitted `UploadCommand` is another owner of its
 destination and staging resources until completion. Releasing the application's
-copy alone does not make its memory range free; the [upload subflow](reclaim-completed-uploads.md)
+copy alone does not make its memory range free. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
 shows when the internal owner is released.
 
 **The waits are targeted.** Upload draining waits for its last committed upload
@@ -109,7 +100,7 @@ work. Destruction does not submit more work or require another `Context` call.
 **The pool may have no live ranges and still own memory.** `liveBytes == 0` allows
 the pool's cached empty ordinary blocks to remain until the pool itself is
 destroyed. Dedicated blocks are released when their allocation range is
-returned. See the [memory-range subflow](release-memory-range.md).
+returned. See the [UC Return a resource memory range](release-memory-range.md).
 
 ## Variants and errors
 
@@ -119,7 +110,7 @@ returned. See the [memory-range subflow](release-memory-range.md).
 | **Variant&nbsp;2** | Step 4: headless Context has no presentation service | Skip presentation drain | Continue to the resource-owner check |
 | **Error&nbsp;1** | Step 3: an unsubmitted batch is still alive | Fatal lifetime diagnostic before upload waiting | Context destruction cannot return; destroy or submit batches before Context |
 | **Error&nbsp;2** | Step 3: the upload completion wait times out or fails, including device loss | `expect` emits a fatal diagnostic | Pending owners are not treated as completed; teardown stops |
-| **Error&nbsp;3** | Step 4: a timeline or present-fence wait times out/fails, or acquired-image recovery is unsafe (including device loss) | `expect` emits a fatal diagnostic | Presentation resources are not claimed safe; teardown stops. See the [presentation drain](drain-presentation.md) |
+| **Error&nbsp;3** | Step 4: a timeline or present-fence wait times out/fails, or acquired-image recovery is unsafe (including device loss) | `expect` emits a fatal diagnostic | Presentation resources are not claimed safe; teardown stops. See the [UC Drain frame and presentation use](drain-presentation.md) |
 | **Error&nbsp;4** | Step 5: `liveBytes` is nonzero after internal drains | Fatal lifetime diagnostic naming live resource owners | Release every external handle before destroying Context; no recoverable Context remains |
 
 ## Outcomes
@@ -141,9 +132,9 @@ unsafe resources were released. This is not a general device-loss recovery path.
   defines when retained resource uses may be released.
 - [Allocation, uploads and descriptors](../design/contracts/resources.md#allocation-uploads-and-descriptors)
   defines upload retention and pool ownership.
-- [Reclaim completed upload packets](reclaim-completed-uploads.md),
-  [drain frame and presentation use](drain-presentation.md) and
-  [return a resource memory range](release-memory-range.md) explain the three
+- [UC Reclaim completed upload packets](reclaim-completed-uploads.md),
+  [UC Drain frame and presentation use](drain-presentation.md) and
+  [UC Return a resource memory range](release-memory-range.md) explain the three
   resource-release boundaries used here.
 - [Allocation, uploads and resource lifetimes](../development/tasks/resource-lifetimes.md)
   and [Vulkan context and window lifecycle](../development/tasks/vulkan-context.md)

@@ -22,11 +22,9 @@ appeared on screen.
    that the point belongs to this Context and identifies committed work. Polling
    reads the timeline without waiting; waiting returns immediately if the value is
    already known complete, otherwise it waits up to the requested duration.
-3. **Retire known-complete uploads.** After a successful result, Context lets its
-   `UploadManager` release pending packets whose completion values are no greater
-   than the known completed value. The
-   [completed-upload subflow](reclaim-completed-uploads.md) explains which owners
-   this releases and why.
+3. **Retire known-complete uploads.** After a successful query or wait, Context
+   calls `UploadManager` to collect completed packets; [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+   explains which owners this releases.
 4. **Return the observation.** `poll()` returns `true` when the point is complete
    and `false` while it is pending. `wait()` returns `WaitStatus::Completed` or
    `WaitStatus::Timeout`.
@@ -47,7 +45,8 @@ sequenceDiagram
         Q-->>C: Completed
     end
     opt A pending packet's value is no greater than the known completed value
-        C->>U: Step 3 - release packets no greater than the completed value
+        C->>U: Step 3 - collect completed packets
+        Note over C,U: Step 3 - UC Reclaim completed upload packets
         U-->>C: Retained owners released through RAII
     end
     C-->>A: Step 4 - Result<bool> or Result<WaitStatus>
@@ -67,10 +66,9 @@ nor resources. The owning Context state must outlive its use, and moving a Conte
 preserves its issued points.
 
 **Upload ownership.** A successful `poll()` result includes `false`, and a
-successful `wait()` result includes `Timeout`. Context still checks for upload
-packets whose completion values are no greater than the completed value it
-already knows; packets with greater values remain retained. See the
-[completed-upload subflow](reclaim-completed-uploads.md).
+successful `wait()` result includes `Timeout`. Context can still release packets
+whose completion it already knows; [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+defines that boundary.
 
 ## Variants and errors
 
@@ -91,9 +89,9 @@ submitted work and its retained upload owners.
 
 ## Related information
 
-- [Upload bytes into a buffer](upload-buffer.md) shows how a successful upload
+- [UC Upload bytes into a buffer](upload-buffer.md) shows how a successful upload
   submission produces a `CompletionPoint`.
-- [Reclaim completed upload packets](reclaim-completed-uploads.md) explains the
+- [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains the
   staging, destination and command owners released after completion is observed.
 - [Handles and API boundary](../design/contracts/resources.md#handles-and-api-boundary)
   defines token identity, Context moves and the `poll()`/`wait()` result contract.

@@ -10,7 +10,7 @@ empty-block policy applied; it does not wait for GPU work.
 
 The caller must ensure the native resource is no longer in use. Submitted
 uploads retain resource owners until completion through
-[reclaim completed upload packets](reclaim-completed-uploads.md).
+[UC Reclaim completed upload packets](reclaim-completed-uploads.md).
 
 ## Preconditions
 
@@ -99,17 +99,19 @@ and pending packets retain ownership independently.
 
 ## Related information
 
-- [Create a buffer](create-buffer.md) shows allocation cleanup when native
+- [UC Create a buffer](create-buffer.md) shows allocation cleanup when native
   binding fails and the application's lifetime obligation after success.
-- [Create a texture and its default view](create-texture.md) shows image
+- [UC Create a texture and its default view](create-texture.md) shows image
   allocation, binding and view-creation cleanup before publication.
-- [Create mesh storage with optional indices](create-mesh.md) shows release of
+- [UC Create mesh storage with optional indices](create-mesh.md) shows release of
   an unpublished vertex buffer when optional index storage fails.
-- [Upload bytes into a buffer](upload-buffer.md) shows how batch cancellation
+- [UC Upload bytes into a buffer](upload-buffer.md) shows how batch cancellation
   releases unsubmitted owners.
-- [Reclaim completed upload packets](reclaim-completed-uploads.md) shows when
+- [UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md)
+  shows the staging-page owners released by cancellation or completed collection.
+- [UC Reclaim completed upload packets](reclaim-completed-uploads.md) shows when
   submitted staging and destination owners are released.
-- [Shut down a Context safely](shutdown-context.md) checks that all live ranges
+- [UC Shut down a Context safely](shutdown-context.md) checks that all live ranges
   are gone before destroying the pool and device.
 - [Allocation, uploads and descriptors](../design/contracts/resources.md#allocation-uploads-and-descriptors)
   owns the allocator and upload-retention rules.

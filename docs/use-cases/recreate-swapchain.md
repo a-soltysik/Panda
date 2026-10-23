@@ -6,7 +6,7 @@ An application with a windowed `Context` calls `Context::presentClearFrame()` as
 it processes window changes. On each call, **Panda** checks the window's
 framebuffer extent and either suspends frame work or ensures a matching
 swapchain generation exists. The flow ends with a suspended result, a usable
-generation that continues into the [normal frame path](render-clear-frame.md),
+generation that continues into the [UC Render and present a diagnostic clear frame](render-clear-frame.md),
 or an error. The application owns event processing and decides when to call
 again; `Context` borrows the `WindowSurface` for its lifetime under the
 [ownership contract](../design/contracts/resources.md#ownership).
@@ -35,7 +35,7 @@ on a resize callback.
 4. **Drain prior presentation use.** `Presentation::recreate()` calls `drain()` so
    submitted frame work, acquired-image recovery and pending presentation fences
    are settled before generation resources are released. See the
-   [presentation drain](drain-presentation.md).
+   [UC Drain frame and presentation use](drain-presentation.md).
 5. **Build a replacement.** `createSwapchainGeneration()` queries current
    surface support, creates a swapchain using the old handle when one exists,
    then creates the per-image views and synchronization objects.
@@ -43,7 +43,8 @@ on a resize callback.
    created does `Presentation` replace its current owner and clear the pending
    flag.
 7. **Continue the frame.** The same `presentClearFrame()` call proceeds to the
-   acquire, clear, submit and present sequence in the [frame use case](render-clear-frame.md).
+   acquire, clear, submit and present sequence in
+   [UC Render and present a diagnostic clear frame](render-clear-frame.md).
 
 ```mermaid
 sequenceDiagram
@@ -63,6 +64,7 @@ sequenceDiagram
         P->>P: Step 3 - compare extent and recreation state
         opt No generation, changed extent, or recreation pending
             P->>P: Step 4 - drain prior frame and presentation use
+            Note over P: Step 4 - UC Drain frame and presentation use
             P->>V: Step 5 - query surface support and create swapchain
             V-->>P: New swapchain
             P->>V: Step 5 - create image views and synchronization objects
@@ -70,6 +72,7 @@ sequenceDiagram
             P->>P: Step 6 - publish generation and clear pending flag
         end
         P->>C: Step 7 - continue normal frame work
+        Note over P,C: Step 7 - UC Render and present a diagnostic clear frame
         C-->>A: Step 7 - FrameResult or Error
     end
 ```
@@ -86,7 +89,7 @@ call creates one.
 **A frame can request recreation without a size change.** An out-of-date acquire,
 or an out-of-date/suboptimal present, can return `RecreatePending`. The next
 `presentClearFrame()` retries generation preparation even if the sampled extent
-matches; [the frame flow](render-clear-frame.md#variants-and-errors) explains
+matches; [UC Render and present a diagnostic clear frame](render-clear-frame.md#variants-and-errors) explains
 which outcomes already submitted GPU work.
 
 **Publication follows complete preparation.** The current generation is replaced
@@ -109,7 +112,7 @@ still-usable Context retries without passing an old swapchain handle.
 | **Variant&nbsp;2** | Step 3: the current generation matches and recreation is not pending | Reuse it and continue to the normal frame path | No drain or replacement is needed |
 | **Variant&nbsp;3** | Step 3: no generation exists, the extent changed, or a prior frame requested recreation | Drain and build a complete generation before acquiring an image | On success, the same call continues through the normal frame path |
 | **Error&nbsp;1** | Step 2: framebuffer extent query fails | Return that error without replacing the generation | Resolve the window-surface failure before retrying |
-| **Error&nbsp;2** | Step 4: drain times out or cannot confirm acquired-image/presentation retirement | Return the drain error and do not create a replacement | Any existing generation remains owned; a later call can retry if presentation remains usable. See the [drain subflow](drain-presentation.md) |
+| **Error&nbsp;2** | Step 4: drain times out or cannot confirm acquired-image/presentation retirement | Return the drain error and do not create a replacement | Any existing generation remains owned; a later call can retry if presentation remains usable. See the [UC Drain frame and presentation use](drain-presentation.md) |
 | **Error&nbsp;3** | Step 5: surface configuration or generation creation fails | Return the creation error, discard any old generation and keep recreation pending | A later nonzero call retries without an old swapchain; surface/device recovery is not promised |
 
 ### Error 3 - Failed generation replacement
@@ -140,7 +143,7 @@ application continues processing events and calls again when it wants to resume.
 
 **Ready.** A complete generation matches the current window state, and the call
 continues into ordinary frame processing. The frame result and its completion
-meaning are described by the [frame use case](render-clear-frame.md).
+meaning are described by the [UC Render and present a diagnostic clear frame](render-clear-frame.md).
 
 **Error.** The returned error identifies the failed query, drain or generation
 creation. A drain failure leaves the current generation owned; a creation failure
@@ -151,9 +154,9 @@ already submitted work was undone.
 
 - [Resources and frames](../design/contracts/resources.md#frame-and-window-state)
   defines suspended state, safe recreation and the old-swapchain failure rule.
-- [Render and present a diagnostic clear frame](render-clear-frame.md) describes
+- [UC Render and present a diagnostic clear frame](render-clear-frame.md) describes
   the frame path that resumes after generation preparation.
-- [Drain frame and presentation use](drain-presentation.md) explains the queue
+- [UC Drain frame and presentation use](drain-presentation.md) explains the queue
   completion, acquired-image recovery and present-fence boundaries.
 - [Frame rendering and benchmark smoke test](../development/tasks/frame-rendering.md)
   records the implemented resize and frame-reuse scope.

@@ -4,10 +4,10 @@
 
 During Context creation, Panda must choose a physical device that can run the
 Context's ordered graphics/compute work and, when a surface is present, present to
-that surface. The `selectDevice()` subflow ends with one compatible physical device,
+that surface. This UC ends with one compatible physical device,
 its queue-family indices, selected swapchain-maintenance variant and diagnostic
 properties, or an error. Creating the logical device is the next step in
-[Context creation](create-context.md).
+[UC Create a Context](create-context.md).
 
 `selectDevice()` runs synchronously as part of `Context::create()` or
 `Context::createWithSurface()`.
@@ -128,7 +128,7 @@ older presentation protocol when a windowed device lacks maintenance1 support.
 
 ## Related information
 
-- [Create a Context](create-context.md) uses this result to create the logical
+- [UC Create a Context](create-context.md) uses this result to create the logical
   device and Context services.
 - The Vulkan specification's [device and queue chapter](https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html)
   explains physical-device queries, queue families and logical-device creation.
