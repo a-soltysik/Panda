@@ -24,17 +24,6 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 1. **Context.** Use a live `Context` and serialize creation with its other
    operations on the context execution thread.
 
-## Main participants
-
-| Participant                   | Responsibility in this flow                                                                |
-|-------------------------------|--------------------------------------------------------------------------------------------|
-| Application                   | Supplies the description and owns the returned `Buffer`                                    |
-| `Context` / `Context::Impl`   | Supplies stable device/pool services, collects uploads and publishes the public handle     |
-| `UploadManager`, when present | Checks submitted uploads and releases confirmed completed packets                          |
-| `BufferResource`              | Validates the description and owns unpublished native state through allocation and binding |
-| `MemoryPool`                  | Chooses memory and returns an owning allocation for a compatible range                     |
-| Vulkan device                 | Creates the native buffer, reports its requirements and binds memory                       |
-
 ## Main flow
 
 1. **Request.** The application calls `Context::createBuffer(description)`.
@@ -54,8 +43,10 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 5. **Allocate.** `BufferResource::bind` queries ordinary and dedicated memory
    requirements, translates memory intent to required/preferred properties and
    calls `MemoryPool::allocate`. The returned `MemoryAllocation` is moved into
-   the resource. Pool selection, range placement and growth are summarized here;
-   their policy is in the [allocation contract](../design/contracts/resources.md#allocation-uploads-and-descriptors).
+   the resource. The shared [memory-allocation subflow](allocate-memory-range.md)
+   explains type selection, range reuse, block growth and dedicated fallback;
+   pool policy remains in the
+   [allocation contract](../design/contracts/resources.md#allocation-uploads-and-descriptors).
 6. **Bind.** `bindBufferMemory2` binds the buffer at the allocation's offset.
 7. **Publish.** Only after successful binding does `Context` wrap the shared
    resource state in a public `Buffer` and return it.
@@ -84,6 +75,7 @@ sequenceDiagram
     R ->> V: Step 5 - getBufferMemoryRequirements2(...)
     V -->> R: Memory and dedicated requirements
     R ->> P: Step 5 - allocate(request)
+    Note over R,P: Shared memory-allocation subflow
     P -->> R: MemoryAllocation ownership
     R ->> V: Step 6 - bindBufferMemory2(...)
     V -->> R: Success
@@ -107,9 +99,10 @@ explains what collection releases, how it observes the queue timeline and why
 resources with other owners remain alive.
 
 **Memory selection.** `BufferDesc::memory` tells Panda which memory properties to
-require and prefer. `Upload` and `Readback` require memory that Vulkan allows the
-CPU to access. The returned `Buffer` is still an owning handle, not a CPU pointer;
-Panda's current public API writes buffer data through `UploadBatch`.
+require and prefer; the shared [memory-allocation subflow](allocate-memory-range.md)
+selects a compatible type and range. `Upload` and `Readback` require memory that
+Vulkan allows the CPU to access. The returned `Buffer` is still an owning handle,
+not a CPU pointer; Panda's current public API writes buffer data through `UploadBatch`.
 
 **Safe updates.** If the GPU is still reading a buffer, overwriting its bytes can
 change the data underneath that work. Updates must be ordered after the earlier
@@ -212,6 +205,8 @@ byte-for-byte restoration of pool caches, nor recover a lost device.
   define the shared guarantees.
 - [Reclaim completed upload packets](reclaim-completed-uploads.md) explains the
   shared collection performed before this allocation.
+- [Allocate a compatible device-memory range](allocate-memory-range.md) explains
+  the shared type-selection, reuse, growth and dedicated-allocation path.
 - [Vulkan memory allocation](https://docs.vulkan.org/guide/latest/memory_allocation.html)
   explains device-memory allocation and why resources can share larger allocations.
 - [vkBindBufferMemory2](https://docs.vulkan.org/refpages/latest/refpages/source/vkBindBufferMemory2.html)

@@ -101,6 +101,10 @@ and pending packets retain ownership independently.
 
 - [Create a buffer](create-buffer.md) shows allocation cleanup when native
   binding fails and the application's lifetime obligation after success.
+- [Create a texture and its default view](create-texture.md) shows image
+  allocation, binding and view-creation cleanup before publication.
+- [Create mesh storage with optional indices](create-mesh.md) shows release of
+  an unpublished vertex buffer when optional index storage fails.
 - [Upload bytes into a buffer](upload-buffer.md) shows how batch cancellation
   releases unsubmitted owners.
 - [Reclaim completed upload packets](reclaim-completed-uploads.md) shows when
