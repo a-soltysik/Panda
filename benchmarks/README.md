@@ -5,6 +5,8 @@ performance APIs. The current smoke workload opens a window and renders frames
 through Panda's normal Context path. More representative scene profiles are not
 implemented yet. See the [benchmark specification](../docs/development/benchmarking.md)
 for the measurement boundaries and planned workloads.
+The [UC benchmark smoke run](../docs/use-cases/benchmark-smoke-run.md) traces how
+the executable validates settings, collects samples and writes its report.
 
 ## Build
 

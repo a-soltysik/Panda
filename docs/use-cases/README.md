@@ -22,6 +22,8 @@ forwarding and helper calculations.
 | [UC Observe or wait for submitted GPU work](observe-completion.md) | Context-scoped completion queries, bounded waits and upload retirement |
 | [UC Reclaim completed upload packets](reclaim-completed-uploads.md) | Observe queue completion and release retained upload owners |
 | [UC Render and present a diagnostic clear frame](render-clear-frame.md) | Acquire, record, submit and present; frame and image synchronization outcomes |
+| [UC Collect paired CPU and GPU frame timings](collect-frame-timings.md) | Opt-in timestamp collection, CPU/GPU pairing and nonblocking sample retrieval |
+| [UC Execute a controlled benchmark smoke run and save a report](benchmark-smoke-run.md) | Validate a stable clear-frame run, collect only measured samples and write JSON/log output |
 | [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md) | Framebuffer changes, minimized windows and failed swapchain replacement |
 | [UC Commit work to the Context submission timeline](commit-context-submission.md) | Queue acceptance and timeline value publication |
 | [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | Consume acquire semaphore and release an unused image |

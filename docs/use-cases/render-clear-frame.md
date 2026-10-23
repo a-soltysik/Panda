@@ -152,6 +152,8 @@ error does not imply that already submitted work was rolled back.
   and presentation completion.
 - [UC Observe or wait for submitted GPU work](observe-completion.md) explains how an
   application observes a returned `CompletionPoint`.
+- [UC Collect paired CPU and GPU frame timings](collect-frame-timings.md) explains
+  the optional timestamp markers and nonblocking sample retrieval for submitted frames.
 - [UC Commit work to the Context submission timeline](commit-context-submission.md),
   [UC Retire an acquired image after frame work fails](retire-acquired-image.md),
   [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md) and
