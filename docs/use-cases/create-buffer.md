@@ -142,13 +142,12 @@ P -->|owns|K["MemoryBlock objects and device-memory allocations"]
 ```
 
 Copying a `Buffer` retains the same state rather than allocating or copying buffer bytes.
-`MemoryAllocation` owns a range reservation, not the whole pool block. It releases
-that reservation through its borrowed pool when destroyed.
 
 **Lifetime requirement.** No owning edge links `Buffer` to `Context`. `Context` must outlive all these handles;
 moving `Context` preserves its stable internal services. Releasing one `Buffer` only
 drops one shared owner. Once no owner remains, `BufferResource` destroys the native
-buffer before releasing its range. Submitted uses can retain additional owners;
+buffer before releasing its range; the [memory-range subflow](release-memory-range.md)
+explains how that range returns to the pool. Submitted uses can retain additional owners;
 their retention is outside this creation flow and follows the
 [resource lifetime contract](../design/contracts/resources.md#frame-contexts-and-retirement).
 
@@ -186,14 +185,13 @@ sequenceDiagram
     R ->> V: Destroy native buffer
     R ->> M: Release allocation owner
     M ->> P: release(id)
-    P -->> M: Range released, empty-block policy applied
+    P -->> M: Range returned
     R -->> C: Error, no shared resource published
     C -->> A: Result containing Error
 ```
 
-Returning a range does not always free a whole device
-allocation: the pool may retain an empty ordinary block; dedicated blocks are
-released when empty. The native error category/status survives propagation.
+The [memory-range subflow](release-memory-range.md) explains the empty-block
+policy after this cleanup. The native error category/status survives propagation.
 
 ## Outcomes
 

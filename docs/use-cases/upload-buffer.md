@@ -111,6 +111,8 @@ defines the copy barriers and visibility to later queue consumers.
 **Ownership.** Before submission, the batch owns its staging pages and retains
 each destination while borrowing Context. Destroying it before submit cancels
 the queued writes and releases those owners without submitting this batch's work.
+Their ranges are returned when the resources lose their final owner; see the
+[memory-range subflow](release-memory-range.md).
 After successful submission, Context's pending packet retains the command, pages
 and destinations until collection observes completion. Releasing the
 application's `Buffer` handle does not release a destination still retained by

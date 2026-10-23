@@ -34,8 +34,8 @@ sequenceDiagram
     V-->>P: Non-enqueued present error
     P->>P: Step 2 - retain image index and cleanup action
     P->>Q: Step 2 - wait for committed frame value
-    Q->>V: Wait on Context timeline
-    V-->>Q: Frame producer completed
+    Q->>V: Host waits for the committed frame value
+    V-->>Q: GPU signals after completing the frame producer
     P->>V: Step 3 - create replacement render-finished semaphore
     V-->>P: New semaphore and old unused signal semaphore released
     P->>V: Step 4 - release acquired image
