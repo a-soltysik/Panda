@@ -11,6 +11,9 @@ forwarding and helper calculations.
 | [Select a compatible Vulkan device](select-vulkan-device.md) | Shared Context-creation subflow: required capabilities, work/present queues and window support |
 | [Create and release a native window](create-window.md) | Optional Panda::Tools/GLFW wrapper; applications may provide their own `WindowSurface` |
 | [Create a buffer](create-buffer.md) | Worked example: positive sequence, ownership and binding-failure cleanup for an ordinary buffer |
+| [Allocate a compatible device-memory range](allocate-memory-range.md) | Shared subflow: compatible memory type, pooled/dedicated range and bounded fallback |
+| [Create a texture and its default view](create-texture.md) | Validate, allocate, bind and create the internal view before publishing a 2D image |
+| [Create mesh storage with optional indices](create-mesh.md) | Derive sizes and publish vertex/optional index buffers only when all succeed |
 | [Return a resource memory range](release-memory-range.md) | Shared subflow: final owner release, range coalescing and empty-block policy |
 | [Upload bytes into a buffer](upload-buffer.md) | Snapshot, ordered buffer writes, asynchronous submission and retry behavior |
 | [Observe or wait for submitted GPU work](observe-completion.md) | Context-scoped completion queries, bounded waits and upload retirement |
