@@ -72,6 +72,9 @@ auto classify(vk::Result result) -> ErrorCode
     case vk::Result::eSuboptimalKHR:
     case vk::Result::ePipelineCompileRequired:
     case vk::Result::eErrorNotPermitted:
+#ifdef VK_EXT_full_screen_exclusive
+    case vk::Result::eErrorFullScreenExclusiveModeLostEXT:
+#endif
     case vk::Result::ePipelineBinaryMissingKHR:
     case vk::Result::eThreadIdleKHR:
     case vk::Result::eThreadDoneKHR:
@@ -92,6 +95,9 @@ auto errorMessage(ErrorCode code, vk::Result result) -> std::string
         break;
     case ErrorCode::ResourceExhausted:
         message = "Vulkan resources are exhausted";
+        break;
+    case ErrorCode::ResourcesInUse:
+        message = "A Vulkan resource is still in use";
         break;
     case ErrorCode::Timeout:
         message = "A Vulkan operation timed out";

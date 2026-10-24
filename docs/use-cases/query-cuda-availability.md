@@ -68,9 +68,10 @@ other initialization failures preserve their native status in the error.
 
 - [Package and toolchain contract](../design/package-and-toolchain.md#c23-and-cuda20-with-one-host-toolchain)
   describes the optional module and C++23/C++20 adapter boundary.
-- [Compute and CUDA contract](../design/contracts/compute.md#interoperability)
+- [Compute build and capability boundary](../design/contracts/compute.md#build-and-capability-boundary)
   separates Runtime availability from Vulkan/CUDA device matching and sharing.
 - [CUDA connection example](../../examples/cuda_connection/README.md) shows an
-  application checking availability before calling its own CUDA producer.
+  application checking availability, attempting optional Vulkan-buffer import,
+  and then calling a CUDA producer on a separate allocation.
 - [C++ and CUDA toolchain compatibility](../development/tasks/toolchain-compatibility.md)
   records the task scope and platform evidence for this facade.

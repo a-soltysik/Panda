@@ -14,6 +14,9 @@ function(panda_configure_vulkan_internal target)
     target_compile_definitions(${target} PRIVATE
         VULKAN_HPP_NO_CONSTRUCTORS
         VULKAN_HPP_NO_EXCEPTIONS)
+    if(WIN32)
+        target_compile_definitions(${target} PRIVATE VK_USE_PLATFORM_WIN32_KHR NOMINMAX)
+    endif()
 endfunction()
 
 function(panda_resolve_files output_variable base_directory)

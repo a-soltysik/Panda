@@ -18,9 +18,10 @@ struct MemoryRequest
 {
     vk::MemoryRequirements requirements {};
     vk::MemoryDedicatedRequirements dedicated {};
-    // Exactly one handle, owned by the caller. Images must be optimal-tiled,
-    // non-sparse and non-disjoint; this allocator does not import/export memory.
+    // Identifies exactly one buffer or image for dedicated allocation.
     vk::MemoryDedicatedAllocateInfo resource {};
+    // Nonempty types make this allocator export one dedicated allocation.
+    vk::ExternalMemoryHandleTypeFlags exportHandleTypes;
     vk::MemoryPropertyFlags requiredProperties;
     vk::MemoryPropertyFlags preferredProperties;
 };
@@ -62,6 +63,12 @@ private:
         bool dedicated {false};
     };
 
+    struct BudgetRequest
+    {
+        std::uint32_t memoryType;
+        std::uint64_t size;
+    };
+
     struct Allocation
     {
         Block* block {nullptr};
@@ -76,7 +83,7 @@ private:
     [[nodiscard]] auto grow(const MemoryRequest& request, std::uint32_t memoryType) -> Result<MemoryAllocation>;
     [[nodiscard]] auto makeBlock(const MemoryRequest& request, std::uint32_t memoryType, bool dedicated)
         -> Result<MemoryAllocation>;
-    [[nodiscard]] auto checkBudget(std::uint32_t memoryType, std::uint64_t size) -> Result<void>;
+    [[nodiscard]] auto checkBudget(BudgetRequest request) -> Result<void>;
     [[nodiscard]] auto publish(Block& block, MemoryRange range) -> MemoryAllocation;
     [[nodiscard]] auto getAllocation(std::uint64_t id) const -> const Allocation&;
     void release(std::uint64_t id) noexcept;

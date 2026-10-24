@@ -33,7 +33,7 @@ struct BlockConfiguration
     bool needsCacheManagement {false};
 };
 
-auto configureMapping(vk::MemoryPropertyFlags flags, std::uint64_t size, std::uint64_t nonCoherentAtomSize)
+auto configureMapping(vk::MemoryPropertyFlags flags, std::uint64_t size, const vk::PhysicalDeviceLimits& limits)
     -> Result<BlockConfiguration>
 {
     if (flags & unsupportedMemoryProperties)
@@ -43,7 +43,7 @@ auto configureMapping(vk::MemoryPropertyFlags flags, std::uint64_t size, std::ui
     }
     const auto hostVisible = static_cast<bool>(flags & vk::MemoryPropertyFlagBits::eHostVisible);
     const auto needsCache = hostVisible && !(flags & vk::MemoryPropertyFlagBits::eHostCoherent);
-    const auto atomSize = needsCache ? nonCoherentAtomSize : 1;
+    const auto atomSize = needsCache ? limits.nonCoherentAtomSize : 1;
     if ((hostVisible && size > std::numeric_limits<std::size_t>::max()) || !std::has_single_bit(atomSize))
     {
         return std::unexpected {
@@ -71,7 +71,7 @@ auto configureBlock(const vk::raii::PhysicalDevice& physicalDevice, std::uint64_
     }
     return configureMapping(type.propertyFlags,
                             size,
-                            properties.get<vk::PhysicalDeviceProperties2>().properties.limits.nonCoherentAtomSize);
+                            properties.get<vk::PhysicalDeviceProperties2>().properties.limits);
 }
 
 auto roundSize(std::uint64_t size, std::uint64_t alignment) -> Result<std::uint64_t>
@@ -96,10 +96,12 @@ auto MemoryBlock::create(const vk::raii::PhysicalDevice& physicalDevice,
                           vk::MemoryAllocateInfo {.allocationSize = size, .memoryTypeIndex = memoryTypeIndex});
 }
 
+// NOLINTNEXTLINE(readability-function-size): These inputs map directly to Vulkan's dedicated export allocation.
 auto MemoryBlock::createDedicated(const vk::raii::PhysicalDevice& physicalDevice,
                                   const vk::raii::Device& device,
                                   vk::MemoryAllocateInfo allocation,
-                                  const vk::MemoryDedicatedAllocateInfo& resource)
+                                  const vk::MemoryDedicatedAllocateInfo& resource,
+                                  vk::ExternalMemoryHandleTypeFlags exportHandleTypes)
     -> Result<std::unique_ptr<MemoryBlock>>
 {
     if (static_cast<bool>(resource.buffer) == static_cast<bool>(resource.image) || resource.pNext != nullptr ||
@@ -108,7 +110,16 @@ auto MemoryBlock::createDedicated(const vk::raii::PhysicalDevice& physicalDevice
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Dedicated memory requires exactly one resource")};
     }
-    allocation.pNext = &resource;
+    auto dedicatedInfo = resource;
+    const auto exportInfo = vk::ExportMemoryAllocateInfo {.pNext = &dedicatedInfo, .handleTypes = exportHandleTypes};
+    if (exportHandleTypes)
+    {
+        allocation.pNext = &exportInfo;
+    }
+    else
+    {
+        allocation.pNext = &dedicatedInfo;
+    }
     return createInternal(physicalDevice, device, allocation);
 }
 

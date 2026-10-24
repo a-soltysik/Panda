@@ -25,8 +25,8 @@ The legacy Panda engine is reference material, not a compatibility constraint.
 | Lights | Support a few to a few dozen lights without a small fixed shader light array. Handle color-only, textured, and instanced materials consistently. |
 | Instancing | Support efficient instanced geometry and GPU-resident billboard clouds. Particle count must not imply one entity, CPU update, or draw call per particle. |
 | Shaders | Make complete custom shaders practical, including build integration, layout validation, and an explicit shadow-pass contract. No material DSL is required. |
-| Compute availability | Provide Vulkan compute independently of optional CUDA. CUDA is disabled by default at CMake configuration time. Both may participate in one application. |
-| Compute boundary | Keep compute orchestration thin: schedule native callbacks, batch work, and synchronize declared shared resources. Algorithms belong to the application. |
+| Compute availability | Keep Vulkan graphics and external resources independent of optional CUDA. CUDA is disabled by default at CMake configuration time; an application may choose either backend when its required submission and handoff APIs are available. |
+| Compute boundary | Provide small explicit work and resource-handoff building blocks. The application owns the algorithm, timestep, step count and call frequency; Panda does not register recurring compute callbacks or schedule work per frame. |
 | Persistence | Persist scene setup and references, not a hidden checkpoint of all GPU simulation state. Domain-specific configuration remains application-owned. |
 | Import | Provide optional model import through a support library, with glTF/GLB preferred and common static formats available at runtime. |
 | Physics | Provide optional, deliberately small CPU physics for prototyping: gravity, linear motion, and a restricted set of collisions. |
@@ -51,7 +51,7 @@ vehicle simulator or general-purpose game framework.
 - Skeletal animation, animation clips, skinning, and morph-target systems.
 - Fluid, hair, cloth, soft-body, or vehicle solvers.
 - General-purpose rigid-body physics, robust stacks, joints, or mandatory physics middleware.
-- Automatic translation between CUDA and Vulkan compute, automatic CPU fallback, or runtime migration of algorithm state.
+- Automatic translation between CUDA and Vulkan compute, automatic CPU fallback, runtime migration of algorithm state, or a persistent compute callback scheduler.
 - Mandatory reflection-based object systems, a shader graph, or a custom material language.
 - Full simulation checkpoints and serialization of individual GPU-only particles.
 - Unbounded scene scale, unrestricted transparency correctness, or a promise of high performance on every GPU.

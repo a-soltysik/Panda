@@ -28,7 +28,8 @@ dependencies. Internal compilation boundaries need not become extra public targe
 
 `Panda::Tools` is a static module library containing Window and its GLFW session.
 `Panda::Cuda` is an optional static module with a C++23 availability query and a
-private C++20 Runtime adapter; device matching and sharing remain planned.
+private C++20 Runtime adapter for device matching and importing one Panda-owned
+dedicated external buffer. Cross-API synchronization remains planned.
 Production libraries follow module responsibilities, not unit-test boundaries.
 Tests can supply mock object files for individual implementations while linking
 the same module archives as applications; see [controlled dependencies](../development/testing.md#controlled-dependencies).
@@ -216,8 +217,8 @@ Dependency origins: [EnTT](https://github.com/skypjack/entt),
 ### Native graphics API without macro leakage
 
 Use Vulkan-Hpp values, flags and borrowed `vk` handles in Panda signatures.
-The planned native compute callback receives a borrowed `vk::CommandBuffer`;
-ownership remains with Panda. Convert to Vulkan C types only at loader/GLFW ABI
+Any future native Vulkan work entry point must keep command-buffer ownership in
+Panda and make borrowing explicit. Convert to Vulkan C types only at loader/GLFW ABI
 boundaries and their external stubs. Required SDK headers/link dependencies are
 supplied by the target. Vulkan-Hpp is included in the supported Vulkan SDK.
 
@@ -307,7 +308,7 @@ Keep the engine-facing facade and native adapter separate:
   need `.cu` files merely to import memory, manage a stream, or synchronize it.
 - Only actual kernel targets enable the CUDA language/NVCC. An application's `.cu`
   target uses CUDA20 and the same supported host compiler family, through narrow
-  application-owned declarations shared with its C++23 callback.
+  application-owned declarations shared with its C++23 code.
 
 The implemented `panda::cuda::queryAvailability()` reports `Available`,
 `NoDriver` or `NoDevice`; other Runtime initialization failures return an error

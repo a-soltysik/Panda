@@ -139,6 +139,16 @@ TEST_F(BufferResourceTest, RejectsInvalidDescriptionsBeforeCallingDependencies)
     EXPECT_EQ(zeroUsage.error().code, panda::ErrorCode::InvalidArgument);
 }
 
+TEST_F(BufferResourceTest, RejectsNonDeviceMemoryBeforeExternalExport)
+{
+    const auto upload = BufferResource::createExportable(device,
+                                                         *pool,
+                                                         validDescription(panda::BufferMemory::Upload),
+                                                         vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd);
+    ASSERT_FALSE(upload);
+    EXPECT_EQ(upload.error().code, panda::ErrorCode::InvalidArgument);
+}
+
 TEST_F(BufferResourceTest, PreservesNativeCreationFailureWithoutAdoptingTheOutput)
 {
     expectBufferCreated(fakeVulkanHandle<VkBuffer>(20), 80, exhausted);

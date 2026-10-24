@@ -62,6 +62,15 @@ auto extension(std::string_view name) -> VkExtensionProperties
     return value;
 }
 
+auto externalMemoryExtensionName() -> std::string_view
+{
+#ifdef _WIN32
+    return "VK_KHR_external_memory_win32";
+#else
+    return "VK_KHR_external_memory_fd";
+#endif
+}
+
 void verifyCommonDeviceFeatures(const VkPhysicalDeviceVulkan12Features& vulkan12,
                                 const VkPhysicalDeviceVulkan13Features& vulkan13)
 {
@@ -293,7 +302,27 @@ protected:
                 testing::Action<panda::test::WindowSurfaceMock::SurfaceResult(VkInstance)> {Return(std::move(result))});
     }
 
-    void expectDevice(bool windowed, VkResult result = success, bool separateQueues = false)
+    void expectExternalMemoryExtension(bool available)
+    {
+        const auto externalMemory = extension(externalMemoryExtensionName());
+        EXPECT_CALL(vulkan, vkEnumerateDeviceExtensionProperties(physical, nullptr, NotNull(), _))
+            .Times(available ? 2 : 1)
+            .WillRepeatedly(
+                [externalMemory,
+                 available](VkPhysicalDevice, const char*, std::uint32_t* count, VkExtensionProperties* output) {
+                    *count = available ? 1U : 0U;
+                    if (available && output != nullptr)
+                    {
+                        *output = externalMemory;
+                    }
+                    return success;
+                });
+    }
+
+    void expectDevice(bool windowed,
+                      VkResult result = success,
+                      bool separateQueues = false,
+                      bool externalMemory = false)
     {
         if (result == success)
         {
@@ -301,18 +330,24 @@ protected:
         }
         EXPECT_CALL(vulkan, vkCreateDevice(physical, NotNull(), nullptr, NotNull()))
             .WillOnce(testing::Action<decltype(vkCreateDevice)> {
-                [this, windowed, result, separateQueues](VkPhysicalDevice,
-                                                         const VkDeviceCreateInfo* info,
-                                                         const VkAllocationCallbacks*,
-                                                         VkDevice* output) {
+                [this, windowed, result, separateQueues, externalMemory](VkPhysicalDevice,
+                                                                         const VkDeviceCreateInfo* info,
+                                                                         const VkAllocationCallbacks*,
+                                                                         VkDevice* output) {
                     verifyDeviceFeatures(*info, windowed);
                     EXPECT_EQ(info->queueCreateInfoCount, separateQueues ? 2U : 1U);
-                    EXPECT_EQ(info->enabledExtensionCount, windowed ? 2U : 0U);
-                    if (windowed)
+                    EXPECT_EQ(info->enabledExtensionCount, (windowed ? 2U : 0U) + (externalMemory ? 1U : 0U));
+                    if (windowed && info->enabledExtensionCount > 1U)
                     {
                         const auto names = std::span {info->ppEnabledExtensionNames, info->enabledExtensionCount};
                         EXPECT_EQ(std::string_view {names.front()}, vk::KHRSwapchainExtensionName);
-                        EXPECT_EQ(std::string_view {names.back()}, vk::KHRSwapchainMaintenance1ExtensionName);
+                        EXPECT_EQ(std::string_view {names.subspan(1).front()},
+                                  vk::KHRSwapchainMaintenance1ExtensionName);
+                    }
+                    if (externalMemory)
+                    {
+                        const auto names = std::span {info->ppEnabledExtensionNames, info->enabledExtensionCount};
+                        EXPECT_EQ(std::string_view {names.back()}, externalMemoryExtensionName());
                     }
                     *output = device;
                     return result;
@@ -437,6 +472,12 @@ protected:
                     timeline->maxTimelineSemaphoreValueDifference = std::numeric_limits<std::uint64_t>::max();
                     return;
                 }
+                if (base->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES)
+                {
+                    auto* id = static_cast<VkPhysicalDeviceIDProperties*>(output->pNext);
+                    id->deviceUUID[0] = 1;
+                    return;
+                }
                 output->properties.limits.maxMemoryAllocationCount = 16;
                 output->properties.limits.nonCoherentAtomSize = 64;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
@@ -556,6 +597,7 @@ TEST_F(ContextLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOr
     EXPECT_FALSE(context->isValid());
     EXPECT_EQ(moved.getDeviceInfo().name, "Unit GPU");
     EXPECT_EQ(moved.getDeviceInfo().queueFamily, 0U);
+    EXPECT_FALSE(moved.getDeviceInfo().externalBufferExportEnabled);
     const auto frame = moved.presentClearFrame();
     ASSERT_FALSE(frame.has_value());
     EXPECT_EQ(frame.error().code, panda::ErrorCode::Unsupported);
@@ -583,6 +625,50 @@ TEST_F(ContextLifecycleTest, ExposesTimestampSupportButKeepsSamplingDisabledByDe
     const auto all = performance.takeAvailableSamples();
     ASSERT_TRUE(all);
     EXPECT_TRUE(all->empty());
+}
+
+TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
+{
+    expectInstance();
+    expectAdapter(false);
+    expectExternalMemoryExtension(true);
+    expectDevice(false, success, false, true);
+    expectParentsDestroyed(true, false);
+
+    auto context =
+        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+
+    ASSERT_TRUE(context);
+    EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
+}
+
+TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityUnavailableAtStartup)
+{
+    expectInstance();
+    expectAdapter(false);
+    expectExternalMemoryExtension(false);
+    expectDevice(false);
+    expectParentsDestroyed(true, false);
+
+    auto context =
+        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+
+    ASSERT_TRUE(context);
+    EXPECT_FALSE(context->getDeviceInfo().externalBufferExportEnabled);
+}
+
+TEST_F(ContextLifecycleTest, RequiresExternalBufferCapabilityBeforePublishingContext)
+{
+    expectInstance();
+    expectAdapter(false);
+    expectExternalMemoryExtension(false);
+    expectParentsDestroyed(false, false);
+
+    const auto context =
+        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Required});
+
+    ASSERT_FALSE(context);
+    EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
 }
 
 TEST_F(ContextLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePublicManager)

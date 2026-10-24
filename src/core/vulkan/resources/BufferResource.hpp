@@ -24,9 +24,15 @@ public:
     [[nodiscard]] static auto create(const vk::raii::Device& device,
                                      buffer_resources::MemoryPool& pool,
                                      const BufferDesc& description) -> Result<std::shared_ptr<BufferResource>>;
+    [[nodiscard]] static auto createExportable(const vk::raii::Device& device,
+                                               buffer_resources::MemoryPool& pool,
+                                               const BufferDesc& description,
+                                               vk::ExternalMemoryHandleTypeFlagBits handleType)
+        -> Result<std::shared_ptr<BufferResource>>;
     [[nodiscard]] auto getSize() const -> std::uint64_t;
     [[nodiscard]] auto getReservedSize() const -> std::uint64_t;
     [[nodiscard]] auto getNative() const -> vk::Buffer;
+    [[nodiscard]] auto getNativeMemory() const -> vk::DeviceMemory;
     [[nodiscard]] auto getUsage() const -> vk::BufferUsageFlags;
     [[nodiscard]] auto belongsTo(const buffer_resources::MemoryPool& pool) const -> bool;
     [[nodiscard]] auto getMappedBytes() const -> Result<std::span<std::byte>>;
@@ -34,8 +40,16 @@ public:
     [[nodiscard]] auto invalidate(std::uint64_t offset, std::uint64_t size) const -> Result<void>;
 
 private:
+    [[nodiscard]] static auto validateDescription(const BufferDesc& description) -> Result<void>;
     BufferResource(buffer_resources::MemoryPool& pool, vk::raii::Buffer buffer, const BufferDesc& description);
-    [[nodiscard]] auto bind(const vk::raii::Device& device, const BufferDesc& description) -> Result<void>;
+    [[nodiscard]] auto bind(const vk::raii::Device& device,
+                            const BufferDesc& description,
+                            vk::ExternalMemoryHandleTypeFlags handleTypes) -> Result<void>;
+    [[nodiscard]] static auto createInternal(const vk::raii::Device& device,
+                                             buffer_resources::MemoryPool& pool,
+                                             const BufferDesc& description,
+                                             vk::ExternalMemoryHandleTypeFlags handleTypes)
+        -> Result<std::shared_ptr<BufferResource>>;
 
     buffer_resources::MemoryPool& _pool;
     buffer_resources::MemoryAllocation _allocation;

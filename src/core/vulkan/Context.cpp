@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <panda/Assert.hpp>
@@ -19,6 +20,7 @@
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
+#include <panda/ExternalBuffer.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
@@ -33,6 +35,7 @@
 #include "DeviceSelection.hpp"
 #include "SubmissionQueue.hpp"
 #include "VulkanError.hpp"
+#include "external/ExternalContext.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/Presentation.hpp"
 #include "resources/BufferResource.hpp"
@@ -240,7 +243,7 @@ auto createLogicalDevice(const vk::raii::PhysicalDevice& physicalDevice, const v
 
 auto createDevice(const vk::raii::PhysicalDevice& physicalDevice,
                   const vulkan::SelectedDevice& selected,
-                  bool windowed,
+                  const std::vector<const char*>& deviceExtensions,
                   const vk::PhysicalDeviceFeatures2& features) -> Result<vk::raii::Device>
 {
     static constexpr auto priority = 1.0F;
@@ -253,22 +256,49 @@ auto createDevice(const vk::raii::PhysicalDevice& physicalDevice,
                                    .pQueuePriorities = &priority}
     };
     const auto queueCount = selected.info.presentQueueFamily == selected.info.queueFamily ? 1U : 2U;
-    const auto deviceExtensions =
-        std::array {vk::KHRSwapchainExtensionName,
-                    selected.info.swapchainMaintenance == ContextDeviceInfo::SwapchainMaintenance::Khr
-                        ? vk::KHRSwapchainMaintenance1ExtensionName
-                        : vk::EXTSwapchainMaintenance1ExtensionName};
     const auto deviceInfo =
         vk::DeviceCreateInfo {.pNext = &features,
                               .queueCreateInfoCount = queueCount,
                               .pQueueCreateInfos = queueInfos.data(),
-                              .enabledExtensionCount = windowed ? 2U : 0U,
-                              .ppEnabledExtensionNames = windowed ? deviceExtensions.data() : nullptr};
+                              .enabledExtensionCount = static_cast<std::uint32_t>(deviceExtensions.size()),
+                              .ppEnabledExtensionNames = deviceExtensions.data()};
     return createLogicalDevice(physicalDevice, deviceInfo);
 }
 
-auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice, const vulkan::SelectedDevice& selected, bool windowed)
-    -> Result<vk::raii::Device>
+auto makeDeviceExtensions(const vulkan::SelectedDevice& selected,
+                          bool windowed,
+                          const std::vector<std::string>& extraExtensions) -> std::vector<const char*>
+{
+    auto extensions = std::vector<const char*> {};
+    if (windowed)
+    {
+        extensions.push_back(vk::KHRSwapchainExtensionName);
+        extensions.push_back(selected.info.swapchainMaintenance == ContextDeviceInfo::SwapchainMaintenance::Khr
+                                 ? vk::KHRSwapchainMaintenance1ExtensionName
+                                 : vk::EXTSwapchainMaintenance1ExtensionName);
+    }
+    std::ranges::transform(extraExtensions, std::back_inserter(extensions), [](const auto& extension) {
+        return extension.c_str();
+    });
+    return extensions;
+}
+
+auto queryExternalBufferSupport(const vk::raii::PhysicalDevice& physicalDevice, const ContextOptions& options)
+    -> Result<std::optional<detail::ExternalSupport>>
+{
+    if (options.externalBufferSupport == ContextOptions::ExternalBufferSupport::Disabled)
+    {
+        return std::nullopt;
+    }
+    return detail::ExternalContext::querySupport(
+        physicalDevice,
+        options.externalBufferSupport == ContextOptions::ExternalBufferSupport::Required);
+}
+
+auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice,
+                const vulkan::SelectedDevice& selected,
+                bool windowed,
+                const std::vector<std::string>& extraExtensions) -> Result<vk::raii::Device>
 {
     auto maintenance = vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR {.swapchainMaintenance1 = vk::True};
     auto vulkan13 = vk::PhysicalDeviceVulkan13Features {.pNext = windowed ? &maintenance : nullptr,
@@ -276,7 +306,8 @@ auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice, const vulkan::Se
                                                         .dynamicRendering = vk::True};
     auto vulkan12 = vk::PhysicalDeviceVulkan12Features {.pNext = &vulkan13, .timelineSemaphore = vk::True};
     const auto features = vk::PhysicalDeviceFeatures2 {.pNext = &vulkan12};
-    return createDevice(physicalDevice, selected, windowed, features);
+    const auto deviceExtensions = makeDeviceExtensions(selected, windowed, extraExtensions);
+    return createDevice(physicalDevice, selected, deviceExtensions, features);
 }
 
 }
@@ -320,6 +351,7 @@ public:
     [[nodiscard]] auto presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>;
     [[nodiscard]] auto createBufferResource(const BufferDesc& description)
         -> Result<std::shared_ptr<detail::BufferResource>>;
+    [[nodiscard]] auto createExternalBufferResource(const BufferDesc& description) -> Result<ExternalBuffer>;
     [[nodiscard]] auto createTextureResource(const TextureDesc& description)
         -> Result<std::shared_ptr<detail::TextureResource>>;
     [[nodiscard]] auto createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>;
@@ -329,12 +361,14 @@ public:
     void drain();
 
 private:
-    [[nodiscard]] auto initializeDevice(const WindowSurface* surface, bool enableFramePerformanceSampling)
-        -> Result<void>;
+    [[nodiscard]] auto initializeDevice(const WindowSurface* surface, const ContextOptions& options) -> Result<void>;
+    void initializeSelectedDeviceResources(const WindowSurface* surface,
+                                           const vulkan::SelectedDevice& selected,
+                                           std::optional<detail::ExternalSupport> externalSupport);
     [[nodiscard]] auto initializeSelectedDevice(const WindowSurface* surface,
                                                 const vulkan::SelectedDevice& selected,
-                                                vk::SurfaceKHR nativeSurface,
-                                                bool enableFramePerformanceSampling) -> Result<void>;
+                                                const ContextOptions& options,
+                                                std::optional<detail::ExternalSupport> externalSupport) -> Result<void>;
     [[nodiscard]] auto initializePerformance(const vulkan::SelectedDevice& selected,
                                              bool enableFramePerformanceSampling) -> Result<void>;
     [[nodiscard]] auto ensureUploads() -> Result<void>;
@@ -359,6 +393,7 @@ private:
     vk::raii::Device _device {nullptr};
     std::unique_ptr<resources::MemoryPool> _memoryPool;
     std::unique_ptr<detail::SubmissionQueue> _submissions;
+    std::unique_ptr<detail::ExternalContext> _externalContext;
     std::unique_ptr<upload::UploadManager> _uploads;
     std::unique_ptr<detail::PerformanceManagerImpl> _performanceManagerImplementation;
     std::unique_ptr<vulkan::Presentation> _presentation;
@@ -377,51 +412,81 @@ auto Context::Impl::initialize(const WindowSurface* surface, const ContextOption
         return std::unexpected {std::move(services.error())};
     }
     _services = std::move(*services);
-    return initializeDevice(surface, options.enableFramePerformanceSampling);
+    return initializeDevice(surface, options);
 }
 
-auto Context::Impl::initializeDevice(const WindowSurface* surface, bool enableFramePerformanceSampling) -> Result<void>
+auto Context::Impl::initializeDevice(const WindowSurface* surface, const ContextOptions& options) -> Result<void>
 {
-    const auto nativeSurface = _services.surface ? **_services.surface : vk::SurfaceKHR {};
-    auto selected = vulkan::selectDevice(*_services.instance, nativeSurface, _services.extensions);
+    auto selected = vulkan::selectDevice(*_services.instance,
+                                         _services.surface ? **_services.surface : vk::SurfaceKHR {},
+                                         _services.extensions);
     if (!selected)
     {
         return std::unexpected {std::move(selected.error())};
     }
     _physicalDevice = vk::raii::PhysicalDevice {_services.instance, selected->physicalDevice};
-    auto createdDevice = makeDevice(_physicalDevice, *selected, surface != nullptr);
+    auto externalSupport = queryExternalBufferSupport(_physicalDevice, options);
+    if (!externalSupport)
+    {
+        return std::unexpected {externalSupport.error()};
+    }
+    auto createdDevice =
+        makeDevice(_physicalDevice,
+                   *selected,
+                   surface != nullptr,
+                   *externalSupport ? (*externalSupport)->deviceExtensions : std::vector<std::string> {});
     if (!createdDevice)
     {
         return std::unexpected {std::move(createdDevice.error())};
     }
     _device = std::move(*createdDevice);
-    return initializeSelectedDevice(surface, *selected, nativeSurface, enableFramePerformanceSampling);
+    return initializeSelectedDevice(surface, *selected, options, std::move(*externalSupport));
 }
 
 auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
                                              const vulkan::SelectedDevice& selected,
-                                             vk::SurfaceKHR nativeSurface,
-                                             bool enableFramePerformanceSampling) -> Result<void>
+                                             const ContextOptions& options,
+                                             std::optional<detail::ExternalSupport> externalSupport) -> Result<void>
 {
-    _memoryPool = resources::MemoryPool::create(_physicalDevice, _device);
-    if (surface != nullptr)
-    {
-        _submissions = std::make_unique<detail::SubmissionQueue>(_device, selected.info.queueFamily);
-    }
-    if (const auto initialized = initializePerformance(selected, enableFramePerformanceSampling); !initialized)
+    initializeSelectedDeviceResources(surface, selected, std::move(externalSupport));
+    if (const auto initialized = initializePerformance(selected, options.enableFramePerformanceSampling); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
     if (surface != nullptr)
     {
-        const auto initialized = initializePresentation(*surface, selected, nativeSurface);
+        const auto initialized =
+            initializePresentation(*surface, selected, _services.surface ? **_services.surface : vk::SurfaceKHR {});
         if (!initialized)
         {
             return std::unexpected {initialized.error()};
         }
     }
     _info = selected.info;
+    _info.externalBufferExportEnabled = _externalContext != nullptr;
+    const auto properties =
+        _physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
+    const auto& uuid = properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID;
+    std::ranges::copy(uuid, _info.deviceUuid.begin());
     return {};
+}
+
+void Context::Impl::initializeSelectedDeviceResources(const WindowSurface* surface,
+                                                      const vulkan::SelectedDevice& selected,
+                                                      std::optional<detail::ExternalSupport> externalSupport)
+{
+    _memoryPool = resources::MemoryPool::create(_physicalDevice, _device);
+    if (surface != nullptr)
+    {
+        _submissions = std::make_unique<detail::SubmissionQueue>(_device, selected.info.queueFamily);
+    }
+    if (externalSupport)
+    {
+        _externalContext = std::make_unique<detail::ExternalContext>(_physicalDevice,
+                                                                     _device,
+                                                                     *_memoryPool,
+                                                                     std::move(*externalSupport));
+    }
 }
 
 auto Context::Impl::initializePerformance(const vulkan::SelectedDevice& selected, bool enableFramePerformanceSampling)
@@ -518,6 +583,16 @@ auto Context::Impl::createBufferResource(const BufferDesc& description)
     -> Result<std::shared_ptr<detail::BufferResource>>
 {
     return createResource<detail::BufferResource>(description);
+}
+
+auto Context::Impl::createExternalBufferResource(const BufferDesc& description) -> Result<ExternalBuffer>
+{
+    if (!_externalContext)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::Unsupported, "Context was not created with external buffer support")};
+    }
+    return _externalContext->createBuffer(description);
 }
 
 auto Context::Impl::createTextureResource(const TextureDesc& description)
@@ -662,6 +737,12 @@ auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer
         .transform([](std::shared_ptr<detail::BufferResource> resource) {
             return Buffer {std::move(resource)};
         });
+}
+
+auto Context::createExternalBuffer(const BufferDesc& description) const -> Result<ExternalBuffer>
+{
+    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    return _implementation->createExternalBufferResource(description);
 }
 
 auto Context::createTexture(const TextureDesc& description) const -> Result<Texture>

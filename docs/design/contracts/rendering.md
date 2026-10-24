@@ -307,8 +307,8 @@ containing one camera, lights, and mesh/cloud draw descriptions with owning reso
 handles and copied transforms. The renderer copies/retains everything needed for
 submission before returning. It owns no ECS entity and does not serialize a view.
 It allows explicit rendering without a Scene while keeping only one Vulkan path.
-Both overloads use the [compute](compute.md#submission-protocol) and
-[frame](resources.md#frame-and-window-state) protocols and require a valid camera.
+Both overloads use the [frame](resources.md#frame-and-window-state) protocol and
+require a valid camera.
 
 All standard blocks use 32-bit IEEE floats/uints, column-major matrices, and
 `std140` UBO or `std430` SSBO layouts. C++ packing helpers use explicit float/uint

@@ -130,7 +130,7 @@ auto MemoryPool::allocate(const MemoryRequest& request) -> Result<MemoryAllocati
         return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Memory allocation identities exhausted")};
     }
     return selectMemoryType(request).and_then([&](std::uint32_t memoryType) -> Result<MemoryAllocation> {
-        if (request.dedicated.requiresDedicatedAllocation == vk::True ||
+        if (request.exportHandleTypes || request.dedicated.requiresDedicatedAllocation == vk::True ||
             request.dedicated.prefersDedicatedAllocation == vk::True ||
             request.requirements.size > getBlockSize(memoryType) / 2)
         {
@@ -177,17 +177,18 @@ auto MemoryPool::grow(const MemoryRequest& request, std::uint32_t memoryType) ->
     return makeBlock(request, memoryType, true);
 }
 
-auto MemoryPool::checkBudget(std::uint32_t memoryType, std::uint64_t size) -> Result<void>
+auto MemoryPool::checkBudget(BudgetRequest request) -> Result<void>
 {
-    const auto heap = _memoryProperties.memoryTypes.at(memoryType).heapIndex;
+    const auto heap = _memoryProperties.memoryTypes.at(request.memoryType).heapIndex;
     const auto heapSize = _memoryProperties.memoryHeaps.at(heap).size;
-    if (_stats.allocationCount >= _limits.maxMemoryAllocationCount || size > heapSize - _heapCommitted.at(heap))
+    if (_stats.allocationCount >= _limits.maxMemoryAllocationCount || request.size > heapSize - _heapCommitted.at(heap))
     {
         reclaimEmptyBlocks();
     }
-    if (size == 0 || size > _maximumAllocationSize || _stats.allocationCount >= _limits.maxMemoryAllocationCount ||
-        size > heapSize - _heapCommitted.at(heap) ||
-        size > std::numeric_limits<std::uint64_t>::max() - _stats.committedBytes)
+    if (request.size == 0 || request.size > _maximumAllocationSize ||
+        _stats.allocationCount >= _limits.maxMemoryAllocationCount ||
+        request.size > heapSize - _heapCommitted.at(heap) ||
+        request.size > std::numeric_limits<std::uint64_t>::max() - _stats.committedBytes)
     {
         return std::unexpected {
             makeError(ErrorCode::ResourceExhausted, "Memory allocation count or byte budget exhausted")};
@@ -199,8 +200,7 @@ auto MemoryPool::makeBlock(const MemoryRequest& request, std::uint32_t memoryTyp
     -> Result<MemoryAllocation>
 {
     const auto size = dedicated ? request.requirements.size : getBlockSize(memoryType);
-    const auto budget = checkBudget(memoryType, size);
-    if (!budget)
+    if (const auto budget = checkBudget({.memoryType = memoryType, .size = size}); !budget)
     {
         return std::unexpected {budget.error()};
     }
@@ -208,7 +208,8 @@ auto MemoryPool::makeBlock(const MemoryRequest& request, std::uint32_t memoryTyp
                                   _physicalDevice,
                                   _device,
                                   vk::MemoryAllocateInfo {.allocationSize = size, .memoryTypeIndex = memoryType},
-                                  request.resource)
+                                  request.resource,
+                                  request.exportHandleTypes)
                             : MemoryBlock::create(_physicalDevice, _device, size, memoryType);
     if (!memory)
     {

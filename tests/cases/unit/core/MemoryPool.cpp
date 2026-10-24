@@ -40,6 +40,7 @@ auto requestFor(std::uint64_t size = 64) -> MemoryRequest
     return MemoryRequest {
         .requirements = {.size = size, .alignment = 16, .memoryTypeBits = 1},
         .resource = {.buffer = vk::Buffer {fakeVulkanHandle<VkBuffer>(20)}},
+        .exportHandleTypes = {},
         .requiredProperties = vk::MemoryPropertyFlagBits::eDeviceLocal,
         .preferredProperties = {}
     };
@@ -137,7 +138,7 @@ TEST_F(MemoryPoolTest, UsesTheRequiredMemoryTypeAndExactDedicatedRequest)
     request.requiredProperties = vk::MemoryPropertyFlagBits::eHostVisible;
     request.dedicated.requiresDedicatedAllocation = vk::True;
     const auto range = MemoryRange {.offset = 0, .size = 1024};
-    EXPECT_CALL(blocks, createDedicated(_, _, testing::Field(&vk::MemoryAllocateInfo::allocationSize, 1024), _))
+    EXPECT_CALL(blocks, createDedicated(_, _, testing::Field(&vk::MemoryAllocateInfo::allocationSize, 1024), _, _))
         .WillOnce(Return(panda::Result<void> {}));
     EXPECT_CALL(blocks, allocate(_, 1024, 16)).WillOnce(Return(range));
     EXPECT_CALL(blocks, getFreeSize(_)).WillOnce(Return(1024));
@@ -153,13 +154,34 @@ TEST_F(MemoryPoolTest, UsesTheRequiredMemoryTypeAndExactDedicatedRequest)
     EXPECT_EQ(pool->getStats().committedBytes, 0);
 }
 
+TEST_F(MemoryPoolTest, ExportsOnlyDedicatedAllocations)
+{
+    auto request = requestFor();
+    constexpr auto handleTypes = vk::ExternalMemoryHandleTypeFlags {vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd};
+    request.exportHandleTypes = handleTypes;
+    const auto range = MemoryRange {.offset = 0, .size = 64};
+    EXPECT_CALL(blocks,
+                createDedicated(_, _, testing::Field(&vk::MemoryAllocateInfo::allocationSize, 64), _, handleTypes))
+        .WillOnce(Return(panda::Result<void> {}));
+    EXPECT_CALL(blocks, allocate(_, 64, 16)).WillOnce(Return(range));
+    EXPECT_CALL(blocks, getFreeSize(_)).WillOnce(Return(64));
+    EXPECT_CALL(blocks, getCapacity(_)).WillRepeatedly(Return(64));
+    EXPECT_CALL(blocks, release(_, range)).WillOnce(Return(panda::Result<void> {}));
+
+    auto allocation = pool->allocate(request);
+
+    ASSERT_TRUE(allocation);
+    allocation->reset();
+    EXPECT_EQ(pool->getStats().allocationCount, 0);
+}
+
 TEST_F(MemoryPoolTest, RetriesRecoverableOrdinaryBlockFailureWithOneDedicatedAttempt)
 {
     const auto range = MemoryRange {.offset = 0, .size = 64};
     EXPECT_CALL(blocks, create(_, _, 64 * mebibyte, 0))
         .WillOnce(Return(panda::Result<void> {
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "Controlled block failure")}}));
-    EXPECT_CALL(blocks, createDedicated(_, _, _, _)).WillOnce(Return(panda::Result<void> {}));
+    EXPECT_CALL(blocks, createDedicated(_, _, _, _, _)).WillOnce(Return(panda::Result<void> {}));
     EXPECT_CALL(blocks, allocate(_, 64, 16)).WillOnce(Return(range));
     EXPECT_CALL(blocks, getFreeSize(_)).WillOnce(Return(64));
     EXPECT_CALL(blocks, getCapacity(_)).WillRepeatedly(Return(64));

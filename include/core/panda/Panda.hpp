@@ -4,6 +4,7 @@
 /// Core package entry point and version query.
 
 #include <panda/Context.hpp>
+#include <panda/ExternalBuffer.hpp>
 #include <string_view>
 
 namespace panda

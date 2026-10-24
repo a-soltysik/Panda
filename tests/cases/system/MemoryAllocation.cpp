@@ -224,6 +224,7 @@ auto allocateForBuffer(panda::core::vulkan::resources::MemoryPool& pool,
         .requirements = queried.get<vk::MemoryRequirements2>().memoryRequirements,
         .dedicated = queried.get<vk::MemoryDedicatedRequirements>(),
         .resource = {.buffer = *buffer},
+        .exportHandleTypes = {},
         .requiredProperties = vk::MemoryPropertyFlagBits::eHostVisible,
         .preferredProperties = {}};
     request.requirements.memoryTypeBits &= std::uint32_t {1} << type;

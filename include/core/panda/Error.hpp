@@ -23,6 +23,8 @@ enum class ErrorCode : std::uint8_t
     InvalidArgument,
     /// The operation could not obtain the required memory or other finite resource.
     ResourceExhausted,
+    /// A resource is still retained by another owner.
+    ResourcesInUse,
     /// The operation did not complete within its allowed time.
     Timeout,
     /// The window surface is no longer available for presentation.
