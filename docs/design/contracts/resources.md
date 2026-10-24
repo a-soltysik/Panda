@@ -26,10 +26,12 @@ A shared handle prevents premature destruction. It does not make concurrent writ
 safe. Renderer-owned camera, transform, light, and material parameter data must use
 frame-safe storage or an equivalent proven update policy.
 
-An application-owned shared compute buffer is not silently copied for each frame.
-Its read/write ordering is declared through the [compute contract](compute.md).
-CPU updates and uploads also require an explicit staging/visibility policy; mapping
-memory does not by itself permit overwriting data still being consumed by the GPU.
+An external-memory handle grants another API access to the same allocation; it does
+not order GPU reads and writes. The current external-buffer API does not yet provide
+a CUDA/Vulkan handoff, so an imported buffer is not ready for cross-API computation.
+The [compute contract](compute.md) defines this boundary and the required guarantees
+for the later handoff task. CPU updates and uploads also require an explicit
+staging/visibility policy; mapping memory does not permit overwriting data still in use.
 
 ## Frame contexts and retirement
 
@@ -38,8 +40,8 @@ completion that protects that context's command and transient resources. Frame
 context count is not assumed to equal swapchain image count.
 
 Resource destruction may enqueue deferred retirement. Reclaim an allocation only
-after all relevant Vulkan and CUDA uses are complete, including a compute stage
-whose output is not rendered. Track actual use, not only the last presentation.
+after all relevant GPU uses are complete, including external work whose output is
+not displayed. Track actual use, not only the last presentation.
 
 Avoid routine `vkDeviceWaitIdle`, `vkQueueWaitIdle`, or CUDA stream/device-wide CPU
 waits in rendering and interop. Administrative operations may block when documented.
@@ -145,8 +147,13 @@ their public headers; entries without public declarations remain planned contrac
 | --- | --- |
 | `Context::create(ContextOptions) -> Result<Context>` | Move-only owner with stable, heap-owned internal state; operations on one context are serialized |
 | `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
+| `Context::getDeviceInfo() -> ContextDeviceInfo` | Copies selected-device information including whether external-buffer export was enabled for this Context |
 | `Buffer`, `Texture`, `Mesh`, `Material` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
 | `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
+| `Context::createExternalBuffer(BufferDesc) -> Result<ExternalBuffer>` | Creates a device-local dedicated allocation and exports a move-only platform handle when external-memory support is enabled |
+| `ExternalBuffer` | Owns the Vulkan buffer and one exported allocation handle; the handle is not a synchronization primitive |
+| `CudaSession::importBuffer(ExternalBuffer) -> Result<SharedCudaBuffer>` | `Panda::Cuda` imports and maps a matching-device allocation once; it does not submit compute or synchronize with Vulkan |
+| `CudaSession::close() -> Result<void>` | Releases the session only after all `SharedCudaBuffer` owners are gone |
 | `Context::createTexture(TextureDesc) -> Result<Texture>` | Optimal-tiled 2D image with one mip and layer, sample count one, and undefined initial contents |
 | `Context::createMesh(MeshDesc) -> Result<Mesh>` | Fixed vertex storage and optional 16- or 32-bit index storage; does not submit work |
 | `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates destination bounds and transfer usage |
@@ -156,6 +163,10 @@ their public headers; entries without public declarations remain planned contrac
 | `UploadBatch::submit() -> Result<CompletionPoint>` | Submits on the same graphics/compute queue; no CPU wait for completion |
 | `Context::poll(CompletionPoint) -> Result<bool>` | Reports GPU completion or failure; not a presentation/display timestamp |
 | `Context::wait(CompletionPoint, timeout) -> Result<WaitStatus>` | Explicit administrative wait; timeout is distinct from completion and backend failure |
+
+`ContextDeviceInfo::externalBufferExportEnabled` is `true` only when the Context
+enabled Vulkan external-memory export. It does not guarantee every requested usage
+can be exported; `Context::createExternalBuffer` checks the actual usage.
 
 `ContextOptions::enableValidation` enables the installed Khronos validation layer and
 registers a `VK_EXT_debug_utils` callback that routes diagnostics to the Panda logger.
@@ -176,17 +187,19 @@ No public API lets a caller signal it, fabricate future values, or use it after
 context destruction. `Error` has an action category, owned message, optional native
 backend status and source location; it does not retain references to temporary strings.
 
-Keep `BufferDesc` small: byte size, usage flags, memory intent, external-sharing
-intent, initialization policy, and debug label. The ordinary native extension uses
-Vulkan-Hpp usage flags rather than inventing a complete mirror of Vulkan. Meshes and
+Keep `BufferDesc` small: byte size, usage flags and memory intent. The ordinary
+native extension uses Vulkan-Hpp usage flags rather than inventing a complete mirror
+of Vulkan. Meshes and
 textures provide higher-level factories. No public general-purpose memory mapper
 is needed initially: uploads handle CPU writes; a test/readback helper can explicitly
-wait, invalidate, and copy results. CUDA-shared buffers are never CPU-mapped.
+wait, invalidate and copy results. Exported buffers use a separate factory, not an
+option that changes ordinary buffer behavior.
 
 The implemented `BufferDesc` provides byte size, `vk::BufferUsageFlags` and
-`BufferMemory` intent. Buffers are ordinary, non-exportable and initially contain
-undefined bytes. Explicit initialization, debug labels and external-sharing options
-remain planned with uploads and interoperability. Supported usages are transfer,
+`BufferMemory` intent. `Context::createBuffer` creates ordinary, non-exportable
+buffers with undefined initial bytes. `Context::createExternalBuffer` is a separate
+operation that requires external-memory support and always uses device-local memory.
+Supported usages are transfer,
 vertex, index, indirect, uniform/storage and texel buffers; feature-dependent usages
 such as device addresses are rejected before calling Vulkan. `Device` requires
 device-local memory; `Upload` requires host visibility and prefers coherence;
@@ -296,8 +309,9 @@ resources, defragmenter, residency manager, or allocator plugin API in version o
   allocation count, CPU cost and high-water bytes before adding one. Explicit upload
   batches retain their staging pages through completion; adding a page must preserve
   in-flight data rather than wrap around it.
-- Exportable CUDA buffers use dedicated allocations, outside ordinary pools; the
-  [compute contract](compute.md#external-buffer-creation) owns the rules.
+- Exportable buffers use dedicated allocations and are never suballocated from an
+  ordinary shared block; the [compute contract](compute.md#current-external-buffer-behavior)
+  owns the interop rules.
 
 Buffer uploads use the same graphics/compute submission clock as presentation,
 including when Context has no window. `Context::createUploadBatch` initializes
@@ -361,14 +375,14 @@ The pool algorithm and sizes above are Panda design choices, not Vulkan prescrip
 ## Frame and window state
 
 Two frame slots each own command pools/buffers, descriptor pools, transient
-parameter storage, optional timestamp query pools, and retained work packets. Frame-local data is
-reusable only after the slot's final `G` value, defined in the [compute
-protocol](compute.md#submission-protocol). The first renderer chooses a minimal
+parameter storage, optional timestamp query pools, and retained work packets.
+Frame-local data is reusable only after the slot's final `CompletionPoint`, defined
+by the Context submission queue. The first renderer chooses a minimal
 safe representation; a general arena is added only if representative measurements
 justify it. Explicit upload staging remains owned by its batch and submission until
-completion. Even a CUDA stage with no rendered output is joined before the final
-`G` value. Rendering without CUDA uses the same completion path without CUDA
-objects/imports.
+completion. Cross-API work does not currently join this completion queue; the
+[compute handoff task](../../development/tasks/gpu-handoff.md) defines that future
+integration.
 
 When GPU timestamp sampling is enabled, the Context-owned public
 `PerformanceManager` collects a slot's ready timestamps before that slot's query
@@ -377,11 +391,11 @@ pool is reset and makes the results available without an additional GPU wait. Th
 defines the public sample shape and initial measurement boundary.
 
 For a normal frame: reclaim completed work, wait/poll the selected slot, acquire an
-image, prepare/execute the ordered work, submit the final rendering segment, then
-present. Do not invoke compute callbacks on an unsuccessful acquire. CPU scene
-updates may continue while suspended; the application owns simulation time and
-must not accumulate hidden catch-up steps in Panda. Independent compute submission
-without a renderable window is deferred, not implicitly promised by callbacks.
+image, prepare and submit rendering, then present. Do not submit frame work after an
+unsuccessful acquire. CPU scene updates may continue while suspended; the application
+owns simulation time and must not accumulate hidden catch-up steps in Panda.
+Independent compute submission without a renderable window is not part of the
+current API.
 
 Windowed rendering requires the following additional feature:
 `VK_KHR_swapchain_maintenance1`, or its equivalent EXT variant, including matching
@@ -394,23 +408,23 @@ and timeline semaphores; a Vulkan version number alone is not the feature check.
 
 Use binary acquire semaphores per frame slot and render-finished semaphores per
 swapchain image. Track a presentation fence for each outstanding present and wait
-for its reuse/destruction, independently of `G`. Prefer one graphics/present family;
+for its reuse/destruction, independently of queue completion. Prefer one graphics/present family;
 if distinct, use concurrent sharing for swapchain images only. Ordinary resources
 remain exclusive. Present fences protect resource recycling, not exact display time.
 
 | State/event | Required behavior |
 | --- | --- |
 | Ready | Accept updates, uploads, and frames |
-| Zero framebuffer extent | Suspended: no acquire, frame callbacks, or zero-sized attachments; keep processing events |
+| Zero framebuffer extent | Suspended: no acquire, frame work or zero-sized attachments; keep processing events |
 | Acquire timeout/not-ready | Return a skipped-frame result; no fictitious completion point or consumed frame slot |
-| Acquire out-of-date | RecreatePending; no acquired image or callback work assumed |
+| Acquire out-of-date | RecreatePending; no acquired image or frame work assumed |
 | Acquire suboptimal | Finish the acquired frame, then request recreation |
 | Present out-of-date/suboptimal | Preserve the already submitted completion point and presentation record; recreate at the safe boundary |
 | Surface lost | Stop window work and report the error; automatic platform-surface recovery is not a version-one requirement |
-| Callback/enqueue/submit failure | Follow the compute fault policy; do not continue drawing uncertain output |
+| Frame recording or submit failure | Do not present output from an unsubmitted frame; follow the frame cleanup path below |
 | Device loss | Faulted: stop all new GPU work; no transparent device reconstruction |
 
-At recreation, drain the relevant `G` points and outstanding presentation fences;
+At recreation, drain the relevant `CompletionPoint`s and outstanding presentation fences;
 administrative waiting is allowed. Build replacement attachments and swapchain,
 then publish a complete usable generation. Calling `vkCreateSwapchainKHR` with an
 old swapchain can retire the old chain even when replacement fails: retain owned
@@ -443,8 +457,10 @@ References: [presentation semaphore lifetime](https://docs.vulkan.org/guide/late
 
 - Delete an entity and release its last application resource handle while frames are in flight.
 - Edit shared and cloned materials without overwriting a preceding frame's data.
-- Repeatedly resize/minimize/restore and recreate GPU buffers, including imported CUDA buffers.
-- Shut down with pending work, including a non-rendered compute stage.
+- Repeatedly resize/minimize/restore and recreate GPU resources; release imported
+  CUDA buffers only after their last use is established by the handoff contract.
+- Shut down with pending uploads and frame work, then with external work after the
+  handoff task defines its retirement point.
 - Exercise failed creation and failed replacement without leaking handles or publishing invalid state.
 - Run GPU validation and inspect retirement/completion ordering; CPU tests alone cannot establish it.
 - Check allocator split/coalesce/alignment/overflow and failed growth without Vulkan;

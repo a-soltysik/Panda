@@ -3,12 +3,14 @@
 /// @file
 /// Vulkan context ownership and device capability diagnostics.
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <memory>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/ExternalBuffer.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <panda/Texture.hpp>
@@ -22,6 +24,15 @@ class WindowSurface;
 /// @brief Options for creating a Vulkan 1.3 context.
 struct ContextOptions
 {
+    /// Whether external Vulkan buffers are unavailable, enabled when supported,
+    /// or required during device selection.
+    enum class ExternalBufferSupport : std::uint8_t
+    {
+        Disabled,
+        Optional,
+        Required
+    };
+
     /// Name passed to the Vulkan loader; copied during creation.
     std::string applicationName {"Panda"};
     /// Enable the installed Khronos validation layer and route its debug-utils diagnostics
@@ -30,6 +41,8 @@ struct ContextOptions
     /// Create timestamp query pools and collect paired CPU and GPU frame timings when the selected queue supports them.
     /// Disabled by default to avoid measurement work in contexts that do not need it.
     bool enableFramePerformanceSampling {false};
+    /// External Vulkan memory export support.
+    ExternalBufferSupport externalBufferSupport {ExternalBufferSupport::Disabled};
 };
 
 /// @brief Selected device and enabled core feature diagnostics.
@@ -51,6 +64,11 @@ struct ContextDeviceInfo
     std::string driverInfo;
     /// Driver version as reported by Vulkan; its encoding is vendor-specific.
     std::uint32_t driverVersion {0};
+    /// Stable physical-device identity for compatible external API selection.
+    VulkanDeviceUuid deviceUuid {};
+    /// True when external buffer memory export was enabled for this Context.
+    /// Individual buffer usages are still checked when an external buffer is created.
+    bool externalBufferExportEnabled {false};
     /// Vulkan API version reported by the selected physical device.
     std::uint32_t apiVersion {0};
     /// Graphics and compute queue family selected for ordered work.
@@ -155,6 +173,13 @@ public:
     /// @return A shared resource owner or a validation/allocation/backend error.
     /// Context outlives all copies. May allocate; submits no work and does not wait.
     [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
+
+    /// @brief Creates a dedicated device-local buffer and exports its allocation handle.
+    /// This exports memory only; Panda does not yet provide a cross-API handoff.
+    /// Do not use the allocation in another GPU API based on this handle alone.
+    /// @return An owning buffer and platform handle, or an unsupported/creation error.
+    /// Context outlives the returned ExternalBuffer and every Buffer copy.
+    [[nodiscard]] auto createExternalBuffer(const BufferDesc& description) const -> Result<ExternalBuffer>;
 
     /// @brief Creates an optimal-tiled, single-mip, single-layer 2D image with undefined initial contents.
     /// @return A shared image owner or a validation/allocation/backend error.

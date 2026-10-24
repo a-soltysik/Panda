@@ -26,7 +26,83 @@ using core::vulkan::resources::MemoryRequest;
 
 namespace
 {
-auto validateDescription(const BufferDesc& description) -> Result<void>
+void configureMemory(MemoryRequest& request, BufferMemory intent)
+{
+    switch (intent)
+    {
+    case BufferMemory::Device:
+        request.requiredProperties = vk::MemoryPropertyFlagBits::eDeviceLocal;
+        break;
+    case BufferMemory::Upload:
+        request.requiredProperties = vk::MemoryPropertyFlagBits::eHostVisible;
+        request.preferredProperties = vk::MemoryPropertyFlagBits::eHostCoherent;
+        break;
+    case BufferMemory::Readback:
+        request.requiredProperties = vk::MemoryPropertyFlagBits::eHostVisible;
+        request.preferredProperties = vk::MemoryPropertyFlagBits::eHostCached;
+        break;
+    }
+}
+
+auto makeMemoryRequest(const vk::raii::Device& device,
+                       vk::Buffer buffer,
+                       const BufferDesc& description,
+                       vk::ExternalMemoryHandleTypeFlags handleTypes) -> MemoryRequest
+{
+    const auto requirements =
+        device.getBufferMemoryRequirements2<vk::MemoryRequirements2, vk::MemoryDedicatedRequirements>(
+            vk::BufferMemoryRequirementsInfo2 {.buffer = buffer});
+    auto request = MemoryRequest {.requirements = requirements.get<vk::MemoryRequirements2>().memoryRequirements,
+                                  .dedicated = requirements.get<vk::MemoryDedicatedRequirements>(),
+                                  .resource = vk::MemoryDedicatedAllocateInfo {.buffer = buffer},
+                                  .exportHandleTypes = {},
+                                  .requiredProperties = {},
+                                  .preferredProperties = {}};
+    configureMemory(request, description.memory);
+    if (handleTypes)
+    {
+        request.exportHandleTypes = handleTypes;
+        request.requiredProperties = vk::MemoryPropertyFlagBits::eDeviceLocal;
+    }
+    return request;
+}
+
+auto validateExternalBufferSupport(const vk::raii::PhysicalDevice& physicalDevice,
+                                   const BufferDesc& description,
+                                   vk::ExternalMemoryHandleTypeFlagBits handleType) -> Result<void>
+{
+    const auto externalInfo =
+        vk::PhysicalDeviceExternalBufferInfo {.usage = description.usage, .handleType = handleType};
+    const auto properties = physicalDevice.getExternalBufferProperties(externalInfo).externalMemoryProperties;
+    if (!(properties.externalMemoryFeatures & vk::ExternalMemoryFeatureFlagBits::eExportable) ||
+        !(properties.compatibleHandleTypes & handleType))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::Unsupported, "The selected device cannot export this buffer usage")};
+    }
+    return {};
+}
+
+auto createNativeBuffer(const vk::raii::Device& device,
+                        const BufferDesc& description,
+                        vk::ExternalMemoryHandleTypeFlags handleTypes) -> Result<vk::raii::Buffer>
+{
+    const auto externalInfo = vk::ExternalMemoryBufferCreateInfo {.handleTypes = handleTypes};
+    const auto info = vk::BufferCreateInfo {.pNext = handleTypes ? &externalInfo : nullptr,
+                                            .size = description.size,
+                                            .usage = description.usage,
+                                            .sharingMode = vk::SharingMode::eExclusive};
+    auto buffer = vk::Buffer {};
+    const auto result = (*device).createBuffer(&info, nullptr, &buffer, *device.getDispatcher());
+    if (result != vk::Result::eSuccess)
+    {
+        return std::unexpected {makeVulkanError(result)};
+    }
+    return Result<vk::raii::Buffer> {std::in_place, device, buffer};
+}
+}
+
+auto BufferResource::validateDescription(const BufferDesc& description) -> Result<void>
 {
     constexpr auto supported = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst |
                                vk::BufferUsageFlagBits::eUniformTexelBuffer |
@@ -47,39 +123,6 @@ auto validateDescription(const BufferDesc& description) -> Result<void>
     return {};
 }
 
-void configureMemory(MemoryRequest& request, BufferMemory intent)
-{
-    switch (intent)
-    {
-    case BufferMemory::Device:
-        request.requiredProperties = vk::MemoryPropertyFlagBits::eDeviceLocal;
-        break;
-    case BufferMemory::Upload:
-        request.requiredProperties = vk::MemoryPropertyFlagBits::eHostVisible;
-        request.preferredProperties = vk::MemoryPropertyFlagBits::eHostCoherent;
-        break;
-    case BufferMemory::Readback:
-        request.requiredProperties = vk::MemoryPropertyFlagBits::eHostVisible;
-        request.preferredProperties = vk::MemoryPropertyFlagBits::eHostCached;
-        break;
-    }
-}
-
-auto createNativeBuffer(const vk::raii::Device& device, const BufferDesc& description) -> Result<vk::raii::Buffer>
-{
-    const auto info = vk::BufferCreateInfo {.size = description.size,
-                                            .usage = description.usage,
-                                            .sharingMode = vk::SharingMode::eExclusive};
-    auto buffer = vk::Buffer {};
-    const auto result = (*device).createBuffer(&info, nullptr, &buffer, *device.getDispatcher());
-    if (result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(result)};
-    }
-    return Result<vk::raii::Buffer> {std::in_place, device, buffer};
-}
-}
-
 auto BufferResource::getResource(const Buffer& buffer) -> const std::shared_ptr<BufferResource>&
 {
     return buffer._resource;
@@ -93,7 +136,40 @@ auto BufferResource::create(const vk::raii::Device& device, MemoryPool& pool, co
     {
         return std::unexpected {valid.error()};
     }
-    auto buffer = createNativeBuffer(device, description);
+    return createInternal(device, pool, description, {});
+}
+
+auto BufferResource::createExportable(const vk::raii::Device& device,
+                                      MemoryPool& pool,
+                                      const BufferDesc& description,
+                                      vk::ExternalMemoryHandleTypeFlagBits handleType)
+    -> Result<std::shared_ptr<BufferResource>>
+{
+    const auto handleTypes = vk::ExternalMemoryHandleTypeFlags {handleType};
+    if (description.memory != BufferMemory::Device)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Exported buffers require device-local memory")};
+    }
+    const auto valid = validateDescription(description);
+    if (!valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    if (const auto supported = validateExternalBufferSupport(pool.getPhysicalDevice(), description, handleType);
+        !supported)
+    {
+        return std::unexpected {supported.error()};
+    }
+    return createInternal(device, pool, description, handleTypes);
+}
+
+auto BufferResource::createInternal(const vk::raii::Device& device,
+                                    MemoryPool& pool,
+                                    const BufferDesc& description,
+                                    vk::ExternalMemoryHandleTypeFlags handleTypes)
+    -> Result<std::shared_ptr<BufferResource>>
+{
+    auto buffer = createNativeBuffer(device, description, handleTypes);
     if (!buffer)
     {
         return std::unexpected {std::move(buffer.error())};
@@ -101,7 +177,7 @@ auto BufferResource::create(const vk::raii::Device& device, MemoryPool& pool, co
     auto resource = std::shared_ptr<BufferResource> {
         new BufferResource {pool, std::move(*buffer), description}
     };
-    const auto bound = resource->bind(device, description);
+    const auto bound = resource->bind(device, description, handleTypes);
     if (!bound)
     {
         return std::unexpected {bound.error()};
@@ -118,17 +194,11 @@ BufferResource::BufferResource(MemoryPool& pool, vk::raii::Buffer buffer, const 
 {
 }
 
-auto BufferResource::bind(const vk::raii::Device& device, const BufferDesc& description) -> Result<void>
+auto BufferResource::bind(const vk::raii::Device& device,
+                          const BufferDesc& description,
+                          vk::ExternalMemoryHandleTypeFlags handleTypes) -> Result<void>
 {
-    const auto requirements =
-        device.getBufferMemoryRequirements2<vk::MemoryRequirements2, vk::MemoryDedicatedRequirements>(
-            vk::BufferMemoryRequirementsInfo2 {.buffer = *_buffer});
-    auto request = MemoryRequest {.requirements = requirements.get<vk::MemoryRequirements2>().memoryRequirements,
-                                  .dedicated = requirements.get<vk::MemoryDedicatedRequirements>(),
-                                  .resource = vk::MemoryDedicatedAllocateInfo {.buffer = *_buffer},
-                                  .requiredProperties = {},
-                                  .preferredProperties = {}};
-    configureMemory(request, description.memory);
+    const auto request = makeMemoryRequest(device, *_buffer, description, handleTypes);
     auto allocation = _pool.allocate(request);
     if (!allocation)
     {
@@ -159,6 +229,11 @@ auto BufferResource::getReservedSize() const -> std::uint64_t
 auto BufferResource::getNative() const -> vk::Buffer
 {
     return *_buffer;
+}
+
+auto BufferResource::getNativeMemory() const -> vk::DeviceMemory
+{
+    return _allocation.getMemory();
 }
 
 auto BufferResource::getUsage() const -> vk::BufferUsageFlags

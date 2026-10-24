@@ -14,6 +14,7 @@ class Context;
 namespace detail
 {
 class BufferResource;
+class ExternalContext;
 }
 
 /// @brief Allocation intent; does not grant CPU access or synchronize GPU use.
@@ -68,6 +69,7 @@ public:
 private:
     friend class Context;
     friend class detail::BufferResource;
+    friend class detail::ExternalContext;
     explicit Buffer(std::shared_ptr<detail::BufferResource> resource);
     std::shared_ptr<detail::BufferResource> _resource;
 };

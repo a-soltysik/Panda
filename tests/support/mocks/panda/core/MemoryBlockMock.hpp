@@ -34,7 +34,8 @@ public:
                 (const vk::raii::PhysicalDevice&,
                  const vk::raii::Device&,
                  vk::MemoryAllocateInfo,
-                 const vk::MemoryDedicatedAllocateInfo&),
+                 const vk::MemoryDedicatedAllocateInfo&,
+                 vk::ExternalMemoryHandleTypeFlags),
                 ());
     MOCK_METHOD(panda::Result<MemoryRange>, allocate, (const MemoryBlock&, std::uint64_t, std::uint64_t), ());
     MOCK_METHOD(panda::Result<void>, release, (const MemoryBlock&, MemoryRange), ());

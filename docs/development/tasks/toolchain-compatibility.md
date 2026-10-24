@@ -17,7 +17,7 @@ Paths: `cmake/`, `src/cuda/`, `../../../include/cuda/panda/cuda`,
 `../../../examples/cuda_connection/`, `../../../tests/cases/unit/cuda/`,
 `../../../tests/cases/integration/cuda/`, `../../../tests/support/mocks/external/cuda/` and
 directly affected documentation.
-Specifications: [Package](../../design/package-and-toolchain.md#c23-and-cuda20-with-one-host-toolchain), [compute availability](../../design/contracts/compute.md#interoperability).
+Specifications: [Package](../../design/package-and-toolchain.md#c23-and-cuda20-with-one-host-toolchain), [compute build and capability boundary](../../design/contracts/compute.md#build-and-capability-boundary).
 
 ## Acceptance
 

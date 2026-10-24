@@ -11,7 +11,7 @@ Non-goal: No CUDA export or per-object device idle.
 Interface: Buffer/Texture/Mesh handles, UploadBatch and context-scoped CompletionPoint.
 
 Paths: `../../../include/core/panda`, `src/core/vulkan/resources/`, `tests/cases/unit/`, `tests/cases/system/`, `tests/gpu/` and directly affected documentation.
-Specifications: [Ownership and allocation](../../design/contracts/resources.md), [completion ordering](../../design/contracts/compute.md#submission-protocol).
+Specifications: [Ownership, allocation and completion](../../design/contracts/resources.md#handles-and-api-boundary).
 
 Implement the CPU allocation algorithm first, then GPU allocation/upload, then
 retirement and in-flight replacement. Verify each boundary before expanding.

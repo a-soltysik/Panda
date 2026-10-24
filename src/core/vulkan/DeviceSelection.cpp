@@ -503,6 +503,7 @@ auto isDeviceInspectionFailureFatal(ErrorCode code) -> bool
         return true;
     case ErrorCode::Unsupported:
     case ErrorCode::ResourceExhausted:
+    case ErrorCode::ResourcesInUse:
     case ErrorCode::Timeout:
     case ErrorCode::DeviceLost:
     case ErrorCode::BackendFailure:

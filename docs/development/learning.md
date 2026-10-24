@@ -28,7 +28,7 @@ learning handoff is clear and accept the task.
 | --- | --- |
 | Build and toolchain | Which properties reach consumers? Why does CUDA avoid C++23 engine headers? |
 | GPU lifetime | Release the last application handle while a frame still uses its resource. |
-| Vulkan/CUDA | Trace every producer and wait for two frames writing one shared buffer. |
+| Vulkan/CUDA | Trace one producer-to-consumer handoff and explain why importing memory alone does not synchronize it. |
 | Transforms | Reparent a rotated child under nonuniform scale and explain shear rejection. |
 | Materials and shadows | Inspect color space, face orientation and shadow depth in a capture. |
 | Shader ABI | Reject an incompatible block layout before publishing a program. |

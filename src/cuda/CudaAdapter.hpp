@@ -21,6 +21,53 @@ struct NativeAvailabilityResult
     std::int32_t nativeCode;
 };
 
+enum class NativeInteropStatus : std::uint8_t
+{
+    Success,
+    NoDriver,
+    NoDevice,
+    Unsupported,
+    Failure
+};
+
+enum class NativeMemoryHandleType : std::uint8_t
+{
+    OpaqueFd,
+    OpaqueWin32
+};
+
+struct NativeInteropResult
+{
+    NativeInteropStatus status {NativeInteropStatus::Failure};
+    std::int32_t nativeCode {0};
+    std::int32_t cleanupCode {0};
+    void* session {nullptr};
+};
+
+struct NativeExternalBufferResult
+{
+    NativeInteropStatus status {NativeInteropStatus::Failure};
+    std::int32_t nativeCode {0};
+    std::int32_t cleanupCode {0};
+    void* externalMemory {nullptr};
+    void* devicePointer {nullptr};
+    bool imported {false};
+};
+
+struct NativeExternalBufferImport
+{
+    std::intptr_t handle;
+    NativeMemoryHandleType handleType;
+    std::uint64_t allocationSize;
+    std::uint64_t bufferSize;
+};
+
 [[nodiscard]] auto queryNativeAvailability() noexcept -> NativeAvailabilityResult;
+[[nodiscard]] auto createInteropSession(const std::uint8_t* deviceUuid) noexcept -> NativeInteropResult;
+[[nodiscard]] auto importExternalBuffer(void* session, const NativeExternalBufferImport& description) noexcept
+    -> NativeExternalBufferResult;
+[[nodiscard]] auto destroyInteropSession(void* session) noexcept -> std::int32_t;
+[[nodiscard]] auto destroyExternalBuffer(void* session, const NativeExternalBufferResult& imported) noexcept
+    -> std::int32_t;
 
 }

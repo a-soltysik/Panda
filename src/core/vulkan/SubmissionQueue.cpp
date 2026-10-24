@@ -37,7 +37,10 @@ SubmissionQueue::SubmissionQueue(const vk::raii::Device& device, std::uint32_t f
 
 auto SubmissionQueue::initialize(vk::PhysicalDevice physicalDevice) -> Result<void>
 {
-    expect(*_timeline == vk::Semaphore {}, "Submission queue initialized twice");
+    if (*_timeline != vk::Semaphore {})
+    {
+        return {};
+    }
     const auto properties =
         physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceTimelineSemaphoreProperties>();
     _maximumDifference =

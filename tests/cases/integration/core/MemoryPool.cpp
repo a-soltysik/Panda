@@ -41,6 +41,7 @@ auto bufferRequest(std::uint64_t size = 64) -> MemoryRequest
     return MemoryRequest {
         .requirements = {.size = size, .alignment = 16, .memoryTypeBits = 1},
         .resource = {.buffer = vk::Buffer {fakeVulkanHandle<VkBuffer>(20)}},
+        .exportHandleTypes = {},
         .requiredProperties = vk::MemoryPropertyFlagBits::eDeviceLocal,
         .preferredProperties = {}
     };

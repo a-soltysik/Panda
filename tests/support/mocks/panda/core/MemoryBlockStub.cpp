@@ -39,11 +39,12 @@ auto MemoryBlock::create(const vk::raii::PhysicalDevice& physicalDevice,
 auto MemoryBlock::createDedicated(const vk::raii::PhysicalDevice& physicalDevice,
                                   const vk::raii::Device& device,
                                   vk::MemoryAllocateInfo allocation,
-                                  const vk::MemoryDedicatedAllocateInfo& resource)
+                                  const vk::MemoryDedicatedAllocateInfo& resource,
+                                  vk::ExternalMemoryHandleTypeFlags exportHandleTypes)
     -> Result<std::unique_ptr<MemoryBlock>>
 {
     auto& mock = test::ScopedMock<test::MemoryBlockMock>::getActiveMock();
-    const auto created = mock.createDedicated(physicalDevice, device, allocation, resource);
+    const auto created = mock.createDedicated(physicalDevice, device, allocation, resource, exportHandleTypes);
     if (!created)
     {
         return std::unexpected {created.error()};

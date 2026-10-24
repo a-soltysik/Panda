@@ -1,23 +1,33 @@
-# Vulkan and CUDA synchronization
+# Vulkan and external backend handoff
 
 Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Implement retained native callbacks, G/C timelines, release/acquire, Vulkan completion join and fault ledger; prove two frames and mixed stages.
+Design and implement an explicit GPU-side handoff for a Panda-owned external
+buffer, starting with `Panda::Cuda`. Preserve the generic external-memory boundary
+in Panda Core. The application chooses when to submit compute work; this task does
+not add a persistent callback registry, frame scheduler or general task graph.
 
-Non-goal: No general task graph or speculative overlap.
+Non-goal: No CPU copies, routine global waits, backend translation, or simulation
+step policy inside Panda.
 
-Interface: VulkanStageDesc/CudaStageDesc, StageRegistration and the G/C completion protocol.
+Interface: To be selected from the Vulkan/CUDA capabilities supported by the target
+platforms. The API must make producer and consumer order explicit and keep CUDA
+types inside the optional add-on.
 
-Paths: `src/compute/`, `src/cuda/`, `tests/interop/` and directly affected documentation.
-Specifications: [Submission and faults](../../design/contracts/compute.md#submission-protocol), [frame lifecycle](../../design/contracts/resources.md#frame-and-window-state).
-
-First verify producer-before-wait and fault bookkeeping with a CPU call log. Then
-prove native handoff on the GPU, followed by unregister/rebuild/failure paths.
+Paths: `include/core/panda/`, `include/cuda/panda/cuda/`, `src/core/vulkan/`,
+`src/cuda/`, tests, and directly affected documentation.
+Specifications: [Compute and external buffers](../../design/contracts/compute.md),
+[resource ownership](../../design/contracts/resources.md#lifetime-is-not-synchronization).
 
 ## Acceptance
 
-Ordered GPU access, retirement/replacement and submission failure checks with tagged GPU data, validation, supervised failure timeouts and Nsight ordering on Windows/Linux.
+Prove two consecutive producer-to-consumer handoffs on Windows and Linux with
+tagged GPU data, Vulkan synchronization validation and CUDA ordering inspection.
+Cover Vulkan-to-CUDA and CUDA-to-Vulkan access, failure before each submitted wait,
+resource retention during use, and cleanup. Record that no steady-state CPU copy or
+device/queue-wide wait is needed.
 
-Learning: Draw every signal producer and wait consumer for two consecutive writes.
+Learning: Trace a buffer's previous Vulkan use, CUDA producer and next Vulkan read;
+explain why a shared OS handle and a live C++ owner are not synchronization.

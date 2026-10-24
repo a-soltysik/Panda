@@ -77,5 +77,5 @@ presentation-engine references.
 - [Handles and API boundary](../design/contracts/resources.md#handles-and-api-boundary)
   defines `CompletionPoint` identity and the relationship between its value and
   completed queue work.
-- [Completion ordering](../design/contracts/compute.md#submission-protocol)
-  defines the shared timeline rule.
+- [Frame and window state](../design/contracts/resources.md#frame-and-window-state)
+  explains how frame completion protects reusable GPU resources.

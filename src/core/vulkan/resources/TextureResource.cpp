@@ -197,6 +197,7 @@ auto TextureResource::bind(const vk::raii::Device& device) -> Result<void>
     auto request = MemoryRequest {.requirements = requirements.get<vk::MemoryRequirements2>().memoryRequirements,
                                   .dedicated = requirements.get<vk::MemoryDedicatedRequirements>(),
                                   .resource = vk::MemoryDedicatedAllocateInfo {.image = *_image},
+                                  .exportHandleTypes = {},
                                   .requiredProperties = vk::MemoryPropertyFlagBits::eDeviceLocal,
                                   .preferredProperties = {}};
     auto allocation = _pool.allocate(request);

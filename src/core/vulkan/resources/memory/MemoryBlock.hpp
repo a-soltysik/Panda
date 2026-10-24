@@ -12,7 +12,7 @@
 namespace panda::core::vulkan::resources
 {
 
-// One non-exportable Vulkan allocation. The device outlives this owner.
+// One Vulkan allocation; a dedicated allocation may be exported. The device outlives this owner.
 // Callers serialize operations and finish GPU use/destroy bound resources before
 // releasing a range. Borrowed mapped views expire on release or block destruction.
 class MemoryBlock final
@@ -26,7 +26,8 @@ public:
     [[nodiscard]] static auto createDedicated(const vk::raii::PhysicalDevice& physicalDevice,
                                               const vk::raii::Device& device,
                                               vk::MemoryAllocateInfo allocation,
-                                              const vk::MemoryDedicatedAllocateInfo& resource)
+                                              const vk::MemoryDedicatedAllocateInfo& resource,
+                                              vk::ExternalMemoryHandleTypeFlags exportHandleTypes = {})
         -> Result<std::unique_ptr<MemoryBlock>>;
 
     MemoryBlock(const MemoryBlock&) = delete;
