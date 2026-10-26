@@ -1,84 +1,25 @@
+// clang-format off
+#include "VulkanHpp.hpp" // IWYU pragma: keep
+// clang-format on
+
 #include "panda/ExternalBuffer.hpp"
 
 #include <cstdint>
 #include <panda/Buffer.hpp>
-#include <utility>
+#include <panda/ExternalMemoryHandle.hpp>
+#include <panda/ExternalSemaphoreHandle.hpp>
 
-#include "external/ScopedExternalHandle.hpp"
+#include "external/ExternalSemaphoreResource.hpp"  // IWYU pragma: keep
 
 namespace panda
 {
-ExternalMemoryHandle::ExternalMemoryHandle(std::intptr_t value, ExternalMemoryHandleType type) noexcept
-    : _value {value},
-      _type {type},
-      _valid {true}
-{
-}
+ExternalBuffer::ExternalBuffer() = default;
 
-ExternalMemoryHandle::ExternalMemoryHandle(ExternalMemoryHandle&& other) noexcept
-    : _value {other._value},
-      _type {other._type},
-      _valid {std::exchange(other._valid, false)}
-{
-}
+ExternalBuffer::ExternalBuffer(ExternalBuffer&& other) noexcept = default;
 
-auto ExternalMemoryHandle::operator=(ExternalMemoryHandle&& other) noexcept -> ExternalMemoryHandle&
-{
-    if (this != &other)
-    {
-        reset();
-        _value = other._value;
-        _type = other._type;
-        _valid = std::exchange(other._valid, false);
-    }
-    return *this;
-}
+auto ExternalBuffer::operator=(ExternalBuffer&& other) noexcept -> ExternalBuffer& = default;
 
-ExternalMemoryHandle::~ExternalMemoryHandle()
-{
-    reset();
-}
-
-auto ExternalMemoryHandle::isValid() const noexcept -> bool
-{
-    return _valid;
-}
-
-auto ExternalMemoryHandle::get() const noexcept -> std::intptr_t
-{
-    return _value;
-}
-
-auto ExternalMemoryHandle::getType() const noexcept -> ExternalMemoryHandleType
-{
-    return _type;
-}
-
-auto ExternalMemoryHandle::release() noexcept -> std::intptr_t
-{
-    _valid = false;
-    return _value;
-}
-
-void ExternalMemoryHandle::reset() noexcept
-{
-    if (_valid)
-    {
-        _valid = false;
-        [[maybe_unused]] const auto scopedHandle = core::vulkan::external::ScopedExternalHandle {_value};
-    }
-}
-
-ExternalBuffer::ExternalBuffer(Buffer buffer,
-                               ExternalMemoryHandle handle,
-                               std::uint64_t allocationSize,
-                               VulkanDeviceUuid deviceUuid) noexcept
-    : _buffer {std::move(buffer)},
-      _handle {std::move(handle)},
-      _allocationSize {allocationSize},
-      _deviceUuid {deviceUuid}
-{
-}
+ExternalBuffer::~ExternalBuffer() = default;
 
 auto ExternalBuffer::buffer() const -> Buffer
 {
@@ -93,6 +34,21 @@ auto ExternalBuffer::handle() noexcept -> ExternalMemoryHandle&
 auto ExternalBuffer::handle() const noexcept -> const ExternalMemoryHandle&
 {
     return _handle;
+}
+
+auto ExternalBuffer::semaphoreHandle() noexcept -> ExternalSemaphoreHandle&
+{
+    return _semaphoreHandle;
+}
+
+auto ExternalBuffer::semaphoreHandle() const noexcept -> const ExternalSemaphoreHandle&
+{
+    return _semaphoreHandle;
+}
+
+auto ExternalBuffer::hasSemaphore() const noexcept -> bool
+{
+    return _semaphore != nullptr && _semaphoreHandle.isValid();
 }
 
 auto ExternalBuffer::getSize() const noexcept -> std::uint64_t

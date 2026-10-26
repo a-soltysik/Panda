@@ -61,4 +61,18 @@ auto CUDARTAPI cudaDestroyExternalMemory(cudaExternalMemory_t extMem) -> cudaErr
 {
     return panda::test::ScopedMock<panda::test::CudaRuntimeMock>::getActiveMock().cudaDestroyExternalMemory(extMem);
 }
+
+// NOLINTNEXTLINE(readability-identifier-naming): Match CUDA's declared parameter name.
+auto CUDARTAPI cudaImportExternalSemaphore(cudaExternalSemaphore_t* extSem_out,
+                                           const cudaExternalSemaphoreHandleDesc* semHandleDesc) -> cudaError_t
+{
+    return panda::test::ScopedMock<panda::test::CudaRuntimeMock>::getActiveMock().cudaImportExternalSemaphore(
+        extSem_out,
+        semHandleDesc);
+}
+
+auto CUDARTAPI cudaDestroyExternalSemaphore(cudaExternalSemaphore_t extSem) -> cudaError_t
+{
+    return panda::test::ScopedMock<panda::test::CudaRuntimeMock>::getActiveMock().cudaDestroyExternalSemaphore(extSem);
+}
 }

@@ -464,6 +464,7 @@ auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
     }
     _info = selected.info;
     _info.externalBufferExportEnabled = _externalContext != nullptr;
+    _info.externalSemaphoreExportEnabled = _externalContext != nullptr && _externalContext->supportsSemaphoreExport();
     const auto properties =
         _physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
     const auto& uuid = properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID;

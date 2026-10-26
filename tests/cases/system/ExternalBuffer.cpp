@@ -2,7 +2,16 @@
 
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
+#include <panda/ExternalBuffer.hpp>
+#include <panda/ExternalSemaphoreHandle.hpp>
 #include <vulkan/vulkan.hpp>
+
+TEST(ExternalBufferSystem, DefaultConstructsAnEmptyOwner)
+{
+    const auto empty = panda::ExternalBuffer {};
+    EXPECT_FALSE(empty.isValid());
+    EXPECT_FALSE(empty.hasSemaphore());
+}
 
 TEST(ExternalBufferSystem, CreatesDedicatedBufferAndOwnsPlatformHandle)
 {
@@ -26,4 +35,17 @@ TEST(ExternalBufferSystem, CreatesDedicatedBufferAndOwnsPlatformHandle)
     EXPECT_EQ(created->getSize(), 1024);
     EXPECT_GE(created->getAllocationSize(), created->getSize());
     EXPECT_TRUE(created->handle().isValid());
+    EXPECT_EQ(created->hasSemaphore(), context->getDeviceInfo().externalSemaphoreExportEnabled);
+    EXPECT_EQ(created->semaphoreHandle().isValid(), created->hasSemaphore());
+#ifdef _WIN32
+    if (created->hasSemaphore())
+    {
+        EXPECT_EQ(created->semaphoreHandle().getType(), panda::ExternalSemaphoreHandleType::OpaqueWin32);
+    }
+#elifdef __linux__
+    if (created->hasSemaphore())
+    {
+        EXPECT_EQ(created->semaphoreHandle().getType(), panda::ExternalSemaphoreHandleType::OpaqueFd);
+    }
+#endif
 }
