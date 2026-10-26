@@ -54,6 +54,10 @@ public:
     MOCK_METHOD(VkResult, vkEnumeratePhysicalDevices, (VkInstance, std::uint32_t*, VkPhysicalDevice*), ());
 
     MOCK_METHOD(void, vkGetPhysicalDeviceFeatures2, (VkPhysicalDevice, VkPhysicalDeviceFeatures2*), ());
+    MOCK_METHOD(void,
+                vkGetPhysicalDeviceExternalSemaphoreProperties,
+                (VkPhysicalDevice, const VkPhysicalDeviceExternalSemaphoreInfo*, VkExternalSemaphoreProperties*),
+                ());
 
     MOCK_METHOD(void, vkGetPhysicalDeviceProperties, (VkPhysicalDevice, VkPhysicalDeviceProperties*), ());
     MOCK_METHOD(void, vkGetPhysicalDeviceProperties2, (VkPhysicalDevice, VkPhysicalDeviceProperties2*), ());

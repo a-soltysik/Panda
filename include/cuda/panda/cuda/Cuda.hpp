@@ -46,9 +46,9 @@ struct Error
 /// initialization failure. A successful result does not guarantee later launches.
 [[nodiscard]] auto queryAvailability() noexcept -> std::expected<Availability, Error>;
 
-/// @brief Vulkan buffer with one retained CUDA import and mapped allocation.
-/// Context outlives every copy. The exported handle is consumed or released using
-/// the platform's import ownership rules. This object does not synchronize GPU use.
+/// @brief Vulkan buffer with one retained CUDA memory import and mapped allocation.
+/// Context outlives every copy. Available paired timeline semaphores are also
+/// imported and retained. This object does not synchronize GPU use.
 class SharedCudaBuffer final
 {
 public:
@@ -93,9 +93,10 @@ public:
     auto operator=(CudaSession&&) noexcept -> CudaSession& = default;
     ~CudaSession() = default;
 
-    /// @brief Imports and maps one Panda-owned dedicated external buffer.
-    /// @return A shared owner, or an error. Unsupported usages and memory handle combinations
-    /// are reported; no CPU copy is used. Synchronization with Vulkan is a separate operation.
+    /// @brief Imports one Panda-owned dedicated external buffer and its optional paired semaphore.
+    /// @return A shared owner, or an error. Unsupported usages and memory/semaphore handle
+    /// combinations are reported; no CPU copy is used. Importing the semaphore does not
+    /// synchronize with Vulkan.
     [[nodiscard]] auto importBuffer(panda::ExternalBuffer buffer) -> Result<SharedCudaBuffer>;
 
     /// @brief Closes this facade when no SharedCudaBuffer retains the session.

@@ -24,6 +24,10 @@ public:
                 (void** pointer, cudaExternalMemory_t memory, const cudaExternalMemoryBufferDesc* descriptor));
     MOCK_METHOD(cudaError_t, cudaFree, (void* pointer));
     MOCK_METHOD(cudaError_t, cudaDestroyExternalMemory, (cudaExternalMemory_t memory));
+    MOCK_METHOD(cudaError_t,
+                cudaImportExternalSemaphore,
+                (cudaExternalSemaphore_t * semaphore, const cudaExternalSemaphoreHandleDesc* descriptor));
+    MOCK_METHOD(cudaError_t, cudaDestroyExternalSemaphore, (cudaExternalSemaphore_t semaphore));
     // NOLINTEND(modernize-use-trailing-return-type)
 };
 

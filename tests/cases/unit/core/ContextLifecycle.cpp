@@ -71,6 +71,32 @@ auto externalMemoryExtensionName() -> std::string_view
 #endif
 }
 
+auto externalSemaphoreExtensionName() -> std::string_view
+{
+#ifdef _WIN32
+    return "VK_KHR_external_semaphore_win32";
+#else
+    return "VK_KHR_external_semaphore_fd";
+#endif
+}
+
+auto externalSemaphoreHandleType() -> VkExternalSemaphoreHandleTypeFlagBits
+{
+#ifdef _WIN32
+    return VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+#else
+    return VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
+#endif
+}
+
+auto hasDeviceExtension(const VkDeviceCreateInfo& info, std::string_view expected) -> bool
+{
+    const auto names = std::span {info.ppEnabledExtensionNames, info.enabledExtensionCount};
+    return std::ranges::any_of(names, [expected](const char* name) {
+        return std::string_view {name} == expected;
+    });
+}
+
 void verifyCommonDeviceFeatures(const VkPhysicalDeviceVulkan12Features& vulkan12,
                                 const VkPhysicalDeviceVulkan13Features& vulkan13)
 {
@@ -302,27 +328,77 @@ protected:
                 testing::Action<panda::test::WindowSurfaceMock::SurfaceResult(VkInstance)> {Return(std::move(result))});
     }
 
-    void expectExternalMemoryExtension(bool available)
+    void expectExternalMemoryExtensions(bool available, bool semaphoreAvailable = false)
     {
-        const auto externalMemory = extension(externalMemoryExtensionName());
+        auto entries = std::vector<VkExtensionProperties> {};
+        if (available)
+        {
+            entries.push_back(extension(externalMemoryExtensionName()));
+            if (semaphoreAvailable)
+            {
+                entries.push_back(extension(externalSemaphoreExtensionName()));
+            }
+        }
         EXPECT_CALL(vulkan, vkEnumerateDeviceExtensionProperties(physical, nullptr, NotNull(), _))
             .Times(available ? 2 : 1)
             .WillRepeatedly(
-                [externalMemory,
-                 available](VkPhysicalDevice, const char*, std::uint32_t* count, VkExtensionProperties* output) {
-                    *count = available ? 1U : 0U;
-                    if (available && output != nullptr)
+                [entries](VkPhysicalDevice, const char*, std::uint32_t* count, VkExtensionProperties* output) {
+                    *count = static_cast<std::uint32_t>(entries.size());
+                    if (output != nullptr)
                     {
-                        *output = externalMemory;
+                        std::ranges::copy(entries, output);
                     }
                     return success;
                 });
     }
 
+    void expectTimelineSemaphoreSupport(bool supported)
+    {
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceExternalSemaphoreProperties(physical, NotNull(), NotNull()))
+            .WillOnce([supported](VkPhysicalDevice,
+                                  const VkPhysicalDeviceExternalSemaphoreInfo* info,
+                                  VkExternalSemaphoreProperties* properties) {
+                EXPECT_EQ(info->handleType, externalSemaphoreHandleType());
+                ASSERT_NE(info->pNext, nullptr);
+                const auto* const semaphoreType = static_cast<const VkSemaphoreTypeCreateInfo*>(info->pNext);
+                EXPECT_EQ(semaphoreType->semaphoreType, VK_SEMAPHORE_TYPE_TIMELINE);
+                // Model binary-only drivers as exportable only when the query asks for binary semaphores.
+                if (supported || semaphoreType->semaphoreType == VK_SEMAPHORE_TYPE_BINARY)
+                {
+                    properties->externalSemaphoreFeatures = VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT;
+                    properties->compatibleHandleTypes = info->handleType;
+                }
+            });
+    }
+
+    static void expectDeviceExtensions(const VkDeviceCreateInfo& info,
+                                       bool windowed,
+                                       bool externalMemory,
+                                       bool externalSemaphore)
+    {
+        EXPECT_EQ(info.enabledExtensionCount,
+                  (windowed ? 2U : 0U) + (externalMemory ? 1U : 0U) + (externalSemaphore ? 1U : 0U));
+        if (windowed && info.enabledExtensionCount > 1U)
+        {
+            const auto names = std::span {info.ppEnabledExtensionNames, info.enabledExtensionCount};
+            EXPECT_EQ(std::string_view {names.front()}, vk::KHRSwapchainExtensionName);
+            EXPECT_EQ(std::string_view {names.subspan(1).front()}, vk::KHRSwapchainMaintenance1ExtensionName);
+        }
+        if (externalMemory)
+        {
+            EXPECT_TRUE(hasDeviceExtension(info, externalMemoryExtensionName()));
+        }
+        if (externalSemaphore)
+        {
+            EXPECT_TRUE(hasDeviceExtension(info, externalSemaphoreExtensionName()));
+        }
+    }
+
     void expectDevice(bool windowed,
                       VkResult result = success,
                       bool separateQueues = false,
-                      bool externalMemory = false)
+                      bool externalMemory = false,
+                      bool externalSemaphore = false)
     {
         if (result == success)
         {
@@ -330,25 +406,14 @@ protected:
         }
         EXPECT_CALL(vulkan, vkCreateDevice(physical, NotNull(), nullptr, NotNull()))
             .WillOnce(testing::Action<decltype(vkCreateDevice)> {
-                [this, windowed, result, separateQueues, externalMemory](VkPhysicalDevice,
-                                                                         const VkDeviceCreateInfo* info,
-                                                                         const VkAllocationCallbacks*,
-                                                                         VkDevice* output) {
+                [this, windowed, result, separateQueues, externalMemory, externalSemaphore](
+                    VkPhysicalDevice,
+                    const VkDeviceCreateInfo* info,
+                    const VkAllocationCallbacks*,
+                    VkDevice* output) {
                     verifyDeviceFeatures(*info, windowed);
                     EXPECT_EQ(info->queueCreateInfoCount, separateQueues ? 2U : 1U);
-                    EXPECT_EQ(info->enabledExtensionCount, (windowed ? 2U : 0U) + (externalMemory ? 1U : 0U));
-                    if (windowed && info->enabledExtensionCount > 1U)
-                    {
-                        const auto names = std::span {info->ppEnabledExtensionNames, info->enabledExtensionCount};
-                        EXPECT_EQ(std::string_view {names.front()}, vk::KHRSwapchainExtensionName);
-                        EXPECT_EQ(std::string_view {names.subspan(1).front()},
-                                  vk::KHRSwapchainMaintenance1ExtensionName);
-                    }
-                    if (externalMemory)
-                    {
-                        const auto names = std::span {info->ppEnabledExtensionNames, info->enabledExtensionCount};
-                        EXPECT_EQ(std::string_view {names.back()}, externalMemoryExtensionName());
-                    }
+                    expectDeviceExtensions(*info, windowed, externalMemory, externalSemaphore);
                     *output = device;
                     return result;
                 }});
@@ -631,7 +696,7 @@ TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
 {
     expectInstance();
     expectAdapter(false);
-    expectExternalMemoryExtension(true);
+    expectExternalMemoryExtensions(true);
     expectDevice(false, success, false, true);
     expectParentsDestroyed(true, false);
 
@@ -646,7 +711,7 @@ TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityUnavailableA
 {
     expectInstance();
     expectAdapter(false);
-    expectExternalMemoryExtension(false);
+    expectExternalMemoryExtensions(false);
     expectDevice(false);
     expectParentsDestroyed(true, false);
 
@@ -661,7 +726,7 @@ TEST_F(ContextLifecycleTest, RequiresExternalBufferCapabilityBeforePublishingCon
 {
     expectInstance();
     expectAdapter(false);
-    expectExternalMemoryExtension(false);
+    expectExternalMemoryExtensions(false);
     expectParentsDestroyed(false, false);
 
     const auto context =
@@ -669,6 +734,40 @@ TEST_F(ContextLifecycleTest, RequiresExternalBufferCapabilityBeforePublishingCon
 
     ASSERT_FALSE(context);
     EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(ContextLifecycleTest, EnablesTimelineSemaphoreExportWhenTheTimelineQueryIsSupported)
+{
+    expectInstance();
+    expectAdapter(false);
+    expectExternalMemoryExtensions(true, true);
+    expectTimelineSemaphoreSupport(true);
+    expectDevice(false, success, false, true, true);
+    expectParentsDestroyed(true, false);
+
+    auto context =
+        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+
+    ASSERT_TRUE(context);
+    EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
+    EXPECT_TRUE(context->getDeviceInfo().externalSemaphoreExportEnabled);
+}
+
+TEST_F(ContextLifecycleTest, DoesNotEnableBinaryOnlyExternalSemaphoreSupportForTimelineBuffers)
+{
+    expectInstance();
+    expectAdapter(false);
+    expectExternalMemoryExtensions(true, true);
+    expectTimelineSemaphoreSupport(false);
+    expectDevice(false, success, false, true);
+    expectParentsDestroyed(true, false);
+
+    auto context =
+        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+
+    ASSERT_TRUE(context);
+    EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
+    EXPECT_FALSE(context->getDeviceInfo().externalSemaphoreExportEnabled);
 }
 
 TEST_F(ContextLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePublicManager)

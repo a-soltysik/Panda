@@ -7,6 +7,8 @@
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
+#include <panda/ExternalMemoryHandle.hpp>
+#include <panda/ExternalSemaphoreHandle.hpp>
 #include <panda/Logger.hpp>
 #include <panda/cuda/Cuda.hpp>
 #include <string>
@@ -62,6 +64,18 @@ auto nativeHandleType(ExternalMemoryHandleType type) -> detail::NativeMemoryHand
         return detail::NativeMemoryHandleType::OpaqueWin32;
     }
     panda::panic("Invalid external memory handle type");
+}
+
+auto nativeSemaphoreHandleType(ExternalSemaphoreHandleType type) -> detail::NativeSemaphoreHandleType
+{
+    switch (type)
+    {
+    case ExternalSemaphoreHandleType::OpaqueFd:
+        return detail::NativeSemaphoreHandleType::OpaqueFd;
+    case ExternalSemaphoreHandleType::OpaqueWin32:
+        return detail::NativeSemaphoreHandleType::OpaqueWin32;
+    }
+    panda::panic("Invalid external semaphore handle type");
 }
 
 void reportCleanupFailure(std::int32_t status, const char* message) noexcept
@@ -125,6 +139,27 @@ auto importNativeBuffer(void* nativeSession, ExternalBuffer& buffer) -> Result<d
     }
     return imported;
 }
+
+auto importNativeSemaphore(void* nativeSession, const ExternalSemaphoreHandle& handle)
+    -> Result<std::optional<detail::NativeExternalSemaphoreResult>>
+{
+    if (!handle.isValid())
+    {
+        return std::nullopt;
+    }
+    const auto imported = detail::importExternalSemaphore(
+        nativeSession,
+        {.handle = handle.get(), .handleType = nativeSemaphoreHandleType(handle.getType())});
+    if (imported.status != detail::NativeInteropStatus::Success)
+    {
+        return std::unexpected {interopError(imported, "Could not import the Vulkan semaphore into CUDA")};
+    }
+    if (!imported.imported || imported.externalSemaphore == nullptr)
+    {
+        return std::unexpected {panda::makeError(ErrorCode::BackendFailure, "CUDA returned an empty semaphore")};
+    }
+    return std::optional {imported};
+}
 }
 
 struct detail::CudaSessionState final
@@ -168,19 +203,24 @@ private:
 struct detail::SharedCudaBufferState final
 {
 public:
-    SharedCudaBufferState(panda::ExternalBuffer buffer,
-                          std::shared_ptr<CudaSessionState> owner,
-                          const detail::NativeExternalBufferResult& importedResult)
+    SharedCudaBufferState(panda::ExternalBuffer buffer, std::shared_ptr<CudaSessionState> owner)
         : _externalBuffer {std::move(buffer)},
-          _session {std::move(owner)},
-          _imported {importedResult}
+          _session {std::move(owner)}
     {
     }
 
     ~SharedCudaBufferState()
     {
-        reportCleanupFailure(detail::destroyExternalBuffer(_session->getNativeSession(), _imported),
-                             "CUDA external buffer destruction failed");
+        if (_importedSemaphore)
+        {
+            reportCleanupFailure(detail::destroyExternalSemaphore(_session->getNativeSession(), *_importedSemaphore),
+                                 "CUDA external semaphore destruction failed");
+        }
+        if (_imported.imported)
+        {
+            reportCleanupFailure(detail::destroyExternalBuffer(_session->getNativeSession(), _imported),
+                                 "CUDA external buffer destruction failed");
+        }
     }
 
     SharedCudaBufferState(const SharedCudaBufferState&) = delete;
@@ -198,10 +238,35 @@ public:
         return _externalBuffer.getSize();
     }
 
+    [[nodiscard]] auto import() -> Result<void>
+    {
+        const auto imported = importNativeBuffer(_session->getNativeSession(), _externalBuffer);
+        if (!imported)
+        {
+            return std::unexpected {imported.error()};
+        }
+        _imported = *imported;
+
+        auto importedSemaphore = importNativeSemaphore(_session->getNativeSession(), _externalBuffer.semaphoreHandle());
+        if (!importedSemaphore)
+        {
+            return std::unexpected {importedSemaphore.error()};
+        }
+#ifdef __linux__
+        if (importedSemaphore->has_value())
+        {
+            static_cast<void>(_externalBuffer.semaphoreHandle().release());
+        }
+#endif
+        _importedSemaphore = *importedSemaphore;
+        return {};
+    }
+
 private:
     panda::ExternalBuffer _externalBuffer;
     std::shared_ptr<CudaSessionState> _session;
     detail::NativeExternalBufferResult _imported;
+    std::optional<detail::NativeExternalSemaphoreResult> _importedSemaphore;
 };
 
 auto queryAvailability() noexcept -> std::expected<Availability, Error>
@@ -269,12 +334,11 @@ auto CudaSession::importBuffer(panda::ExternalBuffer buffer) -> Result<SharedCud
     {
         return std::unexpected {valid.error()};
     }
-    auto imported = importNativeBuffer(_state->getNativeSession(), buffer);
-    if (!imported)
+    auto resource = std::make_shared<detail::SharedCudaBufferState>(std::move(buffer), _state);
+    if (const auto imported = resource->import(); !imported)
     {
         return std::unexpected {imported.error()};
     }
-    auto resource = std::make_shared<detail::SharedCudaBufferState>(std::move(buffer), _state, *imported);
     return SharedCudaBuffer {std::move(resource)};
 }
 

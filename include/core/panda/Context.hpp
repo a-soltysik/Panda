@@ -69,6 +69,8 @@ struct ContextDeviceInfo
     /// True when external buffer memory export was enabled for this Context.
     /// Individual buffer usages are still checked when an external buffer is created.
     bool externalBufferExportEnabled {false};
+    /// True when this Context can export opaque timeline semaphore handles for external buffers.
+    bool externalSemaphoreExportEnabled {false};
     /// Vulkan API version reported by the selected physical device.
     std::uint32_t apiVersion {0};
     /// Graphics and compute queue family selected for ordered work.
@@ -175,8 +177,8 @@ public:
     [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
 
     /// @brief Creates a dedicated device-local buffer and exports its allocation handle.
-    /// This exports memory only; Panda does not yet provide a cross-API handoff.
-    /// Do not use the allocation in another GPU API based on this handle alone.
+    /// This exports the allocation and an optional timeline semaphore handle, but does not submit a cross-API handoff.
+    /// Do not use the allocation in another GPU API based on these handles alone.
     /// @return An owning buffer and platform handle, or an unsupported/creation error.
     /// Context outlives the returned ExternalBuffer and every Buffer copy.
     [[nodiscard]] auto createExternalBuffer(const BufferDesc& description) const -> Result<ExternalBuffer>;

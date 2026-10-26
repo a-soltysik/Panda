@@ -196,3 +196,56 @@ TEST_F(CudaAdapterTest, ImportsDedicatedExternalAllocationAndMapsLogicalRange)
     EXPECT_EQ(panda::cuda::detail::destroyExternalBuffer(created.session, imported), cudaSuccess);
     EXPECT_EQ(panda::cuda::detail::destroyInteropSession(created.session), cudaSuccess);
 }
+
+TEST_F(CudaAdapterTest, ImportsOpaquePlatformHandleAsCudaTimelineSemaphore)
+{
+    const auto uuid = std::array<std::uint8_t, 16> {1, 2, 3};
+    auto properties = cudaDeviceProp {};
+    std::ranges::copy(uuid, std::span {properties.uuid.bytes}.begin());
+    std::max_align_t streamToken {};
+    std::max_align_t semaphoreToken {};
+    auto* const stream = fakeHandle<cudaStream_t>(streamToken);
+    auto* const semaphore = fakeHandle<cudaExternalSemaphore_t>(semaphoreToken);
+#ifdef _WIN32
+    constexpr auto handleType = panda::cuda::detail::NativeSemaphoreHandleType::OpaqueWin32;
+    constexpr auto cudaHandleType = cudaExternalSemaphoreHandleTypeTimelineSemaphoreWin32;
+#else
+    constexpr auto handleType = panda::cuda::detail::NativeSemaphoreHandleType::OpaqueFd;
+    constexpr auto cudaHandleType = cudaExternalSemaphoreHandleTypeTimelineSemaphoreFd;
+#endif
+    constexpr auto handle = std::intptr_t {7};
+
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
+        .WillOnce(testing::DoAll(testing::SetArgPointee<0>(1), testing::Return(cudaSuccess)));
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceProperties(testing::NotNull(), 0))
+        .WillOnce(testing::DoAll(testing::SetArgPointee<0>(properties), testing::Return(cudaSuccess)));
+    EXPECT_CALL(cudaRuntime, cudaSetDevice(0)).Times(4).WillRepeatedly(testing::Return(cudaSuccess));
+    EXPECT_CALL(cudaRuntime, cudaStreamCreateWithFlags(testing::NotNull(), cudaStreamNonBlocking))
+        .WillOnce(testing::DoAll(testing::SetArgPointee<0>(stream), testing::Return(cudaSuccess)));
+    EXPECT_CALL(cudaRuntime, cudaImportExternalSemaphore(testing::NotNull(), testing::NotNull()))
+        .WillOnce([&](auto* output, const auto* descriptor) {
+            EXPECT_EQ(descriptor->type, cudaHandleType);
+            EXPECT_EQ(descriptor->flags, 0U);
+#ifdef _WIN32
+            // The opaque HANDLE is passed through as intptr_t by Core.
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast, performance-no-int-to-ptr)
+            EXPECT_EQ(descriptor->handle.win32.handle, reinterpret_cast<void*>(handle));
+#else
+            EXPECT_EQ(descriptor->handle.fd, static_cast<int>(handle));
+#endif
+            *output = semaphore;
+            return cudaSuccess;
+        });
+    EXPECT_CALL(cudaRuntime, cudaDestroyExternalSemaphore(semaphore)).WillOnce(testing::Return(cudaSuccess));
+    EXPECT_CALL(cudaRuntime, cudaStreamDestroy(stream)).WillOnce(testing::Return(cudaSuccess));
+
+    const auto created = panda::cuda::detail::createInteropSession(uuid.data());
+    ASSERT_EQ(created.status, NativeInteropStatus::Success);
+    const auto imported =
+        panda::cuda::detail::importExternalSemaphore(created.session, {.handle = handle, .handleType = handleType});
+    ASSERT_EQ(imported.status, NativeInteropStatus::Success);
+    EXPECT_TRUE(imported.imported);
+    EXPECT_EQ(imported.externalSemaphore, semaphore);
+    EXPECT_EQ(panda::cuda::detail::destroyExternalSemaphore(created.session, imported), cudaSuccess);
+    EXPECT_EQ(panda::cuda::detail::destroyInteropSession(created.session), cudaSuccess);
+}

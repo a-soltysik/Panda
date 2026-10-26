@@ -38,26 +38,34 @@ The flag describes Context-level Vulkan export setup only. Support for an indivi
 buffer usage is queried when that buffer is requested. CUDA applications can also
 create `CudaSession` before allocating buffers; failure to match the selected Vulkan
 device is reported then, so they can select an application-owned fallback early.
+`ContextDeviceInfo::externalSemaphoreExportEnabled` separately reports whether the
+selected device can export the opaque timeline semaphore handle used by the handoff.
 
 `Context::createExternalBuffer(BufferDesc)` validates the request, checks export
 support for the requested Vulkan usage, creates a device-local buffer backed by one
 dedicated allocation, binds it at offset zero and exports the platform allocation
 handle. The resulting `ExternalBuffer` owns both the Vulkan `Buffer` and one
 move-only `ExternalMemoryHandle`, plus the logical size, allocation size and Vulkan
-device UUID. Ordinary `Context::createBuffer` resources remain non-exportable.
+device UUID. When `externalSemaphoreExportEnabled` is true, it also owns a paired
+timeline semaphore with initial value 0 and its move-only `ExternalSemaphoreHandle`.
+The semaphore handle can be absent on devices without export support. Ordinary
+`Context::createBuffer` resources remain non-exportable.
 
 `Panda::Cuda::CudaSession::create(Context&)` selects a CUDA device by UUID and
 creates one non-blocking stream. `CudaSession::importBuffer(ExternalBuffer)` imports
-and maps the dedicated allocation once. `SharedCudaBuffer` retains the imported
-allocation, its Vulkan buffer and the CUDA session; `close()` reports
+and maps the dedicated allocation once, and imports the paired timeline semaphore
+when one is present. `SharedCudaBuffer` retains the imported allocation and
+semaphore, its Vulkan buffer and the CUDA session; `close()` reports
 `ResourcesInUse` while those owners remain alive. On Linux, successful FD import
 transfers handle ownership to CUDA; on Windows, the exported HANDLE remains owned by
-its RAII wrapper until the `SharedCudaBuffer` releases it.
+its RAII wrapper until the `SharedCudaBuffer` releases it. CUDA destroys the imported
+semaphore when the last shared-buffer owner is released.
 
-The current API establishes allocation sharing only. It does not expose a CUDA
-compute view or submission call, and it does not synchronize Vulkan with another
-GPU API. An imported mapping must not be treated as safe to use for computation or
-rendering until the handoff contract below is implemented and verified.
+The current API establishes allocation sharing and can export and import the paired
+semaphore, but does not yet submit ownership barriers or synchronize Vulkan with
+another GPU API. Possessing or importing the semaphore does not order buffer access. An imported
+mapping must not be treated as safe to use for computation or rendering until the
+handoff contract below is implemented and verified.
 
 ## Required synchronization contract
 
@@ -72,12 +80,12 @@ results must be visible to Vulkan. The reverse direction is required when Vulkan
 writes data later consumed by the external backend. Rendering includes every pass
 that reads the resource, including shadows.
 
-The [external handoff task](../../development/tasks/gpu-handoff.md) will select and
-prove the smallest supported GPU-side handoff for the optional CUDA add-on. It must
+The [external handoff task](../../development/tasks/gpu-handoff.md) implements and
+proves the smallest supported GPU-side handoff for the optional CUDA add-on. It must
 preserve application-owned scheduling, avoid CPU copies and routine global waits,
-and define failures and resource retirement. The handle type and exact
-cross-API synchronization primitive remain implementation choices for that task;
-no particular timeline protocol is promised here.
+and define failures and resource retirement. The current implementation direction
+uses an opaque timeline semaphore, but ordered Vulkan ownership transfers and CUDA
+wait/signal operations remain required before buffers are safe for cross-API use.
 
 ## Build and capability boundary
 

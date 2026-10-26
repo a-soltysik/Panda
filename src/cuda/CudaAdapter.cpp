@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <optional>
 #include <span>
 #include <utility>
 
@@ -159,6 +160,35 @@ auto importPreparedBuffer(void* nativeSession,
                                        .devicePointer = devicePointer,
                                        .imported = true};
 }
+
+auto externalSemaphoreDescriptor(const NativeExternalSemaphoreImport& description)
+    -> std::optional<cudaExternalSemaphoreHandleDesc>
+{
+#ifdef __linux__
+    if (description.handleType != NativeSemaphoreHandleType::OpaqueFd)
+    {
+        return std::nullopt;
+    }
+    return cudaExternalSemaphoreHandleDesc {.type = cudaExternalSemaphoreHandleTypeTimelineSemaphoreFd,
+                                            .handle = {.fd = static_cast<int>(description.handle)},
+                                            .flags = 0,
+                                            .reserved = {}};
+#elif _WIN32
+    if (description.handleType != NativeSemaphoreHandleType::OpaqueWin32)
+    {
+        return std::nullopt;
+    }
+    return cudaExternalSemaphoreHandleDesc {
+        .type = cudaExternalSemaphoreHandleTypeTimelineSemaphoreWin32,
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast, performance-no-int-to-ptr): Core carries HANDLE as intptr_t.
+        .handle = {.win32 = {.handle = reinterpret_cast<void*>(description.handle), .name = nullptr}},
+        .flags = 0,
+        .reserved = {}};
+#else
+    static_cast<void>(description);
+    return std::nullopt;
+#endif
+}
 }
 
 auto queryNativeAvailability() noexcept -> NativeAvailabilityResult
@@ -228,6 +258,31 @@ auto importExternalBuffer(void* nativeSession, const NativeExternalBufferImport&
 #endif
 }
 
+auto importExternalSemaphore(void* nativeSession, const NativeExternalSemaphoreImport& description) noexcept
+    -> NativeExternalSemaphoreResult
+{
+    const auto descriptor = externalSemaphoreDescriptor(description);
+    if (!descriptor)
+    {
+        return {.status = NativeInteropStatus::Unsupported};
+    }
+    auto& session = *static_cast<NativeSession*>(nativeSession);
+    const auto selected = cudaSetDevice(session.device);
+    if (selected != cudaSuccess)
+    {
+        return {.status = interopStatus(selected), .nativeCode = static_cast<std::int32_t>(selected)};
+    }
+    auto* semaphore = cudaExternalSemaphore_t {};
+    const auto imported = cudaImportExternalSemaphore(&semaphore, &*descriptor);
+    if (imported != cudaSuccess)
+    {
+        return {.status = interopStatus(imported), .nativeCode = static_cast<std::int32_t>(imported)};
+    }
+    return NativeExternalSemaphoreResult {.status = NativeInteropStatus::Success,
+                                          .externalSemaphore = semaphore,
+                                          .imported = true};
+}
+
 auto destroyInteropSession(void* nativeSession) noexcept -> std::int32_t
 {
     auto session = std::unique_ptr<NativeSession> {static_cast<NativeSession*>(nativeSession)};
@@ -253,5 +308,18 @@ auto destroyExternalBuffer(void* nativeSession, const NativeExternalBufferResult
     }
     return static_cast<std::int32_t>(
         destroyExternalMemory(static_cast<cudaExternalMemory_t>(imported.externalMemory), imported.devicePointer));
+}
+
+auto destroyExternalSemaphore(void* nativeSession, const NativeExternalSemaphoreResult& imported) noexcept
+    -> std::int32_t
+{
+    auto& session = *static_cast<NativeSession*>(nativeSession);
+    const auto selected = cudaSetDevice(session.device);
+    if (selected != cudaSuccess)
+    {
+        return static_cast<std::int32_t>(selected);
+    }
+    return static_cast<std::int32_t>(
+        cudaDestroyExternalSemaphore(static_cast<cudaExternalSemaphore_t>(imported.externalSemaphore)));
 }
 }

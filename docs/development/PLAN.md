@@ -2,10 +2,10 @@
 
 The design, build foundation and GLFW window wrapper are accepted. The static core,
 shared diagnostics, optional GLFW Tools, a CUDA availability facade, examples and
-CPU tests exist. Generic external-memory buffer creation and CUDA import are ready
-for review; safe cross-API handoff and compute submission remain planned. Toolchain
-compatibility and tests/API documentation are accepted in the
-authorized build-foundation phase.
+CPU tests exist. Generic external-memory buffer creation and CUDA memory import are
+ready for review; paired timeline-semaphore export and CUDA import are in progress,
+while ordered cross-API handoff and compute submission remain incomplete. Toolchain compatibility and tests/API
+documentation are accepted in the authorized build-foundation phase.
 
 ## Task order
 
@@ -23,8 +23,8 @@ criteria and concise current evidence.
 | [Vulkan context and window lifecycle](tasks/vulkan-context.md) | GPU resources | Accepted | [Build foundation](tasks/build-foundation.md), [C++ and CUDA toolchain compatibility](tasks/toolchain-compatibility.md), [Tests and API documentation](tasks/tests-and-api-docs.md) |
 | [Allocation, uploads and resource lifetimes](tasks/resource-lifetimes.md) | GPU resources | Accepted | [Vulkan context and window lifecycle](tasks/vulkan-context.md) |
 | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) | GPU resources | Accepted | [Allocation, uploads and resource lifetimes](tasks/resource-lifetimes.md) |
-| [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) | CUDA interoperability | Review | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) |
-| [Vulkan and external backend handoff](tasks/gpu-handoff.md) | CUDA interoperability | Planned | [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) |
+| [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) | CUDA interoperability | Accepted | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) |
+| [Vulkan and external backend handoff](tasks/gpu-handoff.md) | CUDA interoperability | In progress | [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) |
 | [Scene identities and transforms](tasks/scene-transforms.md) | First scene | Planned | [Vulkan and external backend handoff](tasks/gpu-handoff.md) |
 | [First lit and shadowed scene](tasks/first-scene.md) | First scene | Planned | [Scene identities and transforms](tasks/scene-transforms.md) |
 | [Materials, lights and shadows](tasks/materials-and-shadows.md) | Renderer features | Planned | [First lit and shadowed scene](tasks/first-scene.md) |

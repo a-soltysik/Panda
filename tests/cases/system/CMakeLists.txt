@@ -14,6 +14,13 @@ panda_add_test(panda_system_external_buffer system
     SOURCES ExternalBuffer.cpp
     LIBRARIES Panda::Panda)
 
+if(PANDA_BUILD_CUDA)
+    panda_add_test(panda_system_external_buffer_cuda system
+        SOURCES ExternalBufferCuda.cpp
+        LIBRARIES Panda::Panda Panda::Cuda
+        MOCKS PandaTest::CudaRuntimeMock)
+endif()
+
 panda_add_test(panda_system_texture system
     SOURCES Texture.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture)
