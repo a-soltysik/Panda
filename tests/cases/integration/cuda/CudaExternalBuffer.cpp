@@ -3,6 +3,8 @@
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/cuda/Cuda.hpp>
+#include <panda/cuda/CudaSession.hpp>
+#include <panda/cuda/SharedCudaBuffer.hpp>
 #include <utility>
 #include <vulkan/vulkan.hpp>
 
@@ -31,8 +33,8 @@ TEST(CudaExternalBufferIntegration, ImportsPandaOwnedBufferOnce)
     }
     ASSERT_TRUE(session) << session.error().message;
 
-    auto externalBuffer =
-        context->createExternalBuffer({.size = 1024, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto externalBuffer = context->getExternalBufferManager().createBuffer(
+        {.size = 1024, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     if (!externalBuffer && externalBuffer.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << externalBuffer.error().message;
@@ -47,7 +49,7 @@ TEST(CudaExternalBufferIntegration, ImportsPandaOwnedBufferOnce)
     ASSERT_TRUE(imported) << imported.error().message;
     EXPECT_TRUE(imported->isValid());
     EXPECT_EQ(imported->getSize(), 1024);
-    EXPECT_TRUE(imported->buffer().isValid());
+    EXPECT_TRUE(imported->getBuffer().isValid());
     const auto closeWhileImported = session->close();
     ASSERT_FALSE(closeWhileImported);
     EXPECT_EQ(closeWhileImported.error().code, panda::ErrorCode::ResourcesInUse);

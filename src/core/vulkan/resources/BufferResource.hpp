@@ -2,7 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <span>
@@ -13,6 +15,8 @@
 
 namespace panda::detail
 {
+class ExternalContext;
+class ExternalSemaphoreResource;
 namespace buffer_resources = ::panda::core::vulkan::resources;
 
 // Declaration order destroys the bound buffer before releasing its allocation.
@@ -35,6 +39,14 @@ public:
     [[nodiscard]] auto getNativeMemory() const -> vk::DeviceMemory;
     [[nodiscard]] auto getUsage() const -> vk::BufferUsageFlags;
     [[nodiscard]] auto belongsTo(const buffer_resources::MemoryPool& pool) const -> bool;
+
+    [[nodiscard]] auto isExternallyOwned() const noexcept -> bool;
+    void setExternallyOwned(bool externallyOwned) noexcept;
+    void setExternalInterop(ExternalContext& context, std::shared_ptr<ExternalSemaphoreResource> semaphore) noexcept;
+    [[nodiscard]] auto getExternalContext() const noexcept -> std::optional<std::reference_wrapper<ExternalContext>>;
+    [[nodiscard]] auto getExternalSemaphore() const noexcept -> const std::shared_ptr<ExternalSemaphoreResource>&;
+    [[nodiscard]] auto getExternalTimelineValue() const noexcept -> std::uint64_t;
+    void setExternalTimelineValue(std::uint64_t value) noexcept;
     [[nodiscard]] auto getMappedBytes() const -> Result<std::span<std::byte>>;
     [[nodiscard]] auto writeMapped(std::uint64_t offset, std::span<const std::byte> bytes) const -> Result<void>;
     [[nodiscard]] auto invalidate(std::uint64_t offset, std::uint64_t size) const -> Result<void>;
@@ -57,5 +69,9 @@ private:
     std::uint64_t _size;
     vk::BufferUsageFlags _usage;
     BufferMemory _intent;
+    std::optional<std::reference_wrapper<ExternalContext>> _externalContext;
+    std::shared_ptr<ExternalSemaphoreResource> _externalSemaphore;
+    std::uint64_t _externalTimelineValue {0};
+    bool _externallyOwned {false};
 };
 }

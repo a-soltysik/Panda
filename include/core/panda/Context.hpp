@@ -10,7 +10,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
-#include <panda/ExternalBuffer.hpp>
+#include <panda/ExternalBufferManager.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <panda/Texture.hpp>
@@ -171,17 +171,13 @@ public:
     /// it must not outlive this Context. Calls remain serialized with Context operations.
     [[nodiscard]] auto getPerformanceManager() -> PerformanceManager&;
 
+    /// @brief Borrows this Context's external-buffer creation and handoff operations.
+    [[nodiscard]] auto getExternalBufferManager() -> ExternalBufferManager&;
+
     /// @brief Creates an ordinary fixed-size buffer with undefined initial bytes.
     /// @return A shared resource owner or a validation/allocation/backend error.
     /// Context outlives all copies. May allocate; submits no work and does not wait.
     [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
-
-    /// @brief Creates a dedicated device-local buffer and exports its allocation handle.
-    /// This exports the allocation and an optional timeline semaphore handle, but does not submit a cross-API handoff.
-    /// Do not use the allocation in another GPU API based on these handles alone.
-    /// @return An owning buffer and platform handle, or an unsupported/creation error.
-    /// Context outlives the returned ExternalBuffer and every Buffer copy.
-    [[nodiscard]] auto createExternalBuffer(const BufferDesc& description) const -> Result<ExternalBuffer>;
 
     /// @brief Creates an optimal-tiled, single-mip, single-layer 2D image with undefined initial contents.
     /// @return A shared image owner or a validation/allocation/backend error.
@@ -219,11 +215,11 @@ private:
 
     [[nodiscard]] static auto createInternal(const WindowSurface* surface, const ContextOptions& options)
         -> Result<Context>;
-
     explicit Context(std::unique_ptr<Impl> implementation) noexcept;
 
     std::unique_ptr<Impl> _implementation;
     PerformanceManager _performanceManager;
+    ExternalBufferManager _externalBufferManager;
 };
 
 }

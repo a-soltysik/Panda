@@ -12,7 +12,7 @@ forwarding and helper calculations.
 | [UC Create and release a native window](create-window.md) | Optional Panda::Tools/GLFW wrapper; applications may provide their own `WindowSurface` |
 | [UC Run a window event loop](run-window-event-loop.md) | Process input and close requests; poll while active and wait while presentation is suspended |
 | [UC Create a buffer](create-buffer.md) | Worked example: positive sequence, ownership and binding-failure cleanup for an ordinary buffer |
-| [UC Create and import an external buffer](create-external-buffer.md) | Dedicated Vulkan allocation, platform handle ownership, UUID matching and CUDA import; synchronization remains a separate task |
+| [UC Create and import an external buffer](create-external-buffer.md) | Dedicated Vulkan allocation, CUDA import and Vulkan ownership handoff; ordered CUDA work remains in progress |
 | [UC Allocate a compatible device-memory range](allocate-memory-range.md) | Compatible memory type, pooled or dedicated range, and bounded fallback |
 | [UC Create a texture and its default view](create-texture.md) | Validate, allocate, bind and create the internal view before publishing a 2D image |
 | [UC Create mesh storage with optional indices](create-mesh.md) | Derive sizes and publish vertex/optional index buffers only when all succeed |

@@ -264,6 +264,10 @@ auto UploadManager::validateWrite(const std::shared_ptr<BufferResource>& destina
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Upload needs a nonempty buffer and bytes from this Context")};
     }
+    if (destination->isExternallyOwned())
+    {
+        return std::unexpected {makeError(ErrorCode::ResourcesInUse, "An external API currently owns this buffer")};
+    }
     if (!(destination->getUsage() & vk::BufferUsageFlagBits::eTransferDst) || offset > destination->getSize() ||
         size > destination->getSize() - offset)
     {

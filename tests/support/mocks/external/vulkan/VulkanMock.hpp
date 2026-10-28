@@ -1,7 +1,14 @@
 #pragma once
 
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+#    include <windows.h>
+#endif
+
 #include <gmock/gmock.h>
 #include <vulkan/vulkan_core.h>
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+#    include <vulkan/vulkan_win32.h>
+#endif
 
 #include <cstddef>
 #include <cstdint>
@@ -99,6 +106,16 @@ public:
                 (VkDevice, const VkMemoryAllocateInfo*, const VkAllocationCallbacks*, VkDeviceMemory*),
                 ());
     MOCK_METHOD(void, vkFreeMemory, (VkDevice, VkDeviceMemory, const VkAllocationCallbacks*), ());
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    MOCK_METHOD(VkResult, vkGetMemoryWin32HandleKHR, (VkDevice, const VkMemoryGetWin32HandleInfoKHR*, HANDLE*), ());
+    MOCK_METHOD(VkResult,
+                vkGetSemaphoreWin32HandleKHR,
+                (VkDevice, const VkSemaphoreGetWin32HandleInfoKHR*, HANDLE*),
+                ());
+#elifdef __linux__
+    MOCK_METHOD(VkResult, vkGetMemoryFdKHR, (VkDevice, const VkMemoryGetFdInfoKHR*, int*), ());
+    MOCK_METHOD(VkResult, vkGetSemaphoreFdKHR, (VkDevice, const VkSemaphoreGetFdInfoKHR*, int*), ());
+#endif
     MOCK_METHOD(VkResult,
                 vkMapMemory,
                 (VkDevice, VkDeviceMemory, VkDeviceSize, VkDeviceSize, VkMemoryMapFlags, void**),

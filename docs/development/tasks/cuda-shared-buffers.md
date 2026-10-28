@@ -13,9 +13,9 @@ Non-goal: No compute callback/submission API, Vulkan/CUDA synchronization, solve
 CPU bounce path or image sharing. Importing memory does not make cross-API access safe.
 
 Interface: `ContextOptions::ExternalBufferSupport`,
-`ContextDeviceInfo::externalBufferExportEnabled`, `Context::createExternalBuffer`, `ExternalBuffer`,
+`ContextDeviceInfo::externalBufferExportEnabled`, `Context::getExternalBufferManager`, `ExternalBuffer`,
 `CudaSession::create`, `CudaSession::importBuffer` and
-`SharedCudaBuffer::buffer`.
+`SharedCudaBuffer::getBuffer`.
 
 Paths: `include/core/panda/`, `include/cuda/panda/cuda/`, `src/core/vulkan/external/`,
 `src/cuda/`, `tests/cases/` and directly affected documentation.

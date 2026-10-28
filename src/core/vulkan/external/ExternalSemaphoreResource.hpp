@@ -17,6 +17,8 @@ public:
     ExternalSemaphoreResource(ExternalSemaphoreResource&&) = delete;
     auto operator=(ExternalSemaphoreResource&&) -> ExternalSemaphoreResource& = delete;
 
+    [[nodiscard]] auto getNative() const -> vk::Semaphore;
+
 private:
     vk::raii::Semaphore _semaphore {nullptr};
 };

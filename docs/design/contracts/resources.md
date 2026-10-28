@@ -148,9 +148,12 @@ their public headers; entries without public declarations remain planned contrac
 | `Context::create(ContextOptions) -> Result<Context>` | Move-only owner with stable, heap-owned internal state; operations on one context are serialized |
 | `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
 | `Context::getDeviceInfo() -> ContextDeviceInfo` | Copies selected-device information including external-memory and optional timeline-semaphore export support |
+| `Context::getExternalBufferManager() -> ExternalBufferManager&` | Borrows the Context-owned object for external-buffer creation and GPU ownership handoffs |
 | `Buffer`, `Texture`, `Mesh`, `Material` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
 | `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
-| `Context::createExternalBuffer(BufferDesc) -> Result<ExternalBuffer>` | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle |
+| `ExternalBufferManager::createBuffer(BufferDesc) -> Result<ExternalBuffer>` | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle |
+| `ExternalBufferManager::releaseToExternal(const Buffer&) -> Result<uint64_t>` | Submits a Vulkan ownership release and signals the paired timeline semaphore |
+| `ExternalBufferManager::acquireFromExternal(const Buffer&, uint64_t) -> Result<void>` | Waits on the external timeline value and queues the Vulkan ownership acquire |
 | `ExternalBuffer` | Owns the Vulkan buffer, allocation handle and optional paired timeline-semaphore handle; handles alone do not synchronize access |
 | `CudaSession::importBuffer(ExternalBuffer) -> Result<SharedCudaBuffer>` | `Panda::Cuda` imports and maps a matching-device allocation once and imports its optional paired semaphore; it does not submit compute or synchronize with Vulkan |
 | `CudaSession::close() -> Result<void>` | Releases the session only after all `SharedCudaBuffer` owners are gone |
@@ -166,10 +169,11 @@ their public headers; entries without public declarations remain planned contrac
 
 `ContextDeviceInfo::externalBufferExportEnabled` is `true` only when the Context
 enabled Vulkan external-memory export. It does not guarantee every requested usage
-can be exported; `Context::createExternalBuffer` checks the actual usage.
+can be exported; `ExternalBufferManager::createBuffer` checks the actual usage.
 `externalSemaphoreExportEnabled` separately reports whether the Context enabled
 opaque timeline-semaphore export for external buffers. A buffer created on a device
-without that capability has no semaphore handle.
+without that capability has no semaphore handle, and handoff requests return
+`Unsupported`.
 
 `ContextOptions::enableValidation` enables the installed Khronos validation layer and
 registers a `VK_EXT_debug_utils` callback that routes diagnostics to the Panda logger.
@@ -200,7 +204,7 @@ option that changes ordinary buffer behavior.
 
 The implemented `BufferDesc` provides byte size, `vk::BufferUsageFlags` and
 `BufferMemory` intent. `Context::createBuffer` creates ordinary, non-exportable
-buffers with undefined initial bytes. `Context::createExternalBuffer` is a separate
+buffers with undefined initial bytes. `ExternalBufferManager::createBuffer` is a separate
 operation that requires external-memory support and always uses device-local memory.
 Supported usages are transfer,
 vertex, index, indirect, uniform/storage and texel buffers; feature-dependent usages

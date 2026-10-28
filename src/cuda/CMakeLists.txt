@@ -9,7 +9,7 @@ panda_configure_target(panda_cuda_adapter)
 panda_add_component(panda_cuda
     ALIAS Panda::Cuda
     INCLUDE_DIRECTORY "${PROJECT_SOURCE_DIR}/include/cuda"
-    SOURCES Cuda.cpp
-    PUBLIC_HEADERS panda/cuda/Cuda.hpp
-    PRIVATE_HEADERS CudaAdapter.hpp
+    SOURCES Cuda.cpp CudaSession.cpp SharedCudaBuffer.cpp CudaInterop.cpp CudaSessionState.cpp SharedCudaBufferState.cpp
+    PUBLIC_HEADERS panda/cuda/Cuda.hpp panda/cuda/CudaSession.hpp panda/cuda/SharedCudaBuffer.hpp
+    PRIVATE_HEADERS CudaAdapter.hpp CudaInterop.hpp CudaSessionState.hpp SharedCudaBufferState.hpp
     LIBRARIES PUBLIC Panda::Panda PRIVATE panda_cuda_adapter)

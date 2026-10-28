@@ -15,6 +15,7 @@ public:
     MOCK_METHOD(cudaError_t, cudaGetDeviceProperties, (cudaDeviceProp * properties, int device));
     MOCK_METHOD(cudaError_t, cudaSetDevice, (int device));
     MOCK_METHOD(cudaError_t, cudaStreamCreateWithFlags, (cudaStream_t * stream, unsigned int flags));
+    MOCK_METHOD(cudaError_t, cudaStreamSynchronize, (cudaStream_t stream));
     MOCK_METHOD(cudaError_t, cudaStreamDestroy, (cudaStream_t stream));
     MOCK_METHOD(cudaError_t,
                 cudaImportExternalMemory,
@@ -28,6 +29,18 @@ public:
                 cudaImportExternalSemaphore,
                 (cudaExternalSemaphore_t * semaphore, const cudaExternalSemaphoreHandleDesc* descriptor));
     MOCK_METHOD(cudaError_t, cudaDestroyExternalSemaphore, (cudaExternalSemaphore_t semaphore));
+    MOCK_METHOD(cudaError_t,
+                cudaWaitExternalSemaphoresAsync,
+                (const cudaExternalSemaphore_t* semaphores,
+                 const cudaExternalSemaphoreWaitParams* params,
+                 unsigned int count,
+                 cudaStream_t stream));
+    MOCK_METHOD(cudaError_t,
+                cudaSignalExternalSemaphoresAsync,
+                (const cudaExternalSemaphore_t* semaphores,
+                 const cudaExternalSemaphoreSignalParams* params,
+                 unsigned int count,
+                 cudaStream_t stream));
     // NOLINTEND(modernize-use-trailing-return-type)
 };
 

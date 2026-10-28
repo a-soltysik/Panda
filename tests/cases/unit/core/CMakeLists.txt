@@ -58,6 +58,13 @@ panda_add_test(panda_unit_context unit
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock PandaTest::SwapchainGenerationMock)
 
+panda_add_test(panda_unit_external_context unit
+    VULKAN_INTERNAL
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"
+    SOURCES ExternalContext.cpp
+    LIBRARIES Panda::Panda PandaTest::Support
+    MOCKS PandaTest::VulkanMock PandaTest::BufferResourceMock PandaTest::SubmissionQueueMock)
+
 panda_add_test(panda_unit_error unit
     SOURCES Error.cpp
     LIBRARIES Panda::Panda)

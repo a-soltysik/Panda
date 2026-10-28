@@ -3,6 +3,7 @@
 #include <cuda_runtime_api.h>
 #include <driver_types.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -13,14 +14,14 @@
 
 namespace panda::cuda::detail
 {
-namespace
-{
 struct NativeSession
 {
     int device {0};
     cudaStream_t stream {nullptr};
 };
 
+namespace
+{
 struct NativeDeviceResult
 {
     NativeInteropStatus status {NativeInteropStatus::Failure};
@@ -45,7 +46,7 @@ auto interopStatus(cudaError_t error) -> NativeInteropStatus
     return NativeInteropStatus::Failure;
 }
 
-auto destroyExternalMemory(cudaExternalMemory_t memory, void* devicePointer) -> cudaError_t
+auto destroyExternalMemory(NativeExternalMemory memory, std::byte* devicePointer) -> cudaError_t
 {
     auto firstError = devicePointer != nullptr ? cudaFree(devicePointer) : cudaSuccess;
     if (memory != nullptr)
@@ -59,7 +60,7 @@ auto destroyExternalMemory(cudaExternalMemory_t memory, void* devicePointer) -> 
     return firstError;
 }
 
-auto failedSession(std::unique_ptr<NativeSession> session, cudaError_t error) -> NativeInteropResult
+auto failedSession(NativeSessionOwner session, cudaError_t error) -> NativeInteropResult
 {
     auto cleanup = cudaSuccess;
     if (session->stream != nullptr)
@@ -68,10 +69,11 @@ auto failedSession(std::unique_ptr<NativeSession> session, cudaError_t error) ->
     }
     return NativeInteropResult {.status = interopStatus(error),
                                 .nativeCode = static_cast<std::int32_t>(error),
-                                .cleanupCode = static_cast<std::int32_t>(cleanup)};
+                                .cleanupCode = static_cast<std::int32_t>(cleanup),
+                                .session = {}};
 }
 
-auto checkDeviceUuid(int device, const std::uint8_t* deviceUuid) -> NativeDeviceResult
+auto checkDeviceUuid(int device, std::span<const std::uint8_t, nativeDeviceUuidSize> deviceUuid) -> NativeDeviceResult
 {
     auto properties = cudaDeviceProp {};
     const auto status = cudaGetDeviceProperties(&properties, device);
@@ -80,12 +82,13 @@ auto checkDeviceUuid(int device, const std::uint8_t* deviceUuid) -> NativeDevice
         return {.status = interopStatus(status), .nativeCode = static_cast<std::int32_t>(status)};
     }
     const auto uuid = std::span {properties.uuid.bytes};
-    return {.status = std::memcmp(uuid.data(), deviceUuid, uuid.size_bytes()) == 0 ? NativeInteropStatus::Success
-                                                                                   : NativeInteropStatus::Unsupported,
+    return {.status = std::memcmp(uuid.data(), deviceUuid.data(), uuid.size_bytes()) == 0
+                          ? NativeInteropStatus::Success
+                          : NativeInteropStatus::Unsupported,
             .device = device};
 }
 
-auto findMatchingDevice(const std::uint8_t* deviceUuid) -> NativeDeviceResult
+auto findMatchingDevice(std::span<const std::uint8_t, nativeDeviceUuidSize> deviceUuid) -> NativeDeviceResult
 {
     auto deviceCount = int {};
     const auto countStatus = cudaGetDeviceCount(&deviceCount);
@@ -110,14 +113,14 @@ auto createSessionForDevice(int device) -> NativeInteropResult
     const auto selected = cudaSetDevice(device);
     if (selected != cudaSuccess)
     {
-        return {.status = interopStatus(selected), .nativeCode = static_cast<std::int32_t>(selected)};
+        return {.status = interopStatus(selected), .nativeCode = static_cast<std::int32_t>(selected), .session = {}};
     }
     // Ownership transfers through NativeInteropResult after stream creation.
     // cppcheck-suppress unreadVariable
-    auto session = std::unique_ptr<NativeSession> {new (std::nothrow) NativeSession {.device = device}};
+    auto session = NativeSessionOwner {new (std::nothrow) NativeSession {.device = device}};
     if (session == nullptr)
     {
-        return {.status = NativeInteropStatus::Failure};
+        return {.status = NativeInteropStatus::Failure, .session = {}};
     }
     auto* const sessionPointer = session.get();
     const auto streamStatus = cudaStreamCreateWithFlags(&sessionPointer->stream, cudaStreamNonBlocking);
@@ -125,14 +128,13 @@ auto createSessionForDevice(int device) -> NativeInteropResult
     {
         return failedSession(std::move(session), streamStatus);
     }
-    return NativeInteropResult {.status = NativeInteropStatus::Success, .session = session.release()};
+    return NativeInteropResult {.status = NativeInteropStatus::Success, .session = std::move(session)};
 }
 
-auto importPreparedBuffer(void* nativeSession,
+auto importPreparedBuffer(const NativeSession& session,
                           const NativeExternalBufferImport& description,
                           cudaExternalMemoryHandleDesc descriptor) -> NativeExternalBufferResult
 {
-    auto& session = *static_cast<NativeSession*>(nativeSession);
     const auto selected = cudaSetDevice(session.device);
     if (selected != cudaSuccess)
     {
@@ -148,17 +150,55 @@ auto importPreparedBuffer(void* nativeSession,
     bufferDescriptor.size = description.bufferSize;
     void* devicePointer = nullptr;
     const auto mapped = cudaExternalMemoryGetMappedBuffer(&devicePointer, externalMemory, &bufferDescriptor);
+    auto* const mappedPointer = static_cast<std::byte*>(devicePointer);
     if (mapped != cudaSuccess)
     {
         return {.status = interopStatus(mapped),
                 .nativeCode = static_cast<std::int32_t>(mapped),
-                .cleanupCode = static_cast<std::int32_t>(destroyExternalMemory(externalMemory, devicePointer)),
+                .cleanupCode = static_cast<std::int32_t>(destroyExternalMemory(externalMemory, mappedPointer)),
                 .imported = true};
     }
     return NativeExternalBufferResult {.status = NativeInteropStatus::Success,
                                        .externalMemory = externalMemory,
-                                       .devicePointer = devicePointer,
+                                       .devicePointer = mappedPointer,
                                        .imported = true};
+}
+
+// NOLINTNEXTLINE(readability-function-size): Platform-specific descriptors must match the native CUDA ABI.
+auto externalMemoryDescriptor(const NativeExternalBufferImport& description)
+    -> std::optional<cudaExternalMemoryHandleDesc>
+{
+#ifdef __linux__
+    if (description.handleType != NativeMemoryHandleType::OpaqueFd)
+    {
+        return std::nullopt;
+    }
+    return cudaExternalMemoryHandleDesc {.type = cudaExternalMemoryHandleTypeOpaqueFd,
+                                         .handle = {.fd = static_cast<int>(description.handle)},
+                                         .size = description.allocationSize,
+                                         .flags = cudaExternalMemoryDedicated,
+                                         .reserved = {}};
+#elif _WIN32
+    if (description.handleType != NativeMemoryHandleType::OpaqueWin32)
+    {
+        return std::nullopt;
+    }
+    return cudaExternalMemoryHandleDesc {
+        .type = cudaExternalMemoryHandleTypeOpaqueWin32,
+        .handle =
+            {.win32 =
+                 {.handle =
+                      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast, performance-no-int-to-ptr): CUDA requires HANDLE.
+                  reinterpret_cast<decltype(std::declval<cudaExternalMemoryHandleDesc>().handle.win32.handle)>(
+                      description.handle),
+                  .name = nullptr}},
+        .size = description.allocationSize,
+        .flags = cudaExternalMemoryDedicated,
+        .reserved = {}};
+#else
+    static_cast<void>(description);
+    return std::nullopt;
+#endif
 }
 
 auto externalSemaphoreDescriptor(const NativeExternalSemaphoreImport& description)
@@ -180,8 +220,13 @@ auto externalSemaphoreDescriptor(const NativeExternalSemaphoreImport& descriptio
     }
     return cudaExternalSemaphoreHandleDesc {
         .type = cudaExternalSemaphoreHandleTypeTimelineSemaphoreWin32,
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast, performance-no-int-to-ptr): Core carries HANDLE as intptr_t.
-        .handle = {.win32 = {.handle = reinterpret_cast<void*>(description.handle), .name = nullptr}},
+        .handle =
+            {.win32 =
+                 {.handle =
+                      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast, performance-no-int-to-ptr): CUDA requires HANDLE.
+                  reinterpret_cast<decltype(std::declval<cudaExternalSemaphoreHandleDesc>().handle.win32.handle)>(
+                      description.handle),
+                  .name = nullptr}},
         .flags = 0,
         .reserved = {}};
 #else
@@ -214,51 +259,31 @@ auto queryNativeAvailability() noexcept -> NativeAvailabilityResult
     return {.availability = NativeAvailability::Available, .nativeCode = 0};
 }
 
-auto createInteropSession(const std::uint8_t* deviceUuid) noexcept -> NativeInteropResult
+auto NativeSessionDeleter::operator()(NativeSession* session) const noexcept -> void
+{
+    std::default_delete<NativeSession> {}(session);
+}
+
+auto createInteropSession(std::span<const std::uint8_t, nativeDeviceUuidSize> deviceUuid) noexcept
+    -> NativeInteropResult
 {
     const auto matchingDevice = findMatchingDevice(deviceUuid);
     if (matchingDevice.status != NativeInteropStatus::Success)
     {
-        return {.status = matchingDevice.status, .nativeCode = matchingDevice.nativeCode};
+        return {.status = matchingDevice.status, .nativeCode = matchingDevice.nativeCode, .session = {}};
     }
     return createSessionForDevice(matchingDevice.device);
 }
 
-auto importExternalBuffer(void* nativeSession, const NativeExternalBufferImport& description) noexcept
+auto importExternalBuffer(const NativeSession& session, const NativeExternalBufferImport& description) noexcept
     -> NativeExternalBufferResult
 {
-#ifdef __linux__
-    if (description.handleType != NativeMemoryHandleType::OpaqueFd)
-    {
-        return {.status = NativeInteropStatus::Unsupported};
-    }
-    auto descriptor = cudaExternalMemoryHandleDesc {.type = cudaExternalMemoryHandleTypeOpaqueFd,
-                                                    .handle = {.fd = static_cast<int>(description.handle)},
-                                                    .size = description.allocationSize,
-                                                    .flags = cudaExternalMemoryDedicated,
-                                                    .reserved = {}};
-    return importPreparedBuffer(nativeSession, description, descriptor);
-#elif _WIN32
-    if (description.handleType != NativeMemoryHandleType::OpaqueWin32)
-    {
-        return {.status = NativeInteropStatus::Unsupported};
-    }
-    auto descriptor = cudaExternalMemoryHandleDesc {
-        .type = cudaExternalMemoryHandleTypeOpaqueWin32,
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast, performance-no-int-to-ptr): Core carries HANDLE as intptr_t.
-        .handle = {.win32 = {.handle = reinterpret_cast<void*>(description.handle), .name = nullptr}},
-        .size = description.allocationSize,
-        .flags = cudaExternalMemoryDedicated,
-        .reserved = {}};
-    return importPreparedBuffer(nativeSession, description, descriptor);
-#else
-    static_cast<void>(nativeSession);
-    static_cast<void>(description);
-    return {.status = NativeInteropStatus::Unsupported};
-#endif
+    const auto descriptor = externalMemoryDescriptor(description);
+    return descriptor ? importPreparedBuffer(session, description, *descriptor)
+                      : NativeExternalBufferResult {.status = NativeInteropStatus::Unsupported};
 }
 
-auto importExternalSemaphore(void* nativeSession, const NativeExternalSemaphoreImport& description) noexcept
+auto importExternalSemaphore(const NativeSession& session, const NativeExternalSemaphoreImport& description) noexcept
     -> NativeExternalSemaphoreResult
 {
     const auto descriptor = externalSemaphoreDescriptor(description);
@@ -266,7 +291,6 @@ auto importExternalSemaphore(void* nativeSession, const NativeExternalSemaphoreI
     {
         return {.status = NativeInteropStatus::Unsupported};
     }
-    auto& session = *static_cast<NativeSession*>(nativeSession);
     const auto selected = cudaSetDevice(session.device);
     if (selected != cudaSuccess)
     {
@@ -283,43 +307,91 @@ auto importExternalSemaphore(void* nativeSession, const NativeExternalSemaphoreI
                                           .imported = true};
 }
 
-auto destroyInteropSession(void* nativeSession) noexcept -> std::int32_t
+auto enqueueExternalSemaphoreWait(const NativeSession& session,
+                                  const NativeExternalSemaphore& externalSemaphore,
+                                  std::uint64_t value) noexcept -> NativeInteropOperationResult
 {
-    auto session = std::unique_ptr<NativeSession> {static_cast<NativeSession*>(nativeSession)};
-    if (!session)
+    if (externalSemaphore == nullptr || value == 0)
+    {
+        return {.status = NativeInteropStatus::Failure, .nativeCode = cudaErrorInvalidValue};
+    }
+    const auto selected = cudaSetDevice(session.device);
+    if (selected != cudaSuccess)
+    {
+        return {.status = interopStatus(selected), .nativeCode = static_cast<std::int32_t>(selected)};
+    }
+    auto* const semaphore = externalSemaphore;
+    auto params = cudaExternalSemaphoreWaitParams {};
+    params.params.fence.value = value;
+    const auto enqueued = cudaWaitExternalSemaphoresAsync(&semaphore, &params, 1, session.stream);
+    return {.status = enqueued == cudaSuccess ? NativeInteropStatus::Success : interopStatus(enqueued),
+            .nativeCode = static_cast<std::int32_t>(enqueued)};
+}
+
+auto enqueueExternalSemaphoreSignal(const NativeSession& session,
+                                    const NativeExternalSemaphore& externalSemaphore,
+                                    std::uint64_t value) noexcept -> NativeInteropOperationResult
+{
+    if (externalSemaphore == nullptr || value == 0)
+    {
+        return {.status = NativeInteropStatus::Failure, .nativeCode = cudaErrorInvalidValue};
+    }
+    const auto selected = cudaSetDevice(session.device);
+    if (selected != cudaSuccess)
+    {
+        return {.status = interopStatus(selected), .nativeCode = static_cast<std::int32_t>(selected)};
+    }
+    auto* const semaphore = externalSemaphore;
+    auto params = cudaExternalSemaphoreSignalParams {};
+    params.params.fence.value = value;
+    const auto enqueued = cudaSignalExternalSemaphoresAsync(&semaphore, &params, 1, session.stream);
+    return {.status = enqueued == cudaSuccess ? NativeInteropStatus::Success : interopStatus(enqueued),
+            .nativeCode = static_cast<std::int32_t>(enqueued)};
+}
+
+auto synchronizeInteropSession(const NativeSession& session) noexcept -> std::int32_t
+{
+    const auto selected = cudaSetDevice(session.device);
+    if (selected != cudaSuccess)
+    {
+        return static_cast<std::int32_t>(selected);
+    }
+    return static_cast<std::int32_t>(cudaStreamSynchronize(session.stream));
+}
+
+auto destroyInteropSession(NativeSessionOwner nativeSession) noexcept -> std::int32_t
+{
+    if (!nativeSession)
     {
         return 0;
     }
-    const auto selected = cudaSetDevice(session->device);
+    const auto selected = cudaSetDevice(nativeSession->device);
     if (selected != cudaSuccess)
     {
         return static_cast<std::int32_t>(selected);
     }
-    return static_cast<std::int32_t>(cudaStreamDestroy(session->stream));
+    return static_cast<std::int32_t>(cudaStreamDestroy(nativeSession->stream));
 }
 
-auto destroyExternalBuffer(void* nativeSession, const NativeExternalBufferResult& imported) noexcept -> std::int32_t
-{
-    auto& session = *static_cast<NativeSession*>(nativeSession);
-    const auto selected = cudaSetDevice(session.device);
-    if (selected != cudaSuccess)
-    {
-        return static_cast<std::int32_t>(selected);
-    }
-    return static_cast<std::int32_t>(
-        destroyExternalMemory(static_cast<cudaExternalMemory_t>(imported.externalMemory), imported.devicePointer));
-}
-
-auto destroyExternalSemaphore(void* nativeSession, const NativeExternalSemaphoreResult& imported) noexcept
+auto destroyExternalBuffer(const NativeSession& session, const NativeExternalBufferResult& imported) noexcept
     -> std::int32_t
 {
-    auto& session = *static_cast<NativeSession*>(nativeSession);
     const auto selected = cudaSetDevice(session.device);
     if (selected != cudaSuccess)
     {
         return static_cast<std::int32_t>(selected);
     }
-    return static_cast<std::int32_t>(
-        cudaDestroyExternalSemaphore(static_cast<cudaExternalSemaphore_t>(imported.externalSemaphore)));
+    return static_cast<std::int32_t>(destroyExternalMemory(imported.externalMemory, imported.devicePointer));
+}
+
+auto destroyExternalSemaphore(const NativeSession& session, const NativeExternalSemaphoreResult& imported) noexcept
+    -> std::int32_t
+{
+    const auto selected = cudaSetDevice(session.device);
+    if (selected != cudaSuccess)
+    {
+        return static_cast<std::int32_t>(selected);
+    }
+    return static_cast<std::int32_t>(cudaDestroyExternalSemaphore(imported.externalSemaphore));
 }
 }

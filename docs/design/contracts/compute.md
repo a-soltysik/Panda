@@ -2,8 +2,8 @@
 
 This contract keeps Panda focused on Vulkan graphics while allowing applications
 to add GPU computation. The [plan](../../development/PLAN.md) tracks implementation
-and proof; this page separates current buffer sharing from the later synchronization
-and compute-submission work.
+and proof; this page separates current external-buffer handoffs from the later
+compute-submission work.
 
 ## Responsibility boundary
 
@@ -12,9 +12,10 @@ simulation steps, and the point in its update loop when computation and renderin
 are requested. Panda does not decide whether a simulation runs once per frame,
 multiple times, or only when input changes.
 
-Panda Core owns Vulkan resources and exposes generic external-buffer memory handles.
-It does not name CUDA types or require CUDA. `Panda::Cuda` is an optional add-on that
-matches a CUDA device to the selected Vulkan device and imports a compatible buffer.
+Panda Core owns Vulkan resources and exposes generic external-buffer memory handles
+and GPU ownership handoffs through `ExternalBufferManager`. It does not name CUDA
+types or require CUDA. `Panda::Cuda` is an optional add-on that matches a CUDA device
+to the selected Vulkan device and imports a compatible buffer.
 Other adapters may use the same external-buffer contract when their import API
 accepts the platform's supported opaque FD or Win32 handle type.
 
@@ -41,10 +42,10 @@ device is reported then, so they can select an application-owned fallback early.
 `ContextDeviceInfo::externalSemaphoreExportEnabled` separately reports whether the
 selected device can export the opaque timeline semaphore handle used by the handoff.
 
-`Context::createExternalBuffer(BufferDesc)` validates the request, checks export
-support for the requested Vulkan usage, creates a device-local buffer backed by one
-dedicated allocation, binds it at offset zero and exports the platform allocation
-handle. The resulting `ExternalBuffer` owns both the Vulkan `Buffer` and one
+`ExternalBufferManager::createBuffer(BufferDesc)` validates the request, checks
+export support for the requested Vulkan usage, creates a device-local buffer backed
+by one dedicated allocation, binds it at offset zero and exports the platform
+allocation handle. The resulting `ExternalBuffer` owns both the Vulkan `Buffer` and one
 move-only `ExternalMemoryHandle`, plus the logical size, allocation size and Vulkan
 device UUID. When `externalSemaphoreExportEnabled` is true, it also owns a paired
 timeline semaphore with initial value 0 and its move-only `ExternalSemaphoreHandle`.
@@ -61,11 +62,15 @@ transfers handle ownership to CUDA; on Windows, the exported HANDLE remains owne
 its RAII wrapper until the `SharedCudaBuffer` releases it. CUDA destroys the imported
 semaphore when the last shared-buffer owner is released.
 
-The current API establishes allocation sharing and can export and import the paired
-semaphore, but does not yet submit ownership barriers or synchronize Vulkan with
-another GPU API. Possessing or importing the semaphore does not order buffer access. An imported
-mapping must not be treated as safe to use for computation or rendering until the
-handoff contract below is implemented and verified.
+`ExternalBufferManager::releaseToExternal(Buffer)` records a Vulkan queue-family
+release and signals the paired timeline semaphore. `acquireFromExternal(Buffer,
+value)` queues a wait for the next timeline value and records the matching acquire;
+neither operation waits on the CPU. The Buffer view can come from either
+`ExternalBuffer` or `SharedCudaBuffer`, so ownership can be reacquired after import.
+`Panda::Cuda` has private stream-bound timeline wait/signal operations, but its
+current public API has no compute-work path that invokes them around application
+work. The complete CUDA producer/consumer path remains unavailable. Do not use an
+imported mapping for GPU work until that path is implemented and verified.
 
 ## Required synchronization contract
 
@@ -83,9 +88,9 @@ that reads the resource, including shadows.
 The [external handoff task](../../development/tasks/gpu-handoff.md) implements and
 proves the smallest supported GPU-side handoff for the optional CUDA add-on. It must
 preserve application-owned scheduling, avoid CPU copies and routine global waits,
-and define failures and resource retirement. The current implementation direction
-uses an opaque timeline semaphore, but ordered Vulkan ownership transfers and CUDA
-wait/signal operations remain required before buffers are safe for cross-API use.
+and define failures and resource retirement. Core's Vulkan ownership transfers and
+private CUDA wait/signal operations are implemented; a public work path and GPU
+proof remain before buffers are safe for cross-API use.
 
 ## Build and capability boundary
 

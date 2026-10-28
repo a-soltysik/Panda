@@ -10,10 +10,12 @@
 #include <vulkan/vulkan_core.h>
 
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
-#include <tuple>
+#include <span>
+#include <utility>
 
 #include "ScopedMock.hpp"
 #include "VulkanTestSupport.hpp"
@@ -91,6 +93,63 @@ protected:
             });
     }
 
+    void expectExternalSignal(VkSemaphore externalSemaphore,
+                              std::uint64_t externalValue,
+                              std::uint64_t value,
+                              VkResult result = success)
+    {
+        EXPECT_CALL(vulkan, vkQueueSubmit2(queue, 1, NotNull(), VkFence {}))
+            .WillOnce([this, externalSemaphore, externalValue, value, result](VkQueue,
+                                                                              std::uint32_t,
+                                                                              const VkSubmitInfo2* info,
+                                                                              VkFence) {
+                EXPECT_EQ(info->waitSemaphoreInfoCount, 0);
+                EXPECT_EQ(info->signalSemaphoreInfoCount, 2);
+                if (info->signalSemaphoreInfoCount != 2)
+                {
+                    return result;
+                }
+                const auto signals = std::span {info->pSignalSemaphoreInfos, info->signalSemaphoreInfoCount};
+                const auto& externalSignal = signals.front();
+                const auto& internalSignal = *std::next(signals.begin());
+                EXPECT_EQ(externalSignal.semaphore, externalSemaphore);
+                EXPECT_EQ(externalSignal.value, externalValue);
+                EXPECT_EQ(internalSignal.semaphore, semaphore);
+                EXPECT_EQ(internalSignal.value, value);
+                return result;
+            });
+    }
+
+    void expectExternalWait(VkSemaphore externalSemaphore,
+                            std::uint64_t externalValue,
+                            std::uint64_t value,
+                            VkResult result = success)
+    {
+        EXPECT_CALL(vulkan, vkQueueSubmit2(queue, 1, NotNull(), VkFence {}))
+            .WillOnce([this, externalSemaphore, externalValue, value, result](VkQueue,
+                                                                              std::uint32_t,
+                                                                              const VkSubmitInfo2* info,
+                                                                              VkFence) {
+                EXPECT_EQ(info->waitSemaphoreInfoCount, 1);
+                if (info->waitSemaphoreInfoCount != 1)
+                {
+                    return result;
+                }
+                const auto waits = std::span {info->pWaitSemaphoreInfos, info->waitSemaphoreInfoCount};
+                EXPECT_EQ(waits.front().semaphore, externalSemaphore);
+                EXPECT_EQ(waits.front().value, externalValue);
+                EXPECT_EQ(info->signalSemaphoreInfoCount, 1);
+                if (info->signalSemaphoreInfoCount != 1)
+                {
+                    return result;
+                }
+                const auto signals = std::span {info->pSignalSemaphoreInfos, info->signalSemaphoreInfoCount};
+                EXPECT_EQ(signals.front().semaphore, semaphore);
+                EXPECT_EQ(signals.front().value, value);
+                return result;
+            });
+    }
+
     void expectCounter(std::uint64_t value, VkResult result = success)
     {
         EXPECT_CALL(vulkan, vkGetSemaphoreCounterValue(_, semaphore, NotNull()))
@@ -163,6 +222,38 @@ TEST_F(SubmissionQueueTest, CommitIsPublishedOnlyAfterSuccessAndFailedValuesAreR
     const auto completed = submissions.poll(point);
     ASSERT_TRUE(completed);
     EXPECT_TRUE(*completed);
+}
+
+TEST_F(SubmissionQueueTest, ExternalTimelineWaitsAndSignalsUseTheContextSubmissionClock)
+{
+    auto* const externalSemaphore = fakeVulkanHandle<VkSemaphore>(9);
+    expectTimeline();
+    auto submissions = SubmissionQueue {device, 0};
+    ASSERT_TRUE(submissions.initialize(*physical));
+    expectExternalSignal(externalSemaphore, 5, 1);
+    const auto released = submissions.submitExternalSignal({}, externalSemaphore, 5);
+    ASSERT_TRUE(released);
+    EXPECT_EQ(*released, 1);
+    expectExternalWait(externalSemaphore, 6, 2);
+    const auto acquired = submissions.submitExternalWait({}, externalSemaphore, 6);
+    ASSERT_TRUE(acquired);
+    EXPECT_EQ(*acquired, 2);
+}
+
+TEST_F(SubmissionQueueTest, FailedExternalTimelineSubmitDoesNotCommitItsQueueValue)
+{
+    auto* const externalSemaphore = fakeVulkanHandle<VkSemaphore>(9);
+    expectTimeline();
+    auto submissions = SubmissionQueue {device, 0};
+    ASSERT_TRUE(submissions.initialize(*physical));
+    expectExternalSignal(externalSemaphore, 5, 1, exhausted);
+    EXPECT_FALSE(submissions.submitExternalSignal({}, externalSemaphore, 5));
+    expectExternalSignal(externalSemaphore, 5, 1);
+    const auto retried = submissions.submitExternalSignal({}, externalSemaphore, 5);
+    ASSERT_TRUE(retried);
+    EXPECT_EQ(*retried, 1);
+    EXPECT_FALSE(submissions.submitExternalWait({}, {}, 1));
+    EXPECT_FALSE(submissions.submitExternalSignal({}, externalSemaphore, 0));
 }
 
 TEST_F(SubmissionQueueTest, WaitTimeoutPreservesPendingWorkAndSuccessCachesCompletion)

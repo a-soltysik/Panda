@@ -28,6 +28,11 @@ auto CUDARTAPI cudaStreamCreateWithFlags(cudaStream_t* stream, unsigned int flag
                                                                                                             flags);
 }
 
+auto CUDARTAPI cudaStreamSynchronize(cudaStream_t stream) -> cudaError_t
+{
+    return panda::test::ScopedMock<panda::test::CudaRuntimeMock>::getActiveMock().cudaStreamSynchronize(stream);
+}
+
 auto CUDARTAPI cudaStreamDestroy(cudaStream_t stream) -> cudaError_t
 {
     return panda::test::ScopedMock<panda::test::CudaRuntimeMock>::getActiveMock().cudaStreamDestroy(stream);
@@ -74,5 +79,23 @@ auto CUDARTAPI cudaImportExternalSemaphore(cudaExternalSemaphore_t* extSem_out,
 auto CUDARTAPI cudaDestroyExternalSemaphore(cudaExternalSemaphore_t extSem) -> cudaError_t
 {
     return panda::test::ScopedMock<panda::test::CudaRuntimeMock>::getActiveMock().cudaDestroyExternalSemaphore(extSem);
+}
+
+auto CUDARTAPI cudaWaitExternalSemaphoresAsync(const cudaExternalSemaphore_t* extSemArray,
+                                               const cudaExternalSemaphoreWaitParams* paramsArray,
+                                               unsigned int numExtSems,
+                                               cudaStream_t stream) -> cudaError_t
+{
+    return panda::test::ScopedMock<panda::test::CudaRuntimeMock>::getActiveMock()
+        .cudaWaitExternalSemaphoresAsync(extSemArray, paramsArray, numExtSems, stream);
+}
+
+auto CUDARTAPI cudaSignalExternalSemaphoresAsync(const cudaExternalSemaphore_t* extSemArray,
+                                                 const cudaExternalSemaphoreSignalParams* paramsArray,
+                                                 unsigned int numExtSems,
+                                                 cudaStream_t stream) -> cudaError_t
+{
+    return panda::test::ScopedMock<panda::test::CudaRuntimeMock>::getActiveMock()
+        .cudaSignalExternalSemaphoresAsync(extSemArray, paramsArray, numExtSems, stream);
 }
 }

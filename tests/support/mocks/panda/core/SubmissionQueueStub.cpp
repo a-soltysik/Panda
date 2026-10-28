@@ -22,6 +22,8 @@ SubmissionQueue::SubmissionQueue(const vk::raii::Device& device, std::uint32_t f
     test::ScopedMock<test::SubmissionQueueMock>::getActiveMock().construct(device, family);
 }
 
+SubmissionQueue::~SubmissionQueue() = default;
+
 // cppcheck-suppress functionStatic
 auto SubmissionQueue::initialize(vk::PhysicalDevice physicalDevice) -> Result<void>
 {
@@ -39,6 +41,20 @@ auto SubmissionQueue::submit(vk::CommandBuffer command, vk::Semaphore acquire, v
     -> Result<std::uint64_t>
 {
     return test::ScopedMock<test::SubmissionQueueMock>::getActiveMock().submit(command, acquire, finished);
+}
+
+// cppcheck-suppress functionStatic
+auto SubmissionQueue::submitExternalWait(vk::CommandBuffer command, vk::Semaphore semaphore, std::uint64_t value)
+    -> Result<std::uint64_t>
+{
+    return test::ScopedMock<test::SubmissionQueueMock>::getActiveMock().submitExternalWait(command, semaphore, value);
+}
+
+// cppcheck-suppress functionStatic
+auto SubmissionQueue::submitExternalSignal(vk::CommandBuffer command, vk::Semaphore semaphore, std::uint64_t value)
+    -> Result<std::uint64_t>
+{
+    return test::ScopedMock<test::SubmissionQueueMock>::getActiveMock().submitExternalSignal(command, semaphore, value);
 }
 
 // cppcheck-suppress functionStatic

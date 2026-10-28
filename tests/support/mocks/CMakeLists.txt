@@ -14,6 +14,7 @@ add_library(PandaTest::GlfwMock ALIAS panda_test_glfw_mock)
 # The unit boundary is Vulkan as a library, not an individual entry point.
 # The stub provides the calls controlled by current Core unit scenarios.
 panda_add_mock(panda_test_vulkan_mock
+    VULKAN_INTERNAL
     REPLACES Vulkan::Vulkan
     API_LIBRARY Vulkan::Headers
     SOURCES external/vulkan/VulkanStub.cpp

@@ -5,8 +5,8 @@
 
 #include <array>
 #include <cstdint>
-#include <memory>
 #include <panda/Buffer.hpp>
+#include <panda/Error.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
 #include <vulkan/vulkan.hpp>
@@ -16,7 +16,6 @@ namespace panda
 namespace detail
 {
 class ExternalContext;
-class ExternalSemaphoreResource;
 }
 
 /// @brief UUID bytes identifying one selected Vulkan device.
@@ -38,15 +37,15 @@ public:
     ~ExternalBuffer();
 
     /// @brief Returns an owning Vulkan buffer handle.
-    [[nodiscard]] auto buffer() const -> Buffer;
+    [[nodiscard]] auto getBuffer() const -> Buffer;
     /// @brief Returns the exported platform allocation handle.
-    [[nodiscard]] auto handle() noexcept -> ExternalMemoryHandle&;
+    [[nodiscard]] auto getHandle() noexcept -> ExternalMemoryHandle&;
     /// @brief Returns the exported platform allocation handle without mutable access.
-    [[nodiscard]] auto handle() const noexcept -> const ExternalMemoryHandle&;
+    [[nodiscard]] auto getHandle() const noexcept -> const ExternalMemoryHandle&;
     /// @brief Returns the paired timeline semaphore handle, or an invalid handle when unsupported.
-    [[nodiscard]] auto semaphoreHandle() noexcept -> ExternalSemaphoreHandle&;
+    [[nodiscard]] auto getSemaphoreHandle() noexcept -> ExternalSemaphoreHandle&;
     /// @brief Returns the paired timeline semaphore handle without mutable access.
-    [[nodiscard]] auto semaphoreHandle() const noexcept -> const ExternalSemaphoreHandle&;
+    [[nodiscard]] auto getSemaphoreHandle() const noexcept -> const ExternalSemaphoreHandle&;
     /// @brief Reports whether this buffer has an exportable timeline semaphore.
     [[nodiscard]] auto hasSemaphore() const noexcept -> bool;
     /// @brief Returns the logical buffer size.
@@ -59,13 +58,12 @@ public:
     [[nodiscard]] auto isValid() const noexcept -> bool;
 
 private:
-    friend class Context;
     friend class detail::ExternalContext;
+    friend class Context;
 
     Buffer _buffer;
     ExternalMemoryHandle _handle;
     ExternalSemaphoreHandle _semaphoreHandle;
-    std::unique_ptr<detail::ExternalSemaphoreResource> _semaphore;
     std::uint64_t _allocationSize {0};
     VulkanDeviceUuid _deviceUuid {};
 };
