@@ -155,10 +155,8 @@ TEST_F(CudaAdapterTest, ImportsDedicatedExternalAllocationAndMapsLogicalRange)
     const auto pointerBytes = std::as_writable_bytes(std::span {&pointerToken, std::size_t {1}});
     auto* const devicePointer = pointerBytes.data();
 #ifdef _WIN32
-    constexpr auto handle = panda::cuda::detail::NativeMemoryHandleType::OpaqueWin32;
     constexpr auto nativeHandleType = cudaExternalMemoryHandleTypeOpaqueWin32;
 #else
-    constexpr auto handle = panda::cuda::detail::NativeMemoryHandleType::OpaqueFd;
     constexpr auto nativeHandleType = cudaExternalMemoryHandleTypeOpaqueFd;
 #endif
 
@@ -190,9 +188,9 @@ TEST_F(CudaAdapterTest, ImportsDedicatedExternalAllocationAndMapsLogicalRange)
     auto created = panda::cuda::detail::createInteropSession(uuid);
     ASSERT_EQ(created.status, NativeInteropStatus::Success);
     ASSERT_NE(created.session, nullptr);
-    const auto imported = panda::cuda::detail::importExternalBuffer(
-        *created.session,
-        {.handle = 7, .handleType = handle, .allocationSize = 4096, .bufferSize = 1024});
+    const auto imported =
+        panda::cuda::detail::importExternalBuffer(*created.session,
+                                                  {.handle = 7, .allocationSize = 4096, .bufferSize = 1024});
     ASSERT_EQ(imported.status, NativeInteropStatus::Success);
     EXPECT_TRUE(imported.imported);
     EXPECT_EQ(imported.externalMemory, externalMemory);
@@ -212,10 +210,8 @@ TEST_F(CudaAdapterTest, ImportsOpaquePlatformHandleAsCudaTimelineSemaphore)
     auto* const cudaSemaphore = fakeHandle<cudaExternalSemaphore_t>(semaphoreToken);
     auto* const semaphore = cudaSemaphore;
 #ifdef _WIN32
-    constexpr auto handleType = panda::cuda::detail::NativeSemaphoreHandleType::OpaqueWin32;
     constexpr auto cudaHandleType = cudaExternalSemaphoreHandleTypeTimelineSemaphoreWin32;
 #else
-    constexpr auto handleType = panda::cuda::detail::NativeSemaphoreHandleType::OpaqueFd;
     constexpr auto cudaHandleType = cudaExternalSemaphoreHandleTypeTimelineSemaphoreFd;
 #endif
     constexpr auto handle = std::intptr_t {7};
@@ -248,8 +244,7 @@ TEST_F(CudaAdapterTest, ImportsOpaquePlatformHandleAsCudaTimelineSemaphore)
     auto created = panda::cuda::detail::createInteropSession(uuid);
     ASSERT_EQ(created.status, NativeInteropStatus::Success);
     ASSERT_NE(created.session, nullptr);
-    const auto imported =
-        panda::cuda::detail::importExternalSemaphore(*created.session, {.handle = handle, .handleType = handleType});
+    const auto imported = panda::cuda::detail::importExternalSemaphore(*created.session, {.handle = handle});
     ASSERT_EQ(imported.status, NativeInteropStatus::Success);
     EXPECT_TRUE(imported.imported);
     EXPECT_EQ(imported.externalSemaphore, semaphore);
@@ -296,7 +291,7 @@ TEST_F(CudaAdapterTest, QueuesTimelineSemaphoreWaitAndSignalOnTheSessionStream)
     auto created = panda::cuda::detail::createInteropSession(uuid);
     ASSERT_EQ(created.status, NativeInteropStatus::Success);
     ASSERT_NE(created.session, nullptr);
-    auto* const emptySemaphore = panda::cuda::detail::NativeExternalSemaphore {};
+    auto* const emptySemaphore = cudaExternalSemaphore_t {};
     const auto invalidWait = panda::cuda::detail::enqueueExternalSemaphoreWait(*created.session, semaphore, 0);
     EXPECT_EQ(invalidWait.status, NativeInteropStatus::Failure);
     EXPECT_EQ(invalidWait.nativeCode, cudaErrorInvalidValue);

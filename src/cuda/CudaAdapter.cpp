@@ -46,7 +46,7 @@ auto interopStatus(cudaError_t error) -> NativeInteropStatus
     return NativeInteropStatus::Failure;
 }
 
-auto destroyExternalMemory(NativeExternalMemory memory, std::byte* devicePointer) -> cudaError_t
+auto destroyExternalMemory(cudaExternalMemory_t memory, std::byte* devicePointer) -> cudaError_t
 {
     auto firstError = devicePointer != nullptr ? cudaFree(devicePointer) : cudaSuccess;
     if (memory != nullptr)
@@ -169,20 +169,12 @@ auto externalMemoryDescriptor(const NativeExternalBufferImport& description)
     -> std::optional<cudaExternalMemoryHandleDesc>
 {
 #ifdef __linux__
-    if (description.handleType != NativeMemoryHandleType::OpaqueFd)
-    {
-        return std::nullopt;
-    }
     return cudaExternalMemoryHandleDesc {.type = cudaExternalMemoryHandleTypeOpaqueFd,
                                          .handle = {.fd = static_cast<int>(description.handle)},
                                          .size = description.allocationSize,
                                          .flags = cudaExternalMemoryDedicated,
                                          .reserved = {}};
 #elif _WIN32
-    if (description.handleType != NativeMemoryHandleType::OpaqueWin32)
-    {
-        return std::nullopt;
-    }
     return cudaExternalMemoryHandleDesc {
         .type = cudaExternalMemoryHandleTypeOpaqueWin32,
         .handle =
@@ -205,19 +197,11 @@ auto externalSemaphoreDescriptor(const NativeExternalSemaphoreImport& descriptio
     -> std::optional<cudaExternalSemaphoreHandleDesc>
 {
 #ifdef __linux__
-    if (description.handleType != NativeSemaphoreHandleType::OpaqueFd)
-    {
-        return std::nullopt;
-    }
     return cudaExternalSemaphoreHandleDesc {.type = cudaExternalSemaphoreHandleTypeTimelineSemaphoreFd,
                                             .handle = {.fd = static_cast<int>(description.handle)},
                                             .flags = 0,
                                             .reserved = {}};
 #elif _WIN32
-    if (description.handleType != NativeSemaphoreHandleType::OpaqueWin32)
-    {
-        return std::nullopt;
-    }
     return cudaExternalSemaphoreHandleDesc {
         .type = cudaExternalSemaphoreHandleTypeTimelineSemaphoreWin32,
         .handle =
@@ -308,7 +292,7 @@ auto importExternalSemaphore(const NativeSession& session, const NativeExternalS
 }
 
 auto enqueueExternalSemaphoreWait(const NativeSession& session,
-                                  const NativeExternalSemaphore& externalSemaphore,
+                                  const cudaExternalSemaphore_t& externalSemaphore,
                                   std::uint64_t value) noexcept -> NativeInteropOperationResult
 {
     if (externalSemaphore == nullptr || value == 0)
@@ -329,7 +313,7 @@ auto enqueueExternalSemaphoreWait(const NativeSession& session,
 }
 
 auto enqueueExternalSemaphoreSignal(const NativeSession& session,
-                                    const NativeExternalSemaphore& externalSemaphore,
+                                    const cudaExternalSemaphore_t& externalSemaphore,
                                     std::uint64_t value) noexcept -> NativeInteropOperationResult
 {
     if (externalSemaphore == nullptr || value == 0)
@@ -347,6 +331,11 @@ auto enqueueExternalSemaphoreSignal(const NativeSession& session,
     const auto enqueued = cudaSignalExternalSemaphoresAsync(&semaphore, &params, 1, session.stream);
     return {.status = enqueued == cudaSuccess ? NativeInteropStatus::Success : interopStatus(enqueued),
             .nativeCode = static_cast<std::int32_t>(enqueued)};
+}
+
+auto getInteropStream(const NativeSession& session) noexcept -> cudaStream_t
+{
+    return session.stream;
 }
 
 auto synchronizeInteropSession(const NativeSession& session) noexcept -> std::int32_t

@@ -240,7 +240,7 @@ auto ExternalContext::release(const Buffer& buffer) -> Result<std::uint64_t>
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "External buffer is already released")};
     }
     const auto previousValue = resource.getExternalTimelineValue();
-    if (previousValue == std::numeric_limits<std::uint64_t>::max())
+    if (previousValue >= std::numeric_limits<std::uint64_t>::max() - 1)
     {
         return std::unexpected {makeError(ErrorCode::ResourceExhausted, "External timeline values are exhausted")};
     }

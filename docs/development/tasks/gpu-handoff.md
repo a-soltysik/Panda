@@ -4,10 +4,11 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Design and implement an explicit GPU-side handoff for a Panda-owned external
-buffer, starting with `Panda::Cuda`. Preserve the generic external-memory boundary
-in Panda Core. The application chooses when to submit compute work; this task does
-not add a persistent callback registry, frame scheduler or general task graph.
+Implement and prove an explicit GPU-side handoff for a Panda-owned external buffer,
+starting with `Panda::Cuda`. Preserve the generic external-memory boundary in Panda
+Core. The application chooses when to submit compute work; this task adds one
+typed callback for a single buffer handoff, not a persistent callback registry,
+frame scheduler or general task graph.
 
 Non-goal: No CPU copies, routine global waits, backend translation, or simulation
 step policy inside Panda.
@@ -27,18 +28,26 @@ semaphore handle; it does not expose CUDA types. External-buffer creation may st
 succeed without semaphore support, but a requested cross-API handoff must return
 `Unsupported`.
 
-Keep the stream and mapped pointer private in this task. The following compute
-submission task owns the application-facing native extension point, where it can be
-introduced with a usable work-submission path instead of as a separate low-level API.
-Core remains free of CUDA types.
+Core remains free of CUDA types. `SharedCudaBuffer::submitWork` is the application
+extension point for one handoff. It queues a wait for the Vulkan release value on
+the session stream, invokes the callback with that stream and the borrowed mapped
+device address, and queues the next timeline signal on the same stream. The callback
+returns its enqueue result; Panda still queues the signal after a reported callback
+error so the application can queue Vulkan reacquisition before handling that error.
+The method returning means these operations were enqueued, not that GPU work
+completed. It accepts only the next expected release value, and calls on a shared
+buffer must be serialized. Its result separates callback enqueue failure from
+wait/signal failure; a failed signal faults that imported handoff and prevents
+further submissions on it. Public handoff methods pass `ExternalTimelineValue`;
+conversion to the integer representation happens at the native API boundary.
 
-The current implementation has an `ExternalBufferManager` for creation and generic
-release/acquire calls. Core records Vulkan buffer ownership barriers and signals or
-waits on the paired timeline semaphore, retaining submitted commands and resources
-until completion. `Panda::Cuda` has private timeline wait/signal operations on its
-session stream and synchronizes that stream before destroying imported resources.
-The current public API has no compute-work path that invokes those operations around
-application work, so ordered cross-API use and GPU proof remain required for acceptance.
+`ExternalBufferManager` creates buffers and queues generic release/acquire calls.
+Core records Vulkan buffer ownership barriers and signals or waits on the paired
+timeline semaphore, retaining submitted commands and resources until completion.
+`Panda::Cuda` imports the buffer and semaphore, then `SharedCudaBuffer::submitWork`
+orders application work on the matched session stream. Destroying the final shared
+owner synchronizes that stream before releasing imported resources. Tagged-data
+producer/consumer ordering and GPU proof remain required for acceptance.
 
 Paths: `include/core/panda/`, `include/cuda/panda/cuda/`, `src/core/vulkan/`,
 `src/cuda/`, tests, and directly affected documentation.
@@ -55,28 +64,27 @@ device/queue-wide wait is needed.
 
 ## Current verification
 
-- Windows: MSVC 14.51.36231. `msvc-quality`, public-header isolation, format checks,
-  and `clang-cuda-analysis-windows` passed. `msvc-fast` built and all 452 tests passed
-  with four skips (one benchmark-output case and three unavailable noncoherent-memory
-  cases). External-buffer creation, Vulkan timeline release and mocked CUDA
-  import-failure cleanup ran on the device.
-- WSL Ubuntu: `gcc-quality`, public-header isolation, format checks and
-  `clang-cuda-analysis` passed. `gcc-fast` built and all 452 tests passed with six
-  skips (CUDA external-handle support unavailable, timeline-semaphore export
-  unavailable for two system cases, and three unavailable noncoherent-memory cases).
-  `gcc-docs` passed. The WSL Mermaid-check attempt could not run Windows `npm.cmd`;
-  the same `docs-checks` preset passed on Windows.
-- The GCC coverage preset passed 414 CPU tests (269 unit, 145 integration).
-  `panda_coverage_report` measured 87.8% lines, 91.5% functions and 71.5% branches
-  overall. `ExternalContext.cpp` measured 85.7% lines and 65.8% branches, up from
-  85.2% and 64.3%; `UploadManager.cpp` measured 99.4% lines and 58.1% branches, up
-  from 98.8% and 57.1%. The local `panda-bench` smoke could not run because
-  `xvfb-run` is unavailable, so the report does not include the CI software-Vulkan
-  frame path.
+- Windows: MSVC 14.51.36231. `msvc-quality`, public-header isolation and format
+  checks passed. Parallel links intermittently failed with `LNK1163` in untouched
+  test objects; complete quality and fast builds passed when rerun with one job.
+  `msvc-fast` passed all 455 tests with four skips (one benchmark-output case and
+  three unavailable noncoherent-memory cases). Quality reports six
+  unchecked-container warnings in the untouched
+  `tests/cases/unit/core/UploadBatchImpl.cpp`. The system tests exercised Vulkan
+  external-buffer release/acquire with mocked CUDA calls.
+- WSL Ubuntu: `gcc-quality`, public-header isolation and format checks passed.
+  `gcc-fast` built and all 455 tests passed (seven skips: four CUDA/external-semaphore
+  cases and three unavailable noncoherent-memory cases). Linux API
+  documentation generation passed. Quality reports the same six unchecked-
+  container warnings in `UploadBatchImpl.cpp`.
+- Windows `clang-cuda-analysis-windows` and WSL `clang-cuda-analysis` passed for
+  host and device code. Both report that the installed CUDA version is newer than
+  Clang's latest partially supported version 12.9.
 - `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
-  75 Markdown files and the task queue with no structural errors; Windows
-  `docs-checks` checked 40 diagrams. Codecov receives coverage uploads on pull
-  requests and pushes to `master`; a hosted PR comment has not been verified.
+  76 Markdown files and the task queue with no structural errors. Windows
+  `docs-checks` checked 41 diagrams; all were valid.
+- Coverage was not rerun for this iteration. The current test runs do not prove
+  tagged Vulkan/CUDA data ordering or hardware execution of CUDA wait/signal.
 - Tagged-data producer/consumer ordering, synchronization-validation coverage of
   the cross-API path, and GPU-side CUDA wait/signal proof remain incomplete.
 

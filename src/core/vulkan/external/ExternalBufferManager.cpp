@@ -10,6 +10,7 @@
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalBufferManager.hpp>
+#include <panda/ExternalTimelineValue.hpp>
 
 #include "external/ExternalContext.hpp"
 
@@ -32,21 +33,24 @@ auto ExternalBufferManager::createBuffer(const BufferDesc& description) const ->
     return _implementation->get().createBuffer(description);
 }
 
-auto ExternalBufferManager::releaseToExternal(const Buffer& buffer) -> Result<std::uint64_t>
+auto ExternalBufferManager::releaseToExternal(const Buffer& buffer) -> Result<ExternalTimelineValue>
 {
     if (!_implementation)
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Context has no external-buffer support")};
     }
-    return _implementation->get().release(buffer);
+    return _implementation->get().release(buffer).transform([](std::uint64_t value) {
+        return ExternalTimelineValue {value};
+    });
 }
 
-auto ExternalBufferManager::acquireFromExternal(const Buffer& buffer, std::uint64_t externalSignalValue) -> Result<void>
+auto ExternalBufferManager::acquireFromExternal(const Buffer& buffer, ExternalTimelineValue externalSignalValue)
+    -> Result<void>
 {
     if (!_implementation)
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Context has no external-buffer support")};
     }
-    return _implementation->get().acquire(buffer, externalSignalValue);
+    return _implementation->get().acquire(buffer, externalSignalValue.getValue());
 }
 }

@@ -1,6 +1,9 @@
 #include <cstdint>
+#include <expected>
 #include <memory>
 #include <panda/Buffer.hpp>
+#include <panda/Error.hpp>
+#include <panda/ExternalTimelineValue.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
 #include <utility>
 
@@ -38,5 +41,16 @@ auto SharedCudaBuffer::getSize() const noexcept -> std::uint64_t
 auto SharedCudaBuffer::isValid() const noexcept -> bool
 {
     return _state != nullptr;
+}
+
+auto SharedCudaBuffer::submitWork(panda::ExternalTimelineValue vulkanSignalValue, const CudaWorkCallback& work)
+    -> panda::Result<CudaWorkSubmission>
+{
+    auto state = _state;
+    if (state == nullptr)
+    {
+        return std::unexpected {panda::makeError(panda::ErrorCode::InvalidArgument, "Shared CUDA buffer is empty")};
+    }
+    return state->submitWork(vulkanSignalValue.getValue(), work);
 }
 }

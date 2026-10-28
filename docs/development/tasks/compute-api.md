@@ -1,20 +1,21 @@
-# Application-driven compute submission
+# Application-driven compute integration
 
 Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Expose the smallest useful way for an application to submit one bounded batch of
-native compute work through the optional backend API. Start with CUDA and keep
-application ownership of the algorithm, timestep, number of substeps and call
-frequency. Provide a clear native extension point for applications that need more
-control.
+Build an application-owned multi-step compute workload on the single-buffer CUDA
+submission path from the [external handoff](gpu-handoff.md). The application chooses
+zero, one or several simulation steps before a rendered frame and submits the
+selected work as a bounded batch. Panda keeps ownership of Vulkan resources and
+rendering; it does not choose the algorithm, timestep, substep count or call
+frequency.
 
-Non-goal: No persistent stage registration, automatic per-frame callbacks, task
-graph, kernel translation or solver code.
+Non-goal: No second submission API, persistent stage registration, automatic
+per-frame callbacks, task graph, kernel translation or solver code.
 
-Interface: To be selected after the [external backend handoff](gpu-handoff.md) is
-implemented and proved. Keep the public core free of CUDA types.
+Interface: Use `SharedCudaBuffer::submitWork` to enqueue each bounded CUDA batch
+between the paired timeline wait and signal. Keep the public core free of CUDA types.
 
 Paths: `include/core/panda/`, `include/cuda/panda/cuda/`, `src/cuda/`,
 `examples/`, tests and directly affected documentation.
@@ -25,10 +26,10 @@ Specifications: [Compute and external buffers](../../design/contracts/compute.md
 ## Acceptance
 
 Demonstrate an application choosing zero, one or several simulation steps before a
-rendered frame; the submitted work is batched, handed off to Vulkan and retained
-through its final use. Test the graphics-only path, CUDA absence, submission errors
-and safe shutdown on Windows/Linux. Verify there is no implicit CPU bounce or
-recurring engine scheduler.
+rendered frame; the selected steps are submitted as one batch, handed off to Vulkan
+and retained through their final use. Test the graphics-only path, CUDA absence,
+submission errors and safe shutdown on Windows/Linux. Verify there is no implicit
+CPU bounce or recurring engine scheduler.
 
 Learning: Follow one application call from host callback through GPU submission,
 handoff and the first renderer read; distinguish enqueue success from completion.

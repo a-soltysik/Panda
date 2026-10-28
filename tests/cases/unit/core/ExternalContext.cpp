@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <panda/Buffer.hpp>
@@ -436,6 +437,27 @@ TEST_F(ExternalContextTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimeli
     const auto resource = BufferResource::getResource(buffer);
     EXPECT_FALSE(resource->isExternallyOwned());
     EXPECT_EQ(resource->getExternalTimelineValue(), 0U);
+}
+
+TEST_F(ExternalContextTest, ReleaseRejectsTimelineValueWithoutRoomForExternalSignal)
+{
+    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(66);
+    auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(67);
+    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
+    auto externalContext = makeContext(uploads);
+    auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
+    ASSERT_TRUE(created);
+    const auto buffer = created->getBuffer();
+    const auto resource = BufferResource::getResource(buffer);
+    resource->setExternalTimelineValue(std::numeric_limits<std::uint64_t>::max() - 1);
+
+    const auto released = externalContext.release(buffer);
+
+    ASSERT_FALSE(released);
+    EXPECT_EQ(released.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_FALSE(resource->isExternallyOwned());
+    EXPECT_EQ(resource->getExternalTimelineValue(), std::numeric_limits<std::uint64_t>::max() - 1);
 }
 
 TEST_F(ExternalContextTest, FailedAcquireSubmissionKeepsExternalOwnershipAndTimelineValue)

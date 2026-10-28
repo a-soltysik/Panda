@@ -1,14 +1,18 @@
 # CUDA connection example
 
-`cuda_connection` checks CUDA availability, tries to import a Vulkan storage buffer
-into CUDA, and runs a kernel that produces `42` in a separate `cudaMalloc` allocation.
-The imported buffer is not used by the kernel: Panda does not yet expose a safe
-cross-API handoff. If Vulkan external-buffer export or a matching Vulkan/CUDA device
-is unavailable, the example reports that and continues with the standalone kernel.
+`cuda_connection` checks CUDA availability, imports a Vulkan storage buffer into
+CUDA, then runs three passes on the same buffer. Each pass uploads the next value
+with Vulkan, queues a clear on Panda's session stream between the paired timeline
+semaphore wait and signal, and reacquires Vulkan ownership. It also runs a separate
+kernel that produces `42` in a `cudaMalloc` allocation. If Vulkan external-buffer or
+timeline-semaphore export, or a matching Vulkan/CUDA device, is unavailable, the
+example reports that and continues with the standalone kernel.
 
-The complete shared-buffer path requires a Vulkan 1.3 device with external-memory
-export support as well as a matching CUDA device. The standalone kernel requires
-only CUDA. Building requires CUDA Toolkit and a compatible host compiler. By default,
+The shared-buffer path requires a Vulkan 1.3 device with external-memory and
+timeline-semaphore export support as well as a matching CUDA device. The standalone
+kernel requires only CUDA. The example demonstrates enqueue and ownership ordering;
+it does not read the cleared bytes back or prove GPU-side data correctness. Building
+requires CUDA Toolkit and a compatible host compiler. By default,
 the build detects the local GPU architecture. To configure without a GPU, pass
 `-DCMAKE_CUDA_ARCHITECTURES=89` or another explicit architecture. Running the kernel needs an
 NVIDIA GPU. Missing CUDA drivers or devices are reported without failing the
