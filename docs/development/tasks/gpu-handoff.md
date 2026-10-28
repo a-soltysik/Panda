@@ -55,25 +55,28 @@ device/queue-wide wait is needed.
 
 ## Current verification
 
-- Windows: MSVC 14.51.36231; `cmake --build --preset msvc-fast --parallel` and
-  `ctest --preset msvc-fast` passed, 450 tests with zero failures and four skips
-  (one benchmark-output case and three unavailable noncoherent-memory cases).
-  External-buffer creation, Vulkan timeline release and mocked CUDA import-failure
-  cleanup ran on the device.
-- WSL Ubuntu: `cmake --build --preset gcc-fast --parallel` and
-  `ctest --preset gcc-fast` passed, 450 tests with zero failures and six skips
-  (CUDA external-handle support unavailable, timeline-semaphore export unavailable
-  for two system cases, and three unavailable noncoherent-memory cases).
-- The GCC coverage run passed all 412 CPU unit and integration tests (267 unit,
-  145 integration). `panda_coverage_report` measured 87.8% lines, 91.5% functions
-  and 71.4% branches overall; `ExternalContext.cpp` measured 85.2% lines and 64.3%
-  branches. The local `panda-bench` smoke could not run because `xvfb-run` is
-  unavailable, so the coverage report does not include the CI software-Vulkan
+- Windows: MSVC 14.51.36231. `msvc-quality`, public-header isolation, format checks,
+  and `clang-cuda-analysis-windows` passed. `msvc-fast` built and all 452 tests passed
+  with four skips (one benchmark-output case and three unavailable noncoherent-memory
+  cases). External-buffer creation, Vulkan timeline release and mocked CUDA
+  import-failure cleanup ran on the device.
+- WSL Ubuntu: `gcc-quality`, public-header isolation, format checks and
+  `clang-cuda-analysis` passed. `gcc-fast` built and all 452 tests passed with six
+  skips (CUDA external-handle support unavailable, timeline-semaphore export
+  unavailable for two system cases, and three unavailable noncoherent-memory cases).
+  `gcc-docs` passed. The WSL Mermaid-check attempt could not run Windows `npm.cmd`;
+  the same `docs-checks` preset passed on Windows.
+- The GCC coverage preset passed 414 CPU tests (269 unit, 145 integration).
+  `panda_coverage_report` measured 87.8% lines, 91.5% functions and 71.5% branches
+  overall. `ExternalContext.cpp` measured 85.7% lines and 65.8% branches, up from
+  85.2% and 64.3%; `UploadManager.cpp` measured 99.4% lines and 58.1% branches, up
+  from 98.8% and 57.1%. The local `panda-bench` smoke could not run because
+  `xvfb-run` is unavailable, so the report does not include the CI software-Vulkan
   frame path.
 - `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
-  75 Markdown files and the task queue with no structural errors. Codecov now
-  receives coverage uploads on pull requests as well as pushes to `master`; a
-  hosted PR comment has not yet been verified.
+  75 Markdown files and the task queue with no structural errors; Windows
+  `docs-checks` checked 40 diagrams. Codecov receives coverage uploads on pull
+  requests and pushes to `master`; a hosted PR comment has not been verified.
 - Tagged-data producer/consumer ordering, synchronization-validation coverage of
   the cross-API path, and GPU-side CUDA wait/signal proof remain incomplete.
 

@@ -320,7 +320,11 @@ protected:
                 expectTransferBarrier(info, buffer, release);
             })
             .RetiresOnSaturation();
-        EXPECT_CALL(vulkan, vkEndCommandBuffer(command)).WillOnce(Return(success)).RetiresOnSaturation();
+        EXPECT_CALL(vulkan, vkEndCommandBuffer(command))
+            .WillOnce(testing::Action<VkResult(VkCommandBuffer)> {[](VkCommandBuffer) {
+                return success;
+            }})
+            .RetiresOnSaturation();
     }
 
     void expectTransferCommand(VkCommandPool commandPool, VkCommandBuffer command, VkBuffer buffer, bool release)
@@ -432,4 +436,48 @@ TEST_F(ExternalContextTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimeli
     const auto resource = BufferResource::getResource(buffer);
     EXPECT_FALSE(resource->isExternallyOwned());
     EXPECT_EQ(resource->getExternalTimelineValue(), 0U);
+}
+
+TEST_F(ExternalContextTest, FailedAcquireSubmissionKeepsExternalOwnershipAndTimelineValue)
+{
+    auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(70);
+    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(71);
+    auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(72);
+    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
+    auto externalContext = makeContext(uploads);
+    auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
+    ASSERT_TRUE(created);
+    auto buffer = created->getBuffer();
+    auto* const releasePool = fakeVulkanHandle<VkCommandPool>(73);
+    auto* const releaseCommand = fakeVulkanHandle<VkCommandBuffer>(74);
+    auto* const acquirePool = fakeVulkanHandle<VkCommandPool>(75);
+    auto* const acquireCommand = fakeVulkanHandle<VkCommandBuffer>(76);
+    const auto semaphore = vk::Semaphore {nativeSemaphore};
+    EXPECT_CALL(bufferResourceMock, getNative(_)).Times(2).WillRepeatedly(Return(vk::Buffer {nativeBuffer}));
+    EXPECT_CALL(bufferResourceMock, getSize(_)).Times(2).WillRepeatedly(Return(80));
+    expectTransferCommand(releasePool, releaseCommand, nativeBuffer, true);
+    EXPECT_CALL(submissionQueueMock, submitExternalSignal(vk::CommandBuffer {releaseCommand}, semaphore, 1))
+        .WillOnce(Return(panda::Result<std::uint64_t> {1}));
+
+    const auto released = externalContext.release(buffer);
+    ASSERT_TRUE(released);
+    const auto resource = BufferResource::getResource(buffer);
+    ASSERT_TRUE(resource->isExternallyOwned());
+    ASSERT_EQ(resource->getExternalTimelineValue(), 1U);
+
+    expectTransferCommand(acquirePool, acquireCommand, nativeBuffer, false);
+    EXPECT_CALL(submissionQueueMock, getPoint(1)).WillOnce(Return(panda::CompletionPoint {}));
+    EXPECT_CALL(submissionQueueMock, poll(_)).WillOnce(Return(panda::Result<bool> {false}));
+    EXPECT_CALL(submissionQueueMock, submitExternalWait(vk::CommandBuffer {acquireCommand}, semaphore, 2))
+        .WillOnce([](vk::CommandBuffer, vk::Semaphore, std::uint64_t) -> panda::Result<std::uint64_t> {
+            return std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "injected submission failure")};
+        });
+
+    const auto acquired = externalContext.acquire(buffer, 2);
+
+    ASSERT_FALSE(acquired);
+    EXPECT_EQ(acquired.error().code, panda::ErrorCode::BackendFailure);
+    EXPECT_TRUE(resource->isExternallyOwned());
+    EXPECT_EQ(resource->getExternalTimelineValue(), 1U);
 }

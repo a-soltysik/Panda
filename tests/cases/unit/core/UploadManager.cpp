@@ -209,6 +209,28 @@ TEST_F(UploadManagerTest, ValidatesBufferOwnershipUsageAndRangeWithoutStaging)
     EXPECT_EQ(outOfBounds.error().code, panda::ErrorCode::InvalidArgument);
 }
 
+TEST_F(UploadManagerTest, RejectsWritesToAnExternallyOwnedBuffer)
+{
+    EXPECT_CALL(submission, construct(_, 0));
+    auto submissions = SubmissionQueue {device, 0};
+    auto uploads = UploadManager {device, *pool, submissions, 0};
+    const auto description = panda::BufferDesc {.size = 32,
+                                                .usage = vk::BufferUsageFlagBits::eTransferDst,
+                                                .memory = panda::BufferMemory::Device};
+    EXPECT_CALL(bufferMock, create(_, Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
+    auto created = BufferResource::create(device, *pool, description);
+    ASSERT_TRUE(created);
+    auto destination = std::move(*created);
+    destination->setExternallyOwned(true);
+    EXPECT_CALL(bufferMock, belongsTo(Ref(*destination), Ref(*pool))).WillOnce(Return(true));
+    EXPECT_CALL(bufferMock, getUsage(_)).Times(0);
+
+    const auto result = uploads.validateWrite(destination, 0, 4);
+
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, panda::ErrorCode::ResourcesInUse);
+}
+
 TEST_F(UploadManagerTest, CreatesUploadStagingWithTransferSourceUsage)
 {
     EXPECT_CALL(submission, construct(_, 0));
