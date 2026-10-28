@@ -5,9 +5,11 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
+#include <array>
 #include <cstdint>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <utility>
 
 namespace panda::detail
 {
@@ -17,7 +19,7 @@ class SubmissionQueue final
 {
 public:
     SubmissionQueue(const vk::raii::Device& device, std::uint32_t family);
-    ~SubmissionQueue() = default;
+    ~SubmissionQueue();
     SubmissionQueue(const SubmissionQueue&) = delete;
     auto operator=(const SubmissionQueue&) -> SubmissionQueue& = delete;
     SubmissionQueue(SubmissionQueue&&) = delete;
@@ -25,6 +27,10 @@ public:
     [[nodiscard]] auto initialize(vk::PhysicalDevice physicalDevice) -> Result<void>;
     [[nodiscard]] auto prepareSubmit() -> Result<void>;
     [[nodiscard]] auto submit(vk::CommandBuffer command, vk::Semaphore acquire, vk::Semaphore finished)
+        -> Result<std::uint64_t>;
+    [[nodiscard]] auto submitExternalWait(vk::CommandBuffer command, vk::Semaphore semaphore, std::uint64_t value)
+        -> Result<std::uint64_t>;
+    [[nodiscard]] auto submitExternalSignal(vk::CommandBuffer command, vk::Semaphore semaphore, std::uint64_t value)
         -> Result<std::uint64_t>;
     [[nodiscard]] auto getPoint(std::uint64_t value) const -> CompletionPoint;
     [[nodiscard]] auto getCompletedValue() const -> std::uint64_t;
@@ -34,13 +40,25 @@ public:
     [[nodiscard]] auto waitValue(std::uint64_t value, std::uint64_t timeout) -> Result<WaitStatus>;
 
 private:
+    struct SubmissionSync
+    {
+        vk::Semaphore acquire {};
+        vk::Semaphore finished {};
+        vk::SemaphoreSubmitInfo externalWait {};
+        vk::SemaphoreSubmitInfo externalSignal {};
+    };
+
+    using WaitInfos = std::pair<std::array<vk::SemaphoreSubmitInfo, 2>, std::uint32_t>;
+    using SignalInfos = std::pair<std::array<vk::SemaphoreSubmitInfo, 3>, std::uint32_t>;
+
     [[nodiscard]] auto validatePoint(CompletionPoint point) const -> Result<void>;
     [[nodiscard]] auto refreshCompleted() -> Result<void>;
     [[nodiscard]] auto ensureOutstandingCapacity() -> Result<void>;
-    [[nodiscard]] auto submitValue(vk::CommandBuffer command,
-                                   vk::Semaphore acquire,
-                                   vk::Semaphore finished,
-                                   std::uint64_t value) const -> vk::Result;
+    [[nodiscard]] static auto makeWaitInfos(const SubmissionSync& sync) -> WaitInfos;
+    [[nodiscard]] auto makeSignalInfos(const SubmissionSync& sync, std::uint64_t value) const -> SignalInfos;
+    [[nodiscard]] auto submitValue(vk::CommandBuffer command, const SubmissionSync& sync, std::uint64_t value) const
+        -> vk::Result;
+    [[nodiscard]] auto submit(vk::CommandBuffer command, const SubmissionSync& sync) -> Result<std::uint64_t>;
 
     const vk::raii::Device& _device;
     vk::raii::Queue _queue;

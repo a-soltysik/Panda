@@ -32,11 +32,13 @@ submission task owns the application-facing native extension point, where it can
 introduced with a usable work-submission path instead of as a separate low-level API.
 Core remains free of CUDA types.
 
-The current implementation slice queries export support for timeline semaphores,
-adds the optional paired handle to Core's external-buffer owner, and imports and
-retains it with the allocation in `Panda::Cuda`. It does not yet submit Vulkan
-ownership barriers or enqueue CUDA wait/signal operations; ordered GPU handoff and
-GPU proof remain required for acceptance.
+The current implementation has an `ExternalBufferManager` for creation and generic
+release/acquire calls. Core records Vulkan buffer ownership barriers and signals or
+waits on the paired timeline semaphore, retaining submitted commands and resources
+until completion. `Panda::Cuda` has private timeline wait/signal operations on its
+session stream and synchronizes that stream before destroying imported resources.
+The current public API has no compute-work path that invokes those operations around
+application work, so ordered cross-API use and GPU proof remain required for acceptance.
 
 Paths: `include/core/panda/`, `include/cuda/panda/cuda/`, `src/core/vulkan/`,
 `src/cuda/`, tests, and directly affected documentation.
@@ -53,24 +55,30 @@ device/queue-wide wait is needed.
 
 ## Current verification
 
-- Windows: MSVC 14.51.36231; `cmake --build --preset msvc-fast --parallel` and
-  `ctest --preset msvc-fast` passed, 442 tests with zero failures and four skips
-  (one benchmark-output case and three noncoherent-memory cases). The system test
-  exercised semaphore-import failure cleanup against a Vulkan-exported buffer and
-  a mocked CUDA runtime.
-- WSL Ubuntu: `cmake --preset gcc-fast`,
-  `cmake --build --preset gcc-fast --parallel`, and `ctest --preset gcc-fast`
-  passed, 442 tests with zero failures and five skips (CUDA external-buffer
-  integration found the selected device/handle unsupported; the semaphore-import
-  failure case found no timeline-semaphore export support; three noncoherent-memory
-  cases).
-- CUDA adapter tests verify opaque FD/Win32 handles use CUDA's timeline-semaphore
-  import types. Context lifecycle tests verify the Vulkan capability query names
-  timeline semaphores and rejects binary-only export support.
-- Cross-API producer/consumer ordering, Vulkan ownership barriers, CUDA semaphore
-  waits/signals and tagged-data GPU proof remain unimplemented. The WSL hardware
-  scenario was skipped; Windows exercised the mocked import-failure path, not CUDA
-  semaphore import on hardware.
+- Windows: MSVC 14.51.36231. `msvc-quality`, public-header isolation, format checks,
+  and `clang-cuda-analysis-windows` passed. `msvc-fast` built and all 452 tests passed
+  with four skips (one benchmark-output case and three unavailable noncoherent-memory
+  cases). External-buffer creation, Vulkan timeline release and mocked CUDA
+  import-failure cleanup ran on the device.
+- WSL Ubuntu: `gcc-quality`, public-header isolation, format checks and
+  `clang-cuda-analysis` passed. `gcc-fast` built and all 452 tests passed with six
+  skips (CUDA external-handle support unavailable, timeline-semaphore export
+  unavailable for two system cases, and three unavailable noncoherent-memory cases).
+  `gcc-docs` passed. The WSL Mermaid-check attempt could not run Windows `npm.cmd`;
+  the same `docs-checks` preset passed on Windows.
+- The GCC coverage preset passed 414 CPU tests (269 unit, 145 integration).
+  `panda_coverage_report` measured 87.8% lines, 91.5% functions and 71.5% branches
+  overall. `ExternalContext.cpp` measured 85.7% lines and 65.8% branches, up from
+  85.2% and 64.3%; `UploadManager.cpp` measured 99.4% lines and 58.1% branches, up
+  from 98.8% and 57.1%. The local `panda-bench` smoke could not run because
+  `xvfb-run` is unavailable, so the report does not include the CI software-Vulkan
+  frame path.
+- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
+  75 Markdown files and the task queue with no structural errors; Windows
+  `docs-checks` checked 40 diagrams. Codecov receives coverage uploads on pull
+  requests and pushes to `master`; a hosted PR comment has not been verified.
+- Tagged-data producer/consumer ordering, synchronization-validation coverage of
+  the cross-API path, and GPU-side CUDA wait/signal proof remain incomplete.
 
 Learning: Trace a buffer's previous Vulkan use, CUDA producer and next Vulkan read;
 explain why a shared OS handle and a live C++ owner are not synchronization.

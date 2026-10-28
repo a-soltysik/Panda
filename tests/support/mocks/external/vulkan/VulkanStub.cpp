@@ -1,6 +1,13 @@
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+#    include <Windows.h>  // IWYU pragma: keep
+#    include <winnt.h>
+#endif
 #include <gmock/gmock.h>
 #include <vulkan/vk_platform.h>
 #include <vulkan/vulkan_core.h>
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+#    include <vulkan/vulkan_win32.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -614,6 +621,37 @@ VKAPI_ATTR void VKAPI_CALL vkFreeMemory(VkDevice device, VkDeviceMemory memory, 
     panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkFreeMemory(device, memory, allocator);
 }
 
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+VKAPI_ATTR auto VKAPI_CALL vkGetMemoryWin32HandleKHR(VkDevice device,
+                                                     const VkMemoryGetWin32HandleInfoKHR* info,
+                                                     HANDLE* handle) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetMemoryWin32HandleKHR(device,
+                                                                                                       info,
+                                                                                                       handle);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkGetSemaphoreWin32HandleKHR(VkDevice device,
+                                                        const VkSemaphoreGetWin32HandleInfoKHR* info,
+                                                        HANDLE* handle) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetSemaphoreWin32HandleKHR(device,
+                                                                                                          info,
+                                                                                                          handle);
+}
+#elifdef __linux__
+VKAPI_ATTR auto VKAPI_CALL vkGetMemoryFdKHR(VkDevice device, const VkMemoryGetFdInfoKHR* info, int* pFd) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetMemoryFdKHR(device, info, pFd);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkGetSemaphoreFdKHR(VkDevice device, const VkSemaphoreGetFdInfoKHR* info, int* pFd)
+    -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetSemaphoreFdKHR(device, info, pFd);
+}
+#endif
+
 VKAPI_ATTR auto VKAPI_CALL vkMapMemory(
     VkDevice device, VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size, VkMemoryMapFlags flags, void** data)
     -> VkResult
@@ -669,6 +707,13 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkBindImageMemory2",                             .function = genericVulkanProc(&vkBindImageMemory2)           },
     EntryPoint {.name = "vkAllocateMemory",                               .function = genericVulkanProc(&vkAllocateMemory)             },
     EntryPoint {.name = "vkFreeMemory",                                   .function = genericVulkanProc(&vkFreeMemory)                 },
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    EntryPoint {.name = "vkGetMemoryWin32HandleKHR",                      .function = genericVulkanProc(&vkGetMemoryWin32HandleKHR)    },
+    EntryPoint {.name = "vkGetSemaphoreWin32HandleKHR",                   .function = genericVulkanProc(&vkGetSemaphoreWin32HandleKHR) },
+#elifdef __linux__
+    EntryPoint {.name = "vkGetMemoryFdKHR", .function = genericVulkanProc(&vkGetMemoryFdKHR)},
+    EntryPoint {.name = "vkGetSemaphoreFdKHR", .function = genericVulkanProc(&vkGetSemaphoreFdKHR)},
+#endif
     EntryPoint {.name = "vkMapMemory",                                    .function = genericVulkanProc(&vkMapMemory)                  },
     EntryPoint {.name = "vkUnmapMemory",                                  .function = genericVulkanProc(&vkUnmapMemory)                },
     EntryPoint {.name = "vkFlushMappedMemoryRanges",                      .function = genericVulkanProc(&vkFlushMappedMemoryRanges)    },

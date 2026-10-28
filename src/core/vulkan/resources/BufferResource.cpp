@@ -10,7 +10,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <span>
@@ -244,6 +246,43 @@ auto BufferResource::getUsage() const -> vk::BufferUsageFlags
 auto BufferResource::belongsTo(const MemoryPool& pool) const -> bool
 {
     return &_pool == &pool;
+}
+
+auto BufferResource::isExternallyOwned() const noexcept -> bool
+{
+    return _externallyOwned;
+}
+
+void BufferResource::setExternallyOwned(bool externallyOwned) noexcept
+{
+    _externallyOwned = externallyOwned;
+}
+
+void BufferResource::setExternalInterop(ExternalContext& context,
+                                        std::shared_ptr<ExternalSemaphoreResource> semaphore) noexcept
+{
+    _externalContext.emplace(context);
+    _externalSemaphore = std::move(semaphore);
+}
+
+auto BufferResource::getExternalContext() const noexcept -> std::optional<std::reference_wrapper<ExternalContext>>
+{
+    return _externalContext;
+}
+
+auto BufferResource::getExternalSemaphore() const noexcept -> const std::shared_ptr<ExternalSemaphoreResource>&
+{
+    return _externalSemaphore;
+}
+
+auto BufferResource::getExternalTimelineValue() const noexcept -> std::uint64_t
+{
+    return _externalTimelineValue;
+}
+
+void BufferResource::setExternalTimelineValue(std::uint64_t value) noexcept
+{
+    _externalTimelineValue = value;
 }
 
 auto BufferResource::getMappedBytes() const -> Result<std::span<std::byte>>

@@ -7,14 +7,15 @@
 
 auto runProducer() noexcept -> ProducerResult
 {
-    auto* deviceMemory = static_cast<void*>(nullptr);
-    const auto allocationStatus = cudaMalloc(&deviceMemory, sizeof(std::uint32_t));
+    void* nativeMemory = nullptr;
+    const auto allocationStatus = cudaMalloc(&nativeMemory, sizeof(std::uint32_t));
     if (allocationStatus != cudaSuccess)
     {
         return {.nativeCode = static_cast<std::int32_t>(allocationStatus), .value = 0};
     }
 
-    const auto launchStatus = launchProducerKernel(static_cast<std::uint32_t*>(deviceMemory));
+    auto* const deviceMemory = static_cast<std::uint32_t*>(nativeMemory);
+    const auto launchStatus = launchProducerKernel(deviceMemory);
     auto value = std::uint32_t {};
     const auto copyStatus =
         launchStatus == 0 ? cudaMemcpy(&value, deviceMemory, sizeof(value), cudaMemcpyDeviceToHost) : cudaSuccess;

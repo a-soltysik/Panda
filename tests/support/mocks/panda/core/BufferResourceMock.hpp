@@ -28,11 +28,19 @@ public:
                 create,
                 (const vk::raii::Device&, panda::core::vulkan::resources::MemoryPool&, const panda::BufferDesc&),
                 ());
+    MOCK_METHOD(panda::Result<void>,
+                createExportable,
+                (const vk::raii::Device&,
+                 panda::core::vulkan::resources::MemoryPool&,
+                 const panda::BufferDesc&,
+                 vk::ExternalMemoryHandleTypeFlagBits),
+                ());
     // cppcheck cannot parse this gMock declaration with a resource reference.
     // cppcheck-suppress syntaxError
     MOCK_METHOD(std::uint64_t, getSize, (const BufferResource&), (const));
     MOCK_METHOD(std::uint64_t, getReservedSize, (const panda::detail::BufferResource&), (const));
     MOCK_METHOD(vk::Buffer, getNative, (const panda::detail::BufferResource&), (const));
+    MOCK_METHOD(vk::DeviceMemory, getNativeMemory, (const panda::detail::BufferResource&), (const));
     MOCK_METHOD(vk::BufferUsageFlags, getUsage, (const panda::detail::BufferResource&), (const));
     MOCK_METHOD(bool,
                 belongsTo,

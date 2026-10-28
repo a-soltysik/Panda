@@ -35,6 +35,8 @@ SubmissionQueue::SubmissionQueue(const vk::raii::Device& device, std::uint32_t f
 {
 }
 
+SubmissionQueue::~SubmissionQueue() = default;
+
 auto SubmissionQueue::initialize(vk::PhysicalDevice physicalDevice) -> Result<void>
 {
     if (*_timeline != vk::Semaphore {})
@@ -109,31 +111,96 @@ auto SubmissionQueue::ensureOutstandingCapacity() -> Result<void>
     return {};
 }
 
-auto SubmissionQueue::submitValue(vk::CommandBuffer command,
-                                  vk::Semaphore acquire,
-                                  vk::Semaphore finished,
-                                  std::uint64_t value) const -> vk::Result
+auto SubmissionQueue::makeWaitInfos(const SubmissionSync& sync) -> WaitInfos
 {
-    const auto acquireWait =
-        vk::SemaphoreSubmitInfo {.semaphore = acquire, .stageMask = vk::PipelineStageFlagBits2::eAllCommands};
+    auto waits = std::array<vk::SemaphoreSubmitInfo, 2> {};
+    auto waitCount = std::uint32_t {};
+    if (sync.acquire)
+    {
+        waits[waitCount++] =
+            vk::SemaphoreSubmitInfo {.semaphore = sync.acquire, .stageMask = vk::PipelineStageFlagBits2::eAllCommands};
+    }
+    if (sync.externalWait.semaphore)
+    {
+        waits[waitCount++] = sync.externalWait;
+    }
+    return {waits, waitCount};
+}
+
+auto SubmissionQueue::makeSignalInfos(const SubmissionSync& sync, std::uint64_t value) const -> SignalInfos
+{
+    auto signals = std::array<vk::SemaphoreSubmitInfo, 3> {};
+    auto signalCount = std::uint32_t {};
+    if (sync.finished)
+    {
+        signals[signalCount++] =
+            vk::SemaphoreSubmitInfo {.semaphore = sync.finished, .stageMask = vk::PipelineStageFlagBits2::eAllCommands};
+    }
+    if (sync.externalSignal.semaphore)
+    {
+        signals[signalCount++] = sync.externalSignal;
+    }
+    signals[signalCount++] = vk::SemaphoreSubmitInfo {.semaphore = *_timeline,
+                                                      .value = value,
+                                                      .stageMask = vk::PipelineStageFlagBits2::eAllCommands};
+    return {signals, signalCount};
+}
+
+auto SubmissionQueue::submitValue(vk::CommandBuffer command, const SubmissionSync& sync, std::uint64_t value) const
+    -> vk::Result
+{
+    const auto [waits, waitCount] = makeWaitInfos(sync);
+    const auto [signals, signalCount] = makeSignalInfos(sync, value);
     const auto buffer = vk::CommandBufferSubmitInfo {.commandBuffer = command};
-    const auto signals = std::array {
-        vk::SemaphoreSubmitInfo {.semaphore = finished, .stageMask = vk::PipelineStageFlagBits2::eAllCommands},
-        vk::SemaphoreSubmitInfo {.semaphore = *_timeline,
-                                 .value = value,
-                                 .stageMask = vk::PipelineStageFlagBits2::eAllCommands},
-    };
-    const auto info = vk::SubmitInfo2 {.waitSemaphoreInfoCount = acquire ? 1U : 0U,
-                                       .pWaitSemaphoreInfos = acquire ? &acquireWait : nullptr,
+    const auto info = vk::SubmitInfo2 {.waitSemaphoreInfoCount = waitCount,
+                                       .pWaitSemaphoreInfos = waitCount > 0 ? waits.data() : nullptr,
                                        .commandBufferInfoCount = command ? 1U : 0U,
                                        .pCommandBufferInfos = command ? &buffer : nullptr,
-                                       .signalSemaphoreInfoCount = finished ? 2U : 1U,
-                                       .pSignalSemaphoreInfos = finished ? signals.data() : &signals.back()};
+                                       .signalSemaphoreInfoCount = signalCount,
+                                       .pSignalSemaphoreInfos = signals.data()};
     return _queue.submit2(info);
 }
 
 auto SubmissionQueue::submit(vk::CommandBuffer command, vk::Semaphore acquire, vk::Semaphore finished)
     -> Result<std::uint64_t>
+{
+    return submit(command, SubmissionSync {.acquire = acquire, .finished = finished});
+}
+
+auto SubmissionQueue::submitExternalWait(vk::CommandBuffer command, vk::Semaphore semaphore, std::uint64_t value)
+    -> Result<std::uint64_t>
+{
+    if (!semaphore || value == 0)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "External timeline wait needs a semaphore and value")};
+    }
+    return submit(command,
+                  SubmissionSync {
+                      .externalWait = vk::SemaphoreSubmitInfo {.semaphore = semaphore,
+                                                               .value = value,
+                                                               .stageMask = vk::PipelineStageFlagBits2::eAllCommands}
+    });
+}
+
+auto SubmissionQueue::submitExternalSignal(vk::CommandBuffer command, vk::Semaphore semaphore, std::uint64_t value)
+    -> Result<std::uint64_t>
+{
+    if (!semaphore || value == 0)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "External timeline signal needs a semaphore and value")};
+    }
+    return submit(
+        command,
+        SubmissionSync {
+            .externalSignal = vk::SemaphoreSubmitInfo {.semaphore = semaphore,
+                                                       .value = value,
+                                                       .stageMask = vk::PipelineStageFlagBits2::eAllCommands}
+    });
+}
+
+auto SubmissionQueue::submit(vk::CommandBuffer command, const SubmissionSync& sync) -> Result<std::uint64_t>
 {
     const auto ready = prepareSubmit();
     if (!ready)
@@ -141,7 +208,7 @@ auto SubmissionQueue::submit(vk::CommandBuffer command, vk::Semaphore acquire, v
         return std::unexpected {ready.error()};
     }
     const auto value = _committed + 1;
-    const auto result = submitValue(command, acquire, finished, value);
+    const auto result = submitValue(command, sync, value);
     if (result != vk::Result::eSuccess)
     {
         _deviceLost = result == vk::Result::eErrorDeviceLost;

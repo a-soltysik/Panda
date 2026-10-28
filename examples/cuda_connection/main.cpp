@@ -10,6 +10,7 @@
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/cuda/Cuda.hpp>
+#include <panda/cuda/CudaSession.hpp>
 #include <print>
 #include <string_view>
 #include <tuple>
@@ -45,11 +46,11 @@ auto runKernel() -> int
     return EXIT_SUCCESS;
 }
 
-auto importBuffer(const panda::Context& context, panda::cuda::CudaSession& session, std::string_view deviceName)
+auto importBuffer(panda::Context& context, panda::cuda::CudaSession& session, std::string_view deviceName)
     -> panda::Result<void>
 {
-    auto buffer =
-        context.createExternalBuffer({.size = sizeof(std::uint32_t), .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = context.getExternalBufferManager().createBuffer(
+        {.size = sizeof(std::uint32_t), .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     if (!buffer)
     {
         return std::unexpected {buffer.error()};

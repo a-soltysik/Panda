@@ -9,7 +9,7 @@
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
 
-#include "external/ExternalSemaphoreResource.hpp"  // IWYU pragma: keep
+#include "resources/BufferResource.hpp"
 
 namespace panda
 {
@@ -21,34 +21,35 @@ auto ExternalBuffer::operator=(ExternalBuffer&& other) noexcept -> ExternalBuffe
 
 ExternalBuffer::~ExternalBuffer() = default;
 
-auto ExternalBuffer::buffer() const -> Buffer
+auto ExternalBuffer::getBuffer() const -> Buffer
 {
     return _buffer;
 }
 
-auto ExternalBuffer::handle() noexcept -> ExternalMemoryHandle&
+auto ExternalBuffer::getHandle() noexcept -> ExternalMemoryHandle&
 {
     return _handle;
 }
 
-auto ExternalBuffer::handle() const noexcept -> const ExternalMemoryHandle&
+auto ExternalBuffer::getHandle() const noexcept -> const ExternalMemoryHandle&
 {
     return _handle;
 }
 
-auto ExternalBuffer::semaphoreHandle() noexcept -> ExternalSemaphoreHandle&
+auto ExternalBuffer::getSemaphoreHandle() noexcept -> ExternalSemaphoreHandle&
 {
     return _semaphoreHandle;
 }
 
-auto ExternalBuffer::semaphoreHandle() const noexcept -> const ExternalSemaphoreHandle&
+auto ExternalBuffer::getSemaphoreHandle() const noexcept -> const ExternalSemaphoreHandle&
 {
     return _semaphoreHandle;
 }
 
 auto ExternalBuffer::hasSemaphore() const noexcept -> bool
 {
-    return _semaphore != nullptr && _semaphoreHandle.isValid();
+    return _buffer.isValid() && _semaphoreHandle.isValid() &&
+           detail::BufferResource::getResource(_buffer)->getExternalSemaphore() != nullptr;
 }
 
 auto ExternalBuffer::getSize() const noexcept -> std::uint64_t

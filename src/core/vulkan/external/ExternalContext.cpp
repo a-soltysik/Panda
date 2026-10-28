@@ -8,9 +8,11 @@
 #include <algorithm>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <panda/Buffer.hpp>
+#include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
@@ -18,11 +20,13 @@
 #include <utility>
 #include <vector>
 
+#include "SubmissionQueue.hpp"
 #include "VulkanError.hpp"
+#include "external/ExternalBufferOwnershipTransferCommand.hpp"
 #include "external/ExternalSemaphoreResource.hpp"
 #include "panda/ExternalMemoryHandle.hpp"
 #include "resources/BufferResource.hpp"
-#include "resources/memory/MemoryPool.hpp"
+#include "upload/UploadManager.hpp"
 
 namespace panda::detail
 {
@@ -125,20 +129,22 @@ auto ExternalContext::querySupport(const vk::raii::PhysicalDevice& physicalDevic
 #endif
 }
 
-ExternalContext::ExternalContext(const vk::raii::PhysicalDevice& physicalDevice,
-                                 const vk::raii::Device& device,
-                                 core::vulkan::resources::MemoryPool& pool,
-                                 ExternalSupport support)
-    : _physicalDevice {physicalDevice},
-      _device {device},
-      _pool {pool},
-      _support {std::move(support)}
+ExternalContext::ExternalContext(CreateInfo info)
+    : _physicalDevice {info.physicalDevice},
+      _device {info.device},
+      _pool {info.pool},
+      _submissions {info.submissions},
+      _uploads {info.uploads},
+      _queueFamily {info.queueFamily},
+      _support {std::move(info.support)}
 {
     const auto properties =
         _physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
     const auto& uuid = properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID;
     std::ranges::copy(uuid, _deviceUuid.begin());
 }
+
+ExternalContext::~ExternalContext() = default;
 
 auto ExternalContext::supportsSemaphoreExport() const noexcept -> bool
 {
@@ -158,8 +164,189 @@ auto ExternalContext::createBuffer(const BufferDesc& description) -> Result<Exte
         return std::unexpected {std::move(semaphore.error())};
     }
     externalBuffer->_semaphoreHandle = std::move(semaphore->first);
-    externalBuffer->_semaphore = std::move(semaphore->second);
+    BufferResource::getResource(externalBuffer->_buffer)->setExternalInterop(*this, std::move(semaphore->second));
     return std::move(*externalBuffer);
+}
+
+auto ExternalContext::getHandoffBuffer(const Buffer& buffer) const -> Result<HandoffBuffer>
+{
+    if (!buffer.isValid())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "External buffer is empty")};
+    }
+    const auto resource = BufferResource::getResource(buffer);
+    const auto externalContext = resource->getExternalContext();
+    if (!externalContext || &externalContext->get() != this)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Buffer is not an external buffer from this Context")};
+    }
+    const auto semaphore = resource->getExternalSemaphore();
+    if (!semaphore || !_submissions)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::Unsupported, "External timeline-semaphore handoff is unavailable")};
+    }
+    return HandoffBuffer {.owner = buffer,
+                          .resource = resource,
+                          .semaphore = semaphore,
+                          .submissions = _submissions->get()};
+}
+
+auto ExternalContext::submitHandoff(const HandoffBuffer& buffer,
+                                    ExternalBufferOwnershipTransferDirection direction,
+                                    std::uint64_t semaphoreValue) -> Result<void>
+{
+    if (const auto prepared = prepareHandoff(); !prepared)
+    {
+        return std::unexpected {prepared.error()};
+    }
+    if (const auto collected = collectCompleted(); !collected)
+    {
+        return std::unexpected {collected.error()};
+    }
+    auto command = ExternalBufferOwnershipTransferCommand::create(_device, buffer.owner, _queueFamily, direction);
+    if (!command)
+    {
+        return std::unexpected {command.error()};
+    }
+    _pending.emplace_back(0, std::move(*command));
+    const auto submitted = direction == ExternalBufferOwnershipTransferDirection::Release
+                               ? buffer.submissions.get().submitExternalSignal(_pending.back().second->getCommand(),
+                                                                               buffer.semaphore->getNative(),
+                                                                               semaphoreValue)
+                               : buffer.submissions.get().submitExternalWait(_pending.back().second->getCommand(),
+                                                                             buffer.semaphore->getNative(),
+                                                                             semaphoreValue);
+    if (!submitted)
+    {
+        _pending.pop_back();
+        return std::unexpected {submitted.error()};
+    }
+    _pending.back().first = *submitted;
+    return {};
+}
+
+auto ExternalContext::release(const Buffer& buffer) -> Result<std::uint64_t>
+{
+    auto handoff = getHandoffBuffer(buffer);
+    if (!handoff)
+    {
+        return std::unexpected {handoff.error()};
+    }
+    auto& resource = *handoff->resource;
+    if (resource.isExternallyOwned())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "External buffer is already released")};
+    }
+    const auto previousValue = resource.getExternalTimelineValue();
+    if (previousValue == std::numeric_limits<std::uint64_t>::max())
+    {
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "External timeline values are exhausted")};
+    }
+    const auto signalValue = previousValue + 1;
+    if (const auto submitted = submitHandoff(*handoff, ExternalBufferOwnershipTransferDirection::Release, signalValue);
+        !submitted)
+    {
+        return std::unexpected {submitted.error()};
+    }
+    resource.setExternalTimelineValue(signalValue);
+    resource.setExternallyOwned(true);
+    return signalValue;
+}
+
+auto ExternalContext::acquire(const Buffer& buffer, std::uint64_t externalSignalValue) -> Result<void>
+{
+    auto handoff = getHandoffBuffer(buffer);
+    if (!handoff)
+    {
+        return std::unexpected {handoff.error()};
+    }
+    auto& resource = *handoff->resource;
+    const auto previousValue = resource.getExternalTimelineValue();
+    if (!resource.isExternallyOwned() || previousValue == std::numeric_limits<std::uint64_t>::max() ||
+        externalSignalValue != previousValue + 1)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "External acquire uses an unexpected timeline value")};
+    }
+    if (const auto submitted =
+            submitHandoff(*handoff, ExternalBufferOwnershipTransferDirection::Acquire, externalSignalValue);
+        !submitted)
+    {
+        return std::unexpected {submitted.error()};
+    }
+    resource.setExternalTimelineValue(externalSignalValue);
+    resource.setExternallyOwned(false);
+    return {};
+}
+
+auto ExternalContext::prepareHandoff() -> Result<void>
+{
+    if (!_uploads)
+    {
+        return {};
+    }
+    if (_uploads->hasActiveBatches())
+    {
+        return std::unexpected {
+            makeError(ErrorCode::ResourcesInUse, "Destroy or submit upload batches before handoff")};
+    }
+    return _uploads->collect();
+}
+
+auto ExternalContext::collectCompleted() -> Result<void>
+{
+    if (_pending.empty())
+    {
+        return {};
+    }
+    if (!_submissions)
+    {
+        return std::unexpected {makeError(ErrorCode::BackendFailure, "Pending external handoff has no queue")};
+    }
+    return collectPending(_submissions->get());
+}
+
+auto ExternalContext::collectPending(SubmissionQueue& submissions) -> Result<void>
+{
+    while (!_pending.empty())
+    {
+        const auto completed = submissions.poll(submissions.getPoint(_pending.front().first));
+        if (!completed)
+        {
+            return std::unexpected {completed.error()};
+        }
+        if (!*completed)
+        {
+            break;
+        }
+        _pending.pop_front();
+    }
+    return {};
+}
+
+auto ExternalContext::drain(std::uint64_t timeoutNanoseconds) -> Result<void>
+{
+    if (_pending.empty())
+    {
+        return {};
+    }
+    if (!_submissions)
+    {
+        return std::unexpected {makeError(ErrorCode::BackendFailure, "Pending external handoff has no queue")};
+    }
+    const auto completed = _submissions->get().waitValue(_pending.back().first, timeoutNanoseconds);
+    if (!completed)
+    {
+        return std::unexpected {completed.error()};
+    }
+    if (*completed == WaitStatus::Timeout)
+    {
+        return std::unexpected {makeError(ErrorCode::Timeout, "External handoff completion wait timed out")};
+    }
+    _pending.clear();
+    return {};
 }
 
 auto ExternalContext::createBufferWithMemory(const BufferDesc& description) -> Result<ExternalBuffer>
@@ -185,12 +372,12 @@ auto ExternalContext::createBufferWithMemory(const BufferDesc& description) -> R
 }
 
 auto ExternalContext::createSemaphoreResource()
-    -> Result<std::pair<ExternalSemaphoreHandle, std::unique_ptr<ExternalSemaphoreResource>>>
+    -> Result<std::pair<ExternalSemaphoreHandle, std::shared_ptr<ExternalSemaphoreResource>>>
 {
     const auto handleTypes = _support.semaphoreHandleType;
     if (!handleTypes)
     {
-        return std::pair {ExternalSemaphoreHandle {}, std::unique_ptr<ExternalSemaphoreResource> {}};
+        return std::pair {ExternalSemaphoreHandle {}, std::shared_ptr<ExternalSemaphoreResource> {}};
     }
     const auto [nativeHandleType, publicHandleType] = *handleTypes;
     const auto exportInfo = vk::ExportSemaphoreCreateInfo {.handleTypes = nativeHandleType};
@@ -203,7 +390,7 @@ auto ExternalContext::createSemaphoreResource()
     {
         return std::unexpected {makeVulkanError(created)};
     }
-    auto semaphoreState = std::make_unique<ExternalSemaphoreResource>(vk::raii::Semaphore {_device, nativeSemaphore});
+    auto semaphoreState = std::make_shared<ExternalSemaphoreResource>(vk::raii::Semaphore {_device, nativeSemaphore});
     const auto exported = exportSemaphoreHandle(nativeSemaphore, nativeHandleType);
     if (!exported)
     {

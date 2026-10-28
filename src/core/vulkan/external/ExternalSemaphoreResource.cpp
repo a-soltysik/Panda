@@ -1,6 +1,7 @@
 #include "external/ExternalSemaphoreResource.hpp"
 
 #include <utility>
+#include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
 namespace panda::detail
@@ -11,4 +12,9 @@ ExternalSemaphoreResource::ExternalSemaphoreResource(vk::raii::Semaphore semapho
 }
 
 ExternalSemaphoreResource::~ExternalSemaphoreResource() = default;
+
+auto ExternalSemaphoreResource::getNative() const -> vk::Semaphore
+{
+    return *_semaphore;
+}
 }

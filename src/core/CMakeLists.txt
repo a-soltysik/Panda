@@ -8,6 +8,8 @@ panda_add_component(panda_core
         Mesh.cpp
         Texture.cpp
         vulkan/external/ExternalBuffer.cpp
+        vulkan/external/ExternalBufferManager.cpp
+        vulkan/external/ExternalBufferOwnershipTransferCommand.cpp
         vulkan/external/ExternalMemoryHandle.cpp
         vulkan/external/ExternalSemaphoreHandle.cpp
         vulkan/external/ExternalSemaphoreResource.cpp
@@ -39,6 +41,7 @@ panda_add_component(panda_core
         panda/Context.hpp
         panda/Error.hpp
         panda/ExternalBuffer.hpp
+        panda/ExternalBufferManager.hpp
         panda/ExternalMemoryHandle.hpp
         panda/ExternalSemaphoreHandle.hpp
         panda/Mesh.hpp
@@ -51,6 +54,7 @@ panda_add_component(panda_core
         vulkan/DeviceSelection.hpp
         vulkan/external/ExternalContext.hpp
         vulkan/external/ExternalSemaphoreResource.hpp
+        vulkan/external/ExternalBufferOwnershipTransferCommand.hpp
         vulkan/external/ScopedExternalHandle.hpp
         vulkan/performance/PerformanceManagerImpl.hpp
         vulkan/presentation/Presentation.hpp

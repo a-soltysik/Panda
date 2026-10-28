@@ -371,6 +371,30 @@ protected:
             });
     }
 
+    void expectExternalHandoffQueue()
+    {
+        auto* const queue = fakeVulkanHandle<VkQueue>(30);
+        auto* const semaphore = fakeVulkanHandle<VkSemaphore>(31);
+        EXPECT_CALL(vulkan, vkGetDeviceQueue(device, 0, 0, NotNull())).WillOnce(testing::SetArgPointee<3>(queue));
+        EXPECT_CALL(vulkan, vkCreateSemaphore(device, NotNull(), nullptr, NotNull()))
+            .WillOnce([semaphore](VkDevice,
+                                  const VkSemaphoreCreateInfo* info,
+                                  const VkAllocationCallbacks*,
+                                  VkSemaphore* output) {
+                EXPECT_NE(info->pNext, nullptr);
+                if (info->pNext == nullptr)
+                {
+                    return success;
+                }
+                const auto* const type = static_cast<const VkSemaphoreTypeCreateInfo*>(info->pNext);
+                EXPECT_EQ(type->semaphoreType, VK_SEMAPHORE_TYPE_TIMELINE);
+                EXPECT_EQ(type->initialValue, 0U);
+                *output = semaphore;
+                return success;
+            });
+        EXPECT_CALL(vulkan, vkDestroySemaphore(device, semaphore, nullptr));
+    }
+
     static void expectDeviceExtensions(const VkDeviceCreateInfo& info,
                                        bool windowed,
                                        bool externalMemory,
@@ -707,6 +731,59 @@ TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
     EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
 }
 
+TEST_F(ContextLifecycleTest, RejectsExternalBufferOperationsWhenExportIsUnavailable)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+
+    auto& externalBuffers = context->getExternalBufferManager();
+    const auto created = externalBuffers.createBuffer({.size = 1, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::Unsupported);
+    const auto released = externalBuffers.releaseToExternal(panda::Buffer {});
+    ASSERT_FALSE(released);
+    EXPECT_EQ(released.error().code, panda::ErrorCode::Unsupported);
+    const auto acquired = externalBuffers.acquireFromExternal(panda::Buffer {}, 1);
+    ASSERT_FALSE(acquired);
+    EXPECT_EQ(acquired.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(ContextLifecycleTest, RejectsEmptyHandoffsWhenMemoryExportIsAvailable)
+{
+    auto* const native = fakeVulkanHandle<VkBuffer>(42);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(52);
+    expectInstance();
+    expectAdapter(false);
+    expectExternalMemoryExtensions(true);
+    expectBuffer(native);
+    expectBufferAllocation(memory);
+    expectBinding(native, memory);
+    expectDevice(false, success, false, true);
+    expectParentsDestroyed(true, false);
+    auto context =
+        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+    ASSERT_TRUE(context);
+
+    auto& externalBuffers = context->getExternalBufferManager();
+    const auto released = externalBuffers.releaseToExternal(panda::Buffer {});
+    ASSERT_FALSE(released);
+    EXPECT_EQ(released.error().code, panda::ErrorCode::InvalidArgument);
+    const auto acquired = externalBuffers.acquireFromExternal(panda::Buffer {}, 1);
+    ASSERT_FALSE(acquired);
+    EXPECT_EQ(acquired.error().code, panda::ErrorCode::InvalidArgument);
+
+    const auto ordinary = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(ordinary);
+    const auto ordinaryRelease = externalBuffers.releaseToExternal(*ordinary);
+    ASSERT_FALSE(ordinaryRelease);
+    EXPECT_EQ(ordinaryRelease.error().code, panda::ErrorCode::InvalidArgument);
+    const auto ordinaryAcquire = externalBuffers.acquireFromExternal(*ordinary, 1);
+    ASSERT_FALSE(ordinaryAcquire);
+    EXPECT_EQ(ordinaryAcquire.error().code, panda::ErrorCode::InvalidArgument);
+}
+
 TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityUnavailableAtStartup)
 {
     expectInstance();
@@ -743,6 +820,7 @@ TEST_F(ContextLifecycleTest, EnablesTimelineSemaphoreExportWhenTheTimelineQueryI
     expectExternalMemoryExtensions(true, true);
     expectTimelineSemaphoreSupport(true);
     expectDevice(false, success, false, true, true);
+    expectExternalHandoffQueue();
     expectParentsDestroyed(true, false);
 
     auto context =

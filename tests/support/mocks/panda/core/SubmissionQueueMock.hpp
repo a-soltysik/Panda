@@ -22,6 +22,14 @@ public:
     MOCK_METHOD(panda::Result<void>, initialize, (vk::PhysicalDevice), ());
     MOCK_METHOD(panda::Result<void>, prepareSubmit, (), ());
     MOCK_METHOD(panda::Result<std::uint64_t>, submit, (vk::CommandBuffer, vk::Semaphore, vk::Semaphore), ());
+    MOCK_METHOD(panda::Result<std::uint64_t>,
+                submitExternalWait,
+                (vk::CommandBuffer, vk::Semaphore, std::uint64_t),
+                ());
+    MOCK_METHOD(panda::Result<std::uint64_t>,
+                submitExternalSignal,
+                (vk::CommandBuffer, vk::Semaphore, std::uint64_t),
+                ());
     MOCK_METHOD(panda::CompletionPoint, getPoint, (std::uint64_t), ());
     MOCK_METHOD(std::uint64_t, getCompletedValue, (), (const));
     MOCK_METHOD(bool, isDeviceLost, (), (const));

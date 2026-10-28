@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -50,6 +51,19 @@ namespace panda
 namespace vulkan = core::vulkan;
 namespace resources = core::vulkan::resources;
 namespace upload = core::vulkan::upload;
+
+namespace
+{
+template <typename T>
+auto borrowIfPresent(const std::unique_ptr<T>& owner) noexcept -> std::optional<std::reference_wrapper<T>>
+{
+    if (!owner)
+    {
+        return std::nullopt;
+    }
+    return std::ref(*owner);
+}
+}
 
 struct Context::InstanceServices
 {
@@ -351,7 +365,7 @@ public:
     [[nodiscard]] auto presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>;
     [[nodiscard]] auto createBufferResource(const BufferDesc& description)
         -> Result<std::shared_ptr<detail::BufferResource>>;
-    [[nodiscard]] auto createExternalBufferResource(const BufferDesc& description) -> Result<ExternalBuffer>;
+    [[nodiscard]] auto getExternalContext() noexcept -> std::optional<std::reference_wrapper<detail::ExternalContext>>;
     [[nodiscard]] auto createTextureResource(const TextureDesc& description)
         -> Result<std::shared_ptr<detail::TextureResource>>;
     [[nodiscard]] auto createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>;
@@ -362,15 +376,17 @@ public:
 
 private:
     [[nodiscard]] auto initializeDevice(const WindowSurface* surface, const ContextOptions& options) -> Result<void>;
-    void initializeSelectedDeviceResources(const WindowSurface* surface,
-                                           const vulkan::SelectedDevice& selected,
-                                           std::optional<detail::ExternalSupport> externalSupport);
+    [[nodiscard]] auto initializeSelectedDeviceResources(const WindowSurface* surface,
+                                                         const vulkan::SelectedDevice& selected,
+                                                         std::optional<detail::ExternalSupport> externalSupport)
+        -> Result<void>;
     [[nodiscard]] auto initializeSelectedDevice(const WindowSurface* surface,
                                                 const vulkan::SelectedDevice& selected,
                                                 const ContextOptions& options,
                                                 std::optional<detail::ExternalSupport> externalSupport) -> Result<void>;
     [[nodiscard]] auto initializePerformance(const vulkan::SelectedDevice& selected,
                                              bool enableFramePerformanceSampling) -> Result<void>;
+    void updateDeviceInfo(const vulkan::SelectedDevice& selected);
     [[nodiscard]] auto ensureUploads() -> Result<void>;
     [[nodiscard]] auto collectUploads() -> Result<void>;
     void collectCompletedUploads();
@@ -393,8 +409,8 @@ private:
     vk::raii::Device _device {nullptr};
     std::unique_ptr<resources::MemoryPool> _memoryPool;
     std::unique_ptr<detail::SubmissionQueue> _submissions;
+    std::optional<upload::UploadManager> _uploads;
     std::unique_ptr<detail::ExternalContext> _externalContext;
-    std::unique_ptr<upload::UploadManager> _uploads;
     std::unique_ptr<detail::PerformanceManagerImpl> _performanceManagerImplementation;
     std::unique_ptr<vulkan::Presentation> _presentation;
     ContextDeviceInfo _info;
@@ -448,7 +464,11 @@ auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
                                              const ContextOptions& options,
                                              std::optional<detail::ExternalSupport> externalSupport) -> Result<void>
 {
-    initializeSelectedDeviceResources(surface, selected, std::move(externalSupport));
+    if (const auto initialized = initializeSelectedDeviceResources(surface, selected, std::move(externalSupport));
+        !initialized)
+    {
+        return std::unexpected {initialized.error()};
+    }
     if (const auto initialized = initializePerformance(selected, options.enableFramePerformanceSampling); !initialized)
     {
         return std::unexpected {initialized.error()};
@@ -462,6 +482,12 @@ auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
             return std::unexpected {initialized.error()};
         }
     }
+    updateDeviceInfo(selected);
+    return {};
+}
+
+void Context::Impl::updateDeviceInfo(const vulkan::SelectedDevice& selected)
+{
     _info = selected.info;
     _info.externalBufferExportEnabled = _externalContext != nullptr;
     _info.externalSemaphoreExportEnabled = _externalContext != nullptr && _externalContext->supportsSemaphoreExport();
@@ -469,25 +495,39 @@ auto Context::Impl::initializeSelectedDevice(const WindowSurface* surface,
         _physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
     const auto& uuid = properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID;
     std::ranges::copy(uuid, _info.deviceUuid.begin());
-    return {};
 }
 
-void Context::Impl::initializeSelectedDeviceResources(const WindowSurface* surface,
+auto Context::Impl::initializeSelectedDeviceResources(const WindowSurface* surface,
                                                       const vulkan::SelectedDevice& selected,
                                                       std::optional<detail::ExternalSupport> externalSupport)
+    -> Result<void>
 {
     _memoryPool = resources::MemoryPool::create(_physicalDevice, _device);
-    if (surface != nullptr)
+    const auto needsExternalHandoff = externalSupport && externalSupport->semaphoreHandleType.has_value();
+    const auto needsSubmissionQueue = surface != nullptr || needsExternalHandoff;
+    if (needsSubmissionQueue)
     {
         _submissions = std::make_unique<detail::SubmissionQueue>(_device, selected.info.queueFamily);
     }
+    if (surface == nullptr && _submissions != nullptr)
+    {
+        if (const auto initialized = _submissions->initialize(*_physicalDevice); !initialized)
+        {
+            return std::unexpected {initialized.error()};
+        }
+    }
     if (externalSupport)
     {
-        _externalContext = std::make_unique<detail::ExternalContext>(_physicalDevice,
-                                                                     _device,
-                                                                     *_memoryPool,
-                                                                     std::move(*externalSupport));
+        _externalContext = std::make_unique<detail::ExternalContext>(
+            detail::ExternalContext::CreateInfo {.physicalDevice = _physicalDevice,
+                                                 .device = _device,
+                                                 .pool = *_memoryPool,
+                                                 .submissions = borrowIfPresent(_submissions),
+                                                 .uploads = _uploads,
+                                                 .queueFamily = selected.info.queueFamily,
+                                                 .support = std::move(*externalSupport)});
     }
+    return {};
 }
 
 auto Context::Impl::initializePerformance(const vulkan::SelectedDevice& selected, bool enableFramePerformanceSampling)
@@ -542,7 +582,7 @@ auto Context::Impl::ensureUploads() -> Result<void>
         }
         _submissions = std::move(submissions);
     }
-    _uploads = std::make_unique<upload::UploadManager>(_device, *_memoryPool, *_submissions, _info.queueFamily);
+    _uploads.emplace(_device, *_memoryPool, *_submissions, _info.queueFamily);
     return {};
 }
 
@@ -586,14 +626,9 @@ auto Context::Impl::createBufferResource(const BufferDesc& description)
     return createResource<detail::BufferResource>(description);
 }
 
-auto Context::Impl::createExternalBufferResource(const BufferDesc& description) -> Result<ExternalBuffer>
+auto Context::Impl::getExternalContext() noexcept -> std::optional<std::reference_wrapper<detail::ExternalContext>>
 {
-    if (!_externalContext)
-    {
-        return std::unexpected {
-            makeError(ErrorCode::Unsupported, "Context was not created with external buffer support")};
-    }
-    return _externalContext->createBuffer(description);
+    return borrowIfPresent(_externalContext);
 }
 
 auto Context::Impl::createTextureResource(const TextureDesc& description)
@@ -640,15 +675,19 @@ auto Context::Impl::wait(CompletionPoint point, std::chrono::nanoseconds timeout
 
 void Context::Impl::drain()
 {
+    static constexpr auto timeoutNanoseconds = std::uint64_t {10'000'000'000};
     if (_uploads)
     {
         expect(!_uploads->hasActiveBatches(), "Context destroyed with live upload batches");
-        static constexpr auto timeoutNanoseconds = std::uint64_t {10'000'000'000};
         expect(_uploads->drain(timeoutNanoseconds), "Cannot safely drain upload submissions");
     }
     if (_presentation)
     {
         expect(_presentation->drain(), "Cannot safely drain window presentation");
+    }
+    if (_externalContext)
+    {
+        expect(_externalContext->drain(timeoutNanoseconds), "Cannot safely drain external handoff submissions");
     }
     expect(_memoryPool->getStats().liveBytes == 0,
            "Context destroyed with live Buffer or Texture owners or Mesh storage");
@@ -656,13 +695,15 @@ void Context::Impl::drain()
 
 Context::Context(std::unique_ptr<Impl> implementation) noexcept
     : _implementation {std::move(implementation)},
-      _performanceManager {_implementation->getPerformanceManagerImplementation()}
+      _performanceManager {_implementation->getPerformanceManagerImplementation()},
+      _externalBufferManager {_implementation->getExternalContext()}
 {
 }
 
 Context::Context(Context&& other) noexcept
     : _implementation {std::move(other._implementation)},
-      _performanceManager {_implementation->getPerformanceManagerImplementation()}
+      _performanceManager {_implementation->getPerformanceManagerImplementation()},
+      _externalBufferManager {_implementation->getExternalContext()}
 {
 }
 
@@ -711,6 +752,12 @@ auto Context::getPerformanceManager() -> PerformanceManager&
     return _performanceManager;
 }
 
+auto Context::getExternalBufferManager() -> ExternalBufferManager&
+{
+    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    return _externalBufferManager;
+}
+
 auto Context::presentClearFrame() const -> Result<FrameResult>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
@@ -738,12 +785,6 @@ auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer
         .transform([](std::shared_ptr<detail::BufferResource> resource) {
             return Buffer {std::move(resource)};
         });
-}
-
-auto Context::createExternalBuffer(const BufferDesc& description) const -> Result<ExternalBuffer>
-{
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
-    return _implementation->createExternalBufferResource(description);
 }
 
 auto Context::createTexture(const TextureDesc& description) const -> Result<Texture>
