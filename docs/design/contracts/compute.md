@@ -2,8 +2,9 @@
 
 This contract keeps Panda focused on Vulkan graphics while allowing applications
 to add GPU computation. The [plan](../../development/PLAN.md) tracks implementation
-and proof; this page separates current external-buffer handoffs from the later
-compute-submission work.
+and proof; the [handoff task](../../development/tasks/gpu-handoff.md) owns the
+single-buffer submission path, and the later compute-integration task owns its use
+in a multi-step application workload.
 
 ## Responsibility boundary
 
@@ -20,9 +21,9 @@ Other adapters may use the same external-buffer contract when their import API
 accepts the platform's supported opaque FD or Win32 handle type.
 
 Do not add a persistent callback registry, per-frame compute scheduler, entity-based
-compute system, or general task graph. A future compute entry point should be an
-explicit application call that submits one bounded batch of work; its exact surface
-belongs to the [compute submission task](../../development/tasks/compute-api.md).
+compute system, or general task graph. The application explicitly submits one
+bounded batch for a buffer handoff, then decides when to render or submit another
+batch.
 
 ## Current external-buffer behavior
 
@@ -67,10 +68,21 @@ release and signals the paired timeline semaphore. `acquireFromExternal(Buffer,
 value)` queues a wait for the next timeline value and records the matching acquire;
 neither operation waits on the CPU. The Buffer view can come from either
 `ExternalBuffer` or `SharedCudaBuffer`, so ownership can be reacquired after import.
-`Panda::Cuda` has private stream-bound timeline wait/signal operations, but its
-current public API has no compute-work path that invokes them around application
-work. The complete CUDA producer/consumer path remains unavailable. Do not use an
-imported mapping for GPU work until that path is implemented and verified.
+The public handoff methods use `ExternalTimelineValue` instead of an untyped integer.
+`SharedCudaBuffer::submitWork(releaseValue, callback)` queues a CUDA wait for the
+Vulkan release value, invokes the callback with the matched session's `cudaStream_t`,
+a borrowed `std::byte*` device address and the logical buffer size, then queues a
+signal at `releaseValue + 1`. Keep buffer access on the supplied stream so the two
+semaphore operations order the application's work. The mapping and stream are
+borrowed only for the callback; the shared buffer retains their owners while alive.
+The method reports enqueue completion, not GPU completion, and performs no CPU or
+device-wide wait. Its result carries both the signal value and callback enqueue
+result. A callback error does not cancel the signal: the application must still
+queue `acquireFromExternal` with that value before acting on the callback error.
+Submissions for a shared buffer must be serialized and use the next release value.
+Wait or signal API failures are returned as operation errors; a failed signal faults
+that imported handoff so it cannot be resubmitted unsafely. GPU-side data ordering
+still requires hardware proof in the [handoff task](../../development/tasks/gpu-handoff.md).
 
 ## Required synchronization contract
 
@@ -85,12 +97,12 @@ results must be visible to Vulkan. The reverse direction is required when Vulkan
 writes data later consumed by the external backend. Rendering includes every pass
 that reads the resource, including shadows.
 
-The [external handoff task](../../development/tasks/gpu-handoff.md) implements and
-proves the smallest supported GPU-side handoff for the optional CUDA add-on. It must
-preserve application-owned scheduling, avoid CPU copies and routine global waits,
-and define failures and resource retirement. Core's Vulkan ownership transfers and
-private CUDA wait/signal operations are implemented; a public work path and GPU
-proof remain before buffers are safe for cross-API use.
+The [external handoff task](../../development/tasks/gpu-handoff.md) proves the
+smallest supported GPU-side handoff for the optional CUDA add-on. It preserves
+application-owned scheduling, avoids CPU copies and routine global waits, and defines
+failure and resource-retirement behavior. The later
+[compute integration task](../../development/tasks/compute-api.md) demonstrates
+multi-step application work using this handoff.
 
 ## Build and capability boundary
 

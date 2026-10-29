@@ -126,7 +126,7 @@ def recommended_jobs():
     return min(cpus, max(1, available_memory_bytes() // (3 * 1024**3)), 8)
 
 
-def configure_environment():
+def configure_environment(mirror):
     environment = os.environ.copy()
     environment.pop("VK_INSTANCE_LAYERS", None)
     environment.pop("VK_LAYER_DEBUG_ACTION", None)
@@ -138,7 +138,7 @@ def configure_environment():
     environment["GIT_CONFIG_COUNT"] = str(git_config_count + 1)
     use_ccache = shutil.which("ccache") is not None
     if use_ccache:
-        cache_directory = Path.home() / ".cache" / "panda-ccache"
+        cache_directory = mirror / ".cache" / "ccache"
         cache_directory.mkdir(parents=True, exist_ok=True)
         environment["CCACHE_DIR"] = str(cache_directory)
         environment["CCACHE_MAXSIZE"] = "10G"
@@ -146,14 +146,14 @@ def configure_environment():
 
 
 def run_build(arguments, mirror):
-    environment, use_ccache = configure_environment()
+    environment, use_ccache = configure_environment(mirror)
     configure = ["cmake", "--preset", arguments.preset]
     if use_ccache and arguments.preset != "docs-checks":
         configure.extend([
             "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
             "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
         ])
-        print("Using ccache in the WSL home directory.", flush=True)
+        print(f"Using ccache in {environment['CCACHE_DIR']}.", flush=True)
     run(configure, cwd=mirror, environment=environment)
 
     jobs = arguments.jobs or recommended_jobs()

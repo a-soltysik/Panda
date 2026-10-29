@@ -56,11 +56,9 @@ auto CudaSession::importBuffer(panda::ExternalBuffer buffer) -> Result<SharedCud
         return std::unexpected {valid.error()};
     }
     auto resource = std::make_shared<detail::SharedCudaBufferState>(std::move(buffer), _state);
-    if (const auto imported = resource->import(); !imported)
-    {
-        return std::unexpected {imported.error()};
-    }
-    return SharedCudaBuffer {std::move(resource)};
+    return resource->import().transform([&resource] {
+        return SharedCudaBuffer {std::move(resource)};
+    });
 }
 
 auto CudaSession::close() -> Result<void>

@@ -9,6 +9,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
+#include <panda/ExternalTimelineValue.hpp>
 
 namespace panda
 {
@@ -39,15 +40,17 @@ public:
     /// @brief Releases a Buffer view to an external GPU API and signals its timeline semaphore.
     /// @param buffer An external buffer view returned by its owning adapter.
     /// @return The timeline value that the external API must wait for, or an error before submission.
+    /// The returned value leaves room for the external API's next signal value.
     /// The queue operation does not wait on the CPU. No unsubmitted upload batch may be alive.
-    [[nodiscard]] auto releaseToExternal(const Buffer& buffer) -> Result<std::uint64_t>;
+    [[nodiscard]] auto releaseToExternal(const Buffer& buffer) -> Result<ExternalTimelineValue>;
 
     /// @brief Queues a wait for the external timeline signal and reacquires Vulkan ownership.
     /// @param buffer The same external Buffer view passed to releaseToExternal.
-    /// @param externalSignalValue The value returned by releaseToExternal plus one.
+    /// @param externalSignalValue The next value returned by external GPU work.
     /// @return Success once the wait and ownership barrier are submitted, or an error before submission.
     /// Later Vulkan queue work follows the acquire without a CPU wait.
-    [[nodiscard]] auto acquireFromExternal(const Buffer& buffer, std::uint64_t externalSignalValue) -> Result<void>;
+    [[nodiscard]] auto acquireFromExternal(const Buffer& buffer, ExternalTimelineValue externalSignalValue)
+        -> Result<void>;
 
 private:
     friend class Context;

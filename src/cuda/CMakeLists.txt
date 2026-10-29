@@ -12,4 +12,4 @@ panda_add_component(panda_cuda
     SOURCES Cuda.cpp CudaSession.cpp SharedCudaBuffer.cpp CudaInterop.cpp CudaSessionState.cpp SharedCudaBufferState.cpp
     PUBLIC_HEADERS panda/cuda/Cuda.hpp panda/cuda/CudaSession.hpp panda/cuda/SharedCudaBuffer.hpp
     PRIVATE_HEADERS CudaAdapter.hpp CudaInterop.hpp CudaSessionState.hpp SharedCudaBufferState.hpp
-    LIBRARIES PUBLIC Panda::Panda PRIVATE panda_cuda_adapter)
+    LIBRARIES PUBLIC Panda::Panda CUDA::cudart_static PRIVATE panda_cuda_adapter)

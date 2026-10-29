@@ -2,10 +2,10 @@
 
 The design, build foundation and GLFW window wrapper are accepted. The static core,
 shared diagnostics, optional GLFW Tools, a CUDA availability facade, examples and
-CPU tests exist. Generic external-memory buffer creation and CUDA memory import are
-ready for review; paired timeline-semaphore export and CUDA import are in progress,
-while ordered cross-API handoff and compute submission remain incomplete. Toolchain compatibility and tests/API
-documentation are accepted in the authorized build-foundation phase.
+CPU tests exist. Generic external-memory buffer creation, paired timeline-semaphore
+export and CUDA import are implemented. Ordered cross-API handoff is in progress;
+application-level compute integration remains incomplete. Toolchain compatibility
+and tests/API documentation are accepted in the authorized build-foundation phase.
 
 ## Task order
 
@@ -30,12 +30,12 @@ criteria and concise current evidence.
 | [Materials, lights and shadows](tasks/materials-and-shadows.md) | Renderer features | Planned | [First lit and shadowed scene](tasks/first-scene.md) |
 | [Custom shaders and safe reload](tasks/custom-shaders.md) | Renderer features | Planned | [Materials, lights and shadows](tasks/materials-and-shadows.md) |
 | [GPU sphere billboards](tasks/sphere-billboards.md) | Renderer features | Planned | [Custom shaders and safe reload](tasks/custom-shaders.md) |
-| [Application-driven compute submission](tasks/compute-api.md) | Compute integration | Planned | [Vulkan and external backend handoff](tasks/gpu-handoff.md), [GPU sphere billboards](tasks/sphere-billboards.md) |
+| [Application-driven compute integration](tasks/compute-api.md) | Compute integration | Planned | [Vulkan and external backend handoff](tasks/gpu-handoff.md), [GPU sphere billboards](tasks/sphere-billboards.md) |
 | [Scene persistence and asset resolution](tasks/scene-persistence.md) | Application integration | Planned | [Scene identities and transforms](tasks/scene-transforms.md), [GPU sphere billboards](tasks/sphere-billboards.md) |
 | [Static asset import](tasks/asset-import.md) | Application integration | Planned | [Materials, lights and shadows](tasks/materials-and-shadows.md), [Scene persistence and asset resolution](tasks/scene-persistence.md) |
 | [Scene tools and safe edits](tasks/scene-tools.md) | Application integration | Planned | [Scene persistence and asset resolution](tasks/scene-persistence.md), [Static asset import](tasks/asset-import.md) |
 | [Prototype physics](tasks/prototype-physics.md) | Replacement acceptance | Planned | [Scene identities and transforms](tasks/scene-transforms.md), [Scene tools and safe edits](tasks/scene-tools.md) |
-| [Benchmarks and replacement acceptance](tasks/replacement-acceptance.md) | Replacement acceptance | Planned | [Application-driven compute submission](tasks/compute-api.md), [Static asset import](tasks/asset-import.md), [Scene tools and safe edits](tasks/scene-tools.md), [Prototype physics](tasks/prototype-physics.md) |
+| [Benchmarks and replacement acceptance](tasks/replacement-acceptance.md) | Replacement acceptance | Planned | [Application-driven compute integration](tasks/compute-api.md), [Static asset import](tasks/asset-import.md), [Scene tools and safe edits](tasks/scene-tools.md), [Prototype physics](tasks/prototype-physics.md) |
 
 ## Phase reviews
 
@@ -50,7 +50,7 @@ Keep existing task dependencies when working in smaller implementation slices.
 | CUDA interoperability | Device-matched Windows/Linux buffer sharing, GPU-side ordered handoff and fault/lifecycle tests; no normal-path CPU copies or global waits |
 | First scene | Public-API lit cube, transforms, directional shadow, effective quality settings and maintainer walkthrough |
 | Renderer features | Material/shader ABI, all light/shadow types, custom shaders, sphere depth and structural draw/performance checks |
-| Compute integration | Explicit application-driven compute submission, batched work and mixed-workload/lifecycle tests; no recurring engine scheduler |
+| Compute integration | Application-driven batched compute workload and mixed-workload/lifecycle tests; no recurring engine scheduler |
 | Application integration | Persistence, import and tools working in an external application without engine edits |
 | Replacement acceptance | Restricted physics, full benchmark evidence, documentation and accepted functional replacement |
 

@@ -88,7 +88,7 @@ TEST(ExternalBufferSystem, ReleaseSignalsTimelineAndPreventsVulkanUploadsUntilAc
     const auto externalView = buffer->getBuffer();
     const auto released = externalBuffers.releaseToExternal(externalView);
     ASSERT_TRUE(released) << released.error().message;
-    EXPECT_EQ(*released, 1);
+    EXPECT_EQ(released->getValue(), 1);
     const auto duplicateRelease = externalBuffers.releaseToExternal(externalView);
     ASSERT_FALSE(duplicateRelease);
     EXPECT_EQ(duplicateRelease.error().code, panda::ErrorCode::InvalidArgument);

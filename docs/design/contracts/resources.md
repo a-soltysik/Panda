@@ -152,8 +152,8 @@ their public headers; entries without public declarations remain planned contrac
 | `Buffer`, `Texture`, `Mesh`, `Material` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
 | `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
 | `ExternalBufferManager::createBuffer(BufferDesc) -> Result<ExternalBuffer>` | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle |
-| `ExternalBufferManager::releaseToExternal(const Buffer&) -> Result<uint64_t>` | Submits a Vulkan ownership release and signals the paired timeline semaphore |
-| `ExternalBufferManager::acquireFromExternal(const Buffer&, uint64_t) -> Result<void>` | Waits on the external timeline value and queues the Vulkan ownership acquire |
+| `ExternalBufferManager::releaseToExternal(const Buffer&) -> Result<ExternalTimelineValue>` | Submits a Vulkan ownership release and signals the paired timeline semaphore |
+| `ExternalBufferManager::acquireFromExternal(const Buffer&, ExternalTimelineValue) -> Result<void>` | Waits on the external timeline value and queues the Vulkan ownership acquire |
 | `ExternalBuffer` | Owns the Vulkan buffer, allocation handle and optional paired timeline-semaphore handle; handles alone do not synchronize access |
 | `CudaSession::importBuffer(ExternalBuffer) -> Result<SharedCudaBuffer>` | `Panda::Cuda` imports and maps a matching-device allocation once and imports its optional paired semaphore; it does not submit compute or synchronize with Vulkan |
 | `CudaSession::close() -> Result<void>` | Releases the session only after all `SharedCudaBuffer` owners are gone |

@@ -1,20 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <panda/StrongAlias.hpp>
 
 namespace panda::core::vulkan::upload
 {
-class UploadBatchId final
-{
-public:
-    explicit UploadBatchId(std::uint64_t value)
-        : _value {value}
-    {
-    }
-
-    auto operator==(const UploadBatchId&) const -> bool = default;
-
-private:
-    std::uint64_t _value;
-};
+struct UploadBatchIdTag;
+using UploadBatchId = panda::StrongAlias<std::uint64_t, UploadBatchIdTag>;
 }

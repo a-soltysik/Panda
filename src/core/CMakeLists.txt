@@ -44,6 +44,8 @@ panda_add_component(panda_core
         panda/ExternalBufferManager.hpp
         panda/ExternalMemoryHandle.hpp
         panda/ExternalSemaphoreHandle.hpp
+        panda/ExternalTimelineValue.hpp
+        panda/StrongAlias.hpp
         panda/Mesh.hpp
         panda/Panda.hpp
         panda/PerformanceManager.hpp

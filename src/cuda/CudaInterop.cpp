@@ -37,30 +37,6 @@ auto interopErrorDetail(NativeInteropStatus status) -> std::pair<ErrorCode, std:
     return {ErrorCode::BackendFailure, ": CUDA Runtime operation failed"};
 }
 
-auto nativeHandleType(ExternalMemoryHandleType type) -> NativeMemoryHandleType
-{
-    switch (type)
-    {
-    case ExternalMemoryHandleType::OpaqueFd:
-        return NativeMemoryHandleType::OpaqueFd;
-    case ExternalMemoryHandleType::OpaqueWin32:
-        return NativeMemoryHandleType::OpaqueWin32;
-    }
-    panda::panic("Invalid external memory handle type");
-}
-
-auto nativeSemaphoreHandleType(ExternalSemaphoreHandleType type) -> NativeSemaphoreHandleType
-{
-    switch (type)
-    {
-    case ExternalSemaphoreHandleType::OpaqueFd:
-        return NativeSemaphoreHandleType::OpaqueFd;
-    case ExternalSemaphoreHandleType::OpaqueWin32:
-        return NativeSemaphoreHandleType::OpaqueWin32;
-    }
-    panda::panic("Invalid external semaphore handle type");
-}
-
 auto checkNativeBufferImport(const NativeSession& nativeSession, const NativeExternalBufferResult& imported)
     -> Result<NativeExternalBufferResult>
 {
@@ -133,11 +109,9 @@ auto importNativeBuffer(const NativeSession& nativeSession, ExternalBuffer& buff
 #else
     const auto& handle = buffer.getHandle();
 #endif
-    const auto imported = detail::importExternalBuffer(nativeSession,
-                                                       {.handle = handle.get(),
-                                                        .handleType = nativeHandleType(handle.getType()),
-                                                        .allocationSize = buffer.getAllocationSize(),
-                                                        .bufferSize = buffer.getSize()});
+    const auto imported = detail::importExternalBuffer(
+        nativeSession,
+        {.handle = handle.get(), .allocationSize = buffer.getAllocationSize(), .bufferSize = buffer.getSize()});
 #ifdef __linux__
     if (imported.imported)
     {
@@ -154,9 +128,7 @@ auto importNativeSemaphore(const NativeSession& nativeSession, const ExternalSem
     {
         return std::nullopt;
     }
-    const auto imported = detail::importExternalSemaphore(
-        nativeSession,
-        {.handle = handle.get(), .handleType = nativeSemaphoreHandleType(handle.getType())});
+    const auto imported = detail::importExternalSemaphore(nativeSession, {.handle = handle.get()});
     if (imported.status != NativeInteropStatus::Success)
     {
         return std::unexpected {interopError(imported.status,

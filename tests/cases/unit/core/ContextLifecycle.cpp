@@ -745,7 +745,7 @@ TEST_F(ContextLifecycleTest, RejectsExternalBufferOperationsWhenExportIsUnavaila
     const auto released = externalBuffers.releaseToExternal(panda::Buffer {});
     ASSERT_FALSE(released);
     EXPECT_EQ(released.error().code, panda::ErrorCode::Unsupported);
-    const auto acquired = externalBuffers.acquireFromExternal(panda::Buffer {}, 1);
+    const auto acquired = externalBuffers.acquireFromExternal(panda::Buffer {}, panda::ExternalTimelineValue {1});
     ASSERT_FALSE(acquired);
     EXPECT_EQ(acquired.error().code, panda::ErrorCode::Unsupported);
 }
@@ -770,7 +770,7 @@ TEST_F(ContextLifecycleTest, RejectsEmptyHandoffsWhenMemoryExportIsAvailable)
     const auto released = externalBuffers.releaseToExternal(panda::Buffer {});
     ASSERT_FALSE(released);
     EXPECT_EQ(released.error().code, panda::ErrorCode::InvalidArgument);
-    const auto acquired = externalBuffers.acquireFromExternal(panda::Buffer {}, 1);
+    const auto acquired = externalBuffers.acquireFromExternal(panda::Buffer {}, panda::ExternalTimelineValue {1});
     ASSERT_FALSE(acquired);
     EXPECT_EQ(acquired.error().code, panda::ErrorCode::InvalidArgument);
 
@@ -779,7 +779,7 @@ TEST_F(ContextLifecycleTest, RejectsEmptyHandoffsWhenMemoryExportIsAvailable)
     const auto ordinaryRelease = externalBuffers.releaseToExternal(*ordinary);
     ASSERT_FALSE(ordinaryRelease);
     EXPECT_EQ(ordinaryRelease.error().code, panda::ErrorCode::InvalidArgument);
-    const auto ordinaryAcquire = externalBuffers.acquireFromExternal(*ordinary, 1);
+    const auto ordinaryAcquire = externalBuffers.acquireFromExternal(*ordinary, panda::ExternalTimelineValue {1});
     ASSERT_FALSE(ordinaryAcquire);
     EXPECT_EQ(ordinaryAcquire.error().code, panda::ErrorCode::InvalidArgument);
 }
