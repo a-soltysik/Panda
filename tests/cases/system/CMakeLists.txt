@@ -15,6 +15,13 @@ panda_add_test(panda_system_external_buffer system
     LIBRARIES Panda::Panda)
 
 if(PANDA_BUILD_CUDA)
+    panda_add_test(panda_system_external_buffer_handoff system
+        TIMEOUT 30
+        VULKAN_INTERNAL
+        SOURCES ExternalBufferHandoff.cpp VulkanBufferReadback.cpp
+        HEADERS VulkanBufferReadback.hpp
+        LIBRARIES Panda::Cuda PandaTest::LogCapture)
+
     panda_add_test(panda_system_external_buffer_cuda system
         SOURCES ExternalBufferCuda.cpp
         LIBRARIES Panda::Panda Panda::Cuda

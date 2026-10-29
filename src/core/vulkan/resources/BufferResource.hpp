@@ -36,6 +36,7 @@ public:
     [[nodiscard]] auto getSize() const -> std::uint64_t;
     [[nodiscard]] auto getReservedSize() const -> std::uint64_t;
     [[nodiscard]] auto getNative() const -> vk::Buffer;
+    [[nodiscard]] auto getNativeDevice() const -> vk::Device;
     [[nodiscard]] auto getNativeMemory() const -> vk::DeviceMemory;
     [[nodiscard]] auto getUsage() const -> vk::BufferUsageFlags;
     [[nodiscard]] auto belongsTo(const buffer_resources::MemoryPool& pool) const -> bool;
