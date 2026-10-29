@@ -228,6 +228,11 @@ auto BufferResource::getReservedSize() const -> std::uint64_t
     return _allocation.getRange().size;
 }
 
+auto BufferResource::getNativeDevice() const -> vk::Device
+{
+    return _buffer.getDevice();
+}
+
 auto BufferResource::getNative() const -> vk::Buffer
 {
     return *_buffer;

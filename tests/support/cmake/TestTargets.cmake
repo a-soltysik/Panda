@@ -16,7 +16,7 @@ function(panda_configure_test target)
 endfunction()
 
 function(panda_add_test target level)
-    cmake_parse_arguments(TEST "VULKAN_INTERNAL" ""
+    cmake_parse_arguments(TEST "VULKAN_INTERNAL" "TIMEOUT"
         "SOURCES;HEADERS;INCLUDE_DIRECTORIES;LIBRARIES;MOCKS" ${ARGN})
     if(TEST_UNPARSED_ARGUMENTS OR TEST_KEYWORDS_MISSING_VALUES OR NOT TEST_SOURCES)
         message(FATAL_ERROR "Invalid arguments for test ${target}")
@@ -51,9 +51,13 @@ function(panda_add_test target level)
         list(APPEND test_configuration INCLUDE_DIRECTORIES ${TEST_INCLUDE_DIRECTORIES})
     endif()
     panda_configure_test(${target} ${test_configuration})
+    set(test_properties LABELS "${level}")
+    if(TEST_TIMEOUT)
+        list(APPEND test_properties TIMEOUT "${TEST_TIMEOUT}")
+    endif()
     gtest_discover_tests(${target}
         TEST_PREFIX "${level}."
-        PROPERTIES LABELS "${level}"
+        PROPERTIES ${test_properties}
         DISCOVERY_TIMEOUT 15)
 endfunction()
 

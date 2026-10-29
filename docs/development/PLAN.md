@@ -3,7 +3,8 @@
 The design, build foundation and GLFW window wrapper are accepted. The static core,
 shared diagnostics, optional GLFW Tools, a CUDA availability facade, examples and
 CPU tests exist. Generic external-memory buffer creation, paired timeline-semaphore
-export and CUDA import are implemented. Ordered cross-API handoff is in progress;
+export and CUDA import are implemented. Ordered cross-API handoff is accepted with
+Windows GPU verification and WSL build/test evidence;
 application-level compute integration remains incomplete. Toolchain compatibility
 and tests/API documentation are accepted in the authorized build-foundation phase.
 
@@ -24,7 +25,7 @@ criteria and concise current evidence.
 | [Allocation, uploads and resource lifetimes](tasks/resource-lifetimes.md) | GPU resources | Accepted | [Vulkan context and window lifecycle](tasks/vulkan-context.md) |
 | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) | GPU resources | Accepted | [Allocation, uploads and resource lifetimes](tasks/resource-lifetimes.md) |
 | [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) | CUDA interoperability | Accepted | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) |
-| [Vulkan and external backend handoff](tasks/gpu-handoff.md) | CUDA interoperability | In progress | [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) |
+| [Vulkan and external backend handoff](tasks/gpu-handoff.md) | CUDA interoperability | Accepted | [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) |
 | [Scene identities and transforms](tasks/scene-transforms.md) | First scene | Planned | [Vulkan and external backend handoff](tasks/gpu-handoff.md) |
 | [First lit and shadowed scene](tasks/first-scene.md) | First scene | Planned | [Scene identities and transforms](tasks/scene-transforms.md) |
 | [Materials, lights and shadows](tasks/materials-and-shadows.md) | Renderer features | Planned | [First lit and shadowed scene](tasks/first-scene.md) |
@@ -47,7 +48,7 @@ Keep existing task dependencies when working in smaller implementation slices.
 | --- | --- |
 | Build foundation | Windows/Linux build and toolchain probes, CUDA-off independence, C++23/CUDA20 bridge, enforced analysis and test/docs setup |
 | GPU resources | Window/swapchain failure paths, allocation and in-flight lifetime checks, two frame slots, RenderDoc capture and initial timestamps |
-| CUDA interoperability | Device-matched Windows/Linux buffer sharing, GPU-side ordered handoff and fault/lifecycle tests; no normal-path CPU copies or global waits |
+| CUDA interoperability | Device-matched buffer sharing, Windows GPU-side ordered handoff proof, WSL builds/tests with explicit capability skips, and fault/lifecycle tests; no normal-path CPU copies or global waits |
 | First scene | Public-API lit cube, transforms, directional shadow, effective quality settings and maintainer walkthrough |
 | Renderer features | Material/shader ABI, all light/shadow types, custom shaders, sphere depth and structural draw/performance checks |
 | Compute integration | Application-driven batched compute workload and mixed-workload/lifecycle tests; no recurring engine scheduler |

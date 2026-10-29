@@ -33,7 +33,8 @@ Panda implementation replacements, and `tests/support/mocks/external/<library>` 
 dependency mocks. Each replacement pairs a `*Mock.hpp` declaration with a thin
 `*Stub.cpp` forwarding implementation. Target helpers live in
 `tests/support/cmake/TestTargets.cmake`. `panda_add_test` declares suite sources,
-optional `HEADERS`, libraries, the test level and optional `MOCKS`; `panda_add_mock`
+optional `HEADERS`, libraries, the test level, optional `MOCKS` and an optional `TIMEOUT`
+in seconds for each discovered case; `panda_add_mock`
 declares replacement sources and their API. Both accept additional target-private
 `INCLUDE_DIRECTORIES`, which callers specify explicitly. `VULKAN_INTERNAL` adds the
 internal Vulkan include path and Vulkan-Hpp policy definitions. Every executable
