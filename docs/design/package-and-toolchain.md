@@ -13,7 +13,8 @@ static linking of every OS/driver/dependency library.
 
 | Target | Public entry point | Build switch |
 | --- | --- | --- |
-| `Panda::Panda` | `panda/Panda.hpp` and focused core/scene/resource headers | Always built |
+| `Panda::Panda` | `panda/Panda.hpp` and focused renderer/resource headers | Always built |
+| `Panda::Scene` | Planned scene headers; exact entry point to be designed | `PANDA_BUILD_SCENE` (planned) |
 | `Panda::Import` | `panda/Import.hpp` | `PANDA_BUILD_IMPORT` |
 | `Panda::Tools` | `panda/Tools.hpp` | `PANDA_BUILD_TOOLS` |
 | `Panda::Cuda` | `panda/cuda/Cuda.hpp` | `PANDA_BUILD_CUDA` |
@@ -25,6 +26,10 @@ implementation; do not expose switches for unavailable modules. The
 umbrella includes only core headers. Add-ons publicly depend on the core;
 disabled add-ons expose no usable target and trigger no discovery of their exclusive
 dependencies. Internal compilation boundaries need not become extra public targets.
+`Panda::Scene` is optional and works without tools or a GUI. Future scene-editing
+tools depend on it, but the existing `Panda::Tools` window wrapper must remain
+usable without the scene module. Choose the editor's target boundary when it is
+implemented; do not introduce a switch or target before its implementation.
 
 `Panda::Tools` is a static module library containing Window and its GLFW session.
 `Panda::Cuda` is an optional static module with a C++23 availability query and a
@@ -195,7 +200,6 @@ destruction. This wrapper does not create Vulkan surfaces or implement rendering
 | Shader metadata | SPIRV-Reflect | Private shader-load validation |
 | Windowing | GLFW | Private window/input implementation |
 | Math | GLM | Public value types with a documented layout/configuration contract |
-| ECS | EnTT | Registry/storage; opt-in `panda/Ecs.hpp` as defined by the [scene contract](contracts/scene.md#native-ecs-extension) |
 | Scene parser | nlohmann/json | Private; schema and integration follow the [scene specification](contracts/scene.md#persistence-import-and-tools) |
 | Image codec | `stb_image` | Private adapter with a restricted, tested feature set |
 | Model import | Assimp | Only `Panda::Import`; selected static importers |
@@ -203,14 +207,12 @@ destruction. This wrapper does not create Vulkan surfaces or implement rendering
 | Physics | Panda code | No external physics engine |
 | GPU allocation | Panda code | No VMA; limited allocation design in the resource contract |
 
-EnTT storage does not imply adopting its reflection, scheduler, resource manager,
-or event framework. A JSON parser does not imply automatic serialization of C++
+A JSON parser does not imply automatic serialization of C++
 objects. Support libraries do not implement lighting, shadows, AA, or simulation.
 Do not carry Boost or other legacy dependencies forward automatically; prefer the
 standard library for ordinary utilities without inventing replacement frameworks.
 
-Dependency origins: [EnTT](https://github.com/skypjack/entt),
-[nlohmann/json](https://github.com/nlohmann/json), [stb](https://github.com/nothings/stb),
+Dependency origins: [nlohmann/json](https://github.com/nlohmann/json), [stb](https://github.com/nothings/stb),
 [Assimp](https://github.com/assimp/assimp), [Dear ImGui](https://github.com/ocornut/imgui),
 [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo).
 
@@ -279,9 +281,8 @@ Preserve GLFW's zlib/libpng and GLM's MIT notices in the fetched source trees.
 Compile built-in GLSL to SPIR-V during the build and embed the bytes in the library.
 The first cube needs no external shader directory or special working directory.
 
-Provide one CMake helper, `panda_add_shaders(TARGET ... SOURCES ...
-NAMESPACE ...)`, to compile application shaders and generate target-local embedded
-resources. Track include dependencies and avoid basename collisions. The
+Provide CMake integration to compile application shaders and generate target-local
+embedded resources. Track include dependencies and avoid basename collisions. The
 [shader specification](contracts/rendering.md#build-loading-and-reload-boundary) defines
 the generated C++ lookup interface.
 

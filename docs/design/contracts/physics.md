@@ -64,18 +64,12 @@ rather than implying that substeps solve every collision problem.
 Keep solver tests independent from Vulkan. Include a small visual example, explain
 the authority and stepping rules, and measure CPU cost separately from rendering.
 
-## Restricted first-version API
+## Restricted first-version behavior
 
-The public vocabulary is
-`PhysicsWorld`, generation-aware `Body`, `BodyDesc`, `Contact`, `Shape`, and
-`PhysicsOptions`; this module has no Vulkan or CUDA dependency.
-
-`PhysicsWorld::create(PhysicsOptions) -> Result<PhysicsWorld>` creates a move-only
-world; `add_body(BodyDesc) -> Result<Body>`, `remove_body(Body)`,
-`apply_force(Body, Vec3)`, `apply_impulse(Body, Vec3)`,
-`set_kinematic_target(Body, Pose)`, `teleport(Body, Pose, VelocityPolicy)`, and
-`step(float fixedDt) -> Result<void>` are checked main-thread operations. `contacts()`
-returns a read-only span valid until the next step/mutation. Default gravity is
+The module has no Vulkan or CUDA dependency. A move-only world provides
+generation-aware body handles and checked main-thread operations to add and remove
+bodies, apply forces and impulses, set kinematic targets, teleport and step.
+Contact data is read-only and valid until the next step or mutation. Default gravity is
 (0,-9.81,0) m/s² and fixedDt is 1/60 s; the application decides how many steps to
 execute. Reject nonpositive/nonfinite dt, mass, radius or half extents, and invalid
 poses. No hidden frame-time accumulator or presentation-rate coupling exists.
@@ -90,10 +84,10 @@ stepping after violating those restrictions. This deliberately avoids silently
 approximating parent shear or treating visual scale as collider resizing. Changing
 shape/size uses an explicit checked body reconfiguration at the update boundary.
 
-`bind(Scene&, Entity, Body) -> Result<void>` is an optional adapter; a PhysicsWorld
-can run without a Scene for tests. One body binds one entity and at most one Scene.
+An optional adapter binds physics bodies to scene objects; a physics world can run
+without a scene. One body binds one entity and at most one scene.
 An explicit update sequence samples kinematic targets from application calls,
-steps physics, then `publish(Scene&)` copies dynamic/kinematic poses to their visual
+steps physics, then publishes dynamic/kinematic poses to their visual
 entities through checked Scene setters. Static pose is fixed until explicit
 reconfiguration. The adapter detects missing/deleted entities and detaches with a
 diagnostic; it does not recreate them. Scene gizmos request teleports/targets through

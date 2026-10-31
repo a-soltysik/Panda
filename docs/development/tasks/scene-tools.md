@@ -4,7 +4,7 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Add optional ImGui/ImGuizmo panels, input capture and update-phase intents, including scene-owned material edits and application apply/reset hooks.
+Add optional ImGui/ImGuizmo panels, input capture and update-phase intents, including scene-owned material edits and application apply/reset hooks. Scene editing uses `Panda::Scene`; preserve use of the existing window wrapper without the scene module.
 
 Non-goal: No reflection system, automatic solver save or implicit buffer mutation.
 

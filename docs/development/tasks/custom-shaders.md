@@ -8,7 +8,7 @@ Build validated embedded GLSL, reflected four-set ABI, app set 3, explicit shado
 
 Non-goal: No runtime shader DSL, descriptor arrays or implicit migration.
 
-Interface: panda_add_shaders, ShaderProgram, ShaderResources and explicit shadow variants.
+Interface: shader build integration, programs, resource bindings and explicit shadow variants.
 
 Paths: `cmake/`, `../../../include/core/panda`, `src/shader/`, `shaders/`, `tests/shader/` and directly affected documentation.
 Specifications: [Shader integration](../../design/contracts/rendering.md#shader-integration-and-billboard-scope), [shader deployment](../../design/package-and-toolchain.md#shader-and-asset-deployment).

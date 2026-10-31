@@ -1,7 +1,7 @@
 # Rendering and shader contract
 
 Accepted specification for rendering, materials, shader interfaces and GPU billboards.
-API sketches and layouts define intended behavior; implementation follows [the plan](../../development/PLAN.md).
+The behavior and layouts define requirements; implementation follows [the plan](../../development/PLAN.md).
 
 ## Rendering path
 
@@ -146,8 +146,7 @@ Keep three concepts, not a class hierarchy:
   program interface. Replace it during the update phase; in-flight draws retain the
   previous snapshot. No global string-to-variant material property system is needed.
 
-Use `Context::create_program(ProgramDesc) -> Result<ShaderProgram>` and
-`Context::create_material(MaterialDesc) -> Result<Material>`. Ordinary materials
+Provide creation of context-bound shader programs and materials. Ordinary materials
 select BuiltinLit or BuiltinUnlit and need neither factory for custom programs nor
 any application resource bindings. Custom programs remain full GLSL; they may reuse
 the built-in vertex shader and optional lighting includes. They are not functions
@@ -191,11 +190,9 @@ general pass/plugin framework.
 
 ### Build, loading, and reload boundary
 
-Extend the accepted `panda_add_shaders` helper to run `glslc` for Vulkan 1.3 and
-`spirv-val` with the matching target environment. Both are build/development tools,
-not runtime release dependencies. Produce `<panda_shaders/NAME.hpp>` for a validated
-single-identifier NAMESPACE `NAME`, with `NAME::shaders::get(relativeSourcePath)`
-returning `Result<ShaderCode>`. Paths are normalized source-relative keys including
+Provide build tooling to run `glslc` for Vulkan 1.3 and `spirv-val` with the matching
+target environment. Both are build/development tools, not runtime release dependencies.
+Generate a namespaced C++ lookup for embedded shader code. Paths are normalized source-relative keys including
 extensions, not absolute machine paths or ambiguous basenames. Reject duplicate
 namespaces/keys within a consuming target. The generated namespace contains no global
 registration with Panda and no runtime filesystem search.
@@ -223,10 +220,9 @@ No implicit migration of old parameter bytes is allowed.
 
 ### GPU cloud representation
 
-Provide `Scene::add_billboards(BillboardCloudDesc) -> Result<Entity>` and
-`Scene::set_billboards(Entity, BillboardCloudDesc) -> Result<void>`. The latter
-validates and atomically replaces the binding description for future frames; it does
-not reinitialize the application solver. A cloud is one entity and one instanced
+Accept a billboard cloud description directly from the application; an optional
+scene may also manage it. Updates validate and atomically replace the binding
+description for future frames without reinitializing the application solver. A cloud is one instanced
 batch per applicable pass, split only if a documented device/range limit requires it.
 
 The description contains a required position/radius Buffer slice, optional color
@@ -296,18 +292,18 @@ world-scale/domain-independence tests.
 
 ## First-version renderer contract
 
-Names are design signatures; byte layouts and behavior are contractual, subject
-to implementation probes.
+Byte layouts and behavior are contractual, subject to implementation probes;
+public API names and signatures are selected during implementation.
 
 ### Draw interface and explicit host/shader layout
 
-The ordinary `Context::render(Scene&)` path prepares draw data and calls the same
-renderer used by `Context::render(RenderView)`. `RenderView` is a transient value
+The primary renderer accepts application-supplied `RenderView` data without a scene,
+tools or ECS dependency. An optional scene prepares the same draw data and uses the
+same renderer. `RenderView` is a transient value
 containing one camera, lights, and mesh/cloud draw descriptions with owning resource
 handles and copied transforms. The renderer copies/retains everything needed for
 submission before returning. It owns no ECS entity and does not serialize a view.
-It allows explicit rendering without a Scene while keeping only one Vulkan path.
-Both overloads use the [frame](resources.md#frame-and-window-state) protocol and
+Both routes use the [frame](resources.md#frame-and-window-state) protocol and
 require a valid camera.
 
 All standard blocks use 32-bit IEEE floats/uints, column-major matrices, and

@@ -8,7 +8,8 @@ Add optional Assimp adapter for accepted static glTF/GLB, OBJ, FBX, STL and PLY 
 
 Non-goal: No animation, streaming or complete Assimp-format guarantee.
 
-Interface: import_asset, instantiate and structured import warnings.
+Interface: blocking import, scene instantiation and structured import warnings;
+choose public names and signatures during implementation.
 
 Paths: `../../../include/core/panda`, `src/import/`, `tests/import/` and directly affected documentation.
 Specifications: [Import adapter](../../design/contracts/scene.md#import-adapter), [materials](../../design/contracts/rendering.md#materials-faces-and-output), [dependencies](../../design/package-and-toolchain.md#dependency-boundary).
