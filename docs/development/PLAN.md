@@ -26,7 +26,7 @@ criteria and concise current evidence.
 | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) | GPU resources | Accepted | [Allocation, uploads and resource lifetimes](tasks/resource-lifetimes.md) |
 | [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) | CUDA interoperability | Accepted | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md) |
 | [Vulkan and external backend handoff](tasks/gpu-handoff.md) | CUDA interoperability | Accepted | [CUDA device matching and shared buffers](tasks/cuda-shared-buffers.md) |
-| [First lit and shadowed rendering](tasks/first-scene.md) | First scene | Planned | [Vulkan and external backend handoff](tasks/gpu-handoff.md) |
+| [First lit and shadowed rendering](tasks/first-scene.md) | First scene | In progress | [Vulkan and external backend handoff](tasks/gpu-handoff.md) |
 | [Optional scene identities and transforms](tasks/scene-transforms.md) | First scene | Planned | [First lit and shadowed rendering](tasks/first-scene.md) |
 | [Materials, lights and shadows](tasks/materials-and-shadows.md) | Renderer features | Planned | [First lit and shadowed scene](tasks/first-scene.md) |
 | [Custom shaders and safe reload](tasks/custom-shaders.md) | Renderer features | Planned | [Materials, lights and shadows](tasks/materials-and-shadows.md) |
@@ -40,7 +40,7 @@ criteria and concise current evidence.
 
 ## Phase reviews
 
-The build foundation and GPU resources phase are authorized. Later phases await maintainer review
+The build foundation, GPU resources, CUDA interoperability and First scene phases are authorized. Later phases await maintainer review
 of the preceding phase's evidence; passing checks alone does not authorize them.
 Keep existing task dependencies when working in smaller implementation slices.
 

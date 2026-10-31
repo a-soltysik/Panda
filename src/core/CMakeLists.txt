@@ -4,6 +4,7 @@ panda_add_component(panda_core
     SOURCES
         Panda.cpp
         Error.cpp
+        Projection.cpp
         Buffer.cpp
         Mesh.cpp
         Texture.cpp
@@ -49,6 +50,7 @@ panda_add_component(panda_core
         panda/Mesh.hpp
         panda/Panda.hpp
         panda/PerformanceManager.hpp
+        panda/Projection.hpp
         panda/Texture.hpp
         panda/UploadBatch.hpp
         panda/WindowSurface.hpp
@@ -78,7 +80,7 @@ panda_add_component(panda_core
         vulkan/resources/MeshResource.hpp
         vulkan/resources/memory/RangeAllocator.hpp
         vulkan/resources/TextureResource.hpp
-    LIBRARIES PUBLIC panda_common Vulkan::Headers PRIVATE Vulkan::Vulkan)
+    LIBRARIES PUBLIC panda_common Vulkan::Headers glm::glm PRIVATE Vulkan::Vulkan)
 
 set_target_properties(panda_core PROPERTIES OUTPUT_NAME panda)
 target_compile_definitions(panda_core PRIVATE PANDA_VERSION_TEXT="${PROJECT_VERSION}")

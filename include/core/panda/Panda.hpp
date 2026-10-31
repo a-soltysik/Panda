@@ -5,6 +5,7 @@
 
 #include <panda/Context.hpp>
 #include <panda/ExternalBuffer.hpp>
+#include <panda/Projection.hpp>
 #include <string_view>
 
 namespace panda
