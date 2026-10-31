@@ -149,7 +149,7 @@ their public headers; entries without public declarations remain planned contrac
 | `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
 | `Context::getDeviceInfo() -> ContextDeviceInfo` | Copies selected-device information including external-memory and optional timeline-semaphore export support |
 | `Context::getExternalBufferManager() -> ExternalBufferManager&` | Borrows the Context-owned object for external-buffer creation and GPU ownership handoffs |
-| `Buffer`, `Texture`, `Mesh`, `Material` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
+| `Buffer`, `Texture`, `Mesh` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
 | `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
 | `ExternalBufferManager::createBuffer(BufferDesc) -> Result<ExternalBuffer>` | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle |
 | `ExternalBufferManager::releaseToExternal(const Buffer&) -> Result<ExternalTimelineValue>` | Submits a Vulkan ownership release and signals the paired timeline semaphore |
@@ -166,6 +166,11 @@ their public headers; entries without public declarations remain planned contrac
 | `UploadBatch::submit() -> Result<CompletionPoint>` | Submits on the same graphics/compute queue; no CPU wait for completion |
 | `Context::poll(CompletionPoint) -> Result<bool>` | Reports GPU completion or failure; not a presentation/display timestamp |
 | `Context::wait(CompletionPoint, timeout) -> Result<WaitStatus>` | Explicit administrative wait; timeout is distinct from completion and backend failure |
+
+Materials are planned context-bound resources with shared ownership. Empty material
+handles must be detectable and rejected where a material is required; their public
+creation and access API will be designed during implementation. See the
+[material contract](rendering.md#programs-materials-and-application-resources).
 
 `ContextDeviceInfo::externalBufferExportEnabled` is `true` only when the Context
 enabled Vulkan external-memory export. It does not guarantee every requested usage

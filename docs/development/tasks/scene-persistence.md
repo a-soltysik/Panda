@@ -8,7 +8,8 @@ Implement strict version-one JSON load/save, stable IDs, scene-owned material sh
 
 Non-goal: No solver configuration, arbitrary ECS serialization or GPU checkpoint.
 
-Interface: Scene::save/load, Scene::register_material and AssetResolver.
+Interface: scene persistence, material registration and application asset resolution;
+choose public names and signatures during implementation.
 
 Paths: optional scene library headers and implementation, persistence tests and directly affected documentation.
 Specifications: [Persistence](../../design/contracts/scene.md#persistence-import-and-tools), [shader resources](../../design/contracts/rendering.md#programs-materials-and-application-resources).

@@ -1,7 +1,7 @@
 # Scene, assets, and tools contract
 
 Specification for optional scenes, transforms, persistence, import and tools.
-API sketches describe the intended interface; implementation follows [the plan](../../development/PLAN.md).
+Implementation follows [the plan](../../development/PLAN.md).
 Applications may supply render data directly without a scene, tools or ECS. The
 optional `Panda::Scene` module supports rapid prototyping and runs without the GUI;
 its API remains to be designed against the renderer's direct interface.
@@ -14,8 +14,8 @@ may be requested to make shadows immediately visible. The first cube should not
 require constructing a custom lighting pipeline.
 
 These are ordinary scene objects/settings, not hidden lights that cannot be edited
-or saved. An explicit empty-scene mode omits the convenience setup. Scene objects
-remain the normal public rendering interface.
+or saved. An explicit empty-scene mode omits the convenience setup. Applications
+may instead supply render data directly without using a scene.
 
 ## Entities and transforms
 
@@ -58,24 +58,22 @@ object handles, descriptions and value snapshots, not an application registry. S
 storage types stay private; public `Transform` is a value, not a mutable registry
 component reference. Mutators validate and mark derived data dirty themselves.
 
-Design signatures (not implemented declarations):
+The scene provides these behaviors; choose public names and signatures during implementation:
 
-| Operation | Semantics |
-| --- | --- |
-| `Scene::create(Context&, SceneOptions = {}) -> Result<Scene>` | Studio defaults unless Empty is explicitly selected; all created resources belong to the same context |
-| `Scene::create_entity(EntityDesc = {}) -> Result<Entity>` | Creates identity, name, local identity TRS, and no parent; no drawable/behavior base class |
-| `Scene::add_primitive(Primitive, ObjectOptions = {}) -> Result<Entity>` | Convenience factory for a mesh entity; initial primitives: Cube, Plane, Sphere |
-| `Scene::contains(Entity) -> bool` | Checks this scene's runtime identity and the entity generation |
-| `Scene::destroy(Entity, DestroyMode) -> Result<void>` | Explicit Subtree or EntityOnly; EntityOnly rejects an entity with children |
-| `Scene::local_transform(Entity) -> Result<Transform>` | Returns a value copy, never a long-lived pointer into component storage |
-| `Scene::set_local_transform(Entity, Transform) -> Result<void>` | Validates and updates local TRS; failure leaves previous state unchanged |
-| `Scene::world_matrix(Entity) -> Result<Mat4>` | Updates required caches and returns the full affine matrix, including shear |
-| `Scene::set_world_transform(Entity, Transform) -> Result<void>` | Desired world TRS; derives local TRS or returns a representability/inverse error |
-| `Scene::set_parent(Entity, optional<Entity>, ReparentMode) -> Result<void>` | KeepLocal or KeepWorld; no implicit transform approximation |
-| `Scene::set_visible(Entity, bool) -> Result<void>` | Suppresses rendering of that entity; does not stop compute, physics, or delete children |
-| `Scene::set_active_camera(Entity) -> Result<void>` | Requires a camera from this scene; no camera means a clear render preflight error |
-| `Scene::object_id(Entity) -> Result<ObjectId>` / `Scene::find(ObjectId) -> optional<Entity>` | Stable application/persistence reference versus ordinary absence |
-| Render an optional scene | Prepares direct renderer input and checks scene/context/camera before GPU execution; follows the [frame protocol](resources.md#frame-and-window-state) |
+- Create with Studio defaults unless Empty is selected; created resources use the
+  scene's context. Create objects with identity, name, identity local transform and
+  no parent, and provide convenient cube, plane and sphere mesh creation.
+- Check scene identity and generation when resolving handles. Support explicit
+  subtree deletion or deletion of one object; reject the latter when it has children.
+- Return local transforms as value snapshots. Validate edits before committing,
+  leaving the previous state unchanged on failure. World queries update required
+  caches and return the complete affine matrix, including shear. World edits and
+  reparenting reject singular or unrepresentable results rather than approximating.
+- Allow visibility changes without stopping compute or physics or deleting children.
+  The active camera must belong to the scene; rendering without one fails clearly.
+- Associate stable document IDs with objects and support lookup with ordinary absence.
+  Preparing renderer input validates the scene, context and camera and follows the
+  [frame protocol](resources.md#frame-and-window-state).
 
 `Entity` is a small non-owning value with scene-instance identity and an opaque
 generation-aware runtime identifier. It has no scene pointer to dereference after
@@ -187,29 +185,9 @@ Objects share cached primitive meshes; entities and transforms remain independen
 The default material is scene-owned and shared by its default objects; clone before
 private edits. An inward-visible domain uses the already agreed Back face state.
 
-Illustrative API sketch, **not executable code in this repository**. `expect` denotes
-the release-active checked fatal helper for a tiny demonstration; reusable application
-code can inspect Result instead. ObjectOptions defaults are omitted for readability.
-
-```cpp
-auto context = panda::expect(panda::Context::create({.title = "Panda cube"}));
-auto scene = panda::expect(panda::Scene::create(context, {.ground = true}));
-auto cube = panda::expect(scene.add_primitive(panda::Primitive::Cube));
-
-auto local = panda::expect(scene.local_transform(cube));
-local.position.x = 1.0f;
-panda::expect(scene.set_local_transform(cube, local));
-
-while (context.poll_events()) {
-    panda::expect(context.render(scene));
-}
-// Scene and its resource handles die before Context.
-```
-
-`poll_events()` processes window input and returns false when close is requested;
-it does not secretly step physics/compute. `render()` returns a submitted completion
-point or an explicit skipped-frame status from the frame protocol. The application
-owns the loop; no required App subclass or game lifecycle callbacks are introduced.
+The application owns the loop; event processing does not secretly step physics or
+compute. Rendering returns a submitted completion point or an explicit skipped-frame
+status. No application subclass or game lifecycle callbacks are required.
 This optional scene is a convenience route; applications can instead provide draw
 data directly through the renderer interface.
 
@@ -307,8 +285,8 @@ scene fields; never dump application storage, native handles or raw GLM bytes.
 Mesh components refer to either a built-in primitive key or a logical asset ID.
 `materials` stores the Panda-owned description of each scene-owned material once,
 under a stable document-local material ID. The Studio material is registered by
-default; `Scene::register_material(Material) -> Result<SceneMaterialId>` explicitly
-registers another same-context material for scene persistence and returns its stable
+default; explicit registration adds another same-context material for scene
+persistence and returns its stable
 ID. An object's material reference is tagged as either `scene` plus that ID or
 `asset` plus an application logical ID; it cannot use both. The description includes
 its built-in or custom program reference, standard parameters, texture references,
@@ -336,20 +314,19 @@ namespace/path key from the rendering contract.
 Imported assets are referenced by their normalized path relative to an explicit
 asset root plus a stable source node/mesh index, not an absolute machine path.
 Runtime-created meshes/textures/programs need a caller-provided stable ID/resolver;
-otherwise `Scene::save` returns `NotSerializable` with the offending ObjectId.
+otherwise saving reports `NotSerializable` with the offending ObjectId.
 There is no hidden cooked database or binary scene snapshot.
 
 A cloud persists its logical object ID, transform, bounds, material, shadow flags
 and standard stream schema only. It saves no GPU buffer handles, count or particle
 bytes. Loading creates a non-drawing cloud placeholder with count zero. The
-application reconstructs its solver resources and calls `set_billboards` for that
+application reconstructs its solver resources and supplies the cloud data for that
 ObjectId before simulation/rendering needs particles. A missing producer is visible
 as an unresolved cloud diagnostic; it does not trigger a GPU readback or fabricate
 particles. A separately saved domain cube is an ordinary mesh entity.
 
-Design API: `Scene::save(path, SaveOptions) -> Result<void>`;
-`Scene::load(Context&, path, AssetResolver&, LoadOptions) -> Result<Scene>`.
-Load validates the complete document, supported exact version, references,
+Loading uses a context and application asset resolver. It validates the complete
+document, supported exact version, references,
 hierarchy, transforms, renderer settings and resource resolution before publishing
 the new Scene. Failure leaves the old Scene untouched; load does not merge documents.
 Reject duplicate IDs, cycles, non-finite/out-of-range fields, unknown Panda-owned
@@ -376,11 +353,9 @@ is outside version one.
 
 ### Import adapter
 
-`Panda::Import` offers blocking `import_asset(Context&, AssetPath,
-ImportOptions) -> Result<ImportedAsset>` and
-`instantiate(Scene&, ImportedAsset const&, optional<Entity>) -> Result<vector<Entity>>`.
-An ImportedAsset owns mesh/material/texture handles, the source node tree and
-structured warnings; instantiate validates parent/context and commits a whole tree
+`Panda::Import` provides blocking asset import and optional instantiation into a
+scene. An imported asset owns mesh/material/texture handles, the source node tree and
+structured warnings; instantiation validates parent/context and commits a whole tree
 or leaves Scene unchanged. Asset paths resolve beneath an explicit asset root;
 absolute paths and traversal outside it are rejected. Relative texture paths use
 the model file's directory, still bounded by that root. Cache images by canonical

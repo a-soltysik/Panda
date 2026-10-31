@@ -281,9 +281,8 @@ Preserve GLFW's zlib/libpng and GLM's MIT notices in the fetched source trees.
 Compile built-in GLSL to SPIR-V during the build and embed the bytes in the library.
 The first cube needs no external shader directory or special working directory.
 
-Provide one CMake helper, `panda_add_shaders(TARGET ... SOURCES ...
-NAMESPACE ...)`, to compile application shaders and generate target-local embedded
-resources. Track include dependencies and avoid basename collisions. The
+Provide CMake integration to compile application shaders and generate target-local
+embedded resources. Track include dependencies and avoid basename collisions. The
 [shader specification](contracts/rendering.md#build-loading-and-reload-boundary) defines
 the generated C++ lookup interface.
 

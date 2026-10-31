@@ -14,6 +14,12 @@ engineering check, not an extra permission step or a request for the maintainer 
 design the solution. Check current upstream documentation when choosing dependency
 versions or relying on version-specific API/tool behavior.
 
+Specifications describe required behavior, ownership, failure handling and
+interoperability. Defer names and signatures for unimplemented public APIs to their
+implementation design; follow the conventions then. Document existing APIs by name
+when needed to explain current behavior. Preserve concrete data or wire layouts when
+they are necessary interoperability contracts.
+
 ## Implement a reviewable result
 
 - Task paths identify the main implementation area; necessary build/test wiring

@@ -1,7 +1,7 @@
 # Rendering and shader contract
 
 Accepted specification for rendering, materials, shader interfaces and GPU billboards.
-API sketches and layouts define intended behavior; implementation follows [the plan](../../development/PLAN.md).
+The behavior and layouts define requirements; implementation follows [the plan](../../development/PLAN.md).
 
 ## Rendering path
 
@@ -146,8 +146,7 @@ Keep three concepts, not a class hierarchy:
   program interface. Replace it during the update phase; in-flight draws retain the
   previous snapshot. No global string-to-variant material property system is needed.
 
-Use `Context::create_program(ProgramDesc) -> Result<ShaderProgram>` and
-`Context::create_material(MaterialDesc) -> Result<Material>`. Ordinary materials
+Provide creation of context-bound shader programs and materials. Ordinary materials
 select BuiltinLit or BuiltinUnlit and need neither factory for custom programs nor
 any application resource bindings. Custom programs remain full GLSL; they may reuse
 the built-in vertex shader and optional lighting includes. They are not functions
@@ -191,11 +190,9 @@ general pass/plugin framework.
 
 ### Build, loading, and reload boundary
 
-Extend the accepted `panda_add_shaders` helper to run `glslc` for Vulkan 1.3 and
-`spirv-val` with the matching target environment. Both are build/development tools,
-not runtime release dependencies. Produce `<panda_shaders/NAME.hpp>` for a validated
-single-identifier NAMESPACE `NAME`, with `NAME::shaders::get(relativeSourcePath)`
-returning `Result<ShaderCode>`. Paths are normalized source-relative keys including
+Provide build tooling to run `glslc` for Vulkan 1.3 and `spirv-val` with the matching
+target environment. Both are build/development tools, not runtime release dependencies.
+Generate a namespaced C++ lookup for embedded shader code. Paths are normalized source-relative keys including
 extensions, not absolute machine paths or ambiguous basenames. Reject duplicate
 namespaces/keys within a consuming target. The generated namespace contains no global
 registration with Panda and no runtime filesystem search.
@@ -295,8 +292,8 @@ world-scale/domain-independence tests.
 
 ## First-version renderer contract
 
-Names are design signatures; byte layouts and behavior are contractual, subject
-to implementation probes.
+Byte layouts and behavior are contractual, subject to implementation probes;
+public API names and signatures are selected during implementation.
 
 ### Draw interface and explicit host/shader layout
 
