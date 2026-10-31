@@ -10,7 +10,7 @@ Non-goal: No solver configuration, arbitrary ECS serialization or GPU checkpoint
 
 Interface: Scene::save/load, Scene::register_material and AssetResolver.
 
-Paths: `../../../include/core/panda`, `src/scene/serialization/`, `tests/persistence/` and directly affected documentation.
+Paths: optional scene library headers and implementation, persistence tests and directly affected documentation.
 Specifications: [Persistence](../../design/contracts/scene.md#persistence-import-and-tools), [shader resources](../../design/contracts/rendering.md#programs-materials-and-application-resources).
 
 Implement document validation and reference resolution before publishing scenes

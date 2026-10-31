@@ -8,7 +8,8 @@ Generic external-buffer creation and CUDA import are in progress.
 
 | Target | Owns | Must not require |
 | --- | --- | --- |
-| `Panda::Panda` | Vulkan context/resources, renderer, scenes and built-in assets | CUDA, importers, tools, physics |
+| `Panda::Panda` | Vulkan context/resources, renderer and built-in assets | Scene management, CUDA, importers, tools, physics |
+| `Panda::Scene` | Optional prototype scene, hierarchy and persistence | GUI, CUDA, physics, application ECS |
 | `Panda::Import` | Import adapter and conversion into Panda assets | Tools, CUDA, physics |
 | `Panda::Tools` | Optional GUI, inspection and transform gizmos | Importers, CUDA, physics |
 | `Panda::Cuda` | Optional CUDA device matching and external-buffer import | Application solver code and simulation schedule |
@@ -18,13 +19,18 @@ Add-ons depend on the core, never the reverse. Split internal targets only for a
 concrete ownership or compilation responsibility. The [package specification](package-and-toolchain.md)
 owns public headers, dependency selection and build switches.
 
+Scene-editing tools depend on `Panda::Scene`; the existing window wrapper remains
+usable without it. Select target boundaries when implementing the editor so this
+dependency is limited to scene-editing functionality. A scene runs without tools.
+
 ## Design choices
 
 - Use Vulkan 1.3 and one forward renderer. A small engine does not need a generic
   RHI, general render graph or a second rendering implementation.
-- Use checked Scene operations backed by EnTT, plus an opt-in native ECS extension.
-  Composition and value snapshots avoid a required object inheritance hierarchy
-  and long-lived references into relocatable component storage.
+- Applications own their data and may render directly. An optional scene library
+  supplies a convenient managed scene for prototyping, independently of the GUI.
+  Neither the renderer nor scene API requires an application ECS. Storage and any
+  future ECS integration are implementation decisions, not current API promises.
 - A GPU cloud is one renderable with buffers and a conservative bound. Particle
   count must not create proportional CPU entities, updates or draw calls.
 - Context-bound resource handles retain GPU inputs until completion. Ownership
@@ -45,8 +51,8 @@ its affected decision before dependent expansion.
 ## Frame flow
 
 1. Poll input and collect UI/application intents.
-2. Apply scene edits and application-controlled simulation/physics steps.
-3. Prepare frame-local scene data and retain required resources.
+2. Apply application updates and any optional scene edits or physics steps.
+3. Prepare render data from application state or an optional scene and retain resources.
 4. The application may request explicit GPU work using its chosen simulation schedule.
 5. Render shadows and camera passes, then present.
 6. Reclaim resources after their last GPU use.

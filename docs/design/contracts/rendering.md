@@ -223,10 +223,9 @@ No implicit migration of old parameter bytes is allowed.
 
 ### GPU cloud representation
 
-Provide `Scene::add_billboards(BillboardCloudDesc) -> Result<Entity>` and
-`Scene::set_billboards(Entity, BillboardCloudDesc) -> Result<void>`. The latter
-validates and atomically replaces the binding description for future frames; it does
-not reinitialize the application solver. A cloud is one entity and one instanced
+Accept a billboard cloud description directly from the application; an optional
+scene may also manage it. Updates validate and atomically replace the binding
+description for future frames without reinitializing the application solver. A cloud is one instanced
 batch per applicable pass, split only if a documented device/range limit requires it.
 
 The description contains a required position/radius Buffer slice, optional color
@@ -301,13 +300,13 @@ to implementation probes.
 
 ### Draw interface and explicit host/shader layout
 
-The ordinary `Context::render(Scene&)` path prepares draw data and calls the same
-renderer used by `Context::render(RenderView)`. `RenderView` is a transient value
+The primary renderer accepts application-supplied `RenderView` data without a scene,
+tools or ECS dependency. An optional scene prepares the same draw data and uses the
+same renderer. `RenderView` is a transient value
 containing one camera, lights, and mesh/cloud draw descriptions with owning resource
 handles and copied transforms. The renderer copies/retains everything needed for
 submission before returning. It owns no ECS entity and does not serialize a view.
-It allows explicit rendering without a Scene while keeping only one Vulkan path.
-Both overloads use the [frame](resources.md#frame-and-window-state) protocol and
+Both routes use the [frame](resources.md#frame-and-window-state) protocol and
 require a valid camera.
 
 All standard blocks use 32-bit IEEE floats/uints, column-major matrices, and

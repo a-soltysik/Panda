@@ -1,7 +1,10 @@
 # Scene, assets, and tools contract
 
-Accepted specification for scenes, transforms, persistence, import and tools.
+Specification for optional scenes, transforms, persistence, import and tools.
 API sketches describe the intended interface; implementation follows [the plan](../../development/PLAN.md).
+Applications may supply render data directly without a scene, tools or ECS. The
+optional `Panda::Scene` module supports rapid prototyping and runs without the GUI;
+its API remains to be designed against the renderer's direct interface.
 
 ## Useful scene defaults
 
@@ -51,7 +54,7 @@ invent an inverse.
 
 Use a move-only `Scene` with stable internal storage, owned by the application and
 bound to one `Context`. The context outlives it. Ordinary headers expose Panda
-entities, descriptions and value snapshots, not an EnTT registry. Engine component
+object handles, descriptions and value snapshots, not an application registry. Scene
 storage types stay private; public `Transform` is a value, not a mutable registry
 component reference. Mutators validate and mark derived data dirty themselves.
 
@@ -72,7 +75,7 @@ Design signatures (not implemented declarations):
 | `Scene::set_visible(Entity, bool) -> Result<void>` | Suppresses rendering of that entity; does not stop compute, physics, or delete children |
 | `Scene::set_active_camera(Entity) -> Result<void>` | Requires a camera from this scene; no camera means a clear render preflight error |
 | `Scene::object_id(Entity) -> Result<ObjectId>` / `Scene::find(ObjectId) -> optional<Entity>` | Stable application/persistence reference versus ordinary absence |
-| `Context::render(Scene&) -> Result<FrameResult>` | Normal high-level route; checks scene/context/camera before GPU execution and follows the [frame protocol](resources.md#frame-and-window-state) |
+| Render an optional scene | Prepares direct renderer input and checks scene/context/camera before GPU execution; follows the [frame protocol](resources.md#frame-and-window-state) |
 
 `Entity` is a small non-owning value with scene-instance identity and an opaque
 generation-aware runtime identifier. It has no scene pointer to dereference after
@@ -80,7 +83,7 @@ scene destruction; all resolving operations take a live Scene. Moving a Scene
 preserves identity; replacing/loading a different scene does not. Reject stale and
 cross-scene handles. Do not expose the raw ID as a persistent identifier.
 
-Use a 64-bit EnTT entity type internally. Scene-instance counters and generation
+Scene-instance counters and generation
 exhaustion must not wrap into an old valid handle; reject exhaustion rather than
 silently aliasing a stale reference. Implementation tests must exercise the guard
 through a reduced test counter range, not billions of real operations.
@@ -93,56 +96,17 @@ new entity gets a new one. Document identity follows the persistence rules below
 cross-file merging is outside scope. ObjectId is not a global entity lookup service.
 Names are editable labels, may repeat, and never substitute for IDs.
 
-Entity deletion removes its application components too, but not arbitrary callbacks
-that merely captured that entity. Such application callbacks must be unregistered
-or handle absence explicitly. Deletion of the active camera clears the selection;
+Application data and callbacks remain application-owned; applications must handle
+scene-object deletion explicitly. Deletion of the active camera clears the selection;
 it does not secretly select another camera. GPU retention follows the
 [resource lifetime rules](resources.md#frame-contexts-and-retirement).
 
-## Native ECS extension
+## Application integration
 
-Provide `panda/Ecs.hpp` for applications that want EnTT directly:
-
-```cpp
-enum class NativeEntity : std::uint64_t;
-using NativeRegistry = entt::basic_registry<NativeEntity>;
-
-NativeRegistry& native_ecs(Scene&);
-const NativeRegistry& native_ecs(const Scene&);
-Result<NativeEntity> to_native(const Scene&, Entity);
-Result<Entity> to_entity(const Scene&, NativeEntity);
-```
-
-The extension borrows the scene's existing registry, not a second registry or a
-generic Panda component framework. The core target supplies the compatible EnTT
-include dependency; `panda/Panda.hpp` and CUDA bridge headers do not include it.
-Applications explicitly opting into this header also opt into the selected EnTT API.
-
-Applications may add/query/remove their own component types and iterate native
-views. Panda owns entity creation/destruction, hierarchy, transforms, renderable
-state and other engine components. Do not call registry create/destroy/clear,
-replace/move the registry, manipulate entity storage, or access private Panda
-components through this extension. Use Scene methods for those operations. This
-is a contractual native escape hatch, like borrowing a Vulkan command buffer;
-it is not a claim that every forbidden EnTT operation can be blocked by its type.
-
-Mutation is context-thread/update-phase only. During a view iteration, update values
-of existing application components or call non-structural Scene setters; collect
-entity/component additions and removals for after iteration. Do not keep component
-references across structural changes, frames, or load/replacement. Panda does not
-promise stable component addresses, a general event bus, or an ECS scheduler.
-Use application functions/classes and explicit loops. Diagnostic builds should
-detect unauthorized entity-lifecycle changes where feasible; they cannot repair them.
-
-Custom components are not automatically saved, inspected by GUI, or copied to GPU.
-An application can keep its domain data outside ECS instead; using EnTT is optional
-for callers. No class inheritance, reflection registry, or user-component adapter
-generator is required. The same extension supports a TirePressure component and a
-single simulation-domain component without creating CPU entities for particles.
-
-The library's entity versions, views and storage rules are documented by
-[EnTT](https://github.com/skypjack/entt/wiki/Entity-Component-System).
-The restricted native boundary above is Panda's policy, not an EnTT limitation.
+Applications may use their own classes, ECS or other storage and retain scene or
+renderer handles in their data. Panda does not expose a native ECS registry or
+serialize application components. Any future adapter needs a concrete use case and
+an explicit ownership and lifecycle contract.
 
 ## Transforms and camera conventions
 
@@ -246,26 +210,13 @@ while (context.poll_events()) {
 it does not secretly step physics/compute. `render()` returns a submitted completion
 point or an explicit skipped-frame status from the frame protocol. The application
 owns the loop; no required App subclass or game lifecycle callbacks are introduced.
-Scene is the normal route, not a requirement to tie every native resource/compute
-stage to an entity; the lower-level draw-data boundary is specified in the rendering
-contract.
-
-An application component uses the optional extension without an engine fork:
-
-```cpp
-struct TirePressure { float bar = 2.2f; };
-auto& registry = panda::native_ecs(scene);  // requires panda/Ecs.hpp
-registry.emplace<TirePressure>(panda::expect(panda::to_native(scene, cube)));
-for (auto [id, pressure] : registry.view<TirePressure>().each()) {
-    // Application logic; serialize/configure this data in the application.
-    // Use to_entity(scene, id) and Scene setters for graphical changes.
-}
-```
+This optional scene is a convenience route; applications can instead provide draw
+data directly through the renderer interface.
 
 Scene API verification: stale/cross-scene handles, duplicate stable IDs, scene moves,
 parent cycles, subtree deletion, cached world updates, negative/nonuniform scale,
 keep-world shear rejection and failure atomicity, invalid floats/quaternions/scale,
-projection near/far/Y convention, custom-component cleanup, and a default lit-cube
+projection near/far/Y convention, and a default lit-cube
 integration example. CPU tests establish algebra/lifecycle, not visual GPU correctness.
 
 ## GPU clouds and simulation domains
@@ -351,7 +302,7 @@ visibility and a component object with known typed camera/light/mesh/cloud entri
 `settings` contains ambient, active camera ID, requested renderer quality and
 background. IDs are unique within the document; names may repeat. Emit stable key
 ordering and finite numeric values for reviewable diffs. Serialize only accepted
-scene fields; never dump EnTT storage, native handles or raw GLM bytes.
+scene fields; never dump application storage, native handles or raw GLM bytes.
 
 Mesh components refer to either a built-in primitive key or a logical asset ID.
 `materials` stores the Panda-owned description of each scene-owned material once,
