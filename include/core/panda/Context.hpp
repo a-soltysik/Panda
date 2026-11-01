@@ -13,6 +13,7 @@
 #include <panda/ExternalBufferManager.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/PerformanceManager.hpp>
+#include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <string>
@@ -209,11 +210,14 @@ public:
     /// @return Completed, Timeout, or a backend error; rejects empty/foreign tokens.
     [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>;
 
-    /// @brief Clears and presents one diagnostic frame, or reports why it was skipped.
-    /// @return Checked frame result or a backend/window failure. A valid
-    /// completion token means submitted work, not completed presentation.
-    /// This temporary smoke path is replaced by scene rendering in the frame task.
-    [[nodiscard]] auto presentClearFrame() const -> Result<FrameResult>;
+    /// @brief Renders and presents one application-supplied view.
+    /// @param view Camera, directional light and standard-mesh draws; an empty mesh list presents the background.
+    /// Meshes must belong to this Context and use the standard vertex format.
+    /// Upload each mesh before drawing it.
+    /// @return Checked frame result or a validation/backend/window error. A valid
+    /// completion token means submitted work, not completed presentation. Meshes
+    /// are retained through their submitted GPU use.
+    [[nodiscard]] auto render(const RenderView& view) const -> Result<FrameResult>;
 
 private:
     struct InstanceServices;

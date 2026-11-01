@@ -1,10 +1,11 @@
 # Vulkan window example
 
-`simple_scene` opens a window, creates a unit-cube mesh and uploads its vertices
-and indices, then displays a gray background. The mesh is retained throughout the loop;
-rendering geometry is not implemented yet, so the cube is not visible. Requires a
-display, Vulkan 1.3 with swapchain maintenance1, and the Khronos validation layer.
-CUDA is not needed.
+`simple_scene` opens a window, creates a unit-cube mesh, uploads its vertices and
+indices, then renders the cube with the built-in directional light and material.
+`panda::tools::createPerspectiveCamera` builds the camera values, and the
+application supplies the mesh draw; no scene or ECS library is involved.
+Requires a display, Vulkan 1.3 with swapchain maintenance1, and the Khronos validation
+layer. CUDA is not needed.
 
 The upload waits up to ten seconds before entering the loop. The loop does not
 wait after every frame or track a shutdown completion point; Context drains

@@ -74,7 +74,7 @@ to destroy.
 
 ## Related information
 
-- [UC Render and present a diagnostic clear frame](render-clear-frame.md) identifies
+- [UC Render and present an application view](render-view.md) identifies
   which pre-submit failures enter this UC.
 - [UC Drain frame and presentation use](drain-presentation.md) explains shutdown and
   generation waits after a committed cleanup submission.

@@ -108,7 +108,7 @@ this flow does not promise general recovery from device loss.
   working with submitted uploads.
 - [UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md)
   collects before staging-page reuse or allocation.
-- [UC Render and present a diagnostic clear frame](render-clear-frame.md) and
+- [UC Render and present an application view](render-view.md) and
   [UC Shut down a Context safely](shutdown-context.md) collect before frame work or teardown.
 - [Ownership](../design/contracts/resources.md#ownership),
   [lifetime is not synchronization](../design/contracts/resources.md#lifetime-is-not-synchronization),

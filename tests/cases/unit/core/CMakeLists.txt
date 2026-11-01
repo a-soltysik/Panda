@@ -55,7 +55,7 @@ panda_add_test(panda_unit_mesh_layout unit
 panda_add_test(panda_unit_core unit
     VULKAN_INTERNAL
     SOURCES Version.cpp DeviceSelection.cpp SwapchainGeneration.cpp
-            SwapchainCreation.cpp ExternalTimelineValue.cpp
+            SwapchainCreation.cpp ExternalTimelineValue.cpp RenderViewValidation.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock)
 target_compile_definitions(panda_unit_core PRIVATE

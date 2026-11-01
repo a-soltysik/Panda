@@ -5,6 +5,7 @@
 #include <optional>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
+#include <panda/RenderView.hpp>
 #include <panda/tools/gui/Window.hpp>
 
 #include "SmokeRunBackend.hpp"
@@ -31,9 +32,11 @@ private:
     [[nodiscard]] auto createContext() -> std::expected<void, Failure>;
     [[nodiscard]] auto checkPerformanceCapabilities() -> std::expected<void, Failure>;
     [[nodiscard]] auto captureEnvironment() -> std::expected<SmokeRunEnvironment, Failure>;
+    [[nodiscard]] auto createStaticCube(panda::FramebufferExtent extent) -> std::expected<void, Failure>;
 
     std::optional<panda::tools::Window> _window;
     std::optional<panda::Context> _context;
+    panda::RenderView _view;
     panda::CompletionPoint _lastCompletion;
 };
 }

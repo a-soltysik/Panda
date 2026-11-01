@@ -26,6 +26,7 @@
 #include <panda/Geometry.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
@@ -43,6 +44,7 @@
 #include "external/ExternalContext.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/Presentation.hpp"
+#include "renderer/RenderViewValidation.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
@@ -366,7 +368,8 @@ public:
     [[nodiscard]] auto initialize(const WindowSurface* surface, const ContextOptions& options) -> Result<void>;
     [[nodiscard]] auto getDeviceInfo() const -> const ContextDeviceInfo&;
     [[nodiscard]] auto getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&;
-    [[nodiscard]] auto presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>;
+    [[nodiscard]] auto render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
+        -> Result<FrameResult>;
     [[nodiscard]] auto createBufferResource(const BufferDesc& description)
         -> Result<std::shared_ptr<detail::BufferResource>>;
     [[nodiscard]] auto getExternalContext() noexcept -> std::optional<std::reference_wrapper<detail::ExternalContext>>;
@@ -561,6 +564,7 @@ auto Context::Impl::initializePresentation(const WindowSurface& surface,
                                                       .window = surface,
                                                       .deviceInfo = selected.info,
                                                       .submissions = *_submissions,
+                                                      .pool = _memoryPool.get(),
                                                       .performance = _performanceManagerImplementation.get()});
     if (!presentation)
     {
@@ -613,14 +617,23 @@ auto Context::Impl::getPerformanceManagerImplementation() noexcept -> detail::Pe
     return *_performanceManagerImplementation;
 }
 
-auto Context::Impl::presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>
+auto Context::Impl::render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
+    -> Result<FrameResult>
 {
+    if (const auto valid = vulkan::renderer::validateRenderViewData(view); !valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    if (const auto valid = vulkan::renderer::validateRenderViewMeshes(view, *_memoryPool); !valid)
+    {
+        return std::unexpected {valid.error()};
+    }
     if (!_presentation)
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to present a frame")};
     }
     return collectUploads().and_then([&] {
-        return _presentation->presentClearFrame(submittedPerformanceSlot);
+        return _presentation->render(view, submittedPerformanceSlot);
     });
 }
 
@@ -688,6 +701,7 @@ void Context::Impl::drain()
     if (_presentation)
     {
         expect(_presentation->drain(), "Cannot safely drain window presentation");
+        _presentation.reset();
     }
     if (_externalContext)
     {
@@ -762,7 +776,7 @@ auto Context::getExternalBufferManager() -> ExternalBufferManager&
     return _externalBufferManager;
 }
 
-auto Context::presentClearFrame() const -> Result<FrameResult>
+auto Context::render(const RenderView& view) const -> Result<FrameResult>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
     auto frameStart = std::optional<std::chrono::steady_clock::time_point> {};
@@ -771,7 +785,7 @@ auto Context::presentClearFrame() const -> Result<FrameResult>
         frameStart = std::chrono::steady_clock::now();
     }
     auto submittedPerformanceSlot = std::optional<std::size_t> {};
-    auto result = _implementation->presentClearFrame(submittedPerformanceSlot);
+    auto result = _implementation->render(view, submittedPerformanceSlot);
     if (frameStart && submittedPerformanceSlot)
     {
         const auto duration =

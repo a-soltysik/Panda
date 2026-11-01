@@ -2,11 +2,11 @@
 
 ## Goal and boundary
 
-An application with a windowed `Context` calls `Context::presentClearFrame()` as
+An application with a windowed `Context` calls `Context::render(view)` as
 it processes window changes. On each call, **Panda** checks the window's
 framebuffer extent and either suspends frame work or ensures a matching
 swapchain generation exists. The flow ends with a suspended result, a usable
-generation that continues into the [UC Render and present a diagnostic clear frame](render-clear-frame.md),
+generation that continues into the [UC Render and present an application view](render-view.md),
 or an error. The application owns event processing and decides when to call
 again; `Context` borrows the `WindowSurface` for its lifetime under the
 [ownership contract](../design/contracts/resources.md#ownership).
@@ -24,7 +24,7 @@ on a resize callback.
 ## Main flow
 
 1. **Request presentation.** The application calls
-   `Context::presentClearFrame()`; `Presentation` prepares the current window
+   `Context::render(view)`; `Presentation` prepares the current window
    generation before acquiring an image.
 2. **Read the framebuffer extent.** `Presentation::prepareWindowFrame()` asks the
    borrowed `WindowSurface` for the current pixel extent.
@@ -42,9 +42,9 @@ on a resize callback.
 6. **Publish the complete generation.** Only after all generation resources are
    created does `Presentation` replace its current owner and clear the pending
    flag.
-7. **Continue the frame.** The same `presentClearFrame()` call proceeds to the
+7. **Continue the frame.** The same `render(view)` call proceeds to the
    acquire, clear, submit and present sequence in
-   [UC Render and present a diagnostic clear frame](render-clear-frame.md).
+   [UC Render and present an application view](render-view.md).
 
 ```mermaid
 sequenceDiagram
@@ -53,7 +53,7 @@ sequenceDiagram
     participant P as Presentation
     participant S as WindowSurface
     participant V as Vulkan
-    A->>C: Step 1 - presentClearFrame()
+    A->>C: Step 1 - render(view)
     C->>P: Step 1 - prepare the window generation
     P->>S: Step 2 - getFramebufferExtent()
     S-->>P: Framebuffer pixel extent
@@ -72,7 +72,7 @@ sequenceDiagram
             P->>P: Step 6 - publish generation and clear pending flag
         end
         P->>C: Step 7 - continue normal frame work
-        Note over P,C: Step 7 - UC Render and present a diagnostic clear frame
+        Note over P,C: Step 7 - UC Render and present an application view
         C-->>A: Step 7 - FrameResult or Error
     end
 ```
@@ -88,8 +88,8 @@ call creates one.
 
 **A frame can request recreation without a size change.** An out-of-date acquire,
 or an out-of-date/suboptimal present, can return `RecreatePending`. The next
-`presentClearFrame()` retries generation preparation even if the sampled extent
-matches; [UC Render and present a diagnostic clear frame](render-clear-frame.md#variants-and-errors) explains
+`render(view)` retries generation preparation even if the sampled extent
+matches; [UC Render and present an application view](render-view.md#variants-and-errors) explains
 which outcomes already submitted GPU work.
 
 **Publication follows complete preparation.** The current generation is replaced
@@ -130,7 +130,7 @@ sequenceDiagram
     P->>P: Release partial replacement and discard any old generation
     P->>P: Keep recreation pending
     P-->>A: Return the creation error
-    A->>P: Later nonzero presentClearFrame()
+    A->>P: Later nonzero render(view)
     P->>V: Retry generation creation without an old swapchain
     V-->>P: Complete generation
     P-->>A: Continue the normal frame path
@@ -143,7 +143,7 @@ application continues processing events and calls again when it wants to resume.
 
 **Ready.** A complete generation matches the current window state, and the call
 continues into ordinary frame processing. The frame result and its completion
-meaning are described by the [UC Render and present a diagnostic clear frame](render-clear-frame.md).
+meaning are described by the [UC Render and present an application view](render-view.md).
 
 **Error.** The returned error identifies the failed query, drain or generation
 creation. A drain failure leaves the current generation owned; a creation failure
@@ -154,7 +154,7 @@ already submitted work was undone.
 
 - [Resources and frames](../design/contracts/resources.md#frame-and-window-state)
   defines suspended state, safe recreation and the old-swapchain failure rule.
-- [UC Render and present a diagnostic clear frame](render-clear-frame.md) describes
+- [UC Render and present an application view](render-view.md) describes
   the frame path that resumes after generation preparation.
 - [UC Drain frame and presentation use](drain-presentation.md) explains the queue
   completion, acquired-image recovery and present-fence boundaries.

@@ -2,6 +2,7 @@
 param(
     [ValidateSet(
         "docs-checks",
+        "gcc-fast",
         "gcc-development",
         "gcc-quality",
         "gcc-unity",

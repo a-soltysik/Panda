@@ -9,12 +9,14 @@
 #include <expected>
 #include <limits>
 #include <memory>
+#include <new>
 #include <numeric>
 #include <optional>
 #include <panda/Assert.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
+#include <panda/RenderView.hpp>
 #include <panda/WindowSurface.hpp>
 #include <string>
 #include <utility>
@@ -24,6 +26,7 @@
 #include "VulkanError.hpp"
 #include "VulkanHpp.hpp"  // IWYU pragma: keep
 #include "presentation/SwapchainGeneration.hpp"
+#include "renderer/MeshRenderer.hpp"
 
 namespace panda::core::vulkan
 {
@@ -149,6 +152,7 @@ Presentation::Presentation(const PresentationCreateInfo& info)
       _window {info.window},
       _deviceInfo {info.deviceInfo},
       _submissions {info.submissions},
+      _pool {info.pool},
       _performance {info.performance}
 {
 }
@@ -222,13 +226,32 @@ auto Presentation::recreate(FramebufferExtent requested) -> std::expected<void, 
     return {};
 }
 
-auto Presentation::presentClearFrame() -> std::expected<FrameResult, Error>
+auto Presentation::retainViewMeshes(FrameSlot& slot, const RenderView& view) -> std::expected<void, Error>
 {
-    auto submittedPerformanceSlot = std::optional<std::size_t> {};
-    return presentClearFrame(submittedPerformanceSlot);
+    slot.retainedMeshes.clear();
+    try
+    {
+        slot.retainedMeshes.reserve(view.meshes.size());
+        for (const auto& draw : view.meshes)
+        {
+            slot.retainedMeshes.push_back(draw.mesh);
+        }
+    }
+    catch (const std::bad_alloc&)
+    {
+        slot.retainedMeshes.clear();
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Unable to retain render view meshes")};
+    }
+    return {};
 }
 
-auto Presentation::presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot)
+auto Presentation::render(const RenderView& view) -> std::expected<FrameResult, Error>
+{
+    auto submittedPerformanceSlot = std::optional<std::size_t> {};
+    return render(view, submittedPerformanceSlot);
+}
+
+auto Presentation::render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
     submittedPerformanceSlot.reset();
@@ -241,10 +264,19 @@ auto Presentation::presentClearFrame(std::optional<std::size_t>& submittedPerfor
     {
         return FrameResult {.status = FrameResult::Status::Suspended, .completion = {}};
     }
-    return executeAcquiredFrame(submittedPerformanceSlot);
+    auto& slot = _slots.at(_nextSlot);
+    if (const auto waited = waitCompletion(slot.lastCompletion); !waited)
+    {
+        return std::unexpected {waited.error()};
+    }
+    if (const auto retained = retainViewMeshes(slot, view); !retained)
+    {
+        return std::unexpected {retained.error()};
+    }
+    return executeAcquiredFrame(view, submittedPerformanceSlot);
 }
 
-auto Presentation::executeAcquiredFrame(std::optional<std::size_t>& submittedPerformanceSlot)
+auto Presentation::executeAcquiredFrame(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
     const auto slotIndex = _nextSlot;
@@ -252,30 +284,35 @@ auto Presentation::executeAcquiredFrame(std::optional<std::size_t>& submittedPer
     const auto acquired = acquireFrame(slot);
     if (!acquired)
     {
+        slot.retainedMeshes.clear();
         return std::unexpected {acquired.error()};
     }
     if (const auto nonReady = nonReadyFrameResult(acquired->status); nonReady)
     {
+        slot.retainedMeshes.clear();
         return *nonReady;
     }
-    return submitAcquiredFrame(slot, *acquired, slotIndex, submittedPerformanceSlot);
+    return submitAcquiredFrame(*acquired, slotIndex, view, submittedPerformanceSlot);
 }
 
-auto Presentation::submitAcquiredFrame(FrameSlot& slot,
-                                       const AcquiredImage& acquired,
+auto Presentation::submitAcquiredFrame(const AcquiredImage& acquired,
                                        std::size_t slotIndex,
+                                       const RenderView& view,
                                        std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
+    auto& slot = _slots.at(slotIndex);
     auto& image = activeGeneration().images.at(acquired.index);
     if (const auto waited = waitImage(slot, acquired.index); !waited)
     {
+        slot.retainedMeshes.clear();
         return std::unexpected {waited.error()};
     }
     const auto selection = FrameSelection {.slotIndex = slotIndex, .imageIndex = acquired.index};
-    const auto completion = submitFrame(slot, image, selection);
+    const auto completion = submitFrame(slot, image, selection, view);
     if (!completion)
     {
+        slot.retainedMeshes.clear();
         return std::unexpected {completion.error()};
     }
     if (_performance != nullptr && _performance->getCapabilities().isGpuTimestampSamplingEnabled)
@@ -298,14 +335,16 @@ auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) -> std::opt
     return std::nullopt;
 }
 
-auto Presentation::recordClear(FrameSlot& slot, const SwapchainImage& image, std::size_t slotIndex)
-    -> std::expected<void, Error>
+auto Presentation::recordView(FrameSlot& slot,
+                              const SwapchainImage& image,
+                              std::size_t slotIndex,
+                              const RenderView& view) -> std::expected<void, Error>
 {
     if (const auto commands = recordFrameCommands(slot); !commands)
     {
         return std::unexpected {commands.error()};
     }
-    return recordFrameWork(slot, image, slotIndex);
+    return recordFrameWork(slot, image, slotIndex, view);
 }
 
 auto Presentation::recordFrameCommands(FrameSlot& slot) -> std::expected<void, Error>
@@ -323,22 +362,93 @@ auto Presentation::recordFrameCommands(FrameSlot& slot) -> std::expected<void, E
     return {};
 }
 
-auto Presentation::recordFrameWork(FrameSlot& slot, const SwapchainImage& image, std::size_t slotIndex)
+auto Presentation::createOrResizeMeshRenderer() -> std::expected<void, Error>
+{
+    if (_pool == nullptr)
+    {
+        return std::unexpected {makeError(ErrorCode::BackendFailure, "Mesh rendering requires a Context memory pool")};
+    }
+    if (!_renderer)
+    {
+        auto renderer = renderer::MeshRenderer::create({.physicalDevice = _physicalDevice,
+                                                        .device = _device,
+                                                        .pool = *_pool,
+                                                        .extent = activeGeneration().extent,
+                                                        .colorFormat = activeGeneration().format,
+                                                        .frameCount = _slots.size()});
+        if (!renderer)
+        {
+            return std::unexpected {renderer.error()};
+        }
+        _renderer = std::move(*renderer);
+        return {};
+    }
+    return _renderer->resize(activeGeneration().extent, activeGeneration().format);
+}
+
+auto Presentation::recordFrameContent(FrameSlot& slot,
+                                      const SwapchainImage& image,
+                                      std::size_t slotIndex,
+                                      const RenderView& view) -> std::expected<void, Error>
+{
+    if (view.meshes.empty())
+    {
+        recordClearRendering(slot.command, image, activeGeneration().format, activeGeneration().extent);
+        return {};
+    }
+    return recordMeshDraws(slot, image, slotIndex, view);
+}
+
+auto Presentation::recordMeshDraws(FrameSlot& slot,
+                                   const SwapchainImage& image,
+                                   std::size_t slotIndex,
+                                   const RenderView& view) -> std::expected<void, Error>
+{
+    if (const auto ready = createOrResizeMeshRenderer(); !ready)
+    {
+        return std::unexpected {ready.error()};
+    }
+    if (const auto updated = _renderer->updateFrame(slotIndex, view); !updated)
+    {
+        return std::unexpected {updated.error()};
+    }
+    _renderer->record(slot.command, *image.view, slotIndex, view);
+    return {};
+}
+
+auto Presentation::recordPerformanceStart(std::size_t slotIndex, vk::CommandBuffer command)
     -> std::expected<void, Error>
 {
+    if (_performance == nullptr)
+    {
+        return {};
+    }
+    return _performance->recordStart(slotIndex, command);
+}
+
+void Presentation::recordPerformanceEnd(std::size_t slotIndex, vk::CommandBuffer command)
+{
+    if (_performance != nullptr)
+    {
+        _performance->recordEnd(slotIndex, command);
+    }
+}
+
+auto Presentation::recordFrameWork(FrameSlot& slot,
+                                   const SwapchainImage& image,
+                                   std::size_t slotIndex,
+                                   const RenderView& view) -> std::expected<void, Error>
+{
     transitionToColorAttachment(slot.command, image);
-    if (_performance != nullptr)
+    if (const auto timestamp = recordPerformanceStart(slotIndex, slot.command); !timestamp)
     {
-        if (const auto timestamp = _performance->recordStart(slotIndex, slot.command); !timestamp)
-        {
-            return std::unexpected {timestamp.error()};
-        }
+        return std::unexpected {timestamp.error()};
     }
-    recordClearRendering(slot.command, image, activeGeneration().format, activeGeneration().extent);
-    if (_performance != nullptr)
+    if (const auto content = recordFrameContent(slot, image, slotIndex, view); !content)
     {
-        _performance->recordEnd(slotIndex, slot.command);
+        return std::unexpected {content.error()};
     }
+    recordPerformanceEnd(slotIndex, slot.command);
     transitionToPresent(slot.command, image);
     const auto ended = slot.command.end();
     if (ended != vk::Result::eSuccess)
@@ -390,10 +500,6 @@ auto Presentation::abortAcquire(FrameSlot& slot, std::uint32_t index) -> std::ex
 
 auto Presentation::acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage, Error>
 {
-    if (const auto waited = waitCompletion(slot.lastCompletion); !waited)
-    {
-        return std::unexpected {waited.error()};
-    }
     if (const auto ready = _submissions.prepareSubmit(); !ready)
     {
         return std::unexpected {ready.error()};
@@ -467,10 +573,10 @@ auto Presentation::submitRecordedFrame(const FrameSlot& slot, const SwapchainIma
     return _submissions.submit(slot.command, *slot.acquire, *image.renderFinished);
 }
 
-auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, FrameSelection selection)
+auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, FrameSelection selection, const RenderView& view)
     -> std::expected<std::uint64_t, Error>
 {
-    if (const auto recorded = recordClear(slot, image, selection.slotIndex); !recorded)
+    if (const auto recorded = recordView(slot, image, selection.slotIndex, view); !recorded)
     {
         return abortFrame(slot, selection.imageIndex, recorded.error());
     }
@@ -481,6 +587,10 @@ auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, FrameSele
     }
     const auto completion = *submitted;
     slot.lastCompletion = completion;
+    if (_renderer && !view.meshes.empty())
+    {
+        _renderer->markSubmitted(selection.slotIndex);
+    }
     if (_performance != nullptr)
     {
         _performance->markSubmitted(selection.slotIndex, _submissions.getPoint(completion));
@@ -741,6 +851,10 @@ auto Presentation::drain() -> std::expected<void, Error>
     if (const auto waited = waitCompletion(lastCompletion); !waited)
     {
         return std::unexpected {waited.error()};
+    }
+    for (auto& slot : _slots)
+    {
+        slot.retainedMeshes.clear();
     }
     if (const auto recovered = finishPendingImageRecovery(); !recovered)
     {

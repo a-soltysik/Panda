@@ -21,6 +21,7 @@
 #include <panda/Error.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
@@ -770,7 +771,7 @@ TEST_F(ContextResourcesIntegration, CreatesMovesAndDestroysHeadlessDeviceInDepen
     EXPECT_EQ(moved.getDeviceInfo().driverName, "Integration Vulkan driver");
     EXPECT_EQ(moved.getDeviceInfo().driverInfo, "Integration test driver 1.0");
     EXPECT_EQ(moved.getDeviceInfo().queueFamily, 0U);
-    const auto frame = moved.presentClearFrame();
+    const auto frame = moved.render(panda::RenderView {});
     ASSERT_FALSE(frame.has_value());
     EXPECT_EQ(frame.error().code, panda::ErrorCode::Unsupported);
 }
@@ -1411,7 +1412,7 @@ TEST_F(ContextResourcesIntegration, MovedSuspendedContextRetainsItsDeviceUntilAl
     auto context = panda::Context::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
-    const auto frame = moved.presentClearFrame();
+    const auto frame = moved.render(panda::RenderView {});
     ASSERT_TRUE(frame.has_value());
     EXPECT_EQ(frame->status, panda::FrameResult::Status::Suspended);
 }

@@ -17,6 +17,15 @@ The current smoke profile accepts:
 panda-bench --profile smoke --output results --width 1280 --height 720 --warmup-seconds 1 --measure-seconds 3 --runs 1
 ```
 
+Smoke profile version 2 creates a standard unit cube and uploads it once before the
+warmup and measurement phases. Every frame in both phases renders the same static
+`RenderView` with one mesh draw; geometry generation and upload are part of startup,
+not the per-frame workload. The JSON workload is `renderStaticCube`. Smoke profile
+version 1 rendered an empty view, so its results are not comparable with version 2.
+This one-draw workload checks the live renderer path but is not a representative scene
+benchmark. With a zero-second warmup, the first measured frame may include first-use
+renderer or pipeline setup.
+
 `--width` and `--height` set the requested window extent in pixels. The defaults are
 1280 by 720; the report records both the requested and effective framebuffer extents.
 Development and quality presets use Debug and are for functional smoke checks only.

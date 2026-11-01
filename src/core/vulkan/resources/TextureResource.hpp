@@ -28,6 +28,7 @@ public:
     [[nodiscard]] auto getFormat() const -> vk::Format;
     [[nodiscard]] auto getUsage() const -> vk::ImageUsageFlags;
     [[nodiscard]] auto getNative() const -> vk::Image;
+    [[nodiscard]] auto getNativeView() const -> vk::ImageView;
     [[nodiscard]] auto belongsTo(const texture_resources::MemoryPool& pool) const -> bool;
     [[nodiscard]] auto reserveUpload(texture_upload::UploadBatchId batchId) -> Result<void>;
     void cancelUpload(texture_upload::UploadBatchId batchId);

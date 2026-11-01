@@ -36,6 +36,25 @@ wsl.exe -d Ubuntu -- bash -lc 'cd "$HOME/src/Panda-wsl-build" && cmake --build -
 wsl.exe -d Ubuntu -- bash -lc 'cd "$HOME/src/Panda-wsl-build" && ctest --preset gcc-fast'
 ```
 
+## Recover WSL access and prerequisites
+
+`Wsl/Service/E_ACCESSDENIED` from a sandboxed Windows command means the WSL host
+service denied that launch; it does not mean Ubuntu or Linux tests are unavailable.
+Retry the same diagnostic or build command through the command tool's escalated
+execution (`sandbox_permissions: require_escalated`) with a reason naming the
+requested Linux verification. Do not keep retrying the same restricted call, reset
+WSL, or write an unverified "Linux unavailable" conclusion after one denial.
+The synchronization helper also supports the current `gcc-fast` preset and full
+system tests: `build-wsl.ps1 -Preset gcc-fast -RunTests -IncludeSystemTests`.
+
+Once Ubuntu starts, check the actual Linux prerequisite reported by CMake. For the
+built-in shader path, both `glslc` and `spirv-val` are required. If they are missing
+and installation requires `sudo`, tell the maintainer the exact package command to
+run in Ubuntu and continue after it completes. Never ask for the password in chat or
+bypass package authorization by extracting packages into a private directory. Keep
+host-service access failures distinct from missing Linux tools and actual configure,
+build or test failures. Record only the final commands and their observed results.
+
 Run the code workflow's full Linux quality/CUDA sequence in that same mirror.
 Both platforms retain the fast and quality preset trees; CUDA analysis is nested
 inside quality. Presets share `.cache/ccache` within each native source tree;

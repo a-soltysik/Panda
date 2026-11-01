@@ -5,16 +5,15 @@
 
 Panda is a C++23 graphics engine being developed around Vulkan, with planned CUDA
 interoperability. The current implementation provides the foundation for applications:
-shared logging and diagnostics, an optional GLFW window module, an optional CUDA
-availability query, a Vulkan clear-and-present path, and examples. Scene rendering
-is not implemented yet.
+shared logging and diagnostics, optional GLFW window and camera helpers, an optional
+CUDA availability query, and application-supplied mesh rendering.
 
 ## Features
 
 - Static libraries with separate core, optional window tools and optional CUDA availability.
 - Formatted logging with timestamps, source locations, and stream or file sinks.
 - Diagnostics, optional standard stack traces, and recoverable window errors through `std::expected`.
-- Vulkan 1.3 context creation, device capability checks, and windowed clear-and-present frames.
+- Vulkan 1.3 context creation, device capability checks, and windowed application-view rendering.
 - CMake/Ninja builds and GoogleTest tests on Windows and Linux.
 
 ## Requirements
@@ -27,10 +26,10 @@ On Windows, install Visual Studio or Build Tools with the **Desktop development 
 C++** workload, a Windows SDK and a Vulkan SDK. MSVC builds work from ordinary PowerShell; Panda
 loads the compiler environment automatically. GCC through MSYS2 UCRT64 is also supported.
 
-On Ubuntu, install the window-system development packages:
+On Ubuntu, install the Vulkan, window-system and shader build dependencies:
 
 ```sh
-sudo apt-get install libvulkan-dev xorg-dev libwayland-dev libxkbcommon-dev
+sudo apt-get install libvulkan-dev xorg-dev libwayland-dev libxkbcommon-dev glslc spirv-tools
 ```
 
 CMake downloads GLFW, GLM and, when tests are enabled, GoogleTest through CPM.

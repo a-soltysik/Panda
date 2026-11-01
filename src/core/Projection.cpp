@@ -1,5 +1,6 @@
 #include <cmath>
 #include <expected>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <limits>
 #include <numbers>
 #include <panda/Error.hpp>
@@ -23,7 +24,7 @@ auto representable(double value) -> bool
 namespace panda
 {
 auto createPerspectiveProjection(float verticalFieldOfViewRadians, float aspectRatio, float nearPlane, float farPlane)
-    -> Result<Mat4>
+    -> Result<glm::mat4>
 {
     if (!validRange(verticalFieldOfViewRadians, aspectRatio, nearPlane, farPlane) ||
         verticalFieldOfViewRadians >= std::numbers::pi_v<float>)
@@ -40,7 +41,7 @@ auto createPerspectiveProjection(float verticalFieldOfViewRadians, float aspectR
     {
         return std::unexpected(makeError(ErrorCode::InvalidArgument, "Perspective projection is not representable"));
     }
-    auto matrix = Mat4 {0.0F};
+    auto matrix = glm::mat4 {0.0F};
     matrix[0][0] = static_cast<float>(xScale);
     matrix[1][1] = static_cast<float>(-yScale);
     matrix[2][2] = static_cast<float>(-depthScale);
@@ -49,7 +50,7 @@ auto createPerspectiveProjection(float verticalFieldOfViewRadians, float aspectR
     return matrix;
 }
 
-auto createOrthographicProjection(float height, float aspectRatio, float nearPlane, float farPlane) -> Result<Mat4>
+auto createOrthographicProjection(float height, float aspectRatio, float nearPlane, float farPlane) -> Result<glm::mat4>
 {
     if (!validRange(height, aspectRatio, nearPlane, farPlane))
     {
@@ -64,7 +65,7 @@ auto createOrthographicProjection(float height, float aspectRatio, float nearPla
     {
         return std::unexpected(makeError(ErrorCode::InvalidArgument, "Orthographic projection is not representable"));
     }
-    auto matrix = Mat4 {1.0F};
+    auto matrix = glm::mat4 {1.0F};
     matrix[0][0] = static_cast<float>(xScale);
     matrix[1][1] = static_cast<float>(-yScale);
     matrix[2][2] = static_cast<float>(-depthScale);

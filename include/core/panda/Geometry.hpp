@@ -3,26 +3,28 @@
 /// @file
 /// Standard CPU mesh geometry.
 
-#include <array>
 #include <cstdint>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 #include <variant>
 #include <vector>
 
 namespace panda
 {
-/// @brief Standard mesh vertex, with linear color and tangent handedness in tangent[3].
+/// @brief Standard mesh vertex, with linear color and tangent handedness in tangent.w.
 struct MeshVertex
 {
     /// Position in object-space meters.
-    std::array<float, 3> position {};
+    glm::vec3 position {};
     /// Outward object-space normal.
-    std::array<float, 3> normal {};
+    glm::vec3 normal {};
     /// Texture coordinates.
-    std::array<float, 2> uv {};
+    glm::vec2 uv {};
     /// Tangent vector and bitangent handedness.
-    std::array<float, 4> tangent {};
+    glm::vec4 tangent {};
     /// Linear RGBA vertex color.
-    std::array<float, 4> color {1.0F, 1.0F, 1.0F, 1.0F};
+    glm::vec4 color {1.0F, 1.0F, 1.0F, 1.0F};
 };
 
 /// @brief Byte stride of the standard mesh vertex format.

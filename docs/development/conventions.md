@@ -116,6 +116,12 @@ unrelated document-wide rewrites into a change.
 - With `auto`, choose an initializer that deduces the intended type; an ordinary
   integer literal does not acquire an unsigned fixed-width type automatically.
 
+## Linear algebra
+
+Use GLM types directly for vector, matrix and quaternion math. Do not introduce
+Panda aliases for GLM types or represent mathematical values as `std::array`.
+Keep `std::array` for fixed collections and raw data such as indices or device IDs.
+
 ## Class and file organization
 
 - Do not use parent-directory components (`..`) in C++ include paths. Configure

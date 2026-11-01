@@ -82,7 +82,7 @@ to destroy.
 
 ## Related information
 
-- [UC Render and present a diagnostic clear frame](render-clear-frame.md) shows the
+- [UC Render and present an application view](render-view.md) shows the
   successful frame prefix and status returned by this UC.
 - [UC Drain frame and presentation use](drain-presentation.md) explains when present
   fences are waited.

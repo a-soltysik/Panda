@@ -49,4 +49,4 @@ panda_add_test(panda_system_memory_allocation system
 
 panda_add_test(panda_system_windowed_context system
     SOURCES WindowedContext.cpp
-    LIBRARIES Panda::Tools PandaTest::Support glfw)
+    LIBRARIES Panda::Tools PandaTest::Support PandaTest::LogCapture glfw)

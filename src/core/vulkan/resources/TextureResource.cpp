@@ -237,6 +237,11 @@ auto TextureResource::getNative() const -> vk::Image
     return *_image;
 }
 
+auto TextureResource::getNativeView() const -> vk::ImageView
+{
+    return *_view;
+}
+
 auto TextureResource::belongsTo(const MemoryPool& pool) const -> bool
 {
     return &_pool == &pool;

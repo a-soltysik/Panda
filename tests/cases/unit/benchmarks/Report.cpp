@@ -45,7 +45,8 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
 
     EXPECT_EQ(json.at("schemaVersion"), 3);
     EXPECT_EQ(json.at("profile").at("name"), "smoke");
-    EXPECT_EQ(json.at("workload"), "presentClearFrame");
+    EXPECT_EQ(json.at("profile").at("version"), 2);
+    EXPECT_EQ(json.at("workload"), "renderStaticCube");
     EXPECT_EQ(json.at("code").at("revision"), "123456789abc");
     EXPECT_FALSE(json.at("code").contains("dirtyAtConfigure"));
     EXPECT_EQ(json.at("environment").at("cpuModel"), "Test CPU");

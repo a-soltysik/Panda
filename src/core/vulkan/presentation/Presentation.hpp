@@ -13,10 +13,17 @@
 #include <optional>
 #include <panda/Context.hpp>
 #include <panda/WindowSurface.hpp>
+#include <vector>
 
 #include "SubmissionQueue.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/SwapchainGeneration.hpp"
+#include "resources/memory/MemoryPool.hpp"
+
+namespace panda::core::vulkan::renderer
+{
+class MeshRenderer;
+}
 
 namespace panda::core::vulkan
 {
@@ -30,6 +37,7 @@ struct PresentationCreateInfo
     const WindowSurface& window;
     ContextDeviceInfo deviceInfo;
     api_detail::SubmissionQueue& submissions;
+    resources::MemoryPool* pool {nullptr};
     api_detail::PerformanceManagerImpl* performance {nullptr};
 };
 
@@ -45,8 +53,8 @@ public:
     auto operator=(Presentation&&) -> Presentation& = delete;
     ~Presentation();
 
-    [[nodiscard]] auto presentClearFrame() -> std::expected<FrameResult, Error>;
-    [[nodiscard]] auto presentClearFrame(std::optional<std::size_t>& submittedPerformanceSlot)
+    [[nodiscard]] auto render(const RenderView& view) -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
         -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto drain() -> std::expected<void, Error>;
 
@@ -57,6 +65,7 @@ private:
         vk::CommandBuffer command;
         vk::raii::Semaphore acquire {nullptr};
         std::uint64_t lastCompletion {0};
+        std::vector<Mesh> retainedMeshes;
     };
 
     struct AcquiredImage
@@ -94,11 +103,28 @@ private:
     [[nodiscard]] auto verifyReleaseFunction() const -> std::expected<void, Error>;
     [[nodiscard]] auto initializeSlot(FrameSlot& slot) const -> std::expected<void, Error>;
     [[nodiscard]] auto recreate(FramebufferExtent requested) -> std::expected<void, Error>;
-    [[nodiscard]] auto recordClear(FrameSlot& slot, const SwapchainImage& image, std::size_t slotIndex)
+    [[nodiscard]] static auto retainViewMeshes(FrameSlot& slot, const RenderView& view) -> std::expected<void, Error>;
+    [[nodiscard]] auto createOrResizeMeshRenderer() -> std::expected<void, Error>;
+    [[nodiscard]] auto recordPerformanceStart(std::size_t slotIndex, vk::CommandBuffer command)
         -> std::expected<void, Error>;
+    void recordPerformanceEnd(std::size_t slotIndex, vk::CommandBuffer command);
+    [[nodiscard]] auto recordFrameContent(FrameSlot& slot,
+                                          const SwapchainImage& image,
+                                          std::size_t slotIndex,
+                                          const RenderView& view) -> std::expected<void, Error>;
+    [[nodiscard]] auto recordMeshDraws(FrameSlot& slot,
+                                       const SwapchainImage& image,
+                                       std::size_t slotIndex,
+                                       const RenderView& view) -> std::expected<void, Error>;
+    [[nodiscard]] auto recordView(FrameSlot& slot,
+                                  const SwapchainImage& image,
+                                  std::size_t slotIndex,
+                                  const RenderView& view) -> std::expected<void, Error>;
     [[nodiscard]] static auto recordFrameCommands(FrameSlot& slot) -> std::expected<void, Error>;
-    [[nodiscard]] auto recordFrameWork(FrameSlot& slot, const SwapchainImage& image, std::size_t slotIndex)
-        -> std::expected<void, Error>;
+    [[nodiscard]] auto recordFrameWork(FrameSlot& slot,
+                                       const SwapchainImage& image,
+                                       std::size_t slotIndex,
+                                       const RenderView& view) -> std::expected<void, Error>;
     [[nodiscard]] auto waitCompletion(std::uint64_t value) const -> std::expected<void, Error>;
     [[nodiscard]] auto waitPresentation() -> std::expected<void, Error>;
     [[nodiscard]] auto activeGeneration() -> SwapchainGeneration&;
@@ -106,11 +132,12 @@ private:
     [[nodiscard]] auto ensureWindowGeneration(FramebufferExtent requested) -> std::expected<void, Error>;
     [[nodiscard]] auto prepareWindowFrame() -> std::expected<bool, Error>;
     [[nodiscard]] static auto nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>;
-    [[nodiscard]] auto executeAcquiredFrame(std::optional<std::size_t>& submittedPerformanceSlot)
+    [[nodiscard]] auto executeAcquiredFrame(const RenderView& view,
+                                            std::optional<std::size_t>& submittedPerformanceSlot)
         -> std::expected<FrameResult, Error>;
-    [[nodiscard]] auto submitAcquiredFrame(FrameSlot& slot,
-                                           const AcquiredImage& acquired,
+    [[nodiscard]] auto submitAcquiredFrame(const AcquiredImage& acquired,
                                            std::size_t slotIndex,
+                                           const RenderView& view,
                                            std::optional<std::size_t>& submittedPerformanceSlot)
         -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage, Error>;
@@ -118,8 +145,10 @@ private:
         -> std::expected<AcquiredImage, Error>;
     [[nodiscard]] auto waitImage(FrameSlot& slot, std::uint32_t index) -> std::expected<void, Error>;
     [[nodiscard]] auto submitRecordedFrame(const FrameSlot& slot, const SwapchainImage& image) -> Result<std::uint64_t>;
-    [[nodiscard]] auto submitFrame(FrameSlot& slot, SwapchainImage& image, FrameSelection selection)
-        -> std::expected<std::uint64_t, Error>;
+    [[nodiscard]] auto submitFrame(FrameSlot& slot,
+                                   SwapchainImage& image,
+                                   FrameSelection selection,
+                                   const RenderView& view) -> std::expected<std::uint64_t, Error>;
     [[nodiscard]] auto abortFrame(FrameSlot& slot, std::uint32_t imageIndex, const Error& cause)
         -> std::expected<std::uint64_t, Error>;
     [[nodiscard]] auto handleSubmitFailure(FrameSlot& slot, FrameSelection selection, const Error& cause)
@@ -143,7 +172,9 @@ private:
     const WindowSurface& _window;
     ContextDeviceInfo _deviceInfo;
     api_detail::SubmissionQueue& _submissions;
+    resources::MemoryPool* _pool;
     api_detail::PerformanceManagerImpl* _performance;
+    std::unique_ptr<renderer::MeshRenderer> _renderer;
     std::array<FrameSlot, 2> _slots;
     std::optional<SwapchainGeneration> _generation;
     std::size_t _nextSlot {0};

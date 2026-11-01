@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <glm/geometric.hpp>
 #include <panda/Cube.hpp>
 #include <panda/Geometry.hpp>
 #include <vector>
@@ -22,19 +23,12 @@ TEST(CubeGeometry, HasStandardLayoutAndOutwardTriangles)
         const auto& firstVertex = cube.vertices.at(indices.at(triangle));
         const auto& secondVertex = cube.vertices.at(indices.at(triangle + 1));
         const auto& thirdVertex = cube.vertices.at(indices.at(triangle + 2));
-        const auto firstX = secondVertex.position[0] - firstVertex.position[0];
-        const auto firstY = secondVertex.position[1] - firstVertex.position[1];
-        const auto firstZ = secondVertex.position[2] - firstVertex.position[2];
-        const auto secondX = thirdVertex.position[0] - firstVertex.position[0];
-        const auto secondY = thirdVertex.position[1] - firstVertex.position[1];
-        const auto secondZ = thirdVertex.position[2] - firstVertex.position[2];
-        const auto orientation = (((firstY * secondZ) - (firstZ * secondY)) * firstVertex.normal[0]) +
-                                 (((firstZ * secondX) - (firstX * secondZ)) * firstVertex.normal[1]) +
-                                 (((firstX * secondY) - (firstY * secondX)) * firstVertex.normal[2]);
+        const auto firstEdge = secondVertex.position - firstVertex.position;
+        const auto secondEdge = thirdVertex.position - firstVertex.position;
+        const auto orientation = glm::dot(glm::cross(firstEdge, secondEdge), firstVertex.normal);
         EXPECT_FLOAT_EQ(orientation, 1.0F);
-        for (const auto value : firstVertex.position)
-        {
-            EXPECT_FLOAT_EQ(value * value, 0.25F);
-        }
+        EXPECT_FLOAT_EQ(firstVertex.position.x * firstVertex.position.x, 0.25F);
+        EXPECT_FLOAT_EQ(firstVertex.position.y * firstVertex.position.y, 0.25F);
+        EXPECT_FLOAT_EQ(firstVertex.position.z * firstVertex.position.z, 0.25F);
     }
 }

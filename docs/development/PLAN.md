@@ -29,6 +29,7 @@ criteria and concise current evidence.
 | [First lit and shadowed rendering](tasks/first-scene.md) | First scene | In progress | [Vulkan and external backend handoff](tasks/gpu-handoff.md) |
 | [Optional scene identities and transforms](tasks/scene-transforms.md) | First scene | Planned | [First lit and shadowed rendering](tasks/first-scene.md) |
 | [Materials, lights and shadows](tasks/materials-and-shadows.md) | Renderer features | Planned | [First lit and shadowed scene](tasks/first-scene.md) |
+| [Presentation modes and frame pacing](tasks/presentation-modes.md) | Renderer features | Planned | [Frame rendering and benchmark smoke test](tasks/frame-rendering.md), [First lit and shadowed rendering](tasks/first-scene.md) |
 | [Custom shaders and safe reload](tasks/custom-shaders.md) | Renderer features | Planned | [Materials, lights and shadows](tasks/materials-and-shadows.md) |
 | [GPU sphere billboards](tasks/sphere-billboards.md) | Renderer features | Planned | [Custom shaders and safe reload](tasks/custom-shaders.md) |
 | [Application-driven compute integration](tasks/compute-api.md) | Compute integration | Planned | [Vulkan and external backend handoff](tasks/gpu-handoff.md), [GPU sphere billboards](tasks/sphere-billboards.md) |
@@ -49,8 +50,8 @@ Keep existing task dependencies when working in smaller implementation slices.
 | Build foundation | Windows/Linux build and toolchain probes, CUDA-off independence, C++23/CUDA20 bridge, enforced analysis and test/docs setup |
 | GPU resources | Window/swapchain failure paths, allocation and in-flight lifetime checks, two frame slots, RenderDoc capture and initial timestamps |
 | CUDA interoperability | Device-matched buffer sharing, Windows GPU-side ordered handoff proof, WSL builds/tests with explicit capability skips, and fault/lifecycle tests; no normal-path CPU copies or global waits |
-| First scene | Direct-renderer lit cube, transforms, directional shadow, effective quality settings, optional prototype scene and maintainer walkthrough |
-| Renderer features | Material/shader ABI, all light/shadow types, custom shaders, sphere depth and structural draw/performance checks |
+| First scene | Direct-renderer lit cube, transforms, directional shadow, effective quality settings, application-owned mesh collection (no `Scene` class) and maintainer walkthrough |
+| Renderer features | Material/shader ABI, light/shadow types, presentation-mode selection/reporting, custom shaders, sphere depth and draw/performance checks |
 | Compute integration | Application-driven batched compute workload and mixed-workload/lifecycle tests; no recurring engine scheduler |
 | Application integration | Persistence, import and tools working in an external application without engine edits |
 | Replacement acceptance | Restricted physics, full benchmark evidence, documentation and accepted functional replacement |

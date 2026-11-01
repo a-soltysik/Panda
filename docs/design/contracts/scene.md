@@ -108,20 +108,18 @@ an explicit ownership and lifecycle contract.
 
 ## Transforms and camera conventions
 
-Public math values use single-precision, packed GLM vectors/quaternions/matrices,
-with aliases `Vec3`, `Vec4`, `Quat`, `Mat4` using explicit `glm::packed_highp`.
-Require sizes 12/16/16/64 bytes and alignment 4 respectively in the pinned build.
-GPU blocks have separate explicit packing; never memcpy a Transform as a shader
-block or serialize raw GLM storage. The public quaternion convention is named
-x/y/z/w fields; construction helpers avoid confusing GLM constructor argument order.
+Public math values use GLM's single-precision types directly: `glm::vec3`,
+`glm::vec4`, `glm::quat` and `glm::mat4`. GPU blocks have separate explicit
+packing; never memcpy a Transform as a shader block or serialize raw GLM storage.
+The public quaternion convention is named x/y/z/w fields; construction helpers
+avoid confusing GLM constructor argument order.
 
 Do not force global GLM handedness/depth flags on a consumer. Use explicitly
-right-handed, zero-to-one projection functions internally. Default packed aliases
-do not solve arbitrary GLM ODR/configuration mismatch: Panda and its consumer must
-use compatible GLM settings. Require both `GLM_FORCE_QUAT_DATA_WXYZ` and
-`GLM_FORCE_QUAT_DATA_XYZW` to remain undefined and assert type layouts; the
-external-consumer probe must cover include order and
-configuration. Do not silently convert a differing binary ABI.
+right-handed, zero-to-one projection functions internally. Panda and its consumer
+must use compatible GLM settings. Require both `GLM_FORCE_QUAT_DATA_WXYZ` and
+`GLM_FORCE_QUAT_DATA_XYZW` to remain undefined; the external-consumer probe must
+cover include order and configuration. Do not silently convert a differing binary
+ABI.
 [GLM configuration](https://github.com/g-truc/glm/blob/master/manual.md) and
 [explicit projection functions](https://github.com/g-truc/glm/blob/master/glm/ext/matrix_clip_space.hpp).
 
@@ -366,8 +364,10 @@ The initial tested subset is static glTF/GLB 2.0 with nodes, transforms, indexed
 triangle meshes, UV0, vertex colors and core metallic/roughness material;
 OBJ+MTL with basic diffuse/color/normal conversion; FBX static meshes/materials;
 STL/PLY static geometry with available color. Triangulate polygons and generate
-missing normals. Generate tangents only for usable UV0; warn and disable a normal
-map otherwise. glTF alpha, double-sided and texture sampler modes map to Panda
+missing normals. Source tangents are optional: generate tangents from usable UV0
+when normal mapping is requested; if UVs or tangent generation are unusable, warn
+and disable that normal map without rejecting the mesh. glTF alpha, double-sided
+and texture sampler modes map to Panda
 material state; packed metallic B/roughness G/occlusion R follow the renderer
 contract. Unsupported animations, skins, morphs, cameras, importer-specific lights,
 extra UV sets, exotic material extensions and embedded behavior produce structured

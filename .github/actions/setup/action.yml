@@ -89,7 +89,7 @@ runs:
     - name: Install Linux Vulkan and window-system development files
       if: runner.os == 'Linux'
       shell: bash
-      run: sudo apt-get update && sudo apt-get install -y libvulkan-dev=1.4.341.0-1 xorg-dev libwayland-dev libxkbcommon-dev
+      run: sudo apt-get update && sudo apt-get install -y libvulkan-dev=1.4.341.0-1 xorg-dev libwayland-dev libxkbcommon-dev glslc spirv-tools
     - name: Install Windows Vulkan SDK
       if: runner.os == 'Windows'
       shell: pwsh

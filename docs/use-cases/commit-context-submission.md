@@ -70,7 +70,7 @@ presentation-engine references.
 - [UC Upload texture contents or regions](upload-texture.md) and
   [UC Retire an acquired image after frame work fails](retire-acquired-image.md)
   use the same queue-acceptance rule for texture upload and acquire cleanup.
-- [UC Render and present a diagnostic clear frame](render-clear-frame.md) shows
+- [UC Render and present an application view](render-view.md) shows
   acquire waits, render-finished signals and presentation use.
 - [UC Observe or wait for submitted GPU work](observe-completion.md) defines the
   public completion-token behavior.

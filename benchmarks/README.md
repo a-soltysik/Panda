@@ -1,9 +1,10 @@
 # Panda benchmark
 
 `panda-bench` is a standalone smoke benchmark for Panda's public frame and
-performance APIs. The current smoke workload opens a window and renders frames
-through Panda's normal Context path. More representative scene profiles are not
-implemented yet. See the [benchmark specification](../docs/development/benchmarking.md)
+performance APIs. Its current workload creates and uploads one static cube before the
+warmup and measurement phases, then renders that same view through Panda's normal
+Context path. This exercises the first mesh draw path; representative scene profiles
+are not implemented yet. See the [benchmark specification](../docs/development/benchmarking.md)
 for the measurement boundaries and planned workloads.
 The [UC benchmark smoke run](../docs/use-cases/benchmark-smoke-run.md) traces how
 the executable validates settings, collects samples and writes its report.

@@ -23,6 +23,8 @@ panda_add_component(panda_core
         vulkan/performance/PerformanceManager.cpp
         vulkan/performance/PerformanceManagerImpl.cpp
         vulkan/presentation/Presentation.cpp
+        vulkan/renderer/MeshRenderer.cpp
+        vulkan/renderer/RenderViewValidation.cpp
         vulkan/SubmissionQueue.cpp
         vulkan/upload/UploadBatchImpl.cpp
         vulkan/upload/UploadManager.cpp
@@ -57,6 +59,7 @@ panda_add_component(panda_core
         panda/Texture.hpp
         panda/UploadBatch.hpp
         panda/WindowSurface.hpp
+        panda/RenderView.hpp
     PRIVATE_HEADERS
         vulkan/DeviceSelection.hpp
         vulkan/external/ExternalContext.hpp
@@ -83,8 +86,45 @@ panda_add_component(panda_core
         vulkan/resources/MeshResource.hpp
         vulkan/resources/memory/RangeAllocator.hpp
         vulkan/resources/TextureResource.hpp
+        vulkan/renderer/MeshRenderer.hpp
+        vulkan/renderer/RenderViewValidation.hpp
     LIBRARIES PUBLIC panda_common Vulkan::Headers glm::glm PRIVATE Vulkan::Vulkan)
+
+find_program(PANDA_GLSLC_EXECUTABLE NAMES glslc REQUIRED)
+find_program(PANDA_SPIRV_VAL_EXECUTABLE NAMES spirv-val REQUIRED)
+
+set(PANDA_BUILTIN_SHADER_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(PANDA_MESH_VERTEX_SPIRV "${PANDA_BUILTIN_SHADER_DIRECTORY}/mesh.vert.spv")
+set(PANDA_MESH_FRAGMENT_SPIRV "${PANDA_BUILTIN_SHADER_DIRECTORY}/mesh.frag.spv")
+set(PANDA_BUILTIN_SHADER_HEADER "${PANDA_BUILTIN_SHADER_DIRECTORY}/BuiltinShaders.hpp")
+add_custom_command(
+    OUTPUT "${PANDA_BUILTIN_SHADER_HEADER}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${PANDA_BUILTIN_SHADER_DIRECTORY}"
+    COMMAND "${PANDA_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh.vert"
+            -o "${PANDA_MESH_VERTEX_SPIRV}"
+    COMMAND "${PANDA_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh.frag"
+            -o "${PANDA_MESH_FRAGMENT_SPIRV}"
+    COMMAND "${PANDA_SPIRV_VAL_EXECUTABLE}" --target-env vulkan1.3 "${PANDA_MESH_VERTEX_SPIRV}"
+    COMMAND "${PANDA_SPIRV_VAL_EXECUTABLE}" --target-env vulkan1.3 "${PANDA_MESH_FRAGMENT_SPIRV}"
+    COMMAND "${CMAKE_COMMAND}"
+            "-DOUTPUT_FILE=${PANDA_BUILTIN_SHADER_HEADER}"
+            "-DVERTEX_SPIRV=${PANDA_MESH_VERTEX_SPIRV}"
+            "-DFRAGMENT_SPIRV=${PANDA_MESH_FRAGMENT_SPIRV}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/EmbedSpirv.cmake"
+    DEPENDS
+        "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh.vert"
+        "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh.frag"
+        "${PROJECT_SOURCE_DIR}/cmake/EmbedSpirv.cmake"
+    VERBATIM)
+add_custom_target(panda_builtin_shaders DEPENDS "${PANDA_BUILTIN_SHADER_HEADER}")
+add_dependencies(panda_core panda_builtin_shaders)
+target_include_directories(panda_core PRIVATE "${PANDA_BUILTIN_SHADER_DIRECTORY}")
 
 set_target_properties(panda_core PROPERTIES OUTPUT_NAME panda)
 target_compile_definitions(panda_core PRIVATE PANDA_VERSION_TEXT="${PROJECT_VERSION}")
 panda_configure_vulkan_internal(panda_core)
+if(TARGET panda_static_analysis)
+    string(SHA256 mesh_renderer_analysis_id
+        "${CMAKE_CURRENT_SOURCE_DIR}/vulkan/renderer/MeshRenderer.cpp")
+    add_dependencies(panda_analysis_${mesh_renderer_analysis_id} panda_builtin_shaders)
+endif()
