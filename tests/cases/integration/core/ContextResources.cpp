@@ -990,6 +990,13 @@ TEST_F(ContextResourcesIntegration, CreatesNonIndexedStandardGeometryMesh)
     EXPECT_EQ(mesh->getVertexSize(), panda::standardMeshVertexStrideBytes);
     EXPECT_EQ(mesh->getIndexCount(), 0);
     EXPECT_FALSE(mesh->getIndexType());
+
+    auto indexed = geometry;
+    indexed.indices = std::vector<std::uint16_t> {0};
+    auto batch = panda::UploadBatch {};
+    const auto write = batch.write(*mesh, indexed);
+    ASSERT_FALSE(write);
+    EXPECT_EQ(write.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST_F(ContextResourcesIntegration, ActiveBatchRejectsAnEmptyMeshAndRemainsUsable)
