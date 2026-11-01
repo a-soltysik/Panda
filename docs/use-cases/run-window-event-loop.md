@@ -36,7 +36,7 @@ provider is borrowed.
    work. [UC Render and present a diagnostic clear frame](render-clear-frame.md)
    describes other outcomes; [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md)
    explains the extent and generation path.
-3. **Wait or poll for events.** If the last frame was suspended, the example
+3. **Wait or poll for events.** If the last frame was suspended, the application
    calls `Window::waitForInput()` and blocks until GLFW has an event to process.
    Otherwise, it calls `Window::processInput()` to poll without blocking. Both
    operations process events for all GLFW windows and run callbacks before
@@ -112,10 +112,9 @@ swapchain if required; see [UC Suspend presentation and recreate the swapchain](
 **Continue.** Events have been processed, and the application starts another
 iteration to check for a close request and observe current window state.
 
-**Close requested.** The application exits its loop and releases its owners in
-the required order. In `simple_scene`, the application also waits for its last
-valid frame completion before returning; the [UC Observe or wait for submitted GPU work](observe-completion.md)
-explains what that point does and does not guarantee.
+**Close requested.** The application exits its loop. Its owners remain live until
+the application releases them; a windowed `Context` must be destroyed before its
+borrowed `Window`.
 
 **Presentation suspended.** No frame work is submitted. The application waits for
 an event and retries after the platform changes the window state.
@@ -128,8 +127,8 @@ an event and retries after the platform changes the window state.
   frame statuses and the active presentation path.
 - [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md)
   explains zero extents, resize detection and restoration.
-- [UC Observe or wait for submitted GPU work](observe-completion.md) explains the
-  last frame wait used by the example at shutdown.
+- [UC Shut down a Context safely](shutdown-context.md) explains resource release
+  and GPU draining when the application destroys its Context.
 - [Window wrapper](../design/package-and-toolchain.md#window-wrapper) defines the
   wrapper's thread and GLFW ownership requirements.
 - [Vulkan window example](../../examples/simple_scene/README.md) documents the

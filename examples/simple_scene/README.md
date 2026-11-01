@@ -6,15 +6,19 @@ rendering geometry is not implemented yet, so the cube is not visible. Requires 
 display, Vulkan 1.3 with swapchain maintenance1, and the Khronos validation layer.
 CUDA is not needed.
 
-The loop keeps the last committed frame completion point and explicitly waits
-for its GPU work at normal shutdown, with a ten-second timeout. It does not wait
-after every frame. This point does not track display completion; Context still
-drains presentation during destruction.
+The upload waits up to ten seconds before entering the loop. The loop does not
+wait after every frame or track a shutdown completion point; Context drains
+submitted GPU work and presentation during RAII destruction.
 
 The example adds a `StreamSink` to `std::clog` before starting Panda. The logger
 starts with no sinks, so applications choose where engine logs are written.
 
 Run from the repository root.
+
+Essential operations use `panda::expect`: a failed operation aborts with context,
+including in Release builds. Normal shutdown uses RAII; abort does not unwind
+local objects. See [error handling](../error_handling/README.md) for recovery,
+error propagation and detailed diagnostics.
 
 Windows (MSVC):
 

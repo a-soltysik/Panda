@@ -71,7 +71,7 @@ other initialization failures preserve their native status in the error.
 - [Compute build and capability boundary](../design/contracts/compute.md#build-and-capability-boundary)
   separates Runtime availability from Vulkan/CUDA device matching and sharing.
 - [CUDA connection example](../../examples/cuda_connection/README.md) shows an
-  application checking availability, attempting optional Vulkan-buffer import,
-  and then calling a CUDA producer on a separate allocation.
+  application checking Runtime availability before Vulkan-buffer sharing and a
+  CUDA producer on a separate allocation.
 - [C++ and CUDA toolchain compatibility](../development/tasks/toolchain-compatibility.md)
   records the task scope and platform evidence for this facade.

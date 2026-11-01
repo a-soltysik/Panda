@@ -12,6 +12,11 @@ expose a mapper or grant permission to access memory used by the GPU.
 The example adds a `StreamSink` to `std::clog` before creating the Context. The
 logger starts with no sinks, so applications choose where engine logs are written.
 
+Essential operations use `panda::expect`: a failed operation aborts with context,
+including in Release builds. Normal shutdown uses RAII; abort does not unwind
+local objects. See [error handling](../error_handling/README.md) for recovery,
+error propagation and detailed diagnostics.
+
 Windows:
 
 ```powershell

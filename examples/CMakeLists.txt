@@ -1,5 +1,6 @@
 add_subdirectory(simple_scene)
 add_subdirectory(buffer_allocation)
+add_subdirectory(error_handling)
 if(PANDA_BUILD_CUDA)
     add_subdirectory(cuda_connection)
 endif()
