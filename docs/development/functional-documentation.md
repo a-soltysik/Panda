@@ -94,7 +94,9 @@ Start from the [template](../use-cases/template.md) and compare the
   commands and verification results out of scenarios; evidence belongs in task cards.
 
 Combine or omit inapplicable optional sections. Remove template instructions from
-finished pages. Keep the smallest complete explanation of the selected boundary.
+finished pages. Keep the smallest complete explanation of the selected boundary. Describe
+application behavior generically; keep choices specific to a runnable example in
+that example's README. Related information may link to an example as an illustration.
 
 ## Text emphasis
 

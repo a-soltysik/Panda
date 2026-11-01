@@ -4,9 +4,9 @@
 CUDA, then runs three passes on the same buffer. Each pass uploads the next value
 with Vulkan, queues a clear on Panda's session stream between the paired timeline
 semaphore wait and signal, and reacquires Vulkan ownership. It also runs a separate
-kernel that produces `42` in a `cudaMalloc` allocation. If Vulkan external-buffer or
-timeline-semaphore export, or a matching Vulkan/CUDA device, is unavailable, the
-example reports that and continues with the standalone kernel.
+kernel that produces `42` in a `cudaMalloc` allocation. The shared-buffer path
+requires external-memory and timeline-semaphore export and a matching Vulkan/CUDA
+device; a missing capability aborts with context instead of continuing.
 
 The shared-buffer path requires a Vulkan 1.3 device with external-memory and
 timeline-semaphore export support as well as a matching CUDA device. The standalone
@@ -22,6 +22,11 @@ The example adds a `StreamSink` to `std::clog` before querying CUDA. The logger
 starts with no sinks, so applications choose where engine logs are written.
 
 Run from the repository root.
+
+Essential operations use `panda::expect`: a failed operation aborts with context,
+including in Release builds. Normal shutdown uses RAII; abort does not unwind
+local objects. See [error handling](../error_handling/README.md) for recovery,
+error propagation and detailed diagnostics.
 
 Windows (MSVC):
 
