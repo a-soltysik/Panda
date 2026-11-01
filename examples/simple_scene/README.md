@@ -1,8 +1,10 @@
 # Vulkan window example
 
-`simple_scene` opens a window and displays a gray background. Scene geometry is
-not implemented yet. Requires a display, Vulkan 1.3 with swapchain maintenance1,
-and the Khronos validation layer. CUDA is not needed.
+`simple_scene` opens a window, creates a unit-cube mesh and uploads its vertices
+and indices, then displays a gray background. The mesh is retained throughout the loop;
+rendering geometry is not implemented yet, so the cube is not visible. Requires a
+display, Vulkan 1.3 with swapchain maintenance1, and the Khronos validation layer.
+CUDA is not needed.
 
 The loop keeps the last committed frame completion point and explicitly waits
 for its GPU work at normal shutdown, with a ten-second timeout. It does not wait

@@ -8,7 +8,7 @@ Implement standard material maps/alpha/faces, SSBO light budget, spot/point atla
 
 Non-goal: No custom material DSL or IBL.
 
-Interface: MaterialDesc/Material, LightRecord/ShadowView ABI and renderer pipeline keys.
+Interface: Material and light data, shadow views and renderer pipeline keys; finalize public names and GPU layout during implementation.
 
 Paths: `../../../include/core/panda`, `src/renderer/`, `shaders/`, `tests/gpu/` and directly affected documentation.
 Specifications: [Renderer layout and materials](../../design/contracts/rendering.md#first-version-renderer-contract), [transform conventions](../../design/contracts/scene.md#transforms-and-camera-conventions).

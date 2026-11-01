@@ -4,7 +4,9 @@
 /// Core package entry point and version query.
 
 #include <panda/Context.hpp>
+#include <panda/Cube.hpp>
 #include <panda/ExternalBuffer.hpp>
+#include <panda/Geometry.hpp>
 #include <panda/Projection.hpp>
 #include <string_view>
 

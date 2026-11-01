@@ -125,11 +125,10 @@ when programs load/reload. Reflection is not SPIR-V validation; use `spirv-val` 
 the shader build/reload tooling. Neither infers read/write hazards, CPU padding
 correctness, or an algorithm's meaning. Verify host/shader layout with explicit tests.
 
-The accepted standard draw interface reserves set 0 for scene data, set 1 for
-materials, set 2 for draw/instance data, and set 3 for application resources.
-Concrete binding numbers, types, alignment, capacity, push constants, vertex inputs,
-and compatibility rules are specified in the first-version renderer contract below.
-Independent Vulkan compute programs are not forced into a material descriptor layout.
+The standard draw interface separates renderer-owned data from application shader
+resources. Choose descriptor sets, bindings and packing when implementing each
+interface; group resources by use and update frequency where useful. Independent
+Vulkan compute programs are not forced into a material descriptor layout.
 
 ## Shader integration and billboard scope
 
@@ -142,7 +141,7 @@ Keep three concepts, not a class hierarchy:
   Reload replaces that identity's current revision; submitted frames retain the old one.
 - `Material`: a shared editable description using a built-in or custom program,
   standard parameters/textures and render state. Clone for private changes.
-- `ShaderResources`: an immutable owning binding snapshot for set 3 of a particular
+- `ShaderResources`: an immutable owning binding snapshot for application resources of a particular
   program interface. Replace it during the update phase; in-flight draws retain the
   previous snapshot. No global string-to-variant material property system is needed.
 
@@ -152,8 +151,8 @@ any application resource bindings. Custom programs remain full GLSL; they may re
 the built-in vertex shader and optional lighting includes. They are not functions
 inserted into generated shader source.
 
-Sets 0/1/2 remain Panda-owned scene/material/draw data; applications must not repurpose
-them. Set 3 initially supports individual uniform-buffer, read-only storage-buffer,
+Keep Panda-owned frame, material and draw data separate from application-owned
+shader resources. Application resources initially support individual uniform-buffer, read-only storage-buffer,
 and combined sampled-texture bindings in vertex/fragment stages. Bindings are numeric
 and checked against reflection, including image dimension/sample type. Defer descriptor
 arrays, bindless resources, storage-image writes and fragment-buffer writes from this
@@ -169,9 +168,8 @@ native compute stage from writing the buffer under the accepted compute protocol
 
 An application defines its own C++ parameter struct and matching GLSL block, uploads
 explicit bytes, and tests offsets/size. No automatic C++ reflection or parameter GUI
-is implied. Use std140 for uniform blocks and std430 for storage blocks. Panda's
-standard blocks use explicit 16-byte groups, not raw public GLM/Transform storage;
-the full ABI table below provides the standard offsets and strides.
+is implied. The renderer validates concrete standard block layouts against the
+implemented shader interface rather than assuming public GLM/Transform storage.
 
 One snapshot can be shared by many materials/draws. An explicit per-renderable override
 allows different application buffers without cloning a material for every object.
@@ -243,7 +241,7 @@ Use a small C++20-compatible plain float-field record with asserted offsets/size
 CUDA producers; do not require engine/GLM headers or assume CUDA `float3` packing.
 A producer writes directly to the shared allocation or uses its own GPU conversion
 kernel when its private layout differs. Panda does not translate solver layouts or
-read particles back. Custom GLSL may instead consume application layouts through set 3.
+read particles back. Custom GLSL may instead consume application resource layouts.
 
 Finite centers/colors and nonnegative finite radii are producer invariants, not CPU
 validation promises. Radius zero disables a slot; negative/NaN data is invalid. The
@@ -306,70 +304,38 @@ submission before returning. It owns no ECS entity and does not serialize a view
 Both routes use the [frame](resources.md#frame-and-window-state) protocol and
 require a valid camera.
 
-All standard blocks use 32-bit IEEE floats/uints, column-major matrices, and
-`std140` UBO or `std430` SSBO layouts. C++ packing helpers use explicit float/uint
-arrays and `offsetof` assertions; public GLM/Transform memory is not copied wholesale.
-No push constants, scalar-block-layout feature, runtime descriptor arrays, or
-update-after-bind are used by the standard graphics pipeline. Buffer descriptors
-use checked device alignment; the dynamic draw UBO stride is rounded up to
-`minUniformBufferOffsetAlignment` (at least its 160-byte payload).
+Standard GPU blocks use 32-bit floats/uints, column-major matrices and the chosen
+uniform or storage buffer layout. Define concrete bindings and packing alongside
+the implemented renderer; verify host and shader offsets, strides and device
+alignment. Reject incompatible reflected interfaces and retain resources until
+GPU use completes. Do not require unused bindings or dummy resources before their
+rendering paths exist. Runtime descriptor arrays and update-after-bind are not
+required for the standard graphics path.
 
-| Set.binding | Descriptor | Contents / stages |
-| --- | --- | --- |
-| 0.0 | Uniform buffer, 320 bytes | `FrameBlock`, vertex+fragment |
-| 0.1 | Read-only storage buffer | `LightRecord[]`, 80-byte stride, fragment |
-| 0.2 | Read-only storage buffer | `ShadowView[]`, 80-byte stride, fragment |
-| 0.3 | Combined depth-compare image sampler | Single 2D shadow atlas, fragment |
-| 1.0 | Uniform buffer, 64 bytes | `MaterialBlock`, fragment |
-| 1.1–1.5 | Five combined image samplers | Base color, normal, metallic/roughness, occlusion, emissive; fragment |
-| 2.0 | Dynamic uniform buffer, 160-byte payload | `DrawBlock`, vertex+fragment |
-| 2.1 | Read-only storage buffer | `MeshInstance[]`, 144-byte stride, vertex |
-| 2.2 | Read-only storage buffer | Cloud `vec4 centerRadius[]`, vertex+fragment |
-| 2.3 | Read-only storage buffer | Cloud `vec4 color[]`, vertex+fragment; white dummy if absent |
-| 3.* | Reflected individual bindings | Optional application resources, vertex/fragment |
-
-Unused built-in slots bind shared valid dummy resources; reflected custom programs
-may omit unused bindings but may not change the type/count of a Panda-owned slot.
-Set 3 is empty if unused. Standard set layouts are fixed for a Context; reflections
-must match the used reserved bindings, vertex inputs and block member offsets/strides.
-Reject unknown reserved bindings, writable standard buffers, incompatible stage
-interfaces and a pipeline layout over device limits. Application uniform blocks
-have explicit size/offset checks against reflected metadata before publication.
-
-`FrameBlock` offsets: view 0, projection 64, viewProjection 128,
-inverseViewProjection 192 (`mat4` each); cameraPosition/exposure 256,
-ambientRgb/intensity 272, directional/point/spot/shadowView counts 288 (`uvec4`),
-viewportWidth/height/inverseWidth/inverseHeight 304 (`vec4`). Shadow passes replace
-view, projection, viewProjection, inverseViewProjection, and camera position with
-values for the light face while retaining the same layout; no camera-pass matrix
-remains in those fields.
+Frame data provides camera transforms, position, exposure, ambient light and the
+counts needed by the active pass. Shadow passes use the light view's transforms and
+position rather than the camera's.
 Exposure defaults to 1.0. Ambient defaults to linear RGB (1,1,1) at intensity 0.06.
 
-`LightRecord` is five `vec4`-sized groups at offsets 0/16/32/48/64:
-`positionRange`, `directionInnerCos`, `colorIntensity`,
-`outerCosDepthBiasNormalBiasPcfRadius`, and `uvec4 typeShadowFirstViewViewCount`.
-Type values 0/1/2 mean directional/point/spot. Direction points from the light into
-the scene. Color is linear; intensity is a nonnegative linear multiplier. Range is
-finite positive for local lights. Cone cosines satisfy inner >= outer. No fixed
-light array appears in GLSL: the SSBO is sized to the count, with an explicit
-default `maxLights=64` Context budget configurable at creation up to checked device
-buffer/descriptor limits. Exceeding the budget returns an error, never silently
-drops lights. The `ShadowView` array holds column-major world-to-shadow-clip `mat4`
-at offset 0 and normalized atlas rect `vec4(x,y,width,height)` at 64.
+Light data supplies position, range, direction, cone, linear color, intensity and
+shadow parameters as appropriate. Direction points from the light into the scene.
+Intensity is a nonnegative linear multiplier. Range is finite positive for local
+lights. Cone cosines satisfy inner >= outer. No fixed light array appears in GLSL:
+the storage is sized to the count, with an explicit default `maxLights=64` Context
+budget configurable at creation up to checked device buffer/descriptor limits.
+Exceeding the budget returns an error, never silently drops lights. Each shadow view
+supplies a world-to-shadow transform and normalized atlas region.
 
-`MaterialBlock` is four `vec4` groups at offsets 0/16/32/48: linear baseColorTint;
-linear emissiveRgb/intensity; metallic/roughness/occlusionStrength/normalScale;
-alphaCutoff and three reserved zeros. Built-in default: tint white, emissive black,
-metallic 0, roughness 1, occlusion strength 1, normal scale 1, cutoff 0.5.
-Clamp validated metallic/roughness/strength to [0,1] and normal scale to [0,2];
-reject non-finite inputs. A missing texture uses a bound semantic neutral texture.
+Material data provides linear base color and emissive, metallic, roughness,
+occlusion strength, normal scale and alpha cutoff. Built-in default: tint white,
+emissive black, metallic 0, roughness 1, occlusion strength 1, normal scale 1,
+cutoff 0.5. Clamp validated metallic/roughness/strength to [0,1] and normal scale
+to [0,2]; reject non-finite inputs. A missing texture uses a semantic neutral value.
 
-`DrawBlock`: model `mat4` at 0, normal matrix stored as `mat4` at 64 (upper-left
-inverse-transpose 3x3, remaining cells canonical identity/zero), linear tint `vec4`
-at 128, and `uvec4(baseInstance, mode, 0, 0)` at 144. Mode 0 reads DrawBlock for a
-single mesh; mode 1 indexes `MeshInstance[baseInstance+gl_InstanceIndex]`; mode 2
-indexes cloud streams and uses DrawBlock model as the cloud transform. All draws use
-firstInstance=0. `MeshInstance` is model `mat4` 0, normal `mat4` 64, tint `vec4` 128.
+Draw data supplies a full model matrix, inverse-transpose normal transform and
+linear tint. Select separate pipeline variants for single meshes and instanced
+meshes before the draw; the first renderer needs only the single-mesh variant.
+The instanced path reads per-instance data without a CPU update per vertex.
 The standard mesh binding has 64-byte stride: location 0 position `R32G32B32_SFLOAT`
 offset 0, 1 normal same offset 12, 2 UV `R32G32_SFLOAT` offset 24, 3 tangent
 `R32G32B32A32_SFLOAT` offset 32, 4 linear vertex color

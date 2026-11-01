@@ -9,12 +9,16 @@
 #include <panda/Assert.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
+#include <panda/Cube.hpp>
 #include <panda/Error.hpp>
+#include <panda/Geometry.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/UploadBatch.hpp>
 #include <span>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "LogCapture.hpp"
 
@@ -132,4 +136,100 @@ TEST_F(MeshSystem, UploadsNonIndexedMeshWithoutIndexBytes)
     uploadAndWait(mesh);
 
     EXPECT_FALSE(mesh.isValid());
+}
+
+TEST_F(MeshSystem, UploadsUnitCubeGeometry)
+{
+    const auto geometry = panda::createCubeGeometry();
+    auto mesh = activeContext().createMeshFromGeometry(geometry);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    EXPECT_EQ(mesh->getIndexType(), panda::MeshIndexType::UInt16);
+    auto batch = activeContext().createUploadBatch();
+    ASSERT_TRUE(batch) << batch.error().message;
+    const auto written = batch->write(*mesh, geometry);
+    ASSERT_TRUE(written) << written.error().message;
+    const auto submitted = batch->submit();
+    ASSERT_TRUE(submitted) << submitted.error().message;
+    const auto waited = activeContext().wait(*submitted, std::chrono::seconds {10});
+    ASSERT_TRUE(waited) << waited.error().message;
+    EXPECT_EQ(*waited, panda::WaitStatus::Completed);
+}
+
+TEST_F(MeshSystem, UploadsApplicationOwnedNonIndexedGeometry)
+{
+    auto geometry = panda::Geometry {};
+    geometry.vertices.resize(3);
+    auto mesh = activeContext().createMeshFromGeometry(geometry);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    EXPECT_FALSE(mesh->getIndexType());
+    auto batch = activeContext().createUploadBatch();
+    ASSERT_TRUE(batch) << batch.error().message;
+    const auto written = batch->write(*mesh, geometry);
+    ASSERT_TRUE(written) << written.error().message;
+    const auto submitted = batch->submit();
+    ASSERT_TRUE(submitted) << submitted.error().message;
+    const auto waited = activeContext().wait(*submitted, std::chrono::seconds {10});
+    ASSERT_TRUE(waited) << waited.error().message;
+    EXPECT_EQ(*waited, panda::WaitStatus::Completed);
+}
+
+TEST_F(MeshSystem, RejectsGeometryWithMismatchedIndexType)
+{
+    const auto geometry = panda::createCubeGeometry();
+    const auto& cubeIndices = std::get<std::vector<std::uint16_t>>(geometry.indices);
+    const auto description = panda::MeshDesc {
+        .vertexCount = static_cast<std::uint32_t>(geometry.vertices.size()),
+        .vertexStride = sizeof(panda::MeshVertex),
+        .indices = panda::MeshIndexDesc {.count = static_cast<std::uint32_t>(cubeIndices.size()),
+                                         .type = panda::MeshIndexType::UInt32}
+    };
+    auto mesh = activeContext().createMesh(description);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    auto batch = activeContext().createUploadBatch();
+    ASSERT_TRUE(batch) << batch.error().message;
+    const auto written = batch->write(*mesh, geometry);
+    ASSERT_FALSE(written);
+    EXPECT_EQ(written.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(MeshSystem, RejectsGeometryWithOutOfRangeIndex)
+{
+    auto geometry = panda::Geometry {};
+    geometry.vertices.resize(3);
+    geometry.indices = std::vector<std::uint32_t> {0, 1, 3};
+    auto mesh = activeContext().createMeshFromGeometry(geometry);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    EXPECT_EQ(mesh->getIndexType(), panda::MeshIndexType::UInt32);
+    auto batch = activeContext().createUploadBatch();
+    ASSERT_TRUE(batch) << batch.error().message;
+    const auto written = batch->write(*mesh, geometry);
+    ASSERT_FALSE(written);
+    EXPECT_EQ(written.error().code, panda::ErrorCode::InvalidArgument);
+    std::get<std::vector<std::uint32_t>>(geometry.indices)[2] = 2;
+    const auto retried = batch->write(*mesh, geometry);
+    ASSERT_TRUE(retried) << retried.error().message;
+    const auto submitted = batch->submit();
+    ASSERT_TRUE(submitted) << submitted.error().message;
+    const auto waited = activeContext().wait(*submitted, std::chrono::seconds {10});
+    ASSERT_TRUE(waited) << waited.error().message;
+    EXPECT_EQ(*waited, panda::WaitStatus::Completed);
+}
+
+TEST_F(MeshSystem, RejectsThirtyTwoBitGeometryForSixteenBitMeshOfSameByteSize)
+{
+    auto geometry = panda::Geometry {};
+    geometry.vertices.resize(3);
+    geometry.indices = std::vector<std::uint32_t> {0, 1, 2};
+    const auto description = panda::MeshDesc {
+        .vertexCount = 3,
+        .vertexStride = sizeof(panda::MeshVertex),
+        .indices = panda::MeshIndexDesc {.count = 6, .type = panda::MeshIndexType::UInt16}
+    };
+    auto mesh = activeContext().createMesh(description);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    auto batch = activeContext().createUploadBatch();
+    ASSERT_TRUE(batch) << batch.error().message;
+    const auto written = batch->write(*mesh, geometry);
+    ASSERT_FALSE(written);
+    EXPECT_EQ(written.error().code, panda::ErrorCode::InvalidArgument);
 }

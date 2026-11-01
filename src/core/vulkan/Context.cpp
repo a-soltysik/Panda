@@ -14,6 +14,7 @@
 #include <expected>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <panda/Assert.hpp>
@@ -22,6 +23,7 @@
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
+#include <panda/Geometry.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
@@ -30,7 +32,9 @@
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "DeviceSelection.hpp"
@@ -803,6 +807,33 @@ auto Context::createMesh(const MeshDesc& description) const -> Result<Mesh>
         .transform([](std::shared_ptr<detail::MeshResource> resource) {
             return Mesh {std::move(resource)};
         });
+}
+
+auto Context::createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>
+{
+    if (geometry.indices.valueless_by_exception() ||
+        geometry.vertices.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Geometry cannot be represented by a Mesh")};
+    }
+    const auto [indexCount, indexType] = std::visit(
+        []<typename Index>(const std::vector<Index>& indices) {
+            const auto type = std::is_same_v<Index, std::uint16_t> ? MeshIndexType::UInt16 : MeshIndexType::UInt32;
+            return std::pair {indices.size(), type};
+        },
+        geometry.indices);
+    if (indexCount > std::numeric_limits<std::uint32_t>::max())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Geometry has too many indices")};
+    }
+    auto indexDescription = std::optional<MeshIndexDesc> {};
+    if (indexCount != 0)
+    {
+        indexDescription = MeshIndexDesc {.count = static_cast<std::uint32_t>(indexCount), .type = indexType};
+    }
+    return createMesh({.vertexCount = static_cast<std::uint32_t>(geometry.vertices.size()),
+                       .vertexStride = standardMeshVertexStrideBytes,
+                       .indices = indexDescription});
 }
 
 auto Context::createUploadBatch() const -> Result<UploadBatch>

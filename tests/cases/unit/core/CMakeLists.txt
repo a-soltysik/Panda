@@ -7,6 +7,10 @@ panda_add_test(panda_unit_projection unit
     SOURCES Projection.cpp
     LIBRARIES Panda::Panda)
 
+panda_add_test(panda_unit_cube unit
+    SOURCES Cube.cpp
+    LIBRARIES Panda::Panda)
+
 panda_add_test(panda_unit_memory_block unit
     VULKAN_INTERNAL
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"

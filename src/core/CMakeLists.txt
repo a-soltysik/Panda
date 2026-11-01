@@ -5,6 +5,7 @@ panda_add_component(panda_core
         Panda.cpp
         Error.cpp
         Projection.cpp
+        Cube.cpp
         Buffer.cpp
         Mesh.cpp
         Texture.cpp
@@ -51,6 +52,8 @@ panda_add_component(panda_core
         panda/Panda.hpp
         panda/PerformanceManager.hpp
         panda/Projection.hpp
+        panda/Cube.hpp
+        panda/Geometry.hpp
         panda/Texture.hpp
         panda/UploadBatch.hpp
         panda/WindowSurface.hpp

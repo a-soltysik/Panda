@@ -4,7 +4,7 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Build validated embedded GLSL, reflected four-set ABI, app set 3, explicit shadow variants, warmup/cache and transactional reload.
+Build validated embedded GLSL, a reflected renderer and application resource interface, explicit shadow variants, warmup/cache and transactional reload.
 
 Non-goal: No runtime shader DSL, descriptor arrays or implicit migration.
 
