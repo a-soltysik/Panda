@@ -19,6 +19,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
+#include <panda/Geometry.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
@@ -561,6 +562,27 @@ protected:
             });
     }
 
+    void expectGeometryMesh(VkBuffer vertices,
+                            VkDeviceMemory memory,
+                            std::uint64_t vertexSize,
+                            std::optional<VkBuffer> indices = std::nullopt,
+                            std::uint64_t indexSize = 0)
+    {
+        constexpr auto vertexUsage = static_cast<VkBufferUsageFlags>(vk::BufferUsageFlagBits::eTransferDst |
+                                                                     vk::BufferUsageFlagBits::eVertexBuffer);
+        constexpr auto indexUsage = static_cast<VkBufferUsageFlags>(vk::BufferUsageFlagBits::eTransferDst |
+                                                                    vk::BufferUsageFlagBits::eIndexBuffer);
+        expectBuffer(vertices, vertexSize, false, {}, vertexUsage);
+        expectBufferAllocation(memory);
+        expectBinding(vertices, memory);
+        if (indices)
+        {
+            expectBuffer(*indices, indexSize, false, {}, indexUsage);
+            expectBinding(*indices, memory, 128);
+        }
+        expectParentsDestroyed(true, false);
+    }
+
     void expectImageCreation(VkImage image, const panda::TextureDesc& description)
     {
         EXPECT_CALL(vulkan,
@@ -900,6 +922,74 @@ TEST_F(ContextResourcesIntegration, CreatesIndexedAndNonIndexedMeshesWithSharedS
     EXPECT_EQ(nonIndexed.getIndexSize(), 0);
     indexed.reset();
     nonIndexed.reset();
+}
+
+TEST_F(ContextResourcesIntegration, CreatesAndValidatesSixteenBitStandardGeometry)
+{
+    expectHeadless();
+    auto* const vertices = fakeVulkanHandle<VkBuffer>(40);
+    auto* const indices = fakeVulkanHandle<VkBuffer>(41);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectGeometryMesh(vertices, memory, 192, indices, 6);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto geometry = panda::Geometry {
+        .vertices = std::vector<panda::MeshVertex>(3),
+        .indices = std::vector<std::uint16_t> {0, 1, 2}
+    };
+    const auto mesh = context->createMeshFromGeometry(geometry);
+    ASSERT_TRUE(mesh);
+    EXPECT_EQ(mesh->getVertexStride(), panda::standardMeshVertexStrideBytes);
+    EXPECT_EQ(mesh->getIndexType(), panda::MeshIndexType::UInt16);
+
+    auto batch = panda::UploadBatch {};
+    EXPECT_FALSE(batch.write(panda::Mesh {}, geometry).has_value());
+    auto mismatched = geometry;
+    mismatched.indices = std::vector<std::uint32_t> {0, 1, 2};
+    EXPECT_FALSE(batch.write(*mesh, mismatched).has_value());
+    auto outOfRange = geometry;
+    outOfRange.indices = std::vector<std::uint16_t> {0, 1, 3};
+    EXPECT_FALSE(batch.write(*mesh, outOfRange).has_value());
+    auto nonIndexed = geometry;
+    nonIndexed.indices = std::vector<std::uint16_t> {};
+    EXPECT_FALSE(batch.write(*mesh, nonIndexed).has_value());
+    EXPECT_FALSE(batch.write(*mesh, geometry).has_value());
+}
+
+TEST_F(ContextResourcesIntegration, CreatesThirtyTwoBitStandardGeometryMesh)
+{
+    expectHeadless();
+    auto* const vertices = fakeVulkanHandle<VkBuffer>(40);
+    auto* const indices = fakeVulkanHandle<VkBuffer>(41);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectGeometryMesh(vertices, memory, 192, indices, 12);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto geometry = panda::Geometry {
+        .vertices = std::vector<panda::MeshVertex>(3),
+        .indices = std::vector<std::uint32_t> {0, 1, 2}
+    };
+    const auto mesh = context->createMeshFromGeometry(geometry);
+    ASSERT_TRUE(mesh);
+    EXPECT_EQ(mesh->getIndexType(), panda::MeshIndexType::UInt32);
+    EXPECT_EQ(mesh->getIndexSize(), 12);
+}
+
+TEST_F(ContextResourcesIntegration, CreatesNonIndexedStandardGeometryMesh)
+{
+    expectHeadless();
+    auto* const vertices = fakeVulkanHandle<VkBuffer>(40);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectGeometryMesh(vertices, memory, 64);
+    const auto context = panda::Context::create();
+    ASSERT_TRUE(context);
+    const auto geometry =
+        panda::Geometry {.vertices = std::vector<panda::MeshVertex>(1), .indices = std::vector<std::uint16_t> {}};
+    const auto mesh = context->createMeshFromGeometry(geometry);
+    ASSERT_TRUE(mesh);
+    EXPECT_EQ(mesh->getVertexSize(), panda::standardMeshVertexStrideBytes);
+    EXPECT_EQ(mesh->getIndexCount(), 0);
+    EXPECT_FALSE(mesh->getIndexType());
 }
 
 TEST_F(ContextResourcesIntegration, ActiveBatchRejectsAnEmptyMeshAndRemainsUsable)

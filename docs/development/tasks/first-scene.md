@@ -39,17 +39,24 @@ drawing remain to be implemented and verified.
 
 ## Current verification
 
-- Windows MSVC 14.51.36231: `msvc-quality`, header isolation, format checks,
-  `clang-cuda-analysis-windows` and `msvc-fast` passed. The full suite ran 465
-  cases: 461 passed; one buffered-output case and three noncoherent-memory cases
-  skipped.
-- WSL Ubuntu GCC 16.0.1: `gcc-quality`, header isolation, format checks,
-  `clang-cuda-analysis`, `gcc-fast` and `gcc-docs` passed. The full suite ran 465
-  cases: 457 passed; five CUDA-capability and three noncoherent-memory cases
-  skipped. Clang reported the installed CUDA version is newer than its latest
-  partially supported version (12.9); host and device analysis passed.
+- Windows MSVC 14.51.36231: `msvc-quality`, public-header isolation, format
+  checks, `clang-cuda-analysis-windows`, `msvc-unity` and `msvc-fast` passed. The
+  full suite ran 468 cases: 464 passed and four skipped (one buffered-output
+  case and three noncoherent-memory cases).
+- WSL Ubuntu GCC 16.0.1: `gcc-quality`, public-header isolation, format checks,
+  `clang-cuda-analysis`, `gcc-unity` and `gcc-fast` passed. The full suite ran
+  468 cases: 460 passed and eight skipped (five CUDA-capability cases and three
+  noncoherent-memory cases). CUDA analysis reported the toolkit is newer than
+  Clang's latest partially supported version (12.9); host and device analysis
+  passed.
+- `gcc-coverage` ran all 423 unit and integration cases successfully. The report
+  covered 91.7% of source lines after the one-second lavapipe benchmark smoke.
+  It covered 91.7% in `UploadBatch.cpp` and 94.4% in `Context.cpp`; only the
+  valueless-variant and oversized-geometry defensive error returns remained
+  uncovered.
 - `check_docs.py` checked 76 Markdown files and the task queue. `docs-checks`
-  validated 41 diagrams in 77 files. GCC quality reported non-fatal indexing and
-  magic-number advisories in the new cube geometry and tests.
-- No rendered-image validation was performed. Renderer drawing and the task's
-  visual acceptance remain open.
+  validated 41 diagrams in 77 files, and `gcc-docs` generated the public API
+  documentation.
+- GCC quality reported non-fatal indexing and magic-number advisories in the
+  cube geometry and tests. No rendered-image validation was performed;
+  renderer drawing and the task's visual acceptance remain open.
