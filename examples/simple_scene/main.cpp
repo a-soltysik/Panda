@@ -8,8 +8,12 @@
 #include <panda/Assert.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
+#include <panda/Cube.hpp>
 #include <panda/Error.hpp>
+#include <panda/Geometry.hpp>
 #include <panda/Logger.hpp>
+#include <panda/Mesh.hpp>
+#include <panda/UploadBatch.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <string_view>
 #include <tuple>
@@ -31,7 +35,7 @@ auto fail(std::string_view message) noexcept -> int
     return EXIT_FAILURE;
 }
 
-auto finishFrames(const panda::Context& context, panda::CompletionPoint last) -> panda::Result<void>
+auto waitForCompletion(const panda::Context& context, panda::CompletionPoint last) -> panda::Result<void>
 {
     if (!last.isValid())
     {
@@ -40,10 +44,43 @@ auto finishFrames(const panda::Context& context, panda::CompletionPoint last) ->
     return context.wait(last, frameWaitTimeout).and_then([](panda::WaitStatus status) -> panda::Result<void> {
         if (status == panda::WaitStatus::Timeout)
         {
-            return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Last frame did not finish in time")};
+            return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "GPU work did not finish in time")};
         }
         return {};
     });
+}
+
+auto uploadCube(const panda::Context& context, const panda::Mesh& mesh, const panda::Geometry& geometry)
+    -> panda::Result<void>
+{
+    auto batch = context.createUploadBatch();
+    if (!batch)
+    {
+        return std::unexpected {batch.error()};
+    }
+    const auto written = batch->write(mesh, geometry);
+    if (!written)
+    {
+        return written;
+    }
+    return batch->submit().and_then([&context](panda::CompletionPoint completion) {
+        return waitForCompletion(context, completion);
+    });
+}
+
+auto createCube(const panda::Context& context) -> panda::Result<panda::Mesh>
+{
+    const auto geometry = panda::createCubeGeometry();
+    auto mesh = context.createMeshFromGeometry(geometry);
+    if (!mesh)
+    {
+        return std::unexpected {mesh.error()};
+    }
+    if (const auto uploaded = uploadCube(context, *mesh, geometry); !uploaded)
+    {
+        return std::unexpected {uploaded.error()};
+    }
+    return mesh;
 }
 
 auto run(const panda::tools::Window& window, const panda::Context& context) -> panda::Result<void>
@@ -68,7 +105,17 @@ auto run(const panda::tools::Window& window, const panda::Context& context) -> p
             return input;
         }
     }
-    return finishFrames(context, last);
+    return waitForCompletion(context, last);
+}
+
+auto runScene(const panda::tools::Window& window, const panda::Context& context) -> panda::Result<void>
+{
+    const auto cube = createCube(context);
+    if (!cube)
+    {
+        return std::unexpected {cube.error()};
+    }
+    return run(window, context);
 }
 
 auto runApplication() -> int
@@ -80,7 +127,7 @@ auto runApplication() -> int
                        window,
                        {.applicationName = "Panda simple scene", .enableValidation = true})
                 .and_then([&window](const panda::Context& context) {
-                    return run(window, context);
+                    return runScene(window, context);
                 });
         });
     return result ? EXIT_SUCCESS : fail(result.error().message);

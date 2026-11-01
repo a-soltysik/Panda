@@ -15,6 +15,8 @@
 
 namespace panda
 {
+struct Geometry;
+
 namespace detail
 {
 class UploadBatchImpl;
@@ -66,6 +68,12 @@ public:
     [[nodiscard]] auto write(const Mesh& destination,
                              std::span<const std::byte> vertexBytes,
                              std::span<const std::byte> indexBytes = {}) -> Result<void>;
+    /// @brief Snapshots standard CPU geometry into a matching Mesh.
+    /// @param destination Mesh with matching vertex count, standard stride and index type.
+    /// @param geometry CPU geometry whose lifetime may end after this call.
+    /// Indices must refer to supplied vertices; validation examines each index once.
+    /// @return Success or a validation/allocation/cache error; failure queues no part of this mesh write.
+    [[nodiscard]] auto write(const Mesh& destination, const Geometry& geometry) -> Result<void>;
     /// @brief Snapshots a full-texture upload into owned staging.
     /// @param destination Texture from the same Context with transfer-destination and sampled usage.
     /// @param bytes Source texels or compressed blocks, with rows separated by rowPitchBytes.

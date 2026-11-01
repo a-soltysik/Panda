@@ -19,6 +19,7 @@
 
 namespace panda
 {
+struct Geometry;
 class WindowSurface;
 
 /// @brief Options for creating a Vulkan 1.3 context.
@@ -188,6 +189,11 @@ public:
     /// @return A shared mesh owner or a validation/allocation/backend error.
     /// Context outlives all copies. May allocate; submits no work and does not wait.
     [[nodiscard]] auto createMesh(const MeshDesc& description) const -> Result<Mesh>;
+
+    /// @brief Creates storage matching standard CPU geometry without uploading it.
+    /// @return A shared mesh owner or a validation/allocation/backend error.
+    /// Empty indices create a non-indexed mesh. Context outlives every mesh copy.
+    [[nodiscard]] auto createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>;
 
     /// @brief Creates an empty batch borrowing this Context; may allocate.
     /// @return A batch or an initialization/backend error. Submits no work and performs no completion wait.
