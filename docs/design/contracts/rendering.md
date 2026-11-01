@@ -336,13 +336,23 @@ Draw data supplies a full model matrix, inverse-transpose normal transform and
 linear tint. Select separate pipeline variants for single meshes and instanced
 meshes before the draw; the first renderer needs only the single-mesh variant.
 The instanced path reads per-instance data without a CPU update per vertex.
-The standard mesh binding has 64-byte stride: location 0 position `R32G32B32_SFLOAT`
-offset 0, 1 normal same offset 12, 2 UV `R32G32_SFLOAT` offset 24, 3 tangent
-`R32G32B32A32_SFLOAT` offset 32, 4 linear vertex color
-`R32G32B32A32_SFLOAT` offset 48 (white when absent in source). Procedural cloud
-has no vertex binding and six
-generated vertices per instance. Custom shaders choose one of these input contracts.
-The shader should not assume a CPU-visible particle object.
+The first-scene implementation stores `MeshVertex` records with a 64-byte stride:
+position at offset 0, normal at 12, UV at 24, tangent at 32 and linear vertex color
+at 48 (white when absent in source). Its current built-in pipeline consumes position,
+normal and vertex color; UV and tangent are not yet consumed by that shader. This is
+the current implementation format, not a requirement that every mesh store every
+attribute.
+
+The materials/import implementation must support a vertex layout per mesh. Position
+is required; normals, UVs, tangents and vertex colors are optional attributes. A
+mesh's layout describes its available attributes, formats, offsets and stride, and
+is shared by all its vertices. The renderer validates that the selected shader's
+required inputs are present and selects or creates a compatible pipeline; a missing
+required input is a clear preflight error. Keep unused attributes out of a mesh's
+vertex data. Built-in lit materials require normals (which import may generate),
+texture maps require UVs, and only a normal map requires tangents. Missing vertex
+color contributes white. Procedural clouds have no vertex binding and generate six
+vertices per instance; their shader must not assume a CPU-visible particle object.
 
 ### Materials, faces, and output
 

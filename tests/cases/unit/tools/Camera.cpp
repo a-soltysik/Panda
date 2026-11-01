@@ -51,4 +51,27 @@ TEST(Camera, RejectsDegeneratePoseAndProjection)
     description.position = {std::numeric_limits<float>::infinity(), 0, 0};
     description.verticalFieldOfViewRadians = 1.0F;
     EXPECT_FALSE(panda::tools::createPerspectiveCamera(description));
+
+    description.position = {};
+    description.target.y = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(panda::tools::createPerspectiveCamera(description));
+    description.target = {0, 0, -1};
+    description.up.z = std::numeric_limits<float>::infinity();
+    EXPECT_FALSE(panda::tools::createPerspectiveCamera(description));
+}
+
+TEST(Camera, RejectsOverflowingViewProjection)
+{
+    const auto maximum = std::numeric_limits<float>::max();
+    const auto camera = panda::tools::createPerspectiveCamera({
+        .position = {maximum, 0, 0},
+        .target = {maximum, 1, 0},
+        .up = {0,       0, 1},
+        .verticalFieldOfViewRadians = 1.0F,
+        .aspectRatio = 1.0F,
+        .nearPlane = 0.1F,
+        .farPlane = 100.0F
+    });
+    ASSERT_FALSE(camera);
+    EXPECT_EQ(camera.error().code, panda::ErrorCode::InvalidArgument);
 }

@@ -1,5 +1,6 @@
 #include <cmath>
 #include <expected>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
@@ -37,7 +38,7 @@ auto isValidLookAt(glm::vec3 position, glm::vec3 target, glm::vec3 up) -> bool
            directionLengthSquared > 0.0F && std::isfinite(rightLengthSquared) && rightLengthSquared > 0.0F;
 }
 
-auto isFinite(panda::Mat4 matrix) -> bool
+auto isFinite(glm::mat4 matrix) -> bool
 {
     return isFinite(matrix[0]) && isFinite(matrix[1]) && isFinite(matrix[2]) && isFinite(matrix[3]);
 }

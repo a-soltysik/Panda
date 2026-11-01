@@ -1,6 +1,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <panda/Cube.hpp>
 #include <panda/Geometry.hpp>
 #include <vector>
@@ -9,9 +12,9 @@ namespace
 {
 struct Face
 {
-    std::array<float, 3> normal;
-    std::array<float, 3> tangent;
-    std::array<float, 3> bitangent;
+    glm::vec3 normal;
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
 };
 
 constexpr auto faces = std::array {
@@ -23,25 +26,22 @@ constexpr auto faces = std::array {
     Face {.normal = {0, 0, -1}, .tangent = {-1, 0, 0}, .bitangent = {0, 1, 0} },
 };
 constexpr auto coordinates = std::array {
-    std::array {0.0F, 0.0F},
-     std::array {1.0F, 0.0F},
-     std::array {1.0F, 1.0F},
-     std::array {0.0F, 1.0F}
+    glm::vec2 {0.0F, 0.0F},
+     glm::vec2 {1.0F, 0.0F},
+     glm::vec2 {1.0F, 1.0F},
+     glm::vec2 {0.0F, 1.0F}
 };
 constexpr auto faceIndices = std::array {
     std::uint16_t {0}, std::uint16_t {1}, std::uint16_t {2}, std::uint16_t {0}, std::uint16_t {2}, std::uint16_t {3}};
 
-auto createVertex(const Face& face, const std::array<float, 2>& textureCoordinates) -> panda::MeshVertex
+auto createVertex(const Face& face, const glm::vec2& textureCoordinates) -> panda::MeshVertex
 {
     auto vertex = panda::MeshVertex {};
     vertex.normal = face.normal;
     vertex.uv = textureCoordinates;
-    vertex.tangent = {face.tangent[0], face.tangent[1], face.tangent[2], 1.0F};
-    for (auto axis = std::size_t {0}; axis < vertex.position.size(); ++axis)
-    {
-        vertex.position[axis] = (0.5F * face.normal[axis]) + ((textureCoordinates[0] - 0.5F) * face.tangent[axis]) +
-                                ((textureCoordinates[1] - 0.5F) * face.bitangent[axis]);
-    }
+    vertex.tangent = glm::vec4 {face.tangent, 1.0F};
+    vertex.position = (0.5F * face.normal) + ((textureCoordinates.x - 0.5F) * face.tangent) +
+                      ((textureCoordinates.y - 0.5F) * face.bitangent);
     return vertex;
 }
 }

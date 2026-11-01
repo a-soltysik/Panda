@@ -3,10 +3,10 @@
 /// @file
 /// Application-owned camera, lighting and mesh draw data.
 
+#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <panda/Mesh.hpp>
-#include <panda/Projection.hpp>
 #include <vector>
 
 namespace panda
@@ -15,7 +15,7 @@ namespace panda
 struct RenderCamera
 {
     /// Combined projection and view transform; matrices multiply column vectors.
-    Mat4 viewProjection {1.0F};
+    glm::mat4 viewProjection {1.0F};
     /// World-space camera position in meters.
     glm::vec3 position {};
 };
@@ -37,7 +37,7 @@ struct MeshDraw
     /// Retained GPU mesh; its vertex stride must be standardMeshVertexStrideBytes.
     Mesh mesh;
     /// Full object-to-world transform in column-major order.
-    Mat4 modelMatrix {1.0F};
+    glm::mat4 modelMatrix {1.0F};
     /// Linear RGBA tint multiplied by vertex color and the built-in material.
     glm::vec4 tint {1.0F, 1.0F, 1.0F, 1.0F};
 };

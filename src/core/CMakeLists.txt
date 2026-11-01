@@ -116,9 +116,15 @@ add_custom_command(
         "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh.frag"
         "${PROJECT_SOURCE_DIR}/cmake/EmbedSpirv.cmake"
     VERBATIM)
-target_sources(panda_core PRIVATE "${PANDA_BUILTIN_SHADER_HEADER}")
+add_custom_target(panda_builtin_shaders DEPENDS "${PANDA_BUILTIN_SHADER_HEADER}")
+add_dependencies(panda_core panda_builtin_shaders)
 target_include_directories(panda_core PRIVATE "${PANDA_BUILTIN_SHADER_DIRECTORY}")
 
 set_target_properties(panda_core PROPERTIES OUTPUT_NAME panda)
 target_compile_definitions(panda_core PRIVATE PANDA_VERSION_TEXT="${PROJECT_VERSION}")
 panda_configure_vulkan_internal(panda_core)
+if(TARGET panda_static_analysis)
+    string(SHA256 mesh_renderer_analysis_id
+        "${CMAKE_CURRENT_SOURCE_DIR}/vulkan/renderer/MeshRenderer.cpp")
+    add_dependencies(panda_analysis_${mesh_renderer_analysis_id} panda_builtin_shaders)
+endif()

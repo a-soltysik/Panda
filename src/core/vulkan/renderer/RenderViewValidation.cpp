@@ -8,13 +8,13 @@
 #include <cmath>
 #include <expected>
 #include <glm/ext/matrix_float3x3.hpp>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/geometric.hpp>
 #include <glm/matrix.hpp>
 #include <panda/Error.hpp>
 #include <panda/Geometry.hpp>
-#include <panda/Projection.hpp>
 #include <panda/RenderView.hpp>
 
 #include "resources/MeshResource.hpp"
@@ -34,7 +34,7 @@ auto isFinite(const glm::vec4& vector) -> bool
     return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z) && std::isfinite(vector.w);
 }
 
-auto isFinite(const Mat4& matrix) -> bool
+auto isFinite(const glm::mat4& matrix) -> bool
 {
     for (auto column = 0; column < 4; ++column)
     {
@@ -58,20 +58,20 @@ auto isFinite(const glm::mat3& matrix) -> bool
     return true;
 }
 
-auto isInvertible(const Mat4& matrix) -> bool
+auto isInvertible(const glm::mat4& matrix) -> bool
 {
     const auto determinant = glm::determinant(matrix);
     return determinant != 0.0F && isFinite(glm::inverse(matrix));
 }
 
-auto isAffine(const Mat4& model) -> bool
+auto isAffine(const glm::mat4& model) -> bool
 {
     static constexpr auto tolerance = 1.0e-6F;
     return std::abs(model[0][3]) <= tolerance && std::abs(model[1][3]) <= tolerance &&
            std::abs(model[2][3]) <= tolerance && std::abs(model[3][3] - 1.0F) <= tolerance;
 }
 
-auto isRenderableModel(const Mat4& model) -> bool
+auto isRenderableModel(const glm::mat4& model) -> bool
 {
     if (!isFinite(model) || !isAffine(model))
     {

@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <expected>
 #include <glm/ext/matrix_float3x3.hpp>
+#include <glm/ext/matrix_float3x4.hpp>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/geometric.hpp>
 #include <glm/matrix.hpp>
@@ -19,7 +21,6 @@
 #include <panda/Error.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/Mesh.hpp>
-#include <panda/Projection.hpp>
 #include <panda/RenderView.hpp>
 #include <span>
 #include <utility>
@@ -40,7 +41,7 @@ namespace
 {
 struct alignas(16) FrameUniform
 {
-    Mat4 viewProjection;
+    glm::mat4 viewProjection;
     glm::vec4 cameraPosition;
     glm::vec4 lightDirection;
     glm::vec4 lightColorIntensity;
@@ -49,8 +50,8 @@ struct alignas(16) FrameUniform
 
 struct alignas(16) DrawConstants
 {
-    Mat4 modelMatrix;
-    std::array<glm::vec4, 3> normalColumns;
+    glm::mat4 modelMatrix;
+    glm::mat3x4 normalColumns;
     glm::vec4 tint;
 };
 

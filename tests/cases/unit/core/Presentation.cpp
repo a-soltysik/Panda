@@ -388,6 +388,36 @@ TEST_F(PresentationTest, RetiresAcquiredImageWhenCommandRecordingCannotStart)
     EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
 }
 
+TEST_F(PresentationTest, RejectsMeshRenderingWithoutContextMemoryPool)
+{
+    expectWindowFrame();
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    EXPECT_CALL(vulkan, vkResetCommandPool(_, _, _))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    EXPECT_CALL(vulkan, vkBeginCommandBuffer(_, NotNull()))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull()))
+        .InSequence(flow)
+        .WillOnce(
+            testing::Action<decltype(vkCmdPipelineBarrier2)> {[](VkCommandBuffer, const VkDependencyInfo* dependency) {
+                panda::test::expectTransitionToColorAttachment(dependency);
+            }});
+    expectRetirementSubmit(flow);
+    expectTimelineWait(flow);
+    expectImageRelease(flow);
+
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    auto view = panda::RenderView {};
+    view.meshes.push_back({});
+    const auto frame = presentation->get()->render(view);
+    ASSERT_FALSE(frame);
+    EXPECT_EQ(frame.error().code, panda::ErrorCode::BackendFailure);
+}
+
 TEST_F(PresentationTest, PresentAndRecreationFailuresReleaseThenRetryWithoutRetiredSwapchain)
 {
     expectQueueLookup();
