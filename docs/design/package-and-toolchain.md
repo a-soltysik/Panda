@@ -146,11 +146,13 @@ API. It uses Core only and submits no GPU work.
 [`simple_scene`](../../examples/simple_scene/README.md) executable and
 requires Tools, enabled by `PANDA_BUILD_TOOLS=ON` or `PANDA_BUILD_TESTS=ON`.
 The example creates a local Window without an OpenGL context, then a Vulkan
-Context borrowing that window. Its loop clears and presents a diagnostic frame,
-then polls events or waits for an event while the framebuffer is suspended.
-Closing the window ends the loop; destruction releases the Context before the
-Window, including failure or exception unwinding. Creation, event and frame
-errors are logged and return a failing process exit status.
+Context borrowing that window. It creates and uploads standard cube geometry,
+then passes camera and draw data to the renderer each frame. The renderer uses
+Core only; no scene or ECS library is required. The loop polls events or waits
+for an event while the framebuffer is suspended. Closing the window ends the
+loop; destruction releases the Context before the Window, including failure or
+exception unwinding. Creation, event and frame errors are logged and return a
+failing process exit status.
 
 When `PANDA_BUILD_CUDA=ON`, the same example switch also builds
 [`cuda_connection`](../../examples/cuda_connection/README.md). It links
@@ -158,14 +160,17 @@ When `PANDA_BUILD_CUDA=ON`, the same example switch also builds
 not a CTest case. With CUDA off, no CUDA toolkit or compiler is discovered for
 examples.
 
-Core has no dependency on Tools or a display. GLFW is discovered and linked only
-when Tools is enabled, so a core-only build needs no window-system packages.
-The source build now requires Vulkan development headers and the loader link library;
-`Panda::Panda` exposes Vulkan-Hpp headers for public Vulkan values, flags and borrowed
-handles, including `WindowSurface` and `BufferDesc`. A release executable needs the Vulkan loader and
-driver at runtime, not the development SDK.
-Rendering and image encoding are not implemented; future offscreen applications
-need not create a window. No common application-lifetime interface is imposed.
+The optional Tools component provides the GLFW window wrapper and stateless camera
+construction helpers. Core has no dependency on Tools or a display. GLFW is discovered
+and linked only when Tools is enabled, so a core-only build needs no window-system packages.
+The source build requires Vulkan development headers and the loader link library.
+It also requires `glslc` and `spirv-val` to compile the built-in Vulkan 1.3 shaders,
+validate their SPIR-V, and embed the result in Core. `Panda::Panda` exposes Vulkan-Hpp
+headers for public Vulkan values, flags and borrowed handles, including
+`WindowSurface` and `BufferDesc`. Runtime consumers need the Vulkan loader and driver,
+not the shader tools. The implemented renderer draws standard meshes to a window
+surface; offscreen rendering and image encoding remain unimplemented. No common
+application-lifetime interface is imposed.
 
 ### Window wrapper
 

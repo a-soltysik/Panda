@@ -88,7 +88,7 @@ as fatal rather than destroying state under uncertain submitted work.
 
 ## Related information
 
-- [UC Render and present a diagnostic clear frame](render-clear-frame.md) shows how
+- [UC Render and present an application view](render-view.md) shows how
   normal submissions and present fences enter this drain.
 - [UC Retire an acquired image after frame work fails](retire-acquired-image.md)
   describes the other acquire-related cleanup state.

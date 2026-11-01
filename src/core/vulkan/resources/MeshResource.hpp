@@ -24,6 +24,7 @@ public:
     [[nodiscard]] auto getVertexBuffer() const -> const std::shared_ptr<BufferResource>&;
     [[nodiscard]] auto getIndexBuffer() const -> const std::shared_ptr<BufferResource>&;
     [[nodiscard]] auto getLayout() const -> const mesh_resources::MeshLayout&;
+    [[nodiscard]] auto belongsTo(const mesh_resources::MemoryPool& pool) const -> bool;
 
 private:
     MeshResource(std::shared_ptr<BufferResource> vertexBuffer,

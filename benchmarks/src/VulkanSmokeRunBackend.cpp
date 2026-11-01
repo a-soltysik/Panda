@@ -2,12 +2,20 @@
 
 #include <chrono>
 #include <expected>
+#include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_uint2.hpp>
+#include <glm/trigonometric.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
+#include <panda/Cube.hpp>
 #include <panda/Error.hpp>
+#include <panda/Geometry.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/PerformanceManager.hpp>
+#include <panda/RenderView.hpp>
+#include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
+#include <panda/tools/Camera.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -55,6 +63,61 @@ auto statusFromPanda(panda::FrameResult::Status status) -> FrameStatus
     }
     return FrameStatus::Skipped;
 }
+
+auto configureCubeCamera(panda::RenderView& view, panda::FramebufferExtent extent) -> std::expected<void, Failure>
+{
+    const auto cameraPosition = glm::vec3 {3.0F, 2.5F, 4.0F};
+    const auto camera = panda::tools::createPerspectiveCamera({
+        .position = cameraPosition,
+        .target = {},
+        .up = {0, 1, 0},
+        .verticalFieldOfViewRadians = glm::radians(50.0F),
+        .aspectRatio = static_cast<float>(extent.width) / static_cast<float>(extent.height),
+        .nearPlane = 0.1F,
+        .farPlane = 100.0F
+    });
+    if (!camera)
+    {
+        return std::unexpected {failFromPanda(camera.error())};
+    }
+    view.camera = *camera;
+    return {};
+}
+
+auto waitForCubeUpload(const panda::Context& context, const panda::CompletionPoint& completion)
+    -> std::expected<void, Failure>
+{
+    const auto waited = context.wait(completion, std::chrono::seconds {30});
+    if (!waited)
+    {
+        return std::unexpected {failFromPanda(waited.error())};
+    }
+    if (*waited == panda::WaitStatus::Timeout)
+    {
+        return std::unexpected {backendFailure("The cube mesh upload did not complete within 30 seconds")};
+    }
+    return {};
+}
+
+auto uploadCube(const panda::Context& context, panda::Mesh& mesh, const panda::Geometry& geometry)
+    -> std::expected<void, Failure>
+{
+    auto uploadBatch = context.createUploadBatch();
+    if (!uploadBatch)
+    {
+        return std::unexpected {failFromPanda(uploadBatch.error())};
+    }
+    if (const auto written = uploadBatch->write(mesh, geometry); !written)
+    {
+        return std::unexpected {failFromPanda(written.error())};
+    }
+    const auto completion = uploadBatch->submit();
+    if (!completion)
+    {
+        return std::unexpected {failFromPanda(completion.error())};
+    }
+    return waitForCubeUpload(context, *completion);
+}
 }
 
 auto VulkanSmokeRunBackend::initialize(const Options& options) -> std::expected<SmokeRunEnvironment, Failure>
@@ -67,7 +130,16 @@ auto VulkanSmokeRunBackend::initialize(const Options& options) -> std::expected<
     {
         return std::unexpected {context.error()};
     }
-    return captureEnvironment();
+    const auto environment = captureEnvironment();
+    if (!environment)
+    {
+        return std::unexpected {environment.error()};
+    }
+    if (const auto cube = createStaticCube(environment->framebufferExtent); !cube)
+    {
+        return std::unexpected {cube.error()};
+    }
+    return environment;
 }
 
 auto VulkanSmokeRunBackend::shouldClose() const -> bool
@@ -87,7 +159,7 @@ auto VulkanSmokeRunBackend::getFramebufferExtent() const -> std::expected<panda:
 
 auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
 {
-    const auto frame = checkedContext().presentClearFrame();
+    const auto frame = checkedContext().render(_view);
     if (!frame)
     {
         return std::unexpected {failFromPanda(frame.error())};
@@ -139,6 +211,7 @@ auto VulkanSmokeRunBackend::waitForLastFrame(std::chrono::nanoseconds timeout) -
 
 void VulkanSmokeRunBackend::teardown()
 {
+    _view.meshes.clear();
     _context.reset();
     _window.reset();
     _lastCompletion = {};
@@ -216,5 +289,33 @@ auto VulkanSmokeRunBackend::captureEnvironment() -> std::expected<SmokeRunEnviro
                                            .version = deviceInfo.driverVersion};
     }
     return environment;
+}
+
+auto VulkanSmokeRunBackend::createStaticCube(panda::FramebufferExtent extent) -> std::expected<void, Failure>
+{
+    if (extent.width == 0 || extent.height == 0)
+    {
+        return {};
+    }
+    auto view = panda::RenderView {};
+    if (const auto camera = configureCubeCamera(view, extent); !camera)
+    {
+        return std::unexpected {camera.error()};
+    }
+
+    const auto geometry = panda::createCubeGeometry();
+    auto mesh = checkedContext().createMeshFromGeometry(geometry);
+    if (!mesh)
+    {
+        return std::unexpected {failFromPanda(mesh.error())};
+    }
+    view.meshes.push_back({.mesh = std::move(*mesh)});
+    if (const auto uploaded = uploadCube(checkedContext(), view.meshes.front().mesh, geometry); !uploaded)
+    {
+        return std::unexpected {uploaded.error()};
+    }
+
+    _view = std::move(view);
+    return {};
 }
 }

@@ -24,9 +24,9 @@ forwarding and helper calculations.
 | [UC Upload a complete mesh payload into a batch](upload-mesh-payload.md) | Stage full vertex and optional index data before appending either write |
 | [UC Observe or wait for submitted GPU work](observe-completion.md) | Context-scoped completion queries, bounded waits and upload retirement |
 | [UC Reclaim completed upload packets](reclaim-completed-uploads.md) | Observe queue completion and release retained upload owners |
-| [UC Render and present a diagnostic clear frame](render-clear-frame.md) | Acquire, record, submit and present; frame and image synchronization outcomes |
+| [UC Render and present an application view](render-view.md) | Validate application data, draw standard meshes or an empty background, and present with frame/image synchronization |
 | [UC Collect paired CPU and GPU frame timings](collect-frame-timings.md) | Opt-in timestamp collection, CPU/GPU pairing and nonblocking sample retrieval |
-| [UC Execute a controlled benchmark smoke run and save a report](benchmark-smoke-run.md) | Validate a stable clear-frame run, collect only measured samples and write JSON/log output |
+| [UC Execute a controlled benchmark smoke run and save a report](benchmark-smoke-run.md) | Validate a stable static-cube run, collect measured samples and write JSON/log output |
 | [UC Configure and receive application/backend diagnostics](configure-diagnostics.md) | Register synchronous log sinks, filter entries and receive Vulkan validation messages |
 | [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md) | Framebuffer changes, minimized windows and failed swapchain replacement |
 | [UC Commit work to the Context submission timeline](commit-context-submission.md) | Queue acceptance and timeline value publication |

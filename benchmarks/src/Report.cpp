@@ -120,8 +120,8 @@ auto serialize(const Report& report) -> std::string
     std::ranges::transform(report.runs, std::back_inserter(runs), runJson);
     return Json {
                {"schemaVersion", 3                                                                    },
-               {"profile",       Json {{"name", "smoke"}, {"version", 1}}                             },
-               {"workload",      "presentClearFrame"                                                  },
+               {"profile",       Json {{"name", "smoke"}, {"version", 2}}                             },
+               {"workload",      "renderStaticCube"                                                   },
                {"code",          Json {{"revision", report.revision}}                                 },
                {"environment",   environmentJson(report)                                              },
                {"settings",      settingsJson(report)                                                 },

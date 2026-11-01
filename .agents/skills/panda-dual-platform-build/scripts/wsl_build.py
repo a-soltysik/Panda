@@ -14,6 +14,7 @@ MIRROR_NAME = "Panda-wsl-build"
 MARKER_NAME = ".panda-wsl-build-mirror.json"
 PRESETS = {
     "docs-checks",
+    "gcc-fast",
     "gcc-development",
     "gcc-quality",
     "gcc-unity",
@@ -25,6 +26,7 @@ PRESETS = {
     "clang-tests",
 }
 TEST_PRESETS = {
+    "gcc-fast",
     "gcc-quality",
     "gcc-coverage",
     "gcc-sanitizers",

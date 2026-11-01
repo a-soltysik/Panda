@@ -101,4 +101,9 @@ auto MeshResource::getLayout() const -> const MeshLayout&
 {
     return _layout;
 }
+
+auto MeshResource::belongsTo(const MemoryPool& pool) const -> bool
+{
+    return _vertexBuffer->belongsTo(pool);
+}
 }

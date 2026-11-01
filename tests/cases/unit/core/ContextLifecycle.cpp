@@ -18,6 +18,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
+#include <panda/RenderView.hpp>
 #include <panda/WindowSurface.hpp>
 #include <span>
 #include <string>
@@ -687,7 +688,7 @@ TEST_F(ContextLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOr
     EXPECT_EQ(moved.getDeviceInfo().name, "Unit GPU");
     EXPECT_EQ(moved.getDeviceInfo().queueFamily, 0U);
     EXPECT_FALSE(moved.getDeviceInfo().externalBufferExportEnabled);
-    const auto frame = moved.presentClearFrame();
+    const auto frame = moved.render(panda::RenderView {});
     ASSERT_FALSE(frame.has_value());
     EXPECT_EQ(frame.error().code, panda::ErrorCode::Unsupported);
 }
@@ -1197,7 +1198,7 @@ TEST_F(ContextLifecycleTest, MovedSuspendedContextRetainsItsDeviceUntilAllFrameR
     auto context = panda::Context::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
-    const auto frame = moved.presentClearFrame();
+    const auto frame = moved.render(panda::RenderView {});
     ASSERT_TRUE(frame.has_value());
     EXPECT_EQ(frame->status, panda::FrameResult::Status::Suspended);
 }

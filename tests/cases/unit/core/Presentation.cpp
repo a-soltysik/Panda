@@ -21,6 +21,7 @@
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
+#include <panda/RenderView.hpp>
 #include <string>
 #include <thread>
 
@@ -379,7 +380,7 @@ TEST_F(PresentationTest, RetiresAcquiredImageWhenCommandRecordingCannotStart)
 
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation.has_value());
-    const auto result = presentation->get()->presentClearFrame();
+    const auto result = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(result.error().native.has_value());
@@ -412,13 +413,13 @@ TEST_F(PresentationTest, PresentAndRecreationFailuresReleaseThenRetryWithoutReti
 
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation.has_value());
-    const auto present = presentation->get()->presentClearFrame();
+    const auto present = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(present.has_value());
     EXPECT_EQ(present.error().code, panda::ErrorCode::BackendFailure);
-    const auto failedRecreation = presentation->get()->presentClearFrame();
+    const auto failedRecreation = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(failedRecreation.has_value());
     EXPECT_EQ(failedRecreation.error().message, "replacement failed");
-    const auto retried = presentation->get()->presentClearFrame();
+    const auto retried = presentation->get()->render(panda::RenderView {});
     ASSERT_TRUE(retried.has_value());
     EXPECT_EQ(retried->status, panda::FrameResult::Status::Skipped);
 }
@@ -450,9 +451,9 @@ TEST_F(PresentationTest, TimelineLimitRejectsFrameBeforeAcquiringAnotherImage)
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
-    const auto first = presentation->get()->presentClearFrame();
+    const auto first = presentation->get()->render(panda::RenderView {});
     ASSERT_TRUE(first);
-    const auto blocked = presentation->get()->presentClearFrame();
+    const auto blocked = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(blocked);
     EXPECT_EQ(blocked.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_TRUE(presentation->get()->drain());
@@ -471,7 +472,7 @@ TEST_F(PresentationTest, FailedFrameSubmitRetiresAcquireWithoutConsumingTheCandi
     expectImageRelease(flow);
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
-    const auto failed = presentation->get()->presentClearFrame();
+    const auto failed = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
 }
@@ -486,10 +487,10 @@ TEST_F(PresentationTest, DeviceLostSubmitDoesNotRetryAcquireRetirement)
     expectFrameSubmit(flow, vk::Result::eErrorDeviceLost);
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
-    const auto failed = presentation->get()->presentClearFrame();
+    const auto failed = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::DeviceLost);
-    EXPECT_FALSE(presentation->get()->presentClearFrame());
+    EXPECT_FALSE(presentation->get()->render(panda::RenderView {}));
 }
 
 TEST_F(PresentationTest, FailedRetirementSubmitPreservesErrorWithoutWaitingOnUncommittedWork)
@@ -501,10 +502,10 @@ TEST_F(PresentationTest, FailedRetirementSubmitPreservesErrorWithoutWaitingOnUnc
     expectRetirementSubmit(flow, vk::Result::eErrorOutOfDeviceMemory);
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
-    const auto failed = presentation->get()->presentClearFrame();
+    const auto failed = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
-    EXPECT_FALSE(presentation->get()->presentClearFrame());
+    EXPECT_FALSE(presentation->get()->render(panda::RenderView {}));
     EXPECT_FALSE(presentation->get()->drain());
 }
 
@@ -520,7 +521,7 @@ TEST_F(PresentationTest, RetirementTimeoutDrainReleasesTheAcquiredImage)
     expectImageRelease(flow);
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
-    const auto failed = presentation->get()->presentClearFrame();
+    const auto failed = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::Timeout);
     EXPECT_TRUE(presentation->get()->drain());
@@ -539,7 +540,7 @@ TEST_F(PresentationTest, FailedImageReleaseKeepsDrainUnsuccessful)
 
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
-    const auto failed = presentation->get()->presentClearFrame();
+    const auto failed = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(failed);
     ASSERT_TRUE(failed.error().native.has_value());
     const auto native = failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
@@ -578,7 +579,7 @@ TEST_F(PresentationTest, PresentRecoverySurvivesProducerAndReplacementFailures)
 
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
-    const auto failed = presentation->get()->presentClearFrame();
+    const auto failed = presentation->get()->render(panda::RenderView {});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::Timeout);
     const auto replacementFailure = presentation->get()->drain();
@@ -594,7 +595,7 @@ TEST_F(PresentationTest, OutOfDateAcquireReturnsNoCompletionPoint)
     expectAcquiredImage(flow, vk::Result::eErrorOutOfDateKHR);
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
-    const auto frame = presentation->get()->presentClearFrame();
+    const auto frame = presentation->get()->render(panda::RenderView {});
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->status, panda::FrameResult::Status::RecreatePending);
     EXPECT_FALSE(frame->completion.isValid());
@@ -614,11 +615,11 @@ TEST_F(PresentationTest, TimeoutAndNotReadyAcquiresSkipWithoutUsingTheImageIndex
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
 
-    const auto timedOut = presentation->get()->presentClearFrame();
+    const auto timedOut = presentation->get()->render(panda::RenderView {});
     ASSERT_TRUE(timedOut);
     EXPECT_EQ(timedOut->status, panda::FrameResult::Status::Skipped);
     EXPECT_FALSE(timedOut->completion.isValid());
-    const auto notReady = presentation->get()->presentClearFrame();
+    const auto notReady = presentation->get()->render(panda::RenderView {});
     ASSERT_TRUE(notReady);
     EXPECT_EQ(notReady->status, panda::FrameResult::Status::Skipped);
     EXPECT_FALSE(notReady->completion.isValid());
@@ -632,11 +633,11 @@ TEST_F(PresentationTest, DeviceLostAcquireReturnsTheNativeErrorWithoutUsingTheIm
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
 
-    const auto failed = presentation->get()->presentClearFrame();
+    const auto failed = presentation->get()->render(panda::RenderView {});
 
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::DeviceLost);
-    EXPECT_FALSE(presentation->get()->presentClearFrame());
+    EXPECT_FALSE(presentation->get()->render(panda::RenderView {}));
 }
 
 TEST_F(PresentationTest, SuboptimalPresentReturnsTheCommittedCompletionPoint)
@@ -655,7 +656,7 @@ TEST_F(PresentationTest, SuboptimalPresentReturnsTheCommittedCompletionPoint)
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
-    const auto frame = presentation->get()->presentClearFrame();
+    const auto frame = presentation->get()->render(panda::RenderView {});
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->status, panda::FrameResult::Status::RecreatePending);
     EXPECT_TRUE(presentation->get()->drain());
@@ -683,7 +684,7 @@ TEST_F(PresentationTest, RecordsGpuTimestampsAroundFrameRenderingAndPublishesSub
     auto presentation = createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance::Khr, true);
     ASSERT_TRUE(presentation);
     auto submittedPerformanceSlot = std::optional<std::size_t> {};
-    const auto frame = presentation->get()->presentClearFrame(submittedPerformanceSlot);
+    const auto frame = presentation->get()->render(panda::RenderView {}, submittedPerformanceSlot);
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
     EXPECT_EQ(submittedPerformanceSlot, 0U);

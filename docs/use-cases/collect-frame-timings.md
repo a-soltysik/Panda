@@ -5,8 +5,8 @@
 An application opts into frame sampling when it creates a `Context`, then reads
 paired timings from that Context's borrowed `PerformanceManager`. This flow starts
 with a live Context and ends when the application peeks at or removes ready samples.
-The current submitted-frame path is `Context::presentClearFrame()` and measures its
-diagnostic clear rendering; scene rendering is not implemented yet.
+The submitted-frame path is `Context::render(view)`. Timing markers cover either an
+empty background view or the mesh draws in a populated view.
 
 **Panda** owns timestamp queries, their association with submitted frames and
 nonblocking collection. **The application** chooses whether to request sampling,
@@ -25,11 +25,12 @@ samples are owned by the Context; the borrowed manager must not outlive it.
    `Context::getPerformanceManager()` and reads `getCapabilities()`. Sampling runs
    only when `isGpuTimestampSamplingEnabled` is true; `hasGpuTimestampQueries`
    separately reports support on the selected graphics queue.
-2. **Submit a marked frame.** The application calls `Context::presentClearFrame()`.
+2. **Submit a marked frame.** The application calls `Context::render(view)`.
    `Context` starts its CPU wall clock. In the frame command buffer,
    `Presentation` records two `vkCmdWriteTimestamp2` queries at the
-   `eColorAttachmentOutput` stage: the start immediately before the clear rendering
-   and the end immediately after it. The GPU writes their device-clock tick values
+   `eColorAttachmentOutput` stage: the start immediately before view rendering and
+   the end immediately after it. For an empty view this brackets the background clear;
+   for a populated view it brackets the built-in mesh rendering commands. The GPU writes their device-clock tick values
    when it executes the submitted command buffer; recording these commands on the
    CPU does not itself measure GPU time. After the queue accepts the command buffer,
    the manager associates that slot's query pool with the committed `CompletionPoint`
@@ -67,8 +68,8 @@ sequenceDiagram
     C-->>A: Borrowed manager
     A->>M: Step 1 - getCapabilities()
     M-->>A: Timestamp support and sampling state
-    A->>C: Step 2 - presentClearFrame()
-    C->>P: Step 2 - start CPU clock and present frame
+    A->>C: Step 2 - render(view)
+    C->>P: Step 2 - start CPU clock and render view
     P->>M: Step 2 - record start and end GPU timestamp markers
     M->>V: Record vkCmdWriteTimestamp2 at color-attachment output stage
     P->>Q: Step 2 - submit marked command buffer
@@ -99,7 +100,8 @@ fails instead of overwriting the pending sample.
 
 **What the pair means.** `cpuFrameDuration` is elapsed host time across Panda's
 frame call, not CPU execution time. In the current implementation,
-`gpuExecutionDuration` covers the clear rendering between its two GPU markers; it
+`gpuExecutionDuration` covers rendering between its two GPU markers; for an empty
+view this is the background clear, and for a populated view it includes mesh draws. It
 does not cover CPU work, image acquisition or presentation/display latency. Both
 are nanoseconds; they measure overlapping work and must not be added as sequential
 frame time. The
@@ -115,7 +117,7 @@ buffered samples, so long-running applications should drain regularly.
 with the frame as soon as queue submission succeeds. `Context` records that frame's
 CPU duration even if presentation then returns an error, so the submitted frame can
 still produce a sample. The error does not undo GPU work; see
-[UC Render and present a diagnostic clear frame](render-clear-frame.md) for frame
+[UC Render and present an application view](render-view.md) for frame
 recovery outcomes.
 
 ## Variants and errors
@@ -123,7 +125,7 @@ recovery outcomes.
 |  | Point and condition | Response | Resulting state and next action |
 | --- | --- | --- | --- |
 | **Variant&nbsp;1** | Step 1: sampling was not requested, or the graphics queue has no timestamp support | Capabilities report sampling disabled; no timestamp pools or paired samples are produced | Enable sampling when creating a new Context; unsupported hardware needs a queue with timestamp support |
-| **Variant&nbsp;2** | Step 2: the frame is suspended, skipped or fails before queue submission | No submitted slot is associated with a frame index and no paired sample is produced | Follow [UC Render and present a diagnostic clear frame](render-clear-frame.md); submit a later frame when presentation can proceed |
+| **Variant&nbsp;2** | Step 2: the frame is suspended, skipped or fails before queue submission | No submitted slot is associated with a frame index and no paired sample is produced | Follow [UC Render and present an application view](render-view.md); submit a later frame when presentation can proceed |
 | **Variant&nbsp;3** | Step 4: the submitted point is pending, or either query is not yet available | Return an empty optional/vector without waiting | Keep running and query again later; the sample remains pending |
 | **Error&nbsp;1** | Step 2: the previous slot submission is complete, but a timestamp remains unavailable when `Presentation` tries to reuse its query pool | Frame recording returns `BackendFailure`; after image acquisition, presentation retires that image through [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | The query pool is not reset over the pending result; inspect the error and Context state before continuing |
 | **Error&nbsp;2** | Step 4: completion polling, query readback or duration conversion fails | Return the backend error rather than a fabricated timing | No new sample is returned; device loss has no general recovery path |
@@ -143,7 +145,7 @@ These cases are not represented as zero-duration measurements.
 
 - [UC Create a Context](create-context.md) explains Context initialization and
   partial cleanup if requested sampling resources cannot be initialized.
-- [UC Render and present a diagnostic clear frame](render-clear-frame.md) explains
+- [UC Render and present an application view](render-view.md) explains
   the submitted frame, its completion point and presentation failure outcomes.
 - [UC Observe or wait for submitted GPU work](observe-completion.md) explains the
   Context timeline used to confirm GPU completion; sampling itself does not wait.
