@@ -52,6 +52,7 @@ auto runJson(const RunReport& run) -> Json
     return Json {
         {"runIndex",                           run.runIndex                                                             },
         {"effectiveFramebufferExtent",         Json {{"width", run.framebufferWidth}, {"height", run.framebufferHeight}}},
+        {"effectiveSampleCount",               run.effectiveSampleCount                                                 },
         {"startupDurationNanoseconds",         run.startupDuration.count()                                              },
         {"warmupDurationNanoseconds",          run.warmupDuration.count()                                               },
         {"measurementWallDurationNanoseconds", run.measurementWallDuration.count()                                      },
@@ -119,7 +120,7 @@ auto serialize(const Report& report) -> std::string
     auto runs = Json::array();
     std::ranges::transform(report.runs, std::back_inserter(runs), runJson);
     return Json {
-               {"schemaVersion", 3                                                                    },
+               {"schemaVersion", 4                                                                    },
                {"profile",       Json {{"name", "smoke"}, {"version", 2}}                             },
                {"workload",      "renderStaticCube"                                                   },
                {"code",          Json {{"revision", report.revision}}                                 },

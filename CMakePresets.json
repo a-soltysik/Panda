@@ -557,6 +557,11 @@
       }
     },
     {
+      "name": "gcc-coverage-all",
+      "inherits": "base",
+      "configurePreset": "gcc-coverage"
+    },
+    {
       "name": "msvc-tests",
       "inherits": "base",
       "configurePreset": "msvc-tests",

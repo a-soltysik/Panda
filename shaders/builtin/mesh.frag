@@ -5,11 +5,14 @@ layout(constant_id = 0) const uint outputIsSrgb = 1u;
 layout(set = 0, binding = 0) uniform FrameData
 {
     mat4 viewProjection;
+    mat4 lightViewProjection;
     vec4 cameraPosition;
     vec4 lightDirection;
     vec4 lightColorIntensity;
     vec4 ambient;
 } frameData;
+
+layout(set = 0, binding = 1) uniform sampler2D shadowMap;
 
 layout(location = 0) in vec3 worldPosition;
 layout(location = 1) in vec3 worldNormal;
@@ -50,6 +53,36 @@ vec3 toneMapAces(vec3 color)
     return clamp((color * ((2.51 * color) + 0.03)) / ((color * ((2.43 * color) + 0.59)) + 0.14), 0.0, 1.0);
 }
 
+float shadowVisibility(vec3 normal)
+{
+    const vec4 lightPosition = frameData.lightViewProjection * vec4(worldPosition + normal * 0.002, 1.0);
+    if (abs(lightPosition.w) <= 0.000001)
+    {
+        return 1.0;
+    }
+    const vec3 shadowCoordinate = lightPosition.xyz / lightPosition.w;
+    if (any(lessThan(shadowCoordinate.xy, vec2(-1.0))) || any(greaterThan(shadowCoordinate.xy, vec2(1.0))) ||
+        shadowCoordinate.z < 0.0 || shadowCoordinate.z > 1.0)
+    {
+        return 1.0;
+    }
+    const vec2 shadowUv = shadowCoordinate.xy * 0.5 + 0.5;
+    const ivec2 size = textureSize(shadowMap, 0);
+    const ivec2 center = ivec2(shadowUv * vec2(size));
+    const float lightFacing = max(dot(normal, normalize(-frameData.lightDirection.xyz)), 0.0);
+    const float depthBias = max(0.0005, 0.002 * (1.0 - lightFacing));
+    float visible = 0.0;
+    for (int y = -1; y <= 1; ++y)
+    {
+        for (int x = -1; x <= 1; ++x)
+        {
+            const ivec2 texel = clamp(center + ivec2(x, y), ivec2(0), size - 1);
+            visible += shadowCoordinate.z - depthBias <= texelFetch(shadowMap, texel, 0).r ? 1.0 : 0.0;
+        }
+    }
+    return visible / 9.0;
+}
+
 void main()
 {
     const vec3 normal = normalize(worldNormal);
@@ -69,7 +102,7 @@ void main()
     const vec3 specular = (distribution * geometry * fresnel) / max(4.0 * normalView * normalLight, 0.001);
     const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * baseColor.rgb / pi;
     const vec3 direct = (diffuse + specular) * frameData.lightColorIntensity.rgb *
-                        frameData.lightColorIntensity.w * normalLight;
+    frameData.lightColorIntensity.w * normalLight * shadowVisibility(normal);
     const vec3 ambient = baseColor.rgb * frameData.ambient.rgb * frameData.ambient.w;
     const vec3 mapped = toneMapAces(ambient + direct);
     const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);

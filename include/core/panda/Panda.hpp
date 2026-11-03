@@ -7,7 +7,9 @@
 #include <panda/Cube.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/Geometry.hpp>
+#include <panda/Plane.hpp>
 #include <panda/Projection.hpp>
+#include <panda/Transform.hpp>
 #include <string_view>
 
 namespace panda

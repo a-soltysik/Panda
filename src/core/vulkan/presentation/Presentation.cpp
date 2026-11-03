@@ -262,7 +262,9 @@ auto Presentation::render(const RenderView& view, std::optional<std::size_t>& su
     }
     if (!*ready)
     {
-        return FrameResult {.status = FrameResult::Status::Suspended, .completion = {}};
+        return FrameResult {.status = FrameResult::Status::Suspended,
+                            .completion = {},
+                            .effectiveSampleCount = effectiveSampleCount()};
     }
     auto& slot = _slots.at(_nextSlot);
     if (const auto waited = waitCompletion(slot.lastCompletion); !waited)
@@ -322,15 +324,19 @@ auto Presentation::submitAcquiredFrame(const AcquiredImage& acquired,
     return presentFrame(image, acquired.index, *completion, acquired.suboptimal);
 }
 
-auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>
+auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) const -> std::optional<FrameResult>
 {
     if (status == AcquiredImage::Status::Skipped)
     {
-        return FrameResult {.status = FrameResult::Status::Skipped, .completion = {}};
+        return FrameResult {.status = FrameResult::Status::Skipped,
+                            .completion = {},
+                            .effectiveSampleCount = effectiveSampleCount()};
     }
     if (status == AcquiredImage::Status::RecreatePending)
     {
-        return FrameResult {.status = FrameResult::Status::RecreatePending, .completion = {}};
+        return FrameResult {.status = FrameResult::Status::RecreatePending,
+                            .completion = {},
+                            .effectiveSampleCount = effectiveSampleCount()};
     }
     return std::nullopt;
 }
@@ -712,9 +718,12 @@ auto Presentation::presentFrame(SwapchainImage& image,
         {
             _recreatePending = true;
             return FrameResult {.status = FrameResult::Status::RecreatePending,
-                                .completion = _submissions.getPoint(completion)};
+                                .completion = _submissions.getPoint(completion),
+                                .effectiveSampleCount = effectiveSampleCount()};
         }
-        return FrameResult {.status = FrameResult::Status::Presented, .completion = _submissions.getPoint(completion)};
+        return FrameResult {.status = FrameResult::Status::Presented,
+                            .completion = _submissions.getPoint(completion),
+                            .effectiveSampleCount = effectiveSampleCount()};
     }
     if (presented == vk::Result::eErrorDeviceLost)
     {
@@ -879,6 +888,11 @@ auto Presentation::activeGeneration() const -> const SwapchainGeneration&
         panic("A window frame requires a live swapchain generation");
     }
     return *_generation;
+}
+
+auto Presentation::effectiveSampleCount() const noexcept -> vk::SampleCountFlagBits
+{
+    return _renderer ? _renderer->getSampleCount() : vk::SampleCountFlagBits::e1;
 }
 
 }

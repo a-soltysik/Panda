@@ -18,6 +18,7 @@ public:
     [[nodiscard]] auto initialize(const Options& options) -> std::expected<SmokeRunEnvironment, Failure> override;
     [[nodiscard]] auto shouldClose() const -> bool override;
     [[nodiscard]] auto getFramebufferExtent() const -> std::expected<panda::FramebufferExtent, Failure> override;
+    [[nodiscard]] auto effectiveSampleCount() const noexcept -> std::uint32_t override;
     [[nodiscard]] auto submitFrame() -> std::expected<FrameStatus, Failure> override;
     [[nodiscard]] auto takeAvailableSamples()
         -> std::expected<std::vector<panda::FramePerformanceSample>, Failure> override;
@@ -38,5 +39,6 @@ private:
     std::optional<panda::Context> _context;
     panda::RenderView _view;
     panda::CompletionPoint _lastCompletion;
+    std::uint32_t _effectiveSampleCount {1};
 };
 }

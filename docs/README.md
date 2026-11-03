@@ -1,10 +1,12 @@
 # Panda documentation
 
 Panda is being rewritten as a small Vulkan engine with optional CUDA integration.
-The design and build foundation are accepted; GPU resource work is in progress. A C++23
-static library, shared logger/checked diagnostics, a Tools window, an optional
-CUDA availability facade and examples exist. Rendering, compute integration and the broader
-application modules remain planned. See [the plan](development/PLAN.md) for current work and approvals.
+The design, build foundation, GPU resources, CUDA handoff and first-scene phases are
+accepted. A C++23 static library, shared logger/checked diagnostics, a Tools window,
+an optional CUDA availability facade, direct application-supplied mesh rendering with
+a built-in lit material and directional shadows, and examples exist. Broader renderer
+features, compute integration and application modules remain planned. See
+[the plan](development/PLAN.md) for current work and approvals.
 
 ## Where to start
 

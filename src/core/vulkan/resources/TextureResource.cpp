@@ -6,6 +6,7 @@
 
 #include "TextureResource.hpp"
 
+#include <cstdint>
 #include <expected>
 #include <memory>
 #include <panda/Assert.hpp>
@@ -86,7 +87,25 @@ auto validateTextureRequest(const vk::raii::PhysicalDevice& physicalDevice, cons
     return validateFormatAndExtent(physicalDevice, description);
 }
 
-auto createNativeImage(const vk::raii::Device& device, const TextureDesc& description) -> Result<vk::raii::Image>
+auto validateSampleCount(vk::ImageUsageFlags usage, vk::SampleCountFlagBits samples) -> Result<void>
+{
+    const auto value = static_cast<std::uint32_t>(samples);
+    if (value == 0 || value > static_cast<std::uint32_t>(vk::SampleCountFlagBits::e64) || (value & (value - 1)) != 0)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid texture sample count")};
+    }
+    constexpr auto attachmentUsages = vk::ImageUsageFlagBits::eColorAttachment |
+                                      vk::ImageUsageFlagBits::eDepthStencilAttachment |
+                                      vk::ImageUsageFlagBits::eInputAttachment;
+    if (samples != vk::SampleCountFlagBits::e1 && (usage & ~attachmentUsages))
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Multisampled textures must be attachments")};
+    }
+    return {};
+}
+
+auto createNativeImage(const vk::raii::Device& device, const TextureDesc& description, vk::SampleCountFlagBits samples)
+    -> Result<vk::raii::Image>
 {
     const auto info = vk::ImageCreateInfo {
         .imageType = vk::ImageType::e2D,
@@ -94,7 +113,7 @@ auto createNativeImage(const vk::raii::Device& device, const TextureDesc& descri
         .extent = vk::Extent3D {.width = description.extent.width, .height = description.extent.height, .depth = 1},
         .mipLevels = 1,
         .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
+        .samples = samples,
         .tiling = vk::ImageTiling::eOptimal,
         .usage = description.usage,
         .sharingMode = vk::SharingMode::eExclusive,
@@ -153,39 +172,68 @@ auto TextureResource::getResource(const Texture& texture) -> const std::shared_p
 auto TextureResource::create(const vk::raii::Device& device, MemoryPool& pool, const TextureDesc& description)
     -> Result<std::shared_ptr<TextureResource>>
 {
-    const auto valid = validateTextureRequest(pool.getPhysicalDevice(), description);
-    if (!valid)
-    {
-        return std::unexpected {valid.error()};
-    }
-    auto image = createNativeImage(device, description);
+    return create(device, pool, description, vk::SampleCountFlagBits::e1);
+}
+
+auto TextureResource::createBoundResource(const vk::raii::Device& device,
+                                          MemoryPool& pool,
+                                          const TextureDesc& description,
+                                          vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>
+{
+    auto image = createNativeImage(device, description, samples);
     if (!image)
     {
         return std::unexpected {std::move(image.error())};
     }
     auto resource = std::shared_ptr<TextureResource> {
-        new TextureResource {pool, std::move(*image), description}
+        new TextureResource {pool, std::move(*image), description, samples}
     };
     const auto bound = resource->bind(device);
     if (!bound)
     {
         return std::unexpected {bound.error()};
     }
-    auto view = createNativeView(device, *resource->_image, description.format);
+    return resource;
+}
+
+auto TextureResource::create(const vk::raii::Device& device,
+                             MemoryPool& pool,
+                             const TextureDesc& description,
+                             vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>
+{
+    if (const auto validSamples = validateSampleCount(description.usage, samples); !validSamples)
+    {
+        return std::unexpected {validSamples.error()};
+    }
+    const auto valid = validateTextureRequest(pool.getPhysicalDevice(), description);
+    if (!valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    auto resource = createBoundResource(device, pool, description, samples);
+    if (!resource)
+    {
+        return std::unexpected {std::move(resource.error())};
+    }
+    auto view = createNativeView(device, *(*resource)->_image, description.format);
     if (!view)
     {
         return std::unexpected {std::move(view.error())};
     }
-    resource->_view = std::move(*view);
-    return resource;
+    (*resource)->_view = std::move(*view);
+    return std::move(*resource);
 }
 
-TextureResource::TextureResource(MemoryPool& pool, vk::raii::Image image, const TextureDesc& description)
+TextureResource::TextureResource(MemoryPool& pool,
+                                 vk::raii::Image image,
+                                 const TextureDesc& description,
+                                 vk::SampleCountFlagBits samples)
     : _image {std::move(image)},
       _pool {pool},
       _extent {description.extent},
       _format {description.format},
-      _usage {description.usage}
+      _usage {description.usage},
+      _samples {samples}
 {
 }
 
@@ -249,6 +297,10 @@ auto TextureResource::belongsTo(const MemoryPool& pool) const -> bool
 
 auto TextureResource::reserveUpload(UploadBatchId batchId) -> Result<void>
 {
+    if (_samples != vk::SampleCountFlagBits::e1)
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Multisampled textures cannot be uploaded")};
+    }
     if (_uploaded || (_uploadBatchId && *_uploadBatchId != batchId))
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture is already uploaded or reserved")};

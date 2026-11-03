@@ -1,6 +1,7 @@
 #include "VulkanSmokeRunBackend.hpp"
 
 #include <chrono>
+#include <cstdint>
 #include <expected>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_uint2.hpp>
@@ -157,6 +158,11 @@ auto VulkanSmokeRunBackend::getFramebufferExtent() const -> std::expected<panda:
     return *extent;
 }
 
+auto VulkanSmokeRunBackend::effectiveSampleCount() const noexcept -> std::uint32_t
+{
+    return _effectiveSampleCount;
+}
+
 auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
 {
     const auto frame = checkedContext().render(_view);
@@ -172,6 +178,7 @@ auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
     {
         _lastCompletion = frame->completion;
     }
+    _effectiveSampleCount = static_cast<std::uint32_t>(frame->effectiveSampleCount);
     return statusFromPanda(frame->status);
 }
 
@@ -215,6 +222,7 @@ void VulkanSmokeRunBackend::teardown()
     _context.reset();
     _window.reset();
     _lastCompletion = {};
+    _effectiveSampleCount = 1;
 }
 
 auto VulkanSmokeRunBackend::checkedWindow() const -> const panda::tools::Window&

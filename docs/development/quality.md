@@ -366,10 +366,12 @@ documentation.
 Quality CI makes the HTML available as the `panda-api-docs` downloadable artifact.
 
 `gcc-coverage` instruments Panda and `panda-bench` with GCC coverage flags and runs
-noninteractive CPU tests, including mocked benchmark orchestration tests. The Linux
-coverage job also runs a one-second `panda-bench` profile under Xvfb with Mesa
-lavapipe, exercising the CLI and public Vulkan frame path in software. This run
-collects source coverage; its timings are not performance evidence. Build the
+the noninteractive CPU selection, including mocked benchmark orchestration tests.
+The Linux coverage job uses `gcc-coverage-all` to run every registered CTest case
+under Xvfb with Mesa lavapipe, including native window and Vulkan system cases. It
+also runs a one-second `panda-bench` profile with lavapipe, exercising the CLI and
+public Vulkan frame path in software. These runs collect source coverage; their
+timings are not performance evidence. Build the
 `panda_coverage_report` target to report production `src/` and `benchmarks/src/`
 lines and branches exercised by both checks. The target writes detailed HTML and Cobertura XML to the build directory's
 `coverage/` subdirectory. The report excludes exception-only

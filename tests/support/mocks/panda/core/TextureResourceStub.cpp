@@ -26,6 +26,14 @@ auto TextureResource::create(const vk::raii::Device& device,
                              texture_resources::MemoryPool& pool,
                              const TextureDesc& description) -> Result<std::shared_ptr<TextureResource>>
 {
+    return create(device, pool, description, vk::SampleCountFlagBits::e1);
+}
+
+auto TextureResource::create(const vk::raii::Device& device,
+                             texture_resources::MemoryPool& pool,
+                             const TextureDesc& description,
+                             vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>
+{
     auto& mock = test::ScopedMock<test::TextureResourceMock>::getActiveMock();
     const auto created = mock.create(device, pool, description);
     if (!created)
@@ -33,18 +41,20 @@ auto TextureResource::create(const vk::raii::Device& device,
         return std::unexpected {created.error()};
     }
     return std::shared_ptr<TextureResource> {
-        new TextureResource {pool, vk::raii::Image {nullptr}, description}
+        new TextureResource {pool, vk::raii::Image {nullptr}, description, samples}
     };
 }
 
 TextureResource::TextureResource(texture_resources::MemoryPool& pool,
                                  vk::raii::Image image,
-                                 const TextureDesc& description)
+                                 const TextureDesc& description,
+                                 vk::SampleCountFlagBits samples)
     : _image {std::move(image)},
       _pool {pool},
       _extent {description.extent},
       _format {description.format},
-      _usage {description.usage}
+      _usage {description.usage},
+      _samples {samples}
 {
 }
 

@@ -10,13 +10,13 @@
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <glm/ext/vector_float4.hpp>
 #include <glm/geometric.hpp>
 #include <glm/matrix.hpp>
 #include <panda/Error.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/RenderView.hpp>
 
+#include "Math.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
@@ -24,39 +24,7 @@ namespace panda::core::vulkan::renderer
 {
 namespace
 {
-auto isFinite(const glm::vec3& vector) -> bool
-{
-    return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
-}
-
-auto isFinite(const glm::vec4& vector) -> bool
-{
-    return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z) && std::isfinite(vector.w);
-}
-
-auto isFinite(const glm::mat4& matrix) -> bool
-{
-    for (auto column = 0; column < 4; ++column)
-    {
-        if (!isFinite(matrix[column]))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-auto isFinite(const glm::mat3& matrix) -> bool
-{
-    for (auto column = 0; column < 3; ++column)
-    {
-        if (!isFinite(matrix[column]))
-        {
-            return false;
-        }
-    }
-    return true;
-}
+using panda::detail::isFinite;
 
 auto isInvertible(const glm::mat4& matrix) -> bool
 {

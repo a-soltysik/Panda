@@ -24,6 +24,10 @@ public:
     [[nodiscard]] static auto create(const vk::raii::Device& device,
                                      texture_resources::MemoryPool& pool,
                                      const TextureDesc& description) -> Result<std::shared_ptr<TextureResource>>;
+    [[nodiscard]] static auto create(const vk::raii::Device& device,
+                                     texture_resources::MemoryPool& pool,
+                                     const TextureDesc& description,
+                                     vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>;
     [[nodiscard]] auto getExtent() const -> vk::Extent2D;
     [[nodiscard]] auto getFormat() const -> vk::Format;
     [[nodiscard]] auto getUsage() const -> vk::ImageUsageFlags;
@@ -35,7 +39,15 @@ public:
     void commitUpload(texture_upload::UploadBatchId batchId);
 
 private:
-    TextureResource(texture_resources::MemoryPool& pool, vk::raii::Image image, const TextureDesc& description);
+    [[nodiscard]] static auto createBoundResource(const vk::raii::Device& device,
+                                                  texture_resources::MemoryPool& pool,
+                                                  const TextureDesc& description,
+                                                  vk::SampleCountFlagBits samples)
+        -> Result<std::shared_ptr<TextureResource>>;
+    TextureResource(texture_resources::MemoryPool& pool,
+                    vk::raii::Image image,
+                    const TextureDesc& description,
+                    vk::SampleCountFlagBits samples);
     [[nodiscard]] auto bind(const vk::raii::Device& device) -> Result<void>;
 
     texture_resources::MemoryAllocation _allocation;
@@ -45,6 +57,7 @@ private:
     vk::Extent2D _extent;
     vk::Format _format;
     vk::ImageUsageFlags _usage;
+    vk::SampleCountFlagBits _samples;
     std::optional<texture_upload::UploadBatchId> _uploadBatchId;
     bool _uploaded {false};
 };

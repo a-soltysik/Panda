@@ -16,6 +16,7 @@ struct RunReport
     std::uint32_t runIndex {0};
     std::uint32_t framebufferWidth {0};
     std::uint32_t framebufferHeight {0};
+    std::uint32_t effectiveSampleCount {1};
     std::chrono::nanoseconds startupDuration {};
     std::chrono::nanoseconds warmupDuration {};
     std::chrono::nanoseconds measurementWallDuration {};
