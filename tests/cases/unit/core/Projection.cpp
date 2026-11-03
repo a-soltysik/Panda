@@ -42,4 +42,8 @@ TEST(Projection, RejectsInvalidOrUnrepresentableParameters)
     EXPECT_FALSE(panda::createOrthographicProjection(1.0F, 0.0F, 1.0F, 10.0F));
     EXPECT_FALSE(panda::createOrthographicProjection(1.0F, 1.0F, 1.0F, 1.0F));
     EXPECT_FALSE(panda::createOrthographicProjection(std::numeric_limits<float>::denorm_min(), 1.0F, 1.0F, 10.0F));
+    EXPECT_FALSE(panda::createPerspectiveProjection(std::numbers::pi_v<float> - std::numeric_limits<float>::epsilon(),
+                                                    std::numeric_limits<float>::max(),
+                                                    0.1F,
+                                                    100.0F));
 }

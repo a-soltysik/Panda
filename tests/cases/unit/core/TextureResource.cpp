@@ -280,11 +280,21 @@ TEST_F(TextureResourceTest, RejectsInvalidSamplesAndMultisampledNonAttachments)
     // Deliberately invalid sample count to verify rejection before Vulkan calls.
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     const auto invalidSampleCount = static_cast<vk::SampleCountFlagBits>(3);
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    const auto zeroSampleCount = static_cast<vk::SampleCountFlagBits>(0);
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    const auto excessiveSampleCount = static_cast<vk::SampleCountFlagBits>(128);
     const auto invalidCount = TextureResource::create(device, *pool, description(), invalidSampleCount);
+    const auto zeroCount = TextureResource::create(device, *pool, description(), zeroSampleCount);
+    const auto excessiveCount = TextureResource::create(device, *pool, description(), excessiveSampleCount);
     const auto sampledTexture = TextureResource::create(device, *pool, description(), vk::SampleCountFlagBits::e4);
 
     ASSERT_FALSE(invalidCount);
     EXPECT_EQ(invalidCount.error().code, panda::ErrorCode::InvalidArgument);
+    ASSERT_FALSE(zeroCount);
+    EXPECT_EQ(zeroCount.error().code, panda::ErrorCode::InvalidArgument);
+    ASSERT_FALSE(excessiveCount);
+    EXPECT_EQ(excessiveCount.error().code, panda::ErrorCode::InvalidArgument);
     ASSERT_FALSE(sampledTexture);
     EXPECT_EQ(sampledTexture.error().code, panda::ErrorCode::Unsupported);
 }

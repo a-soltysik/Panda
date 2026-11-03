@@ -118,10 +118,12 @@ ctest --test-dir <build-directory> --output-on-failure -L system
 Use `-LE system` for a noninteractive run that also selects registered formatting
 checks. Quality presets enable formatting; test presets disable it.
 The `gcc-coverage` preset runs the noninteractive CPU test selection with GCC
-instrumentation, including mocked benchmark orchestration tests. The Linux
-coverage job also runs `panda-bench` under Xvfb with Mesa lavapipe to exercise its
-CLI and Vulkan frame path for source coverage; its timings are not performance
-evidence. Run and report the CPU coverage preset with:
+instrumentation, including mocked benchmark orchestration tests. CI runs the full
+registered CTest suite through `gcc-coverage-all` under Xvfb with Mesa lavapipe so
+native window and Vulkan system cases contribute coverage too. It then runs
+`panda-bench` under the same software driver to exercise its CLI and Vulkan frame
+path; benchmark timings are not performance evidence. Run the CPU coverage preset
+locally with:
 
 ```sh
 cmake --preset gcc-coverage

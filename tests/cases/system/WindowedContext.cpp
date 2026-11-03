@@ -303,8 +303,18 @@ TEST(WindowedContextSystem, RendersUploadedCubeAndGroundWithValidation)
         EXPECT_TRUE(frame->effectiveSampleCount == vk::SampleCountFlagBits::e1 ||
                     frame->effectiveSampleCount == vk::SampleCountFlagBits::e2 ||
                     frame->effectiveSampleCount == vk::SampleCountFlagBits::e4);
+        ASSERT_TRUE(window->setSize({240, 180}));
+        ASSERT_TRUE(window->processInput());
+        const auto resizedExtent = window->getFramebufferExtent();
+        ASSERT_TRUE(resizedExtent);
+        EXPECT_NE(resizedExtent->width, extent->width);
+        EXPECT_NE(resizedExtent->height, extent->height);
+        const auto resizedFrame = context.render(*view);
+        ASSERT_TRUE(resizedFrame.has_value()) << resizedFrame.error().message;
+        EXPECT_EQ(resizedFrame->status, panda::FrameResult::Status::Presented);
         view->meshes.clear();
         verifyCompletion(context, frame->completion);
+        verifyCompletion(context, resizedFrame->completion);
     }
     const auto validationError = std::ranges::find_if(records.entries, [](const auto& entry) {
         return entry.level == panda::log::Level::Error;

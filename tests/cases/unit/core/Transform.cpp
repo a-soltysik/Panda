@@ -41,9 +41,15 @@ TEST(Transform, NormalizesFiniteNonUnitRotation)
 
 TEST(Transform, RejectsNonFiniteAndSingularValues)
 {
-    const auto nan = std::numeric_limits<float>::quiet_NaN();
+    static constexpr auto nan = std::numeric_limits<float>::quiet_NaN();
     EXPECT_FALSE(panda::createModelMatrix(panda::Transform {
         .position = {nan, 0.0F, 0.0F}
+    }));
+    EXPECT_FALSE(panda::createModelMatrix(panda::Transform {
+        .rotation = glm::quat {nan, 0.0F, 0.0F, 1.0F}
+    }));
+    EXPECT_FALSE(panda::createModelMatrix(panda::Transform {
+        .scale = {1.0F, std::numeric_limits<float>::infinity(), 1.0F}
     }));
     EXPECT_FALSE(panda::createModelMatrix(panda::Transform {
         .rotation = glm::quat {0.0F, 0.0F, 0.0F, 0.0F}

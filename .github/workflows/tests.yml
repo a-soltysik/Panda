@@ -41,8 +41,11 @@ jobs:
         run: cmake --preset gcc-coverage
       - name: Build instrumented tests
         run: cmake --build --preset gcc-coverage
-      - name: Run CPU tests
-        run: ctest --preset gcc-coverage
+      - name: Run all registered tests on lavapipe
+        run: >-
+          xvfb-run -a env
+          VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          ctest --preset gcc-coverage-all
       - name: Run benchmark smoke on lavapipe
         shell: bash
         run: >-

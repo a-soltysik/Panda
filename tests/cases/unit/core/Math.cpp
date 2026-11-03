@@ -14,15 +14,40 @@ TEST(Math, IsFiniteChecksGlmVectorsQuaternionsAndMatrices)
     const auto infinity = std::numeric_limits<float>::infinity();
     EXPECT_TRUE(panda::detail::isFinite(glm::vec3 {1.0F}));
     EXPECT_FALSE(panda::detail::isFinite(glm::vec3 {infinity}));
+    EXPECT_FALSE(panda::detail::isFinite(glm::vec3 {1.0F, infinity, 1.0F}));
+    EXPECT_FALSE(panda::detail::isFinite(glm::vec3 {1.0F, 1.0F, infinity}));
     EXPECT_TRUE(panda::detail::isFinite(glm::vec4 {1.0F}));
     EXPECT_FALSE(panda::detail::isFinite(glm::vec4 {infinity}));
+    EXPECT_FALSE(panda::detail::isFinite(glm::vec4 {1.0F, infinity, 1.0F, 1.0F}));
+    EXPECT_FALSE(panda::detail::isFinite(glm::vec4 {1.0F, 1.0F, infinity, 1.0F}));
+    EXPECT_FALSE(panda::detail::isFinite(glm::vec4 {1.0F, 1.0F, 1.0F, infinity}));
     EXPECT_TRUE(panda::detail::isFinite(glm::quat {1.0F, 0.0F, 0.0F, 0.0F}));
     EXPECT_FALSE(panda::detail::isFinite(glm::quat {infinity, 0.0F, 0.0F, 0.0F}));
+    EXPECT_FALSE(panda::detail::isFinite(glm::quat {1.0F, infinity, 0.0F, 0.0F}));
+    EXPECT_FALSE(panda::detail::isFinite(glm::quat {1.0F, 0.0F, infinity, 0.0F}));
+    EXPECT_FALSE(panda::detail::isFinite(glm::quat {1.0F, 0.0F, 0.0F, infinity}));
     EXPECT_TRUE(panda::detail::isFinite(glm::mat3 {1.0F}));
+    auto nonFiniteMatrix3 = glm::mat3 {1.0F};
+    nonFiniteMatrix3[0][0] = infinity;
+    EXPECT_FALSE(panda::detail::isFinite(nonFiniteMatrix3));
+    nonFiniteMatrix3 = glm::mat3 {1.0F};
+    nonFiniteMatrix3[1][1] = infinity;
+    EXPECT_FALSE(panda::detail::isFinite(nonFiniteMatrix3));
+    nonFiniteMatrix3 = glm::mat3 {1.0F};
+    nonFiniteMatrix3[2][2] = infinity;
+    EXPECT_FALSE(panda::detail::isFinite(nonFiniteMatrix3));
     EXPECT_TRUE(panda::detail::isFinite(glm::mat4 {1.0F}));
-
     auto nonFiniteMatrix = glm::mat4 {1.0F};
-    nonFiniteMatrix[2][3] = infinity;
+    nonFiniteMatrix[0][0] = infinity;
+    EXPECT_FALSE(panda::detail::isFinite(nonFiniteMatrix));
+    nonFiniteMatrix = glm::mat4 {1.0F};
+    nonFiniteMatrix[1][1] = infinity;
+    EXPECT_FALSE(panda::detail::isFinite(nonFiniteMatrix));
+    nonFiniteMatrix = glm::mat4 {1.0F};
+    nonFiniteMatrix[2][2] = infinity;
+    EXPECT_FALSE(panda::detail::isFinite(nonFiniteMatrix));
+    nonFiniteMatrix = glm::mat4 {1.0F};
+    nonFiniteMatrix[3][3] = infinity;
     EXPECT_FALSE(panda::detail::isFinite(nonFiniteMatrix));
 }
 
