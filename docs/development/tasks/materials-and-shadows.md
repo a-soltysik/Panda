@@ -23,4 +23,10 @@ ABI/visual cases for position/color-only and lit mesh layouts, missing tangent w
 normal-map fallback, 65 lights, mask shadows, negative scale, tangent sign,
 spot/point shadows and format fallback.
 
+The first-scene shadow uses a fixed 2048 by 2048 map over 30 m and 3x3 PCF, which
+visibly aliases at its edges. This task must tune or replace that filtering and
+coverage strategy. GPU captures at representative camera distances must show a
+clear improvement without visible self-shadow acne or detached shadows; record the
+effective resolution/filtering and any remaining limits.
+
 Learning: Inspect a tinted textured surface and its shadow in RenderDoc.

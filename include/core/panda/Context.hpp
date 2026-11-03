@@ -17,6 +17,7 @@
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <string>
+#include <vulkan/vulkan.hpp>
 
 namespace panda
 {
@@ -99,6 +100,8 @@ struct FrameResult
     Status status {Status::Skipped};
     /// Committed work; empty when no GPU work was submitted. Does not mean presentation completed.
     CompletionPoint completion;
+    /// Selected color/depth sample count: e1, e2 or e4. A mesh view initializes the renderer and reports its choice.
+    vk::SampleCountFlagBits effectiveSampleCount {vk::SampleCountFlagBits::e1};
 };
 
 /// @brief Move-only owner of a Vulkan instance, device and optional swapchain.

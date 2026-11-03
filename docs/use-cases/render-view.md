@@ -26,6 +26,8 @@ displayed.
 1. **Build the view.** The application supplies a view-projection matrix, camera
    position, one directional light and zero or more standard-mesh draws. Mesh handles
    are ordinary values; Panda does not create entities or own application transforms.
+   For position, rotation and scale, `panda::createModelMatrix()` builds the full
+   object-to-world matrix; applications may also supply a matrix directly.
 2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, light
    and tint values, then verifies each mesh's Context and vertex stride. It collects
    completed upload packets before delegating to `Presentation`.
@@ -39,10 +41,10 @@ displayed.
    presentation fence before reuse.
 5. **Record the view.** An empty mesh list clears the acquired image to the configured
    background. Otherwise, `Presentation` creates or resizes the internal `MeshRenderer`,
-   updates the frame uniform buffer, and records dynamic rendering with color and depth
-   attachments. It issues one indexed or non-indexed draw for each `MeshDraw`, using the
-   standard vertex layout, the built-in lit material, model/tint push constants and the
-   supplied directional light.
+   updates the frame uniform buffer, and records a depth-only pass into that slot's
+   directional shadow map. It then records camera color/depth rendering, sampling the
+   shadow map while shading each `MeshDraw` with the standard vertex layout, built-in
+   lit material and model/tint push constants.
 6. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
    Context timeline. Successful submission commits its timeline value, stores it on
@@ -78,7 +80,8 @@ sequenceDiagram
         P->>V: Clear background with dynamic rendering
     else View contains meshes
         P->>R: Create/resize renderer and update frame data
-        R->>V: Record color/depth rendering and mesh draws
+        R->>V: Record light-depth pass for mesh draws
+        R->>V: Record camera color/depth pass and sample shadow map
     end
     P->>Q: Submit commands and signal timeline
     Q-)V: Queue accepts frame work
@@ -106,9 +109,16 @@ and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is combined with th
 specular term. Metallic is fixed at 0 and roughness at 1; a constant ambient term
 contributes 0.06 times base color. The shader applies the ACES fitted tone curve and
 outputs sRGB, using hardware conversion for sRGB swapchain formats or shader encoding
-for UNORM formats. This initial path has no material textures, material parameter
-overrides or shadow lookup; see the [first rendering task](../development/tasks/first-scene.md)
-for the remaining scope.
+for UNORM formats. Direct directional light is shadowed with one 2048² depth map per
+frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
+orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
+Points outside that fixed camera-centered region receive no shadow. Material textures,
+parameter overrides and improved shadow coverage/filtering remain future work in
+[Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
+current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and
+the current visual result. The first mesh draw selects the highest common color/depth
+attachment sample count supported by the active formats and device limits (4x, then
+2x, then 1x); `FrameResult::effectiveSampleCount` reports it.
 
 **Slot and image lifetimes differ.** Panda has two reusable frame slots while the
 swapchain supplies its own image count. Command buffers and retained mesh handles

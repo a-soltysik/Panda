@@ -5,3 +5,4 @@ panda_add_component(panda_tools
     PUBLIC_HEADERS panda/tools/Camera.hpp panda/tools/gui/Window.hpp
     PRIVATE_HEADERS gui/GlfwSession.hpp
     LIBRARIES PUBLIC Panda::Panda glm::glm PRIVATE glfw)
+target_include_directories(panda_tools PRIVATE "${PROJECT_SOURCE_DIR}/src/core")

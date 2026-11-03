@@ -129,9 +129,10 @@ private:
     [[nodiscard]] auto waitPresentation() -> std::expected<void, Error>;
     [[nodiscard]] auto activeGeneration() -> SwapchainGeneration&;
     [[nodiscard]] auto activeGeneration() const -> const SwapchainGeneration&;
+    [[nodiscard]] auto effectiveSampleCount() const noexcept -> vk::SampleCountFlagBits;
     [[nodiscard]] auto ensureWindowGeneration(FramebufferExtent requested) -> std::expected<void, Error>;
     [[nodiscard]] auto prepareWindowFrame() -> std::expected<bool, Error>;
-    [[nodiscard]] static auto nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>;
+    [[nodiscard]] auto nonReadyFrameResult(AcquiredImage::Status status) const -> std::optional<FrameResult>;
     [[nodiscard]] auto executeAcquiredFrame(const RenderView& view,
                                             std::optional<std::size_t>& submittedPerformanceSlot)
         -> std::expected<FrameResult, Error>;

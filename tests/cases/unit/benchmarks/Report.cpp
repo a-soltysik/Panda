@@ -26,6 +26,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     run.runIndex = 1;
     run.framebufferWidth = 1920;
     run.framebufferHeight = 1080;
+    run.effectiveSampleCount = 4;
     run.startupDuration = std::chrono::nanoseconds {10};
     run.completionWaitDuration = std::chrono::nanoseconds {20};
     run.sampleDrainDuration = std::chrono::nanoseconds {30};
@@ -43,7 +44,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
 
     const auto json = nlohmann::json::parse(panda_bench::serialize(report));
 
-    EXPECT_EQ(json.at("schemaVersion"), 3);
+    EXPECT_EQ(json.at("schemaVersion"), 4);
     EXPECT_EQ(json.at("profile").at("name"), "smoke");
     EXPECT_EQ(json.at("profile").at("version"), 2);
     EXPECT_EQ(json.at("workload"), "renderStaticCube");
@@ -59,6 +60,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     EXPECT_EQ(json.at("settings").at("requestedMeasurementNanoseconds"), 4'000'000'000LL);
     EXPECT_EQ(json.at("runs").size(), 1U);
     EXPECT_EQ(json.at("runs").at(0).at("effectiveFramebufferExtent").at("width"), 1920);
+    EXPECT_EQ(json.at("runs").at(0).at("effectiveSampleCount"), 4);
     EXPECT_EQ(json.at("runs").at(0).at("completionWaitDurationNanoseconds"), 20);
     EXPECT_EQ(json.at("runs").at(0).at("sampleDrainDurationNanoseconds"), 30);
     EXPECT_EQ(json.at("runs").at(0).at("cpuFrameDurationStatistics").at("p50Nanoseconds"), 150);

@@ -292,7 +292,8 @@ fixture state and records its own samples/count/mean/p50/p95/p99/min/max. Quanti
 use sorted nearest-rank index `ceil(q*N)-1`. Also report pooled statistics and
 worst-run p95 for comparison; retain per-run values so disagreement is visible.
 
-JSON schema version 3 stores profile/fixture versions and code revision,
+The planned reproducible reference-profile JSON schema version 3 stores profile/fixture
+versions and code revision,
 OS/compiler/build, CPU/GPU/driver, Vulkan/CUDA availability, requested/effective
 settings and formats, image extent, seed, warmup/measurement durations, per-run
 paired per-frame CPU/GPU samples and statistics, skipped cases and reasons,

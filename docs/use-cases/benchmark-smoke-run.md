@@ -142,9 +142,9 @@ The report's `measurementWallDurationNanoseconds` measures the phase loop, inclu
 frame submission, sample polling and event processing. It is not the sum of the
 per-frame `cpuFrameDuration` values.
 
-**Report contents.** `panda-bench-smoke.json` records schema version 3, smoke
+**Report contents.** `panda-bench-smoke.json` records schema version 4, smoke
 profile version 2 (`renderStaticCube`), code revision, available environment details,
-requested and effective extents, startup/warmup/measurement/wait/drain/teardown durations,
+requested and effective extents, effective sample count, startup/warmup/measurement/wait/drain/teardown durations,
 submitted-frame counts, paired per-frame samples, per-run CPU/GPU
 count/mean/p50/p95/p99/min/max statistics and the outcome. The console summary
 prints startup and teardown duration, sample count and CPU/GPU p50 and p95. Engine

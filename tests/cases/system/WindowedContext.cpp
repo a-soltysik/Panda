@@ -1,8 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <expected>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <glm/trigonometric.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
@@ -10,6 +14,7 @@
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/Plane.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
@@ -113,20 +118,30 @@ void verifyCompletion(const panda::Context& context, panda::CompletionPoint poin
     EXPECT_TRUE(*polled);
 }
 
-auto createUploadedCube(const panda::Context& context) -> panda::Result<panda::Mesh>
+auto createUploadedCubeAndGround(const panda::Context& context) -> panda::Result<std::array<panda::Mesh, 2>>
 {
-    const auto geometry = panda::createCubeGeometry();
-    auto mesh = context.createMeshFromGeometry(geometry);
-    if (!mesh)
+    const auto cubeGeometry = panda::createCubeGeometry();
+    const auto groundGeometry = panda::createPlaneGeometry();
+    auto cube = context.createMeshFromGeometry(cubeGeometry);
+    if (!cube)
     {
-        return std::unexpected {mesh.error()};
+        return std::unexpected {cube.error()};
+    }
+    auto ground = context.createMeshFromGeometry(groundGeometry);
+    if (!ground)
+    {
+        return std::unexpected {ground.error()};
     }
     auto batch = context.createUploadBatch();
     if (!batch)
     {
         return std::unexpected {batch.error()};
     }
-    if (const auto written = batch->write(*mesh, geometry); !written)
+    if (const auto written = batch->write(*cube, cubeGeometry); !written)
+    {
+        return std::unexpected {written.error()};
+    }
+    if (const auto written = batch->write(*ground, groundGeometry); !written)
     {
         return std::unexpected {written.error()};
     }
@@ -142,12 +157,13 @@ auto createUploadedCube(const panda::Context& context) -> panda::Result<panda::M
     }
     if (*waited != panda::WaitStatus::Completed)
     {
-        return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Cube upload did not complete")};
+        return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Scene mesh upload did not complete")};
     }
-    return std::move(*mesh);
+    return std::array<panda::Mesh, 2> {std::move(*cube), std::move(*ground)};
 }
 
-auto makeCubeView(panda::FramebufferExtent extent, panda::Mesh mesh) -> panda::Result<panda::RenderView>
+auto makeCubeAndGroundView(panda::FramebufferExtent extent, std::array<panda::Mesh, 2> meshes)
+    -> panda::Result<panda::RenderView>
 {
     const auto aspectRatio = static_cast<float>(extent.width) / static_cast<float>(extent.height);
     const auto camera = panda::tools::createPerspectiveCamera({
@@ -165,7 +181,14 @@ auto makeCubeView(panda::FramebufferExtent extent, panda::Mesh mesh) -> panda::R
     }
     auto view = panda::RenderView {};
     view.camera = *camera;
-    view.meshes.push_back({.mesh = std::move(mesh)});
+    const auto groundTransform =
+        glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, -0.5F, 0.0F}), glm::vec3 {10.0F, 1.0F, 10.0F});
+    view.meshes = {
+        panda::MeshDraw {.mesh = std::move(meshes[1]),
+                         .modelMatrix = groundTransform,
+                         .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
+        panda::MeshDraw {.mesh = std::move(meshes[0])}
+    };
     return view;
 }
 
@@ -247,7 +270,7 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     EXPECT_NE(empty.error().message.find("null Vulkan surface"), std::string::npos);
 }
 
-TEST(WindowedContextSystem, RendersUploadedCubeWithValidation)
+TEST(WindowedContextSystem, RendersUploadedCubeAndGroundWithValidation)
 {
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};
@@ -268,15 +291,18 @@ TEST(WindowedContextSystem, RendersUploadedCubeWithValidation)
         }
         ASSERT_TRUE(created.has_value()) << created.error().message;
         auto context = std::move(*created);
-        auto mesh = createUploadedCube(context);
-        ASSERT_TRUE(mesh.has_value()) << mesh.error().message;
+        auto meshes = createUploadedCubeAndGround(context);
+        ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
         const auto extent = window->getFramebufferExtent();
         ASSERT_TRUE(extent.has_value()) << extent.error().message;
-        auto view = makeCubeView(*extent, std::move(*mesh));
+        auto view = makeCubeAndGroundView(*extent, std::move(*meshes));
         ASSERT_TRUE(view.has_value()) << view.error().message;
         const auto frame = context.render(*view);
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
         EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+        EXPECT_TRUE(frame->effectiveSampleCount == vk::SampleCountFlagBits::e1 ||
+                    frame->effectiveSampleCount == vk::SampleCountFlagBits::e2 ||
+                    frame->effectiveSampleCount == vk::SampleCountFlagBits::e4);
         view->meshes.clear();
         verifyCompletion(context, frame->completion);
     }
@@ -285,4 +311,11 @@ TEST(WindowedContextSystem, RendersUploadedCubeWithValidation)
     });
     EXPECT_EQ(validationError, records.entries.end())
         << (validationError == records.entries.end() ? "" : validationError->message);
+    const auto unusedVertexAttributeWarning = std::ranges::find_if(records.entries, [](const auto& entry) {
+        return entry.level == panda::log::Level::Warning &&
+               entry.message.find("Vertex attribute at location") != std::string::npos &&
+               entry.message.find("not consumed by vertex shader") != std::string::npos;
+    });
+    EXPECT_EQ(unusedVertexAttributeWarning, records.entries.end())
+        << (unusedVertexAttributeWarning == records.entries.end() ? "" : unusedVertexAttributeWarning->message);
 }

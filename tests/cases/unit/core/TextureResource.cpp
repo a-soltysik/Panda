@@ -95,17 +95,22 @@ protected:
         std::ignore = instance.release();
     }
 
-    void expectImage(VkImage image, const panda::TextureDesc& desc, VkResult result = success)
+    void expectImage(VkImage image,
+                     const panda::TextureDesc& desc,
+                     VkResult result = success,
+                     vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1)
     {
         EXPECT_CALL(vulkan, vkCreateImage(deviceHandle, NotNull(), nullptr, NotNull()))
-            .WillOnce([image,
-                       desc,
-                       result](VkDevice, const VkImageCreateInfo* info, const VkAllocationCallbacks*, VkImage* output) {
+            .WillOnce([image, desc, result, samples](VkDevice,
+                                                     const VkImageCreateInfo* info,
+                                                     const VkAllocationCallbacks*,
+                                                     VkImage* output) {
                 EXPECT_EQ(info->imageType, VK_IMAGE_TYPE_2D);
                 EXPECT_EQ(info->format, static_cast<VkFormat>(desc.format));
                 EXPECT_EQ(info->extent.width, desc.extent.width);
                 EXPECT_EQ(info->extent.height, desc.extent.height);
                 EXPECT_EQ(info->extent.depth, 1);
+                EXPECT_EQ(info->samples, static_cast<VkSampleCountFlagBits>(samples));
                 EXPECT_EQ(info->usage, static_cast<VkImageUsageFlags>(desc.usage));
                 if (result == success)
                 {
@@ -156,9 +161,11 @@ protected:
             });
     }
 
-    void expectBoundImage(VkImage image)
+    void expectBoundImage(VkImage image,
+                          const panda::TextureDesc& desc = description(),
+                          vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1)
     {
-        expectImage(image, description());
+        expectImage(image, desc, success, samples);
         expectRequirements(image);
         EXPECT_CALL(poolMock, allocate(Ref(*pool), _))
             .WillRepeatedly([](MemoryPool&, const panda::core::vulkan::resources::MemoryRequest&) {
@@ -262,6 +269,49 @@ TEST_F(TextureResourceTest, RejectsExtentBeyondDeviceLimitBeforeCreatingImage)
     const auto oversized = TextureResource::create(device, *pool, desc);
     ASSERT_FALSE(oversized);
     EXPECT_EQ(oversized.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(TextureResourceTest, RejectsInvalidSamplesAndMultisampledNonAttachments)
+{
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
+        .Times(0);
+    EXPECT_CALL(vulkan, vkCreateImage(_, _, _, _)).Times(0);
+    // Deliberately invalid sample count to verify rejection before Vulkan calls.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    const auto invalidSampleCount = static_cast<vk::SampleCountFlagBits>(3);
+    const auto invalidCount = TextureResource::create(device, *pool, description(), invalidSampleCount);
+    const auto sampledTexture = TextureResource::create(device, *pool, description(), vk::SampleCountFlagBits::e4);
+
+    ASSERT_FALSE(invalidCount);
+    EXPECT_EQ(invalidCount.error().code, panda::ErrorCode::InvalidArgument);
+    ASSERT_FALSE(sampledTexture);
+    EXPECT_EQ(sampledTexture.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(TextureResourceTest, RejectsUploadReservationForMultisampledAttachment)
+{
+    const auto desc = panda::TextureDesc {
+        .extent = {.width = 32, .height = 16},
+        .format = vk::Format::eR8G8B8A8Unorm,
+        .usage = vk::ImageUsageFlagBits::eColorAttachment
+    };
+    auto* const image = fakeVulkanHandle<VkImage>(20);
+    auto* const view = fakeVulkanHandle<VkImageView>(21);
+    expectBoundImage(image, desc, vk::SampleCountFlagBits::e4);
+    expectView(image, view);
+    auto cleanup = testing::Sequence {};
+    EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, view, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(poolMock, release(Ref(*pool), 9)).InSequence(cleanup);
+
+    {
+        auto created = TextureResource::create(device, *pool, desc, vk::SampleCountFlagBits::e4);
+        ASSERT_TRUE(created);
+        const auto reservation = (*created)->reserveUpload(panda::core::vulkan::upload::UploadBatchId {1});
+        ASSERT_FALSE(reservation);
+        EXPECT_EQ(reservation.error().code, panda::ErrorCode::Unsupported);
+    }
 }
 
 TEST_F(TextureResourceTest, PreservesImageCreationFailureWithoutDestroyingItsUndefinedOutput)

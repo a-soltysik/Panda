@@ -1,7 +1,8 @@
 # Vulkan window example
 
-`simple_scene` opens a window, creates a unit-cube mesh, uploads its vertices and
-indices, then renders the cube with the built-in directional light and material.
+`simple_scene` opens a window, creates a unit cube and unit plane, uploads both
+meshes, then renders the cube on a scaled ground plane with the built-in directional
+light, depth-map shadows and lit material.
 `panda::tools::createPerspectiveCamera` builds the camera values, and the
 application supplies the mesh draw; no scene or ECS library is involved.
 Requires a display, Vulkan 1.3 with swapchain maintenance1, and the Khronos validation

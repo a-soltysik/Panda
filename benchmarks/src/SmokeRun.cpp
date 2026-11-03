@@ -96,7 +96,9 @@ auto SmokeRun::executeRun() -> std::expected<void, Failure>
     {
         return initialized;
     }
-    return executePhases();
+    auto phases = executePhases();
+    _run.effectiveSampleCount = _backend.effectiveSampleCount();
+    return phases;
 }
 
 auto SmokeRun::initializeTimed() -> std::expected<void, Failure>

@@ -4,8 +4,11 @@ panda_add_component(panda_core
     SOURCES
         Panda.cpp
         Error.cpp
+        Math.cpp
         Projection.cpp
+        Transform.cpp
         Cube.cpp
+        Plane.cpp
         Buffer.cpp
         Mesh.cpp
         Texture.cpp
@@ -25,6 +28,7 @@ panda_add_component(panda_core
         vulkan/presentation/Presentation.cpp
         vulkan/renderer/MeshRenderer.cpp
         vulkan/renderer/RenderViewValidation.cpp
+        vulkan/renderer/ShadowView.cpp
         vulkan/SubmissionQueue.cpp
         vulkan/upload/UploadBatchImpl.cpp
         vulkan/upload/UploadManager.cpp
@@ -54,13 +58,16 @@ panda_add_component(panda_core
         panda/Panda.hpp
         panda/PerformanceManager.hpp
         panda/Projection.hpp
+        panda/Transform.hpp
         panda/Cube.hpp
         panda/Geometry.hpp
+        panda/Plane.hpp
         panda/Texture.hpp
         panda/UploadBatch.hpp
         panda/WindowSurface.hpp
         panda/RenderView.hpp
     PRIVATE_HEADERS
+        Math.hpp
         vulkan/DeviceSelection.hpp
         vulkan/external/ExternalContext.hpp
         vulkan/external/ExternalSemaphoreResource.hpp
@@ -88,32 +95,38 @@ panda_add_component(panda_core
         vulkan/resources/TextureResource.hpp
         vulkan/renderer/MeshRenderer.hpp
         vulkan/renderer/RenderViewValidation.hpp
+        vulkan/renderer/ShadowView.hpp
     LIBRARIES PUBLIC panda_common Vulkan::Headers glm::glm PRIVATE Vulkan::Vulkan)
+target_include_directories(panda_core PRIVATE "${PROJECT_SOURCE_DIR}/src/core")
 
 find_program(PANDA_GLSLC_EXECUTABLE NAMES glslc REQUIRED)
 find_program(PANDA_SPIRV_VAL_EXECUTABLE NAMES spirv-val REQUIRED)
 
 set(PANDA_BUILTIN_SHADER_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
-set(PANDA_MESH_VERTEX_SPIRV "${PANDA_BUILTIN_SHADER_DIRECTORY}/mesh.vert.spv")
-set(PANDA_MESH_FRAGMENT_SPIRV "${PANDA_BUILTIN_SHADER_DIRECTORY}/mesh.frag.spv")
 set(PANDA_BUILTIN_SHADER_HEADER "${PANDA_BUILTIN_SHADER_DIRECTORY}/BuiltinShaders.hpp")
+set(PANDA_BUILTIN_SHADER_NAMES mesh.vert mesh.frag shadow.vert)
+set(PANDA_BUILTIN_SHADER_SOURCES)
+set(PANDA_BUILTIN_SHADER_SPIRV_FILES)
+set(PANDA_BUILTIN_SHADER_COMMANDS)
+foreach(shader IN LISTS PANDA_BUILTIN_SHADER_NAMES)
+    set(shader_source "${PROJECT_SOURCE_DIR}/shaders/builtin/${shader}")
+    set(shader_spirv "${PANDA_BUILTIN_SHADER_DIRECTORY}/${shader}.spv")
+    list(APPEND PANDA_BUILTIN_SHADER_SOURCES "${shader_source}")
+    list(APPEND PANDA_BUILTIN_SHADER_SPIRV_FILES "${shader_spirv}")
+    list(APPEND PANDA_BUILTIN_SHADER_COMMANDS
+         COMMAND "${PANDA_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 "${shader_source}" -o "${shader_spirv}"
+         COMMAND "${PANDA_SPIRV_VAL_EXECUTABLE}" --target-env vulkan1.3 "${shader_spirv}")
+endforeach()
 add_custom_command(
-    OUTPUT "${PANDA_BUILTIN_SHADER_HEADER}"
+    OUTPUT "${PANDA_BUILTIN_SHADER_HEADER}" ${PANDA_BUILTIN_SHADER_SPIRV_FILES}
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${PANDA_BUILTIN_SHADER_DIRECTORY}"
-    COMMAND "${PANDA_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh.vert"
-            -o "${PANDA_MESH_VERTEX_SPIRV}"
-    COMMAND "${PANDA_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh.frag"
-            -o "${PANDA_MESH_FRAGMENT_SPIRV}"
-    COMMAND "${PANDA_SPIRV_VAL_EXECUTABLE}" --target-env vulkan1.3 "${PANDA_MESH_VERTEX_SPIRV}"
-    COMMAND "${PANDA_SPIRV_VAL_EXECUTABLE}" --target-env vulkan1.3 "${PANDA_MESH_FRAGMENT_SPIRV}"
+    ${PANDA_BUILTIN_SHADER_COMMANDS}
     COMMAND "${CMAKE_COMMAND}"
             "-DOUTPUT_FILE=${PANDA_BUILTIN_SHADER_HEADER}"
-            "-DVERTEX_SPIRV=${PANDA_MESH_VERTEX_SPIRV}"
-            "-DFRAGMENT_SPIRV=${PANDA_MESH_FRAGMENT_SPIRV}"
+            "-DSHADER_SPIRV_FILES=${PANDA_BUILTIN_SHADER_SPIRV_FILES}"
             -P "${PROJECT_SOURCE_DIR}/cmake/EmbedSpirv.cmake"
     DEPENDS
-        "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh.vert"
-        "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh.frag"
+        ${PANDA_BUILTIN_SHADER_SOURCES}
         "${PROJECT_SOURCE_DIR}/cmake/EmbedSpirv.cmake"
     VERBATIM)
 add_custom_target(panda_builtin_shaders DEPENDS "${PANDA_BUILTIN_SHADER_HEADER}")

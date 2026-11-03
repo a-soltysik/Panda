@@ -49,6 +49,12 @@ public:
     [[nodiscard]] virtual auto initialize(const Options& options) -> std::expected<SmokeRunEnvironment, Failure> = 0;
     [[nodiscard]] virtual auto shouldClose() const -> bool = 0;
     [[nodiscard]] virtual auto getFramebufferExtent() const -> std::expected<panda::FramebufferExtent, Failure> = 0;
+
+    [[nodiscard]] virtual auto effectiveSampleCount() const noexcept -> std::uint32_t
+    {
+        return 1;
+    }
+
     [[nodiscard]] virtual auto submitFrame() -> std::expected<FrameStatus, Failure> = 0;
     [[nodiscard]] virtual auto takeAvailableSamples()
         -> std::expected<std::vector<panda::FramePerformanceSample>, Failure> = 0;

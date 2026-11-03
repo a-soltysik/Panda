@@ -1,28 +1,20 @@
 #include <cmath>
 #include <expected>
-#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <glm/ext/vector_float4.hpp>
 #include <glm/geometric.hpp>
 #include <panda/Error.hpp>
 #include <panda/Projection.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/tools/Camera.hpp>
 
+#include "Math.hpp"
+
 namespace panda::tools
 {
 namespace
 {
-auto isFinite(glm::vec3 value) -> bool
-{
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-}
-
-auto isFinite(glm::vec4 value) -> bool
-{
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) && std::isfinite(value.w);
-}
+using panda::detail::isFinite;
 
 auto isValidLookAt(glm::vec3 position, glm::vec3 target, glm::vec3 up) -> bool
 {
@@ -38,10 +30,6 @@ auto isValidLookAt(glm::vec3 position, glm::vec3 target, glm::vec3 up) -> bool
            directionLengthSquared > 0.0F && std::isfinite(rightLengthSquared) && rightLengthSquared > 0.0F;
 }
 
-auto isFinite(glm::mat4 matrix) -> bool
-{
-    return isFinite(matrix[0]) && isFinite(matrix[1]) && isFinite(matrix[2]) && isFinite(matrix[3]);
-}
 }
 
 auto createPerspectiveCamera(const PerspectiveCameraDesc& description) -> Result<RenderCamera>

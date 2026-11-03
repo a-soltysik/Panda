@@ -37,35 +37,47 @@ mesh storage; UploadBatch copies Geometry into upload staging. `Context::render(
 accepts application camera, directional-light and mesh-draw values, validates mesh
 ownership and standard stride, and retains mesh handles through GPU completion. The
 first built-in renderer draws uploaded meshes with a directional lit material and a
-depth attachment. An empty view presents the background. `simple_scene` now uploads
-and draws its cube without a scene or ECS dependency. When the window framebuffer is
-zero-sized, the example waits through Tools without calling `render`; Core still
+depth attachment. An empty view presents the background. `simple_scene` uploads and
+draws its cube and 10 m ground plane without a scene or ECS dependency. Both meshes
+use one upload batch; the plane is an ordinary application-supplied draw using the
+public unit-plane geometry helper and `panda::createModelMatrix()` for its TRS transform.
+The renderer records a depth-only directional-light
+pass, then a camera color/depth pass that samples a per-frame-slot 2048 by 2048 depth
+map with 3x3 PCF. The shadow view is camera-centered with a 30 m orthographic width
+and 0.1-80 m depth range. Receiver bias increases toward grazing angles to reduce
+self-shadow acne. The example places the directional light opposite the camera so
+the cube's shadow falls onto visible ground. The fixed coverage and narrow PCF filter
+still produce visible edge aliasing; shadow coverage, filtering and bias quality are
+follow-up work in [Materials, lights and shadows](materials-and-shadows.md), not the
+final quality target. When the window framebuffer is zero-sized, the example waits
+through Tools without calling `render`; Core still
 returns `Suspended` if the extent changes after the application's check. The benchmark
 smoke workload likewise uploads one cube during setup and reuses a static render view.
+For mesh draws, the renderer chooses the highest common color/depth sample count supported
+by the actual output formats and device limits (4x, 2x, then 1x); `FrameResult` and smoke
+benchmark reports expose the effective count.
 
-Ground geometry, shadow mapping, MSAA selection/reporting, visual GPU capture and
-effective-quality evidence remain outstanding for this task's acceptance.
+The system test runs both passes for cube and ground under Vulkan validation and checks
+that the reported count is 1x, 2x or 4x. The maintainer confirms the current `simple_scene`
+renders correctly with its symmetric 3x3 PCF kernel. The screenshot shared during filter
+tuning showed the cube, ground and shadow, but is not stored in the repository. No RenderDoc
+capture was available.
 
 ## Current verification
 
-- Windows: MSVC 14.51.36231 and Vulkan SDK 1.4.341.1. `msvc-quality`,
-  `all_verify_interface_header_sets`, `panda_format_checks`,
-  `clang-cuda-analysis-windows`, `msvc-fast` and `ctest --preset msvc-fast` passed.
-  The suite ran 475 cases: 471 passed and four skipped (one buffered-output case and
-  three noncoherent-memory cases). ccache was enabled.
-- WSL: Ubuntu 26.04 LTS, GCC 16.0.1, CMake 4.2.3, `glslc` shaderc 2026.1-1 and
-  `spirv-val` SPIRV-Tools 2026.1. `gcc-quality`,
-  `all_verify_interface_header_sets`, `panda_format_checks`,
-  `clang-cuda-analysis`, `gcc-fast`, `ctest --preset gcc-fast` and `gcc-docs` passed.
-  The suite ran 475 cases: 467 passed and eight skipped (five CUDA-capability cases
-  and three noncoherent-memory cases). ccache was enabled. CUDA analysis passed for
-  host and device code; Clang warned that the installed CUDA version is newer than
-  its latest partially supported 12.9.
-- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
-  77 Markdown files and the task queue. `docs-checks` validated 41 diagrams in 79
-  files, and `gcc-docs` generated the public API documentation.
-- `WindowedContextSystem.RendersUploadedCubeWithValidation` passed on both platforms;
-  it uploads and draws a cube, waits for GPU completion, destroys its Context, then
-  checks captured logs for Vulkan validation errors. No visual image capture was
-  made, so pixel appearance is not established. Ground geometry, shadows, MSAA
-  selection/reporting and visual acceptance remain open.
+- Windows 11, MSVC 14.51.36231, CMake 4.4.2, ccache 4.13.6 and Vulkan SDK 1.4.341.1
+  passed `msvc-quality`, public-header and format targets, `clang-cuda-analysis-windows`,
+  `msvc-fast` and the full CTest suite. The suite ran 491 cases: 487 passed and four
+  skipped (one buffered-output case and three noncoherent-memory variants). The shader
+  build used glslc and spirv-val 2026.1. The windowed cube-and-ground test passed with
+  Vulkan validation and checked the effective sample count and unused-attribute warnings.
+- WSL Ubuntu 26.04, GCC 16.0.1, CMake 4.2.3, ccache 4.12.3, glslc 2026.1-1 and
+  SPIRV-Tools 2026.1 passed `gcc-quality`, public-header and format targets,
+  `clang-cuda-analysis`, `gcc-fast`, the full CTest suite and `gcc-docs`. The suite ran
+  491 cases: 483 passed and eight skipped (five CUDA/device-capability cases and three
+  noncoherent-memory variants). The windowed cube-and-ground test passed with Vulkan
+  validation. Both platforms used the checked-in incremental preset builds with ccache.
+- `check_docs.py` checked 77 Markdown files and the task queue; `docs-checks` validated
+  41 diagrams in 79 files. The maintainer confirms the rendered scene works with the
+  symmetric 3x3 filter. The screenshot shared during filter tuning is not stored in the
+  repository; no RenderDoc capture was available, so there is no stored image evidence.

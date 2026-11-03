@@ -17,6 +17,7 @@
 #include <glm/matrix.hpp>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <panda/Geometry.hpp>
@@ -29,6 +30,7 @@
 #include "BuiltinShaders.hpp"
 #include "VulkanError.hpp"
 #include "presentation/SwapchainGeneration.hpp"
+#include "renderer/ShadowView.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
@@ -42,6 +44,7 @@ namespace
 struct alignas(16) FrameUniform
 {
     glm::mat4 viewProjection;
+    glm::mat4 lightViewProjection;
     glm::vec4 cameraPosition;
     glm::vec4 lightDirection;
     glm::vec4 lightColorIntensity;
@@ -55,12 +58,13 @@ struct alignas(16) DrawConstants
     glm::vec4 tint;
 };
 
-static_assert(sizeof(FrameUniform) == 128);
+static_assert(sizeof(FrameUniform) == 192);
 static_assert(sizeof(glm::vec4) == 16);
-static_assert(offsetof(FrameUniform, cameraPosition) == 64);
-static_assert(offsetof(FrameUniform, lightDirection) == 80);
-static_assert(offsetof(FrameUniform, lightColorIntensity) == 96);
-static_assert(offsetof(FrameUniform, ambient) == 112);
+static_assert(offsetof(FrameUniform, lightViewProjection) == 64);
+static_assert(offsetof(FrameUniform, cameraPosition) == 128);
+static_assert(offsetof(FrameUniform, lightDirection) == 144);
+static_assert(offsetof(FrameUniform, lightColorIntensity) == 160);
+static_assert(offsetof(FrameUniform, ambient) == 176);
 static_assert(sizeof(DrawConstants) == 128);
 static_assert(offsetof(DrawConstants, normalColumns) == 64);
 static_assert(offsetof(DrawConstants, tint) == 112);
@@ -79,32 +83,38 @@ constexpr auto makeVertexBindings() -> std::array<vk::VertexInputBindingDescript
     };
 }
 
+constexpr auto positionAttribute = vk::VertexInputAttributeDescription {
+    .location = 0, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(MeshVertex, position)};
+
 constexpr auto makeVertexAttributes() -> std::array<vk::VertexInputAttributeDescription, 3>
 {
     return {
-        vk::VertexInputAttributeDescription {.location = 0,
-                                             .binding = 0,
-                                             .format = vk::Format::eR32G32B32Sfloat,
-                                             .offset = offsetof(MeshVertex, position)},
+        positionAttribute,
         vk::VertexInputAttributeDescription {.location = 1,
                                              .binding = 0,
                                              .format = vk::Format::eR32G32B32Sfloat,
-                                             .offset = offsetof(MeshVertex, normal)  },
+                                             .offset = offsetof(MeshVertex, normal)},
         vk::VertexInputAttributeDescription {.location = 4,
                                              .binding = 0,
                                              .format = vk::Format::eR32G32B32A32Sfloat,
-                                             .offset = offsetof(MeshVertex, color)   }
+                                             .offset = offsetof(MeshVertex, color) }
     };
 }
 
 constexpr auto vertexBindings = makeVertexBindings();
 constexpr auto vertexAttributes = makeVertexAttributes();
+constexpr auto shadowVertexAttributes = std::array {positionAttribute};
 constexpr auto dynamicStates = std::array {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
 constexpr auto vertexInput = vk::PipelineVertexInputStateCreateInfo {
     .vertexBindingDescriptionCount = static_cast<std::uint32_t>(vertexBindings.size()),
     .pVertexBindingDescriptions = vertexBindings.data(),
     .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(vertexAttributes.size()),
     .pVertexAttributeDescriptions = vertexAttributes.data()};
+constexpr auto shadowVertexInput = vk::PipelineVertexInputStateCreateInfo {
+    .vertexBindingDescriptionCount = static_cast<std::uint32_t>(vertexBindings.size()),
+    .pVertexBindingDescriptions = vertexBindings.data(),
+    .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(shadowVertexAttributes.size()),
+    .pVertexAttributeDescriptions = shadowVertexAttributes.data()};
 constexpr auto inputAssembly =
     vk::PipelineInputAssemblyStateCreateInfo {.topology = vk::PrimitiveTopology::eTriangleList};
 constexpr auto viewport = vk::PipelineViewportStateCreateInfo {.viewportCount = 1, .scissorCount = 1};
@@ -121,14 +131,22 @@ constexpr auto blendAttachment = vk::PipelineColorBlendAttachmentState {
     .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB |
                       vk::ColorComponentFlagBits::eA};
 constexpr auto blend = vk::PipelineColorBlendStateCreateInfo {.attachmentCount = 1, .pAttachments = &blendAttachment};
+constexpr auto noColorBlend = vk::PipelineColorBlendStateCreateInfo {};
+constexpr auto shadowExtent = vk::Extent2D {.width = 2048, .height = 2048};
 constexpr auto dynamic = vk::PipelineDynamicStateCreateInfo {
     .dynamicStateCount = static_cast<std::uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
 
-auto makeFrameUniform(const RenderView& view) -> FrameUniform
+auto makeFrameUniform(const RenderView& view) -> std::expected<FrameUniform, Error>
 {
+    const auto lightViewProjection = createDirectionalShadowView(view.camera, view.directionalLight);
+    if (!lightViewProjection)
+    {
+        return std::unexpected {lightViewProjection.error()};
+    }
     const auto direction = glm::normalize(view.directionalLight.direction);
-    return {
+    return FrameUniform {
         .viewProjection = view.camera.viewProjection,
+        .lightViewProjection = *lightViewProjection,
         .cameraPosition = glm::vec4 {view.camera.position, 1.0F},
         .lightDirection = glm::vec4 {direction, 0.0F},
         .lightColorIntensity = glm::vec4 {view.directionalLight.color, view.directionalLight.intensity},
@@ -151,11 +169,9 @@ auto makeDrawConstants(const MeshDraw& draw) -> DrawConstants
 
 auto createDepthFormatSupport(vk::PhysicalDevice physicalDevice, vk::Format format) -> std::expected<bool, Error>
 {
-    const auto support = physicalDevice.getImageFormatProperties(format,
-                                                                 vk::ImageType::e2D,
-                                                                 vk::ImageTiling::eOptimal,
-                                                                 vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                                                                 {});
+    constexpr auto usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled;
+    const auto support =
+        physicalDevice.getImageFormatProperties(format, vk::ImageType::e2D, vk::ImageTiling::eOptimal, usage, {});
     if (support.result == vk::Result::eErrorFormatNotSupported)
     {
         return false;
@@ -164,7 +180,26 @@ auto createDepthFormatSupport(vk::PhysicalDevice physicalDevice, vk::Format form
     {
         return std::unexpected {makeVulkanError(support.result)};
     }
-    return (support.value.sampleCounts & vk::SampleCountFlagBits::e1) != vk::SampleCountFlags {};
+    return (support.value.sampleCounts & vk::SampleCountFlagBits::e1) != vk::SampleCountFlags {} &&
+           support.value.maxExtent.width >= shadowExtent.width && support.value.maxExtent.height >= shadowExtent.height;
+}
+
+auto querySampleCounts(vk::PhysicalDevice physicalDevice,
+                       vk::Format format,
+                       vk::ImageUsageFlags usage,
+                       const char* unsupportedMessage) -> std::expected<vk::SampleCountFlags, Error>
+{
+    const auto support =
+        physicalDevice.getImageFormatProperties(format, vk::ImageType::e2D, vk::ImageTiling::eOptimal, usage, {});
+    if (support.result == vk::Result::eErrorFormatNotSupported)
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, unsupportedMessage)};
+    }
+    if (support.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {makeVulkanError(support.result)};
+    }
+    return support.value.sampleCounts;
 }
 
 auto makeShaderStages(vk::ShaderModule vertex, vk::ShaderModule fragment, const vk::SpecializationInfo& specialization)
@@ -181,9 +216,13 @@ auto makeShaderStages(vk::ShaderModule vertex, vk::ShaderModule fragment, const 
     };
 }
 
-auto makeGraphicsPipelineCreateInfo(vk::PipelineLayout layout,
-                                    const std::array<vk::PipelineShaderStageCreateInfo, 2>& stages,
-                                    const vk::PipelineRenderingCreateInfo& rendering) -> vk::GraphicsPipelineCreateInfo
+}
+
+auto MeshRenderer::makeGraphicsPipelineCreateInfo(std::span<const vk::PipelineShaderStageCreateInfo> stages,
+                                                  const vk::PipelineRenderingCreateInfo& rendering,
+                                                  const vk::PipelineMultisampleStateCreateInfo& multisampling,
+                                                  const vk::PipelineColorBlendStateCreateInfo& colorBlend) const
+    -> vk::GraphicsPipelineCreateInfo
 {
     return {.pNext = &rendering,
             .stageCount = static_cast<std::uint32_t>(stages.size()),
@@ -192,15 +231,13 @@ auto makeGraphicsPipelineCreateInfo(vk::PipelineLayout layout,
             .pInputAssemblyState = &inputAssembly,
             .pViewportState = &viewport,
             .pRasterizationState = &rasterization,
-            .pMultisampleState = &multisample,
+            .pMultisampleState = &multisampling,
             .pDepthStencilState = &depthStencil,
-            .pColorBlendState = &blend,
+            .pColorBlendState = &colorBlend,
             .pDynamicState = &dynamic,
-            .layout = layout,
+            .layout = *_pipelineLayout,
             .renderPass = {},
             .basePipelineIndex = -1};
-}
-
 }
 
 MeshRenderer::MeshRenderer(const MeshRendererCreateInfo& info)
@@ -235,26 +272,44 @@ auto MeshRenderer::initialize(vk::Extent2D extent, vk::Format colorFormat) -> st
         return std::unexpected {
             makeError(ErrorCode::Unsupported, "Device push-constant limit is below renderer needs")};
     }
-    if (const auto descriptors = initializeDescriptorState(); !descriptors)
-    {
-        return descriptors;
-    }
-    if (const auto buffers = initializeFrameBuffers(); !buffers)
-    {
-        return buffers;
-    }
-    return initializeDepthAndPipeline(extent, colorFormat);
+    return initializeDescriptorState()
+        .and_then([this, extent, colorFormat] {
+            return initializeDepthAndPipeline(extent, colorFormat);
+        })
+        .and_then([this] {
+            return initializeFrameBuffers();
+        });
 }
 
 auto MeshRenderer::initializeDescriptorState() -> std::expected<void, Error>
 {
-    static constexpr auto binding = vk::DescriptorSetLayoutBinding {
-        .binding = 0,
-        .descriptorType = vk::DescriptorType::eUniformBuffer,
-        .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment};
+    if (const auto descriptorSetLayout = initializeDescriptorSetLayout(); !descriptorSetLayout)
+    {
+        return descriptorSetLayout;
+    }
+    if (const auto pipelineLayout = initializePipelineLayout(); !pipelineLayout)
+    {
+        return pipelineLayout;
+    }
+    return createDescriptorPool();
+}
+
+auto MeshRenderer::initializeDescriptorSetLayout() -> std::expected<void, Error>
+{
+    static constexpr auto bindings = std::array {
+        vk::DescriptorSetLayoutBinding {
+                                        .binding = 0,
+                                        .descriptorType = vk::DescriptorType::eUniformBuffer,
+                                        .descriptorCount = 1,
+                                        .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
+        vk::DescriptorSetLayoutBinding {.binding = 1,
+                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                                        .descriptorCount = 1,
+                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   }
+    };
     const auto setLayout = (*_device).createDescriptorSetLayout(
-        vk::DescriptorSetLayoutCreateInfo {.bindingCount = 1, .pBindings = &binding},
+        vk::DescriptorSetLayoutCreateInfo {.bindingCount = static_cast<std::uint32_t>(bindings.size()),
+                                           .pBindings = bindings.data()},
         nullptr,
         *_device.getDispatcher());
     if (setLayout.result != vk::Result::eSuccess)
@@ -263,6 +318,11 @@ auto MeshRenderer::initializeDescriptorState() -> std::expected<void, Error>
     }
     _descriptorSetLayout =
         vk::raii::DescriptorSetLayout {_device, static_cast<vk::DescriptorSetLayout::CType>(setLayout.value)};
+    return {};
+}
+
+auto MeshRenderer::initializePipelineLayout() -> std::expected<void, Error>
+{
     static constexpr auto pushRange = vk::PushConstantRange {.stageFlags = vk::ShaderStageFlagBits::eVertex,
                                                              .offset = 0,
                                                              .size = sizeof(DrawConstants)};
@@ -276,19 +336,21 @@ auto MeshRenderer::initializeDescriptorState() -> std::expected<void, Error>
         return std::unexpected {pipelineLayout.error()};
     }
     _pipelineLayout = std::move(*pipelineLayout);
-    return createDescriptorPool();
+    return {};
 }
 
 auto MeshRenderer::createDescriptorPool() -> std::expected<void, Error>
 {
     const auto setCount = static_cast<std::uint32_t>(_frames.size());
-    const auto poolSize =
-        vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = setCount};
+    const auto poolSizes = std::array {
+        vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBuffer,        .descriptorCount = setCount},
+        vk::DescriptorPoolSize {.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = setCount}
+    };
     auto pool = checkedCreation(_device.createDescriptorPool(
         vk::DescriptorPoolCreateInfo {.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
                                       .maxSets = setCount,
-                                      .poolSizeCount = 1,
-                                      .pPoolSizes = &poolSize}));
+                                      .poolSizeCount = static_cast<std::uint32_t>(poolSizes.size()),
+                                      .pPoolSizes = poolSizes.data()}));
     if (!pool)
     {
         return std::unexpected {pool.error()};
@@ -339,12 +401,22 @@ void MeshRenderer::updateDescriptorSet(const FrameResources& frame)
     const auto bufferInfo = vk::DescriptorBufferInfo {.buffer = frame.uniformBuffer->getNative(),
                                                       .offset = 0,
                                                       .range = sizeof(FrameUniform)};
-    const auto write = vk::WriteDescriptorSet {.dstSet = *frame.descriptorSet,
-                                               .dstBinding = 0,
-                                               .descriptorCount = 1,
-                                               .descriptorType = vk::DescriptorType::eUniformBuffer,
-                                               .pBufferInfo = &bufferInfo};
-    _device.updateDescriptorSets(write, {});
+    const auto imageInfo = vk::DescriptorImageInfo {.sampler = *_shadowSampler,
+                                                    .imageView = frame.shadowMap->getNativeView(),
+                                                    .imageLayout = vk::ImageLayout::eDepthReadOnlyOptimal};
+    const auto writes = std::array {
+        vk::WriteDescriptorSet {.dstSet = *frame.descriptorSet,
+                                .dstBinding = 0,
+                                .descriptorCount = 1,
+                                .descriptorType = vk::DescriptorType::eUniformBuffer,
+                                .pBufferInfo = &bufferInfo},
+        vk::WriteDescriptorSet {.dstSet = *frame.descriptorSet,
+                                .dstBinding = 1,
+                                .descriptorCount = 1,
+                                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                                .pImageInfo = &imageInfo  }
+    };
+    _device.updateDescriptorSets(writes, {});
 }
 
 auto MeshRenderer::initializeDepthAndPipeline(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>
@@ -355,10 +427,68 @@ auto MeshRenderer::initializeDepthAndPipeline(vk::Extent2D extent, vk::Format co
         return std::unexpected {selectedDepthFormat.error()};
     }
     _depthFormat = *selectedDepthFormat;
+    if (const auto shadowResources = initializeShadowResources(); !shadowResources)
+    {
+        return shadowResources;
+    }
     return resize(extent, colorFormat);
 }
 
-auto MeshRenderer::createDepthAttachments(vk::Extent2D extent)
+auto MeshRenderer::initializeShadowResources() -> std::expected<void, Error>
+{
+    if (const auto maps = initializeShadowMaps(); !maps)
+    {
+        return maps;
+    }
+    if (const auto sampler = initializeShadowSampler(); !sampler)
+    {
+        return sampler;
+    }
+    auto shadowPipeline = createShadowPipeline();
+    if (!shadowPipeline)
+    {
+        return std::unexpected {shadowPipeline.error()};
+    }
+    _shadowPipeline = std::move(*shadowPipeline);
+    return {};
+}
+
+auto MeshRenderer::initializeShadowMaps() -> std::expected<void, Error>
+{
+    auto shadowMaps = createShadowMaps();
+    if (!shadowMaps)
+    {
+        return std::unexpected {shadowMaps.error()};
+    }
+    for (auto index = std::size_t {}; index < _frames.size(); ++index)
+    {
+        _frames[index].shadowMap = std::move((*shadowMaps)[index]);
+    }
+    return {};
+}
+
+auto MeshRenderer::initializeShadowSampler() -> std::expected<void, Error>
+{
+    auto sampler = static_cast<vk::Device>(_device).createSampler(
+        vk::SamplerCreateInfo {.magFilter = vk::Filter::eNearest,
+                               .minFilter = vk::Filter::eNearest,
+                               .mipmapMode = vk::SamplerMipmapMode::eNearest,
+                               .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+                               .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+                               .addressModeW = vk::SamplerAddressMode::eClampToEdge,
+                               .maxAnisotropy = 1.0F,
+                               .minLod = 0.0F,
+                               .maxLod = 0.0F,
+                               .borderColor = vk::BorderColor::eFloatOpaqueWhite});
+    if (sampler.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {::panda::makeVulkanError(sampler.result)};
+    }
+    _shadowSampler = vk::raii::Sampler {_device, sampler.value};
+    return {};
+}
+
+auto MeshRenderer::createDepthAttachments(vk::Extent2D extent, vk::SampleCountFlagBits samples)
     -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
 {
     auto attachments = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
@@ -368,7 +498,8 @@ auto MeshRenderer::createDepthAttachments(vk::Extent2D extent)
         auto attachment = ::panda::detail::TextureResource::create(
             _device,
             _pool,
-            {.extent = extent, .format = _depthFormat, .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment});
+            {.extent = extent, .format = _depthFormat, .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment},
+            samples);
         if (!attachment)
         {
             return std::unexpected {attachment.error()};
@@ -376,6 +507,53 @@ auto MeshRenderer::createDepthAttachments(vk::Extent2D extent)
         attachments.push_back(std::move(*attachment));
     }
     return attachments;
+}
+
+auto MeshRenderer::createColorAttachments(vk::Extent2D extent, vk::Format format, vk::SampleCountFlagBits samples)
+    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
+{
+    auto attachments = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
+    if (samples == vk::SampleCountFlagBits::e1)
+    {
+        return attachments;
+    }
+    attachments.reserve(_frames.size());
+    for (auto index = std::size_t {}; index < _frames.size(); ++index)
+    {
+        auto attachment = ::panda::detail::TextureResource::create(
+            _device,
+            _pool,
+            {.extent = extent, .format = format, .usage = vk::ImageUsageFlagBits::eColorAttachment},
+            samples);
+        if (!attachment)
+        {
+            return std::unexpected {attachment.error()};
+        }
+        attachments.push_back(std::move(*attachment));
+    }
+    return attachments;
+}
+
+auto MeshRenderer::createShadowMaps()
+    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
+{
+    auto maps = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
+    maps.reserve(_frames.size());
+    for (auto index = std::size_t {}; index < _frames.size(); ++index)
+    {
+        auto map = ::panda::detail::TextureResource::create(
+            _device,
+            _pool,
+            {.extent = shadowExtent,
+             .format = _depthFormat,
+             .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled});
+        if (!map)
+        {
+            return std::unexpected {map.error()};
+        }
+        maps.push_back(std::move(*map));
+    }
+    return maps;
 }
 
 auto MeshRenderer::chooseDepthFormat() const -> std::expected<vk::Format, Error>
@@ -395,6 +573,37 @@ auto MeshRenderer::chooseDepthFormat() const -> std::expected<vk::Format, Error>
     return std::unexpected {makeError(ErrorCode::Unsupported, "Device has no supported depth attachment format")};
 }
 
+auto MeshRenderer::chooseSampleCount(vk::Format colorFormat) const -> std::expected<vk::SampleCountFlagBits, Error>
+{
+    const auto colorSamples = querySampleCounts(_physicalDevice,
+                                                colorFormat,
+                                                vk::ImageUsageFlagBits::eColorAttachment,
+                                                "Swapchain format cannot be multisampled");
+    if (!colorSamples)
+    {
+        return std::unexpected {colorSamples.error()};
+    }
+    const auto depthSamples = querySampleCounts(_physicalDevice,
+                                                _depthFormat,
+                                                vk::ImageUsageFlagBits::eDepthStencilAttachment,
+                                                "Depth format cannot be multisampled");
+    if (!depthSamples)
+    {
+        return std::unexpected {depthSamples.error()};
+    }
+    const auto limits = _physicalDevice.getProperties().limits;
+    const auto framebufferSamples = limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
+    const auto supportedSamples = *colorSamples & *depthSamples & framebufferSamples;
+    for (const auto samples : {vk::SampleCountFlagBits::e4, vk::SampleCountFlagBits::e2, vk::SampleCountFlagBits::e1})
+    {
+        if ((supportedSamples & samples) != vk::SampleCountFlags {})
+        {
+            return samples;
+        }
+    }
+    return std::unexpected {makeError(ErrorCode::Unsupported, "No common color and depth sample count is supported")};
+}
+
 auto MeshRenderer::resize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>
 {
     if (extent.width == 0 || extent.height == 0 || colorFormat == vk::Format::eUndefined)
@@ -403,66 +612,121 @@ auto MeshRenderer::resize(vk::Extent2D extent, vk::Format colorFormat) -> std::e
     }
     const auto extentChanged = extent.width != _extent.width || extent.height != _extent.height;
     const auto formatChanged = colorFormat != _colorFormat;
-    if (!extentChanged && !formatChanged)
+    const auto sampleCount = chooseSampleCount(colorFormat);
+    if (!sampleCount)
+    {
+        return std::unexpected {sampleCount.error()};
+    }
+    const auto request = ResizeRequest {.extent = extent,
+                                        .colorFormat = colorFormat,
+                                        .sampleCount = *sampleCount,
+                                        .extentChanged = extentChanged,
+                                        .formatChanged = formatChanged,
+                                        .sampleCountChanged = *sampleCount != _sampleCount};
+    if (!request.extentChanged && !request.formatChanged && !request.sampleCountChanged)
     {
         return {};
     }
-    auto resources = createResizeResources(extent, colorFormat, extentChanged, formatChanged);
+    auto resources = createResizeResources(request);
     if (!resources)
     {
         return std::unexpected {resources.error()};
     }
-    publishResize(extent, colorFormat, std::move(resources->depthAttachments), std::move(resources->pipeline));
+    publishResize(request, std::move(*resources));
     return {};
 }
 
-auto MeshRenderer::createResizeResources(vk::Extent2D extent,
-                                         vk::Format colorFormat,
-                                         bool extentChanged,
-                                         bool formatChanged) -> std::expected<ResizeResources, Error>
+auto MeshRenderer::createResizeResources(const ResizeRequest& request) -> std::expected<ResizeResources, Error>
 {
-    auto resources = ResizeResources {};
-    if (extentChanged)
+    auto depthAttachments = createDepthAttachmentsForResize(request);
+    if (!depthAttachments)
     {
-        auto attachments = createDepthAttachments(extent);
-        if (!attachments)
-        {
-            return std::unexpected {attachments.error()};
-        }
-        resources.depthAttachments = std::move(*attachments);
+        return std::unexpected {depthAttachments.error()};
     }
-    if (formatChanged)
+    auto colorAttachments = createColorAttachmentsForResize(request);
+    if (!colorAttachments)
     {
-        auto pipeline = createPipeline(colorFormat);
+        return std::unexpected {colorAttachments.error()};
+    }
+    auto pipeline = createPipelineForResize(request);
+    if (!pipeline)
+    {
+        return std::unexpected {pipeline.error()};
+    }
+    return ResizeResources {.colorAttachments = std::move(*colorAttachments),
+                            .depthAttachments = std::move(*depthAttachments),
+                            .pipeline = std::move(*pipeline)};
+}
+
+auto MeshRenderer::createDepthAttachmentsForResize(const ResizeRequest& request)
+    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
+{
+    if (request.extentChanged || request.sampleCountChanged)
+    {
+        return createDepthAttachments(request.extent, request.sampleCount);
+    }
+    return std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
+}
+
+auto MeshRenderer::createColorAttachmentsForResize(const ResizeRequest& request)
+    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
+{
+    if (request.extentChanged || request.formatChanged || request.sampleCountChanged)
+    {
+        return createColorAttachments(request.extent, request.colorFormat, request.sampleCount);
+    }
+    return std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
+}
+
+auto MeshRenderer::createPipelineForResize(const ResizeRequest& request)
+    -> std::expected<std::optional<vk::raii::Pipeline>, Error>
+{
+    if (request.formatChanged || request.sampleCountChanged)
+    {
+        auto pipeline = createPipeline(request.colorFormat, request.sampleCount);
         if (!pipeline)
         {
             return std::unexpected {pipeline.error()};
         }
-        resources.pipeline = std::move(*pipeline);
+        return std::optional<vk::raii::Pipeline> {std::move(*pipeline)};
     }
-    return resources;
+    return std::optional<vk::raii::Pipeline> {};
 }
 
-void MeshRenderer::publishResize(vk::Extent2D extent,
-                                 vk::Format colorFormat,
-                                 std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments,
-                                 vk::raii::Pipeline pipeline)
+void MeshRenderer::publishResize(const ResizeRequest& request, ResizeResources resources)
 {
-    const auto extentChanged = extent.width != _extent.width || extent.height != _extent.height;
-    if (extentChanged)
+    if (request.extentChanged || request.sampleCountChanged)
     {
-        for (auto index = std::size_t {}; index < _frames.size(); ++index)
-        {
-            _frames[index].depthAttachment = std::move(attachments[index]);
-            _frames[index].depthInitialized = false;
-        }
-        _extent = extent;
+        publishDepthAttachments(std::move(resources.depthAttachments));
     }
-    const auto formatChanged = colorFormat != _colorFormat;
-    if (formatChanged)
+    if (request.extentChanged || request.formatChanged || request.sampleCountChanged)
     {
-        _pipeline = std::move(pipeline);
-        _colorFormat = colorFormat;
+        publishColorAttachments(std::move(resources.colorAttachments));
+    }
+    if (resources.pipeline)
+    {
+        _pipeline = std::move(*resources.pipeline);
+    }
+    _colorFormat = request.colorFormat;
+    _sampleCount = request.sampleCount;
+    _extent = request.extent;
+}
+
+void MeshRenderer::publishDepthAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments)
+{
+    for (auto index = std::size_t {}; index < _frames.size(); ++index)
+    {
+        _frames[index].depthAttachment = std::move(attachments[index]);
+        _frames[index].depthInitialized = false;
+    }
+}
+
+void MeshRenderer::publishColorAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments)
+{
+    for (auto index = std::size_t {}; index < _frames.size(); ++index)
+    {
+        _frames[index].colorAttachment = attachments.empty() ? nullptr : std::move(attachments[index]);
+        _frames[index].colorInitialized = false;
     }
 }
 
@@ -480,7 +744,8 @@ auto MeshRenderer::createShaderModule(std::span<const std::uint32_t> words) cons
                                                          static_cast<vk::ShaderModule::CType>(module.value)};
 }
 
-auto MeshRenderer::createPipeline(vk::Format colorFormat) const -> std::expected<vk::raii::Pipeline, Error>
+auto MeshRenderer::createPipeline(vk::Format colorFormat, vk::SampleCountFlagBits samples) const
+    -> std::expected<vk::raii::Pipeline, Error>
 {
     auto vertex = createShaderModule(shaders::meshVertex);
     if (!vertex)
@@ -492,10 +757,11 @@ auto MeshRenderer::createPipeline(vk::Format colorFormat) const -> std::expected
     {
         return std::unexpected {fragment.error()};
     }
-    return createGraphicsPipeline(colorFormat, **vertex, **fragment);
+    return createGraphicsPipeline(colorFormat, samples, **vertex, **fragment);
 }
 
 auto MeshRenderer::createGraphicsPipeline(vk::Format colorFormat,
+                                          vk::SampleCountFlagBits samples,
                                           vk::ShaderModule vertex,
                                           vk::ShaderModule fragment) const -> std::expected<vk::raii::Pipeline, Error>
 {
@@ -511,15 +777,43 @@ auto MeshRenderer::createGraphicsPipeline(vk::Format colorFormat,
     const auto rendering = vk::PipelineRenderingCreateInfo {.colorAttachmentCount = 1,
                                                             .pColorAttachmentFormats = &colorOutput,
                                                             .depthAttachmentFormat = _depthFormat};
-    const auto createInfo = makeGraphicsPipelineCreateInfo(_pipelineLayout, stages, rendering);
+    const auto multisampling = vk::PipelineMultisampleStateCreateInfo {.rasterizationSamples = samples};
+    const auto createInfo = makeGraphicsPipelineCreateInfo(stages, rendering, multisampling, blend);
+    return checkedCreation(_device.createGraphicsPipeline(nullptr, createInfo));
+}
+
+auto MeshRenderer::createShadowPipeline() const -> std::expected<vk::raii::Pipeline, Error>
+{
+    auto vertex = createShaderModule(shaders::shadowVertex);
+    if (!vertex)
+    {
+        return std::unexpected {vertex.error()};
+    }
+    const auto stages = std::array {
+        vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eVertex,
+                                           .module = **vertex,
+                                           .pName = "main"}
+    };
+    const auto rendering = vk::PipelineRenderingCreateInfo {.depthAttachmentFormat = _depthFormat};
+    auto createInfo = makeGraphicsPipelineCreateInfo(stages, rendering, multisample, noColorBlend);
+    createInfo.pVertexInputState = &shadowVertexInput;
     return checkedCreation(_device.createGraphicsPipeline(nullptr, createInfo));
 }
 
 auto MeshRenderer::updateFrame(std::size_t frameIndex, const RenderView& view) -> std::expected<void, Error>
 {
     const auto uniform = makeFrameUniform(view);
-    const auto bytes = std::as_bytes(std::span {&uniform, std::size_t {1}});
+    if (!uniform)
+    {
+        return std::unexpected {uniform.error()};
+    }
+    const auto bytes = std::as_bytes(std::span {&*uniform, std::size_t {1}});
     return _frames.at(frameIndex).uniformBuffer->writeMapped(0, bytes);
+}
+
+auto MeshRenderer::getSampleCount() const noexcept -> vk::SampleCountFlagBits
+{
+    return _sampleCount;
 }
 
 void MeshRenderer::record(vk::CommandBuffer command,
@@ -528,14 +822,48 @@ void MeshRenderer::record(vk::CommandBuffer command,
                           const RenderView& view)
 {
     auto& frame = _frames.at(frameIndex);
-    transitionDepth(command, frame);
-    recordAttachments(command, colorView, frame.depthAttachment->getNativeView());
-    setDrawState(command, frame);
+    transitionShadowForAttachment(command, frame);
+    recordShadowAttachment(command, frame.shadowMap->getNativeView());
+    setDrawState(command, frame, *_shadowPipeline, shadowExtent);
     for (const auto& draw : view.meshes)
     {
         recordDraw(command, draw);
     }
     command.endRendering();
+    transitionShadowForSampling(command, frame);
+    transitionColor(command, frame);
+    transitionDepth(command, frame);
+    recordAttachments(command, colorView, frame, frame.depthAttachment->getNativeView());
+    setDrawState(command, frame, *_pipeline, _extent);
+    for (const auto& draw : view.meshes)
+    {
+        recordDraw(command, draw);
+    }
+    command.endRendering();
+}
+
+void MeshRenderer::transitionColor(vk::CommandBuffer command, FrameResources& frame)
+{
+    if (_sampleCount == vk::SampleCountFlagBits::e1)
+    {
+        return;
+    }
+    const auto barrier = vk::ImageMemoryBarrier2 {
+        .srcStageMask = frame.colorInitialized ? vk::PipelineStageFlagBits2::eColorAttachmentOutput
+                                               : vk::PipelineStageFlagBits2::eNone,
+        .srcAccessMask = frame.colorInitialized ? vk::AccessFlagBits2::eColorAttachmentWrite : vk::AccessFlags2 {},
+        .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+        .oldLayout = frame.colorInitialized ? vk::ImageLayout::eColorAttachmentOptimal : vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .image = frame.colorAttachment->getNative(),
+        .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                                                                                                                 .levelCount = 1,
+                                                                                                                 .layerCount = 1}
+    };
+    command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }
 
 void MeshRenderer::transitionDepth(vk::CommandBuffer command, FrameResources& frame)
@@ -562,13 +890,67 @@ void MeshRenderer::transitionDepth(vk::CommandBuffer command, FrameResources& fr
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }
 
-void MeshRenderer::recordAttachments(vk::CommandBuffer command, vk::ImageView colorView, vk::ImageView depthView) const
+void MeshRenderer::transitionShadowForAttachment(vk::CommandBuffer command, FrameResources& frame)
 {
-    const auto color = vk::RenderingAttachmentInfo {.imageView = colorView,
-                                                    .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-                                                    .loadOp = vk::AttachmentLoadOp::eClear,
-                                                    .storeOp = vk::AttachmentStoreOp::eStore,
-                                                    .clearValue = vk::ClearValue {.color = encodedClear(_colorFormat)}};
+    const auto barrier = vk::ImageMemoryBarrier2 {
+        .srcStageMask =
+            frame.shadowInitialized ? vk::PipelineStageFlagBits2::eFragmentShader : vk::PipelineStageFlagBits2::eNone,
+        .srcAccessMask = frame.shadowInitialized ? vk::AccessFlagBits2::eShaderSampledRead : vk::AccessFlags2 {},
+        .dstStageMask =
+            vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+        .dstAccessMask =
+            vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+        .oldLayout = frame.shadowInitialized ? vk::ImageLayout::eDepthReadOnlyOptimal : vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .image = frame.shadowMap->getNative(),
+        .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eDepth,
+                                                                                                               .levelCount = 1,
+                                                                                                               .layerCount = 1}
+    };
+    command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
+}
+
+void MeshRenderer::transitionShadowForSampling(vk::CommandBuffer command, FrameResources& frame)
+{
+    const auto barrier = vk::ImageMemoryBarrier2 {
+        .srcStageMask =
+            vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
+        .srcAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+        .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+        .dstAccessMask = vk::AccessFlagBits2::eShaderSampledRead,
+        .oldLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+        .newLayout = vk::ImageLayout::eDepthReadOnlyOptimal,
+        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .image = frame.shadowMap->getNative(),
+        .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eDepth,
+                                                       .levelCount = 1,
+                                                       .layerCount = 1}
+    };
+    command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
+}
+
+void MeshRenderer::recordAttachments(vk::CommandBuffer command,
+                                     vk::ImageView swapchainView,
+                                     const FrameResources& frame,
+                                     vk::ImageView depthView) const
+{
+    auto color = vk::RenderingAttachmentInfo {
+        .imageView =
+            _sampleCount == vk::SampleCountFlagBits::e1 ? swapchainView : frame.colorAttachment->getNativeView(),
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = _sampleCount == vk::SampleCountFlagBits::e1 ? vk::AttachmentStoreOp::eStore
+                                                               : vk::AttachmentStoreOp::eDontCare,
+        .clearValue = vk::ClearValue {.color = encodedClear(_colorFormat)}};
+    if (_sampleCount != vk::SampleCountFlagBits::e1)
+    {
+        color.resolveMode = vk::ResolveModeFlagBits::eAverage;
+        color.resolveImageView = swapchainView;
+        color.resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+    }
     const auto depth = vk::RenderingAttachmentInfo {
         .imageView = depthView,
         .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
@@ -583,15 +965,32 @@ void MeshRenderer::recordAttachments(vk::CommandBuffer command, vk::ImageView co
     command.beginRendering(info);
 }
 
-void MeshRenderer::setDrawState(vk::CommandBuffer command, const FrameResources& frame) const
+void MeshRenderer::recordShadowAttachment(vk::CommandBuffer command, vk::ImageView depthView)
+{
+    const auto depth = vk::RenderingAttachmentInfo {
+        .imageView = depthView,
+        .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue {.depthStencil = vk::ClearDepthStencilValue {.depth = 1.0F, .stencil = 0}}};
+    const auto info = vk::RenderingInfo {.renderArea = vk::Rect2D {.extent = shadowExtent},
+                                         .layerCount = 1,
+                                         .pDepthAttachment = &depth};
+    command.beginRendering(info);
+}
+
+void MeshRenderer::setDrawState(vk::CommandBuffer command,
+                                const FrameResources& frame,
+                                vk::Pipeline pipeline,
+                                vk::Extent2D extent) const
 {
     command.setViewport(0,
-                        vk::Viewport {.width = static_cast<float>(_extent.width),
-                                      .height = static_cast<float>(_extent.height),
+                        vk::Viewport {.width = static_cast<float>(extent.width),
+                                      .height = static_cast<float>(extent.height),
                                       .minDepth = 0.0F,
                                       .maxDepth = 1.0F});
-    command.setScissor(0, vk::Rect2D {.extent = _extent});
-    command.bindPipeline(vk::PipelineBindPoint::eGraphics, *_pipeline);
+    command.setScissor(0, vk::Rect2D {.extent = extent});
+    command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
     const auto descriptorSet = *frame.descriptorSet;
     command.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 }
@@ -623,6 +1022,8 @@ void MeshRenderer::recordMeshDraw(vk::CommandBuffer command, const ::panda::deta
 
 void MeshRenderer::markSubmitted(std::size_t frameIndex) noexcept
 {
+    _frames[frameIndex].colorInitialized = _sampleCount != vk::SampleCountFlagBits::e1;
     _frames[frameIndex].depthInitialized = true;
+    _frames[frameIndex].shadowInitialized = true;
 }
 }
