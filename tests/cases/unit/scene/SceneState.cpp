@@ -50,6 +50,72 @@ TEST(SceneState, RejectsStaleAndCrossSceneHandlesAfterSlotReuse)
     EXPECT_FALSE(firstScene.getLocalTransform(stale));
 }
 
+TEST(SceneState, EditsNamesAndWorldTransformOnRootAndRejectsEmptyHandles)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto empty = panda::scene::Entity {};
+    EXPECT_FALSE(scene.isAlive(empty));
+    EXPECT_FALSE(scene.getName(empty));
+    EXPECT_FALSE(scene.setName(empty, "ignored"));
+    EXPECT_FALSE(scene.setWorldTransform(empty, {}));
+
+    const auto root = createObject(scene, {.name = "Root"});
+    ASSERT_TRUE(scene.setName(root, "Renamed"));
+    const auto name = scene.getName(root);
+    ASSERT_TRUE(name);
+    EXPECT_EQ(*name, "Renamed");
+    const auto parent = scene.getParent(root);
+    ASSERT_TRUE(parent);
+    EXPECT_FALSE(*parent);
+
+    const auto rotation = glm::angleAxis(glm::quarter_pi<float>(), glm::vec3 {0.0F, 1.0F, 0.0F});
+    const panda::Transform requested {
+        .position = {3.0F, -2.0F, 5.0F},
+        .rotation = rotation
+    };
+    const auto expected = panda::createModelMatrix(requested);
+    ASSERT_TRUE(expected);
+    ASSERT_TRUE(scene.setWorldTransform(root, requested));
+    const auto world = scene.getWorldTransform(root);
+    ASSERT_TRUE(world);
+    expectMatrixNear(*world, *expected);
+
+    const auto invalid =
+        scene.setWorldTransform(root,
+                                {
+                                    .position = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F}
+    });
+    EXPECT_FALSE(invalid);
+    const auto unchanged = scene.getWorldTransform(root);
+    ASSERT_TRUE(unchanged);
+    expectMatrixNear(*unchanged, *expected);
+}
+
+TEST(SceneState, RejectsForeignParentsInvalidModesAndOverflowingWorldTransforms)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    auto otherScene = panda::scene::detail::SceneState {};
+    const auto child = createObject(scene);
+    const auto foreignParent = createObject(otherScene);
+    EXPECT_FALSE(scene.setParent(child, foreignParent, panda::scene::ReparentMode::KeepLocal));
+    EXPECT_FALSE(scene.destroySubtree(panda::scene::Entity {}));
+
+    const auto hugeScale = glm::vec3 {1.0e20F, 1.0e20F, 1.0e20F};
+    const auto parent = createObject(scene, {.name = {}, .transform = {.scale = hugeScale}});
+    const auto overflowingChild = createObject(scene, {.name = {}, .transform = {.scale = hugeScale}});
+    ASSERT_TRUE(scene.setParent(overflowingChild, parent, panda::scene::ReparentMode::KeepLocal));
+    EXPECT_FALSE(scene.getWorldTransform(overflowingChild));
+
+    const auto editableChild = createObject(scene);
+    ASSERT_TRUE(scene.setParent(editableChild, parent, panda::scene::ReparentMode::KeepLocal));
+    const auto before = scene.getLocalTransform(editableChild);
+    ASSERT_TRUE(before);
+    EXPECT_FALSE(scene.setLocalTransform(editableChild, {.scale = hugeScale}));
+    const auto after = scene.getLocalTransform(editableChild);
+    ASSERT_TRUE(after);
+    EXPECT_EQ(after->scale, before->scale);
+}
+
 TEST(SceneState, CachesWorldTransformsAndAllowsShearInWorldMatrices)
 {
     auto scene = panda::scene::detail::SceneState {};
@@ -248,6 +314,13 @@ TEST(SceneState, RejectsExtraVisibleLightsAndInvalidEdits)
     const auto second = createObject(scene);
     ASSERT_TRUE(scene.setDirectionalLight(first, panda::scene::DirectionalLight {.intensity = 2.0F}));
     EXPECT_FALSE(scene.setDirectionalLight(first, panda::scene::DirectionalLight {.intensity = -1.0F}));
+    EXPECT_FALSE(scene.setDirectionalLight(first,
+                                           panda::scene::DirectionalLight {
+                                               .color = {-1.0F, 0.0F, 0.0F}
+    }));
+    EXPECT_FALSE(scene.setDirectionalLight(
+        first,
+        panda::scene::DirectionalLight {.intensity = std::numeric_limits<float>::quiet_NaN()}));
     auto view = scene.createRenderView(1.0F);
     ASSERT_TRUE(view);
     EXPECT_EQ(view->directionalLight.intensity, 2.0F);
@@ -265,6 +338,10 @@ TEST(SceneState, ValidatesCameraLensAspectAndInheritedPose)
     const auto camera = selectCamera(scene);
     EXPECT_FALSE(scene.createRenderView(0.0F));
     EXPECT_FALSE(scene.setCamera(camera, panda::scene::PerspectiveCamera {.nearPlane = -1.0F}));
+    EXPECT_FALSE(scene.setCamera(
+        camera,
+        panda::scene::PerspectiveCamera {.verticalFieldOfViewRadians = std::numeric_limits<float>::quiet_NaN()}));
+    EXPECT_FALSE(scene.setCamera(camera, panda::scene::PerspectiveCamera {.nearPlane = 2.0F, .farPlane = 2.0F}));
     EXPECT_TRUE(scene.createRenderView(1.0F));
     const auto parent = createObject(scene, {.name = {}, .transform = {.scale = {2.0F, 1.0F, 1.0F}}});
     ASSERT_TRUE(scene.setParent(camera, parent, panda::scene::ReparentMode::KeepLocal));
@@ -279,6 +356,21 @@ TEST(SceneState, ValidatesCameraLensAspectAndInheritedPose)
     EXPECT_EQ(view->camera.position, (glm::vec3 {3.0F, 2.0F, 1.0F}));
     ASSERT_TRUE(scene.setCamera(camera, std::nullopt));
     EXPECT_FALSE(scene.createRenderView(1.0F));
+}
+
+TEST(SceneState, RejectsDirectionalLightWithNonUniformWorldPose)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    selectCamera(scene);
+    const auto parent = createObject(scene, {.name = {}, .transform = {.scale = {2.0F, 1.0F, 1.0F}}});
+    const auto light = createObject(scene);
+    ASSERT_TRUE(scene.setDirectionalLight(light, panda::scene::DirectionalLight {}));
+    ASSERT_TRUE(scene.setParent(light, parent, panda::scene::ReparentMode::KeepLocal));
+
+    const auto view = scene.createRenderView(1.0F);
+
+    ASSERT_FALSE(view);
+    EXPECT_EQ(view.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST(SceneState, RejectsForeignComponentHandlesAndEmptyMeshes)

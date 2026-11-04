@@ -91,3 +91,86 @@ TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherContextBeforeSubmission)
     ASSERT_TRUE(scene->setVisible(*object, false));
     EXPECT_TRUE(scene->createRenderView(1.0F));
 }
+
+TEST_F(SceneRenderingSystem, RejectsMovedFromSceneOperationsAndPreservesMovedIdentity)
+{
+    auto savedContext = std::move(activeContext());
+    const auto invalidContextScene = panda::scene::Scene::create(activeContext());
+    context.emplace(std::move(savedContext));
+    EXPECT_FALSE(invalidContextScene);
+
+    auto scene = panda::scene::Scene::create(activeContext());
+    ASSERT_TRUE(scene);
+    const auto entity = scene->createEntity();
+    ASSERT_TRUE(entity);
+    ASSERT_TRUE(scene->setName(*entity, "root"));
+    const auto name = scene->getName(*entity);
+    ASSERT_TRUE(name);
+    EXPECT_EQ(*name, "root");
+    ASSERT_TRUE(scene->setLocalTransform(*entity,
+                                         {
+                                             .position = {1.0F, 2.0F, 3.0F}
+    }));
+    ASSERT_TRUE(scene->getLocalTransform(*entity));
+    ASSERT_TRUE(scene->setWorldTransform(*entity,
+                                         {
+                                             .position = {1.0F, 2.0F, 3.0F}
+    }));
+    ASSERT_TRUE(scene->getWorldTransform(*entity));
+    const auto parent = scene->getParent(*entity);
+    ASSERT_TRUE(parent);
+    EXPECT_FALSE(*parent);
+    ASSERT_TRUE(scene->setParent(*entity, std::nullopt));
+    const auto child = scene->createEntity();
+    ASSERT_TRUE(child);
+    ASSERT_TRUE(scene->setParent(*child, std::optional<panda::scene::Entity> {*entity}));
+    const auto childParent = scene->getParent(*child);
+    ASSERT_TRUE(childParent);
+    ASSERT_TRUE(childParent->has_value());
+    EXPECT_EQ(childParent->value_or(panda::scene::Entity {}), *entity);
+    ASSERT_TRUE(scene->destroySubtree(*child));
+    ASSERT_TRUE(scene->setMesh(*entity, std::nullopt));
+    ASSERT_TRUE(scene->setCamera(*entity, panda::scene::PerspectiveCamera {}));
+    ASSERT_TRUE(scene->setActiveCamera(*entity));
+    ASSERT_TRUE(scene->setDirectionalLight(*entity, std::nullopt));
+    ASSERT_TRUE(scene->setVisible(*entity, true));
+    ASSERT_TRUE(scene->createRenderView(1.0F));
+    EXPECT_EQ(*entity, *entity);
+    EXPECT_EQ(panda::scene::Entity {}, panda::scene::Entity {});
+
+    auto otherScene = panda::scene::Scene::create(activeContext());
+    ASSERT_TRUE(otherScene);
+    const auto otherEntity = otherScene->createEntity();
+    ASSERT_TRUE(otherEntity);
+    EXPECT_NE(*entity, *otherEntity);
+    ASSERT_TRUE(otherScene->destroySubtree(*otherEntity));
+
+    auto moved = std::move(*scene);
+    EXPECT_FALSE(scene->createEntity());
+    EXPECT_FALSE(scene->isAlive(*entity));
+    EXPECT_FALSE(scene->getLocalTransform(*entity));
+    EXPECT_FALSE(scene->getName(*entity));
+    EXPECT_FALSE(scene->setName(*entity, "ignored"));
+    EXPECT_FALSE(scene->setLocalTransform(*entity, {}));
+    EXPECT_FALSE(scene->getWorldTransform(*entity));
+    EXPECT_FALSE(scene->setWorldTransform(*entity, {}));
+    EXPECT_FALSE(scene->getParent(*entity));
+    EXPECT_FALSE(scene->setParent(*entity, std::nullopt));
+    EXPECT_FALSE(scene->destroyEntity(*entity));
+    EXPECT_FALSE(scene->destroySubtree(*entity));
+    EXPECT_FALSE(scene->setMesh(*entity, std::nullopt));
+    EXPECT_FALSE(scene->setCamera(*entity, std::nullopt));
+    EXPECT_FALSE(scene->setDirectionalLight(*entity, std::nullopt));
+    EXPECT_FALSE(scene->setVisible(*entity, true));
+    EXPECT_FALSE(scene->setActiveCamera(*entity));
+    EXPECT_FALSE(scene->createRenderView(1.0F));
+
+    auto destination = panda::scene::Scene::create(activeContext());
+    ASSERT_TRUE(destination);
+    *destination = std::move(moved);
+    EXPECT_TRUE(destination->isAlive(*entity));
+    auto& target = *destination;
+    auto& source = target;
+    target = std::move(source);
+    EXPECT_TRUE(destination->isAlive(*entity));
+}
