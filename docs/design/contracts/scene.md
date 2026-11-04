@@ -4,22 +4,20 @@ Specification for optional scenes, transforms, persistence, import and tools.
 Implementation follows [the plan](../../development/PLAN.md).
 Applications may supply render data directly without a scene, tools or ECS. The
 optional `Panda::Scene` module supports rapid prototyping and runs without the GUI;
-it builds on the renderer's direct interface. The current implementation provides
-runtime object identity, names, transform hierarchy, mesh associations, perspective
-cameras and directional-light objects. `Scene::createRenderView()` prepares a
-snapshot for the direct renderer. Stable document IDs, Studio defaults
-and primitive helpers remain planned work.
+it builds on the renderer's direct interface. `Scene::create()` starts empty. The
+current implementation provides runtime handles, 64-bit object IDs, names,
+transform hierarchy, mesh associations, perspective and orthographic cameras, and
+directional-light objects. `Scene::createRenderView()` prepares a snapshot for the
+direct renderer. Core provides CPU geometry helpers; applications own GPU uploads.
 
-## Useful scene defaults
+## Empty scene and application setup
 
-The default scene setup creates an editable camera, one shadow-casting directional
-light, simple ambient illumination, and a usable standard material. A ground helper
-may be requested to make shadows immediately visible. The first cube should not
-require constructing a custom lighting pipeline.
-
-These are ordinary scene objects/settings, not hidden lights that cannot be edited
-or saved. An explicit empty-scene mode omits the convenience setup. Applications
-may instead supply render data directly without using a scene.
+Creating a Scene adds no entities, camera, light, or GPU resources. The application
+creates entities and attaches the components it needs with `createEntity()`,
+`setCamera()` or `setOrthographicCamera()`, `setActiveCamera()`, and
+`setDirectionalLight()`. It owns geometry creation and mesh upload, then attaches
+the resulting handles with `setMesh()`. Applications may also provide render data
+directly without using a scene.
 
 ## Entities and transforms
 
@@ -63,11 +61,12 @@ object handles, descriptions and value snapshots, not an application registry. S
 storage types stay private; public `Transform` is a value, not a mutable registry
 component reference. Mutators validate and mark derived data dirty themselves.
 
-The scene provides these behaviors; choose public names and signatures during implementation:
+The public scene API provides these behaviors:
 
-- Create with Studio defaults unless Empty is selected; created resources use the
-  scene's context. Create objects with identity, name, identity local transform and
-  no parent, and provide convenient cube, plane and sphere mesh creation.
+- Create an empty scene. Create objects with a name, identity local transform and
+  no parent; attach application-created mesh handles and optional camera/light
+  values; prepare renderer input from the scene state. Core provides CPU geometry
+  helpers for cube, plane and sphere meshes; the application caches and uploads GPU meshes.
 - Check scene identity and the slot reuse count when resolving handles. Support explicit
   subtree deletion or deletion of one object; reject the latter when it has children.
 - Return local transforms as value snapshots. Validate edits before committing,
@@ -76,7 +75,8 @@ The scene provides these behaviors; choose public names and signatures during im
   reparenting reject singular or unrepresentable results rather than approximating.
 - Allow visibility changes without stopping compute or physics or deleting children.
   The active camera must belong to the scene; rendering without one fails clearly.
-- Associate stable document IDs with objects and support lookup with ordinary absence.
+- Assign every object a stable scene-lifetime ID, allow an explicit ID when creating
+  an object, and support lookup with ordinary absence.
   Preparing renderer input validates the scene, context and camera and follows the
   [frame protocol](resources.md#frame-and-window-state).
 
@@ -86,12 +86,15 @@ scene destruction; all resolving operations take a live Scene. Moving a Scene
 preserves identity; replacing/loading a different scene does not. Reject stale and
 cross-scene handles. Do not expose the raw ID as a persistent identifier.
 
-`ObjectId` is an opaque 128-bit identifier, rendered as 32 hexadecimal digits in
-scene files. Generate/check uniqueness within a document; it is not a secret
-or security token. Explicit IDs may be supplied through EntityDesc for reproducible
-C++ scenes, with duplicate rejection. A save/load preserves IDs, while an ordinary
-new entity gets a new one. Document identity follows the persistence rules below;
-cross-file merging is outside scope. ObjectId is not a global entity lookup service.
+`ObjectId` is a 64-bit identifier assigned to every object, unique within one
+Scene's lifetime; deleted IDs are not reused. Scene generates IDs by default, and a
+caller may provide an ID when creating an object; duplicates are rejected. This
+explicit-ID path is a hook for future scene reconstruction, not a serialization
+format. `Panda::Scene` does not currently serialize objects or define an ID encoding.
+Persistence will choose a reversible encoding shared across the project. Until
+then, the ID value supports scene-local object identity; it is not a global lookup
+service or a security token. Document identity and cross-file references follow the
+persistence rules below.
 Names are editable labels, may repeat, and never substitute for IDs.
 
 Application data and callbacks remain application-owned; applications must handle
@@ -168,20 +171,18 @@ rules are specified in the rendering contract.
 
 ## First useful scene
 
-`SceneOptions` selects Studio (default) or Empty and an optional studio ground.
-Studio adds ordinary named camera/light entities, selects the camera, and installs
-ambient/default material settings. Camera pose starts at (4, 3, 6), looking at the
-origin with +Y up. The [renderer specification](rendering.md#first-version-renderer-contract)
-defines lighting/material numeric defaults. Empty adds no entities or illumination;
-convenience primitive creation can still use the standard material resource.
+`Scene::create()` adds no entities. An application creates a camera entity, attaches
+a perspective or orthographic lens, selects it, and creates any light entities it
+wants. The `scene_demo` example places its camera at (7, 5, 9) and explicitly adds
+one directional light. Scene does not create GPU resources; the application can
+create a ground with Core's plane geometry helper and attach its uploaded mesh.
 
 Cube is centered at the origin with side length 1 m. Plane lies in XZ, faces +Y and
-has side length 1 m. Sphere has radius 0.5 m; tessellation is part of the primitive
-mesh/benchmark fixture definition, not a parameter rebuilt each frame. Optional
-studio ground is a 10 m plane at y=-0.5 m, so a default centered cube rests on it.
-Objects share cached primitive meshes; entities and transforms remain independent.
-The default material is scene-owned and shared by its default objects; clone before
-private edits. An inward-visible domain uses the already agreed Back face state.
+has side length 1 m. Sphere has radius 0.5 m; its longitude segments and latitude
+rings are selected when CPU geometry is created. Reuse the resulting geometry or
+mesh rather than rebuilding it every frame. Applications may cache and share
+uploaded primitive meshes while keeping each object's entity and transform
+independent. An inward-visible domain uses the already agreed Back face state.
 
 The application owns the loop; event processing does not secretly step physics or
 compute. Rendering returns a submitted completion point or an explicit skipped-frame
@@ -192,7 +193,7 @@ data directly through the renderer interface.
 Scene API verification: stale/cross-scene handles, duplicate stable IDs, scene moves,
 parent cycles, subtree deletion, cached world updates, negative/nonuniform scale,
 keep-world shear rejection and failure atomicity, invalid floats/quaternions/scale,
-projection near/far/Y convention, and a default lit-cube
+perspective and orthographic camera projection, and an explicitly composed lit-cube
 integration example. CPU tests establish algebra/lifecycle, not visual GPU correctness.
 
 ## GPU clouds and simulation domains
@@ -271,8 +272,9 @@ ECS memory or pretend GPU buffers are portable scene data.
 ### Scene documents and application configuration
 
 Use UTF-8 JSON through the private nlohmann/json adapter. Version-one root fields
-are `schema:"panda.scene"`, `version:1`, `documentId` (32 lowercase hex digits),
-`settings`, `materials`, and `objects`. Each object has an `id`, editable `name`,
+are `schema:"panda.scene"`, `version:1`, `documentId`, `settings`, `materials`, and
+`objects`. The document ID and object IDs use the project-wide ID encoding, to be
+defined when serialization is implemented. Each object has an `id`, editable `name`,
 optional `parentId`, local TRS (`position:[x,y,z]`, `rotation:[x,y,z,w]`, `scale:[x,y,z]`),
 visibility and a component object with known typed camera/light/mesh/cloud entries.
 `settings` contains ambient, active camera ID, requested renderer quality and
@@ -342,8 +344,8 @@ old Entity handles. Document merge/cross-file ObjectId lookup is not first-versi
 
 Application configuration is an independent file and schema owned by the application.
 It stores simulation parameters, solver choice/seed/time step and references to
-`documentId` plus ObjectIds for its cloud and domain. Panda provides ID conversion
-and lookup, not a generic metadata blob or application serializer. The application
+`documentId` plus ObjectIds for its cloud and domain. Panda provides scene lookup,
+not a generic metadata blob or application serializer. The application
 loads Scene first, checks the config's documentId, validates its own parameters,
 then creates/publishes solver buffers. Scene and config are not atomically saved as a
 pair; a mismatch is an explicit application error. A future project-container format

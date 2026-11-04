@@ -20,7 +20,7 @@ The legacy Panda engine is reference material, not a compatibility constraint.
 | Language | Target C++23 for Panda, with a narrow C++20 boundary for CUDA translation units. Validate real compiler/toolkit combinations before declaring support. |
 | Packaging | Allow consumption through CPM without copying engine code or adding application-specific logic to Panda. Optional modules must not become core dependencies. |
 | Rendering | Implement rendering, lighting, shadows, and anti-aliasing within Panda using Vulkan. Vulkan-Hpp and SPIRV-Reflect are permitted. |
-| Defaults | Offer useful default camera, lighting, shadows, and material settings from the first cube, with an explicit empty-scene alternative. |
+| Defaults | Examples make a useful camera, lighting, shadow, and material setup easy to compose. `Scene::create()` starts empty and adds no objects or resources. |
 | Scenes | Support editable scenes defined in C++ or loaded from files, hierarchy, runtime transforms, reusable assets, and optional parameter panels/gizmos. |
 | Lights | Support a few to a few dozen lights without a small fixed shader light array. Handle color-only, textured, and instanced materials consistently. |
 | Instancing | Support efficient instanced geometry and GPU-resident billboard clouds. Particle count must not imply one entity, CPU update, or draw call per particle. |

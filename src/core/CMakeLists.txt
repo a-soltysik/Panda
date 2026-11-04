@@ -9,6 +9,7 @@ panda_add_component(panda_core
         Transform.cpp
         Cube.cpp
         Plane.cpp
+        Sphere.cpp
         Buffer.cpp
         Mesh.cpp
         Texture.cpp
@@ -62,6 +63,7 @@ panda_add_component(panda_core
         panda/Cube.hpp
         panda/Geometry.hpp
         panda/Plane.hpp
+        panda/Sphere.hpp
         panda/Texture.hpp
         panda/UploadBatch.hpp
         panda/WindowSurface.hpp

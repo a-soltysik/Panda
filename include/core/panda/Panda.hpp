@@ -9,6 +9,7 @@
 #include <panda/Geometry.hpp>
 #include <panda/Plane.hpp>
 #include <panda/Projection.hpp>
+#include <panda/Sphere.hpp>
 #include <panda/Transform.hpp>
 #include <string_view>
 

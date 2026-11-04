@@ -19,6 +19,10 @@ panda_add_test(panda_unit_plane unit
     SOURCES Plane.cpp
     LIBRARIES Panda::Panda)
 
+panda_add_test(panda_unit_sphere unit
+    SOURCES Sphere.cpp
+    LIBRARIES Panda::Panda)
+
 panda_add_test(panda_unit_memory_block unit
     VULKAN_INTERNAL
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"

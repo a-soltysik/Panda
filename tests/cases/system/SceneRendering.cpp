@@ -7,6 +7,7 @@
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/RenderView.hpp>
+#include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
 #include <utility>
 
@@ -71,6 +72,92 @@ TEST_F(SceneRenderingSystem, BuildsHeadlessSnapshotAndRetainsDeletedObjectMesh)
     EXPECT_TRUE(empty->meshes.empty());
 }
 
+TEST_F(SceneRenderingSystem, StartsEmptyAndRendersExplicitlyCreatedCameraAndLight)
+{
+    auto scene = panda::scene::Scene::create(activeContext());
+    ASSERT_TRUE(scene);
+    EXPECT_FALSE(scene->createRenderView(16.0F / 9.0F));
+
+    const auto camera = scene->createEntity({.name = "Camera"});
+    ASSERT_TRUE(camera);
+    ASSERT_TRUE(scene->setCamera(*camera, panda::scene::PerspectiveCamera {}));
+    ASSERT_TRUE(scene->setActiveCamera(*camera));
+    const auto unlitView = scene->createRenderView(16.0F / 9.0F);
+    ASSERT_TRUE(unlitView);
+    EXPECT_EQ(unlitView->camera.position, glm::vec3 {});
+    EXPECT_FLOAT_EQ(unlitView->directionalLight.intensity, 0.0F);
+
+    ASSERT_TRUE(scene->setLocalTransform(*camera,
+                                         {
+                                             .position = {1.0F, 2.0F, 3.0F}
+    }));
+    const auto editedView = scene->createRenderView(16.0F / 9.0F);
+    ASSERT_TRUE(editedView);
+    EXPECT_EQ(editedView->camera.position, (glm::vec3 {1.0F, 2.0F, 3.0F}));
+
+    const auto light = scene->createEntity({.name = "Sun"});
+    ASSERT_TRUE(light);
+    ASSERT_TRUE(scene->setDirectionalLight(*light, panda::scene::DirectionalLight {}));
+    const auto litView = scene->createRenderView(16.0F / 9.0F);
+    ASSERT_TRUE(litView);
+    EXPECT_FLOAT_EQ(litView->directionalLight.intensity, 3.0F);
+    ASSERT_TRUE(scene->setDirectionalLight(*light, panda::scene::DirectionalLight {.intensity = 1.5F}));
+    const auto editedLightView = scene->createRenderView(16.0F / 9.0F);
+    ASSERT_TRUE(editedLightView);
+    EXPECT_FLOAT_EQ(editedLightView->directionalLight.intensity, 1.5F);
+}
+
+TEST(ScenePublicApi, ExercisesObjectIdentityAndOrthographicCameraApi)
+{
+    auto created = panda::Context::create({.applicationName = "Panda scene API", .enableValidation = false});
+    if (!created && created.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << created.error().message;
+    }
+    ASSERT_TRUE(created) << created.error().message;
+    auto scene = panda::scene::Scene::create(*created);
+    ASSERT_TRUE(scene);
+    const auto objectId = panda::scene::ObjectId {0xfedcba9876543210ULL};
+    const auto object = scene->createEntity(objectId, {.name = "stable"});
+    ASSERT_TRUE(object);
+    const auto resolvedId = scene->getObjectId(*object);
+    ASSERT_TRUE(resolvedId);
+    EXPECT_EQ(*resolvedId, objectId);
+    const auto foundEntity = scene->findEntity(objectId);
+    if (foundEntity)
+    {
+        EXPECT_EQ(*foundEntity, *object);
+    }
+    else
+    {
+        FAIL() << "The explicit ObjectId should resolve while its entity is alive";
+    }
+    EXPECT_FALSE(scene->findEntity(panda::scene::ObjectId {0}));
+    ASSERT_TRUE(scene->destroyEntity(*object));
+    EXPECT_FALSE(scene->findEntity(objectId));
+
+    const auto camera = scene->createEntity({.name = "Orthographic camera"});
+    ASSERT_TRUE(camera);
+    ASSERT_TRUE(scene->setOrthographicCamera(*camera, panda::scene::OrthographicCamera {}));
+    ASSERT_TRUE(scene->setActiveCamera(*camera));
+    ASSERT_TRUE(scene->createRenderView(1.0F));
+
+    const auto child = scene->createEntity({.name = "Mesh and light"});
+    ASSERT_TRUE(child);
+    auto mesh = created->createMeshFromGeometry(panda::createCubeGeometry());
+    ASSERT_TRUE(mesh);
+    ASSERT_TRUE(scene->setParent(*child, *camera));
+    ASSERT_TRUE(scene->setMesh(*child, panda::scene::MeshInstance {.mesh = *mesh}));
+    ASSERT_TRUE(scene->setDirectionalLight(*child, panda::scene::DirectionalLight {}));
+    ASSERT_TRUE(scene->destroySubtree(*camera));
+
+    const auto survivor = scene->createEntity();
+    ASSERT_TRUE(survivor);
+    auto moved = std::move(*scene);
+    EXPECT_TRUE(moved.isAlive(*survivor));
+    EXPECT_FALSE(scene->createEntity(panda::scene::ObjectId {99}));
+}
+
 TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherContextBeforeSubmission)
 {
     auto other = panda::Context::create();
@@ -103,6 +190,9 @@ TEST_F(SceneRenderingSystem, RejectsMovedFromSceneOperationsAndPreservesMovedIde
     ASSERT_TRUE(scene);
     const auto entity = scene->createEntity();
     ASSERT_TRUE(entity);
+    const auto entityId = scene->getObjectId(*entity);
+    ASSERT_TRUE(entityId);
+    EXPECT_EQ(scene->findEntity(*entityId), entity);
     ASSERT_TRUE(scene->setName(*entity, "root"));
     const auto name = scene->getName(*entity);
     ASSERT_TRUE(name);
@@ -148,6 +238,8 @@ TEST_F(SceneRenderingSystem, RejectsMovedFromSceneOperationsAndPreservesMovedIde
     auto moved = std::move(*scene);
     EXPECT_FALSE(scene->createEntity());
     EXPECT_FALSE(scene->isAlive(*entity));
+    EXPECT_FALSE(scene->getObjectId(*entity));
+    EXPECT_FALSE(scene->findEntity(*entityId));
     EXPECT_FALSE(scene->getLocalTransform(*entity));
     EXPECT_FALSE(scene->getName(*entity));
     EXPECT_FALSE(scene->setName(*entity, "ignored"));
@@ -160,6 +252,7 @@ TEST_F(SceneRenderingSystem, RejectsMovedFromSceneOperationsAndPreservesMovedIde
     EXPECT_FALSE(scene->destroySubtree(*entity));
     EXPECT_FALSE(scene->setMesh(*entity, std::nullopt));
     EXPECT_FALSE(scene->setCamera(*entity, std::nullopt));
+    EXPECT_FALSE(scene->setOrthographicCamera(*entity, std::nullopt));
     EXPECT_FALSE(scene->setDirectionalLight(*entity, std::nullopt));
     EXPECT_FALSE(scene->setVisible(*entity, true));
     EXPECT_FALSE(scene->setActiveCamera(*entity));
