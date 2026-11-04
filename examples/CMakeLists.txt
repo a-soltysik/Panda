@@ -1,4 +1,7 @@
 add_subdirectory(simple_scene)
+if(PANDA_BUILD_SCENE)
+    add_subdirectory(scene_demo)
+endif()
 add_subdirectory(buffer_allocation)
 add_subdirectory(error_handling)
 if(PANDA_BUILD_CUDA)

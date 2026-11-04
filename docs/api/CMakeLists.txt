@@ -8,7 +8,7 @@ set(DOXYGEN_HAVE_DOT NO)
 set(DOXYGEN_QUIET YES)
 set(DOXYGEN_EXTRACT_ALL NO)
 set(DOXYGEN_EXTRACT_PRIVATE NO)
-set(DOXYGEN_EXCLUDE_SYMBOLS "panda::detail" "panda::log::detail")
+set(DOXYGEN_EXCLUDE_SYMBOLS "panda::detail" "panda::scene::detail" "panda::log::detail")
 set(DOXYGEN_WARNINGS YES)
 set(DOXYGEN_WARN_IF_UNDOCUMENTED YES)
 set(DOXYGEN_WARN_IF_DOC_ERROR YES)
@@ -19,6 +19,7 @@ set(DOXYGEN_FILE_PATTERNS "*.hpp")
 set(api_directories
         "${PROJECT_SOURCE_DIR}/include/common"
         "${PROJECT_SOURCE_DIR}/include/core"
+        "${PROJECT_SOURCE_DIR}/include/scene"
         "${PROJECT_SOURCE_DIR}/include/tools"
         "${PROJECT_SOURCE_DIR}/include/cuda")
 

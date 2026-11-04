@@ -1,4 +1,7 @@
 add_subdirectory(core)
+if(PANDA_BUILD_SCENE)
+    add_subdirectory(scene)
+endif()
 add_subdirectory(common)
 add_subdirectory(tools)
 if(PANDA_BUILD_BENCHMARKS)

@@ -9,7 +9,7 @@ Generic external-buffer creation and CUDA import are in progress.
 | Target | Owns | Must not require |
 | --- | --- | --- |
 | `Panda::Panda` | Vulkan context/resources, renderer and built-in assets | Scene management, CUDA, importers, tools, physics |
-| `Panda::Scene` | Optional prototype scene, hierarchy and persistence | GUI, CUDA, physics, application ECS |
+| `Panda::Scene` | Optional prototype scene, identity, transforms and renderer-input preparation | GUI, CUDA, physics, application ECS |
 | `Panda::Import` | Import adapter and conversion into Panda assets | Tools, CUDA, physics |
 | `Panda::Tools` | Optional GUI, inspection and transform gizmos | Importers, CUDA, physics |
 | `Panda::Cuda` | Optional CUDA device matching and external-buffer import | Application solver code and simulation schedule |
