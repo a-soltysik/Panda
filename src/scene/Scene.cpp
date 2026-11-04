@@ -6,6 +6,8 @@
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Transform.hpp>
+#include <panda/scene/Entity.hpp>
+#include <panda/scene/ObjectId.hpp>
 #include <panda/scene/Scene.hpp>
 #include <string>
 #include <utility>
@@ -14,12 +16,6 @@
 
 namespace panda::scene
 {
-auto Entity::operator==(const Entity& other) const noexcept -> bool
-{
-    return _slot == other._slot && _slotReuseCount == other._slotReuseCount && !_scene.owner_before(other._scene) &&
-           !other._scene.owner_before(_scene);
-}
-
 Scene::Scene(Context& context, std::unique_ptr<detail::SceneState> state) noexcept
     : _context {&context},
       _state {std::move(state)}
@@ -61,6 +57,29 @@ auto Scene::createEntity(const EntityDesc& description) -> Result<Entity>
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot use a moved-from Scene")};
     }
     return _state->createEntity(description);
+}
+
+auto Scene::createEntity(ObjectId objectId, const EntityDesc& description) -> Result<Entity>
+{
+    if (!_state)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot use a moved-from Scene")};
+    }
+    return _state->createEntity(objectId, description);
+}
+
+auto Scene::getObjectId(const Entity& entity) const -> Result<ObjectId>
+{
+    if (!_state)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot use a moved-from Scene")};
+    }
+    return _state->getObjectId(entity);
+}
+
+auto Scene::findEntity(ObjectId objectId) const -> std::optional<Entity>
+{
+    return _state ? _state->findEntity(objectId) : std::nullopt;
 }
 
 auto Scene::isAlive(const Entity& entity) const noexcept -> bool
@@ -174,6 +193,15 @@ auto Scene::setCamera(const Entity& entity, std::optional<PerspectiveCamera> cam
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot use a moved-from Scene")};
     }
     return _state->setCamera(entity, camera);
+}
+
+auto Scene::setOrthographicCamera(const Entity& entity, std::optional<OrthographicCamera> camera) -> Result<void>
+{
+    if (!_state)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot use a moved-from Scene")};
+    }
+    return _state->setOrthographicCamera(entity, camera);
 }
 
 auto Scene::setDirectionalLight(const Entity& entity, std::optional<DirectionalLight> light) -> Result<void>

@@ -12,6 +12,7 @@
 #include <optional>
 #include <panda/Error.hpp>
 #include <panda/Transform.hpp>
+#include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
 
 namespace
@@ -48,6 +49,51 @@ TEST(SceneState, RejectsStaleAndCrossSceneHandlesAfterSlotReuse)
     EXPECT_TRUE(firstScene.isAlive(replacement));
     EXPECT_FALSE(secondScene.isAlive(replacement));
     EXPECT_FALSE(firstScene.getLocalTransform(stale));
+}
+
+TEST(SceneState, GeneratesStableObjectIdsAndRejectsReuse)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto explicitId = panda::scene::ObjectId {0x0123456789abcdefULL};
+
+    const auto object = scene.createEntity(explicitId, {.name = "explicit"});
+    ASSERT_TRUE(object);
+    const auto resolvedId = scene.getObjectId(*object);
+    ASSERT_TRUE(resolvedId);
+    EXPECT_EQ(*resolvedId, explicitId);
+    const auto foundObject = scene.findEntity(explicitId);
+    if (foundObject)
+    {
+        EXPECT_EQ(*foundObject, *object);
+    }
+    else
+    {
+        FAIL() << "The explicit ObjectId should resolve while its entity is alive";
+    }
+    EXPECT_FALSE(scene.createEntity(explicitId, {.name = "duplicate"}));
+    ASSERT_TRUE(scene.destroyEntity(*object));
+    EXPECT_FALSE(scene.findEntity(explicitId));
+    EXPECT_FALSE(scene.createEntity(explicitId, {.name = "reused"}));
+
+    const auto generated = createObject(scene);
+    const auto generatedId = scene.getObjectId(generated);
+    ASSERT_TRUE(generatedId);
+    EXPECT_NE(*generatedId, explicitId);
+    ASSERT_TRUE(scene.destroyEntity(generated));
+    const auto replacement = createObject(scene);
+    const auto replacementId = scene.getObjectId(replacement);
+    ASSERT_TRUE(replacementId);
+    EXPECT_NE(*replacementId, *generatedId);
+    EXPECT_FALSE(scene.findEntity(*generatedId));
+}
+
+TEST(ObjectId, RetainsItsValueAndOrdersNumerically)
+{
+    const auto zero = panda::scene::ObjectId {0};
+    const auto larger = panda::scene::ObjectId {0x0123456789abcdefULL};
+    EXPECT_EQ(zero.value(), 0);
+    EXPECT_EQ(larger.value(), 0x0123456789abcdefULL);
+    EXPECT_LT(zero, larger);
 }
 
 TEST(SceneState, EditsNamesAndWorldTransformOnRootAndRejectsEmptyHandles)
@@ -356,6 +402,35 @@ TEST(SceneState, ValidatesCameraLensAspectAndInheritedPose)
     EXPECT_EQ(view->camera.position, (glm::vec3 {3.0F, 2.0F, 1.0F}));
     ASSERT_TRUE(scene.setCamera(camera, std::nullopt));
     EXPECT_FALSE(scene.createRenderView(1.0F));
+}
+
+TEST(SceneState, BuildsOrthographicCameraAndSwitchesLensWithoutLosingSelection)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto camera = createObject(scene);
+    ASSERT_TRUE(scene.setOrthographicCamera(
+        camera,
+        panda::scene::OrthographicCamera {.height = 4.0F, .nearPlane = 0.1F, .farPlane = 100.0F}));
+    ASSERT_TRUE(scene.setActiveCamera(camera));
+
+    const auto orthographic = scene.createRenderView(2.0F);
+    ASSERT_TRUE(orthographic);
+    EXPECT_NEAR(orthographic->camera.viewProjection[0][0], 0.25F, 1.0e-6F);
+    EXPECT_NEAR(orthographic->camera.viewProjection[1][1], -0.5F, 1.0e-6F);
+    const auto nearClip = orthographic->camera.viewProjection * glm::vec4 {0.0F, 0.0F, -0.1F, 1.0F};
+    const auto farClip = orthographic->camera.viewProjection * glm::vec4 {0.0F, 0.0F, -100.0F, 1.0F};
+    EXPECT_NEAR(nearClip.z / nearClip.w, 0.0F, 1.0e-6F);
+    EXPECT_NEAR(farClip.z / farClip.w, 1.0F, 1.0e-6F);
+
+    EXPECT_FALSE(scene.setOrthographicCamera(
+        camera,
+        panda::scene::OrthographicCamera {.height = std::numeric_limits<float>::quiet_NaN()}));
+    ASSERT_TRUE(scene.setCamera(camera, panda::scene::PerspectiveCamera {}));
+    ASSERT_TRUE(scene.setOrthographicCamera(camera, panda::scene::OrthographicCamera {.height = 4.0F}));
+    ASSERT_TRUE(scene.setCamera(camera, std::nullopt));
+    EXPECT_TRUE(scene.createRenderView(2.0F));
+    ASSERT_TRUE(scene.setOrthographicCamera(camera, std::nullopt));
+    EXPECT_FALSE(scene.createRenderView(2.0F));
 }
 
 TEST(SceneState, RejectsDirectionalLightWithNonUniformWorldPose)

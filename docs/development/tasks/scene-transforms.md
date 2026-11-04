@@ -27,46 +27,52 @@ Learning: Explain a rotated child under nonuniform parent scale and a rejected k
 
 ## Current work
 
-The implementation adds optional `Panda::Scene` with C++ API in `panda::scene`, move-stable runtime
-handles, object names, checked local/world TRS edits, parent changes and lazy world
-matrix caching. The cache preserves affine shear for rendering; keep-world edits
-reject a result that cannot be represented by local TRS. Scene objects may retain
-meshes, perspective camera lenses and directional-light parameters. A selected
-camera and visible objects produce a `RenderView` snapshot; camera/light
-poses reject shear, reflections and nonuniform scale. Deleting the active camera
-clears selection. Visibility does not hide children. One visible directional light
-is supported; more report `Unsupported`, and no light produces zero direct intensity.
+The optional `Panda::Scene` API lives in `panda::scene`. It starts empty and provides
+move-stable runtime handles, scene-lifetime 64-bit object IDs, names, checked
+local/world TRS edits, parent changes and lazy world-matrix caching. The cache
+preserves affine shear for rendering; keep-world edits reject a result that cannot
+be represented by local TRS. Objects may retain meshes, perspective or orthographic
+camera lenses, and directional-light parameters. The application creates entities,
+attaches components, selects a camera, and owns geometry and uploads. A selected
+camera and visible objects produce a `RenderView` snapshot; camera/light poses
+reject shear, reflections and nonuniform scale. Deleting the active camera clears
+selection. Visibility does not hide children. One visible directional light is
+supported; more report `Unsupported`, and no light produces zero direct intensity.
 Renderer-specific data and mesh ownership are checked once in `Context::render()`.
-The `scene_demo` example renders an animated hierarchy through this API.
-`simple_scene` remains a separate direct-renderer example without Scene.
-
-Stable document IDs, Studio defaults, orthographic scene lenses and primitive
-helpers remain unfinished. Persistence and asset integration remain in their later task.
+Core provides configurable CPU sphere geometry. The `scene_demo` example renders an
+animated hierarchy through Scene; `simple_scene` remains a direct-renderer example.
+Scene serialization and asset integration remain in their later tasks; no ID
+encoding or serialization interface is implemented yet.
 
 ## Current verification
 
-- CPU cases cover stale/cross-scene handles, slot reuse, cycles, deletion, dirty
-  caches, reflected transforms, world edits under translated/rotated parents,
-  keep-world/shear failure atomicity, invalid values, camera/lens restrictions,
-  light transforms and visibility. Headless public-API
-  cases cover Scene moves, snapshot mesh retention and renderer rejection of a
-  foreign mesh before submission.
-- Windows, MSVC 14.51.36231, CMake 4.4.2, LLVM 22.1.8 and ccache 4.13.6 passed
-  `msvc-quality`, `all_verify_interface_header_sets`, `panda_format_checks`,
-  `clang-cuda-analysis-windows`, `msvc-fast` and the full CTest suite: 511 cases,
-  507 passed and four skipped
-  (one buffered-output case and three noncoherent-memory variants). Configuring
-  `msvc-fast` with `PANDA_BUILD_SCENE=OFF` also built all enabled targets, including
-  `simple_scene`, and ran all 495 registered cases: 491 passed and four skipped.
-  The final fast configuration has Scene enabled again.
-- The synchronized WSL Ubuntu mirror, GCC 16.0.1, CMake 4.2.3, LLVM 22.1.2 and
-  ccache 4.12.3 passed `gcc-quality`, public-header and format targets,
-  `clang-cuda-analysis`, `gcc-fast`, the full CTest suite and `gcc-docs`. Of 511
-  cases, 503 passed and eight skipped
-  (five CUDA/device-capability cases and three noncoherent-memory variants).
-  Both platforms used the prescribed incremental presets with ccache enabled.
-- `check_docs.py` checked 78 Markdown files and the task queue; `docs-checks`
-  validated 42 diagrams in 81 files. The scene flow and example guide describe
-  the current API and separate parent rotation from per-object wave animation.
-- The maintainer visually reviewed and accepted the animated `scene_demo`; no
-  capture was recorded. Sanitizer profiles were not run.
+- CPU cases cover ObjectId uniqueness and duplicate rejection, stale/cross-scene
+  handles, slot reuse, cycles, deletion, dirty caches, reflected transforms, world
+  edits under translated/rotated parents, keep-world/shear failure atomicity,
+  invalid values, perspective and orthographic cameras, light transforms,
+  visibility, and configurable sphere geometry. Headless public-API cases cover
+  Scene moves, snapshots, explicit camera/light creation and foreign-mesh rejection.
+- Windows, MSVC 14.51.36231, CMake 4.4.2 and ccache 4.13.6 passed
+  `cmake --preset msvc-quality`, `cmake --build --preset msvc-quality`,
+  `cmake --build --preset msvc-quality --target all_verify_interface_header_sets panda_format_checks`,
+  `cmake --preset clang-cuda-analysis-windows`,
+  `cmake --build --preset clang-cuda-analysis-windows`, `cmake --preset msvc-fast`,
+  `cmake --build --preset msvc-fast --parallel` and `ctest --preset msvc-fast`.
+  All 522 cases passed or skipped: 518 passed and four skipped (buffered-output and
+  three noncoherent-memory variants). CUDA analysis reported that the installed
+  CUDA version is newer than Clang's latest partially supported version (12.9).
+- The synchronized WSL Ubuntu mirror, GCC 16.0.1, CMake 4.2.3 and ccache 4.12.3
+  passed `cmake --preset gcc-quality`, `cmake --build --preset gcc-quality`,
+  `cmake --build --preset gcc-quality --target all_verify_interface_header_sets panda_format_checks`,
+  `cmake --preset clang-cuda-analysis`, `cmake --build --preset clang-cuda-analysis`,
+  `cmake --preset gcc-fast`, `cmake --build --preset gcc-fast --parallel` and
+  `ctest --preset gcc-fast`: 514 of 522 cases passed and eight skipped (five
+  CUDA/device-capability cases and three noncoherent-memory variants). CUDA
+  analysis reported the same toolkit support warning as Windows.
+- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
+  78 Markdown files and the task queue; `cmake --preset docs-checks` and its build
+  validated 42 diagrams in 81 files; `cmake --preset gcc-docs` and its build
+  generated the public API docs.
+- A screenshot inspected earlier showed the sphere in the center of the eight-cube
+  scene. This final verification rebuilt and tested the example but did not capture
+  a new GPU image. Sanitizers and a RenderDoc capture were not run.

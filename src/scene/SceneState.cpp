@@ -23,6 +23,8 @@
 #include <panda/Projection.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Transform.hpp>
+#include <panda/scene/Entity.hpp>
+#include <panda/scene/ObjectId.hpp>
 #include <panda/scene/Scene.hpp>
 #include <ranges>
 #include <utility>
@@ -216,27 +218,71 @@ auto poseRotation(const glm::mat4& world) -> Result<glm::quat>
     return basis->rotation;
 }
 
-auto makeCamera(const glm::mat4& world, const PerspectiveCamera& lens, float aspectRatio) -> Result<RenderCamera>
+auto makeCameraFromProjection(const glm::mat4& world, const glm::mat4& projection) -> Result<RenderCamera>
 {
     auto rotation = poseRotation(world);
     if (!rotation)
     {
         return std::unexpected {rotation.error()};
     }
+    const auto position = glm::vec3 {world[3]};
+    const auto view = glm::mat4_cast(glm::conjugate(*rotation)) * glm::translate(glm::mat4 {1.0F}, -position);
+    const auto viewProjection = projection * view;
+    if (!isFinite(viewProjection))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Camera matrix is not representable")};
+    }
+    return RenderCamera {.viewProjection = viewProjection, .position = position};
+}
+
+auto makeCamera(const glm::mat4& world, const PerspectiveCamera& lens, float aspectRatio) -> Result<RenderCamera>
+{
     auto projection =
         createPerspectiveProjection(lens.verticalFieldOfViewRadians, aspectRatio, lens.nearPlane, lens.farPlane);
     if (!projection)
     {
         return std::unexpected {projection.error()};
     }
-    const auto position = glm::vec3 {world[3]};
-    const auto view = glm::mat4_cast(glm::conjugate(*rotation)) * glm::translate(glm::mat4 {1.0F}, -position);
-    const auto viewProjection = *projection * view;
-    if (!isFinite(viewProjection))
+    return makeCameraFromProjection(world, *projection);
+}
+
+auto makeCamera(const glm::mat4& world, const OrthographicCamera& lens, float aspectRatio) -> Result<RenderCamera>
+{
+    auto projection = createOrthographicProjection(lens.height, aspectRatio, lens.nearPlane, lens.farPlane);
+    if (!projection)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Camera matrix is not representable")};
+        return std::unexpected {projection.error()};
     }
-    return RenderCamera {.viewProjection = viewProjection, .position = position};
+    return makeCameraFromProjection(world, *projection);
+}
+
+auto validateCamera(const std::optional<PerspectiveCamera>& camera) -> Result<void>
+{
+    if (!camera)
+    {
+        return {};
+    }
+    auto projection =
+        createPerspectiveProjection(camera->verticalFieldOfViewRadians, 1.0F, camera->nearPlane, camera->farPlane);
+    if (!projection)
+    {
+        return std::unexpected {projection.error()};
+    }
+    return {};
+}
+
+auto validateCamera(const std::optional<OrthographicCamera>& camera) -> Result<void>
+{
+    if (!camera)
+    {
+        return {};
+    }
+    auto projection = createOrthographicProjection(camera->height, 1.0F, camera->nearPlane, camera->farPlane);
+    if (!projection)
+    {
+        return std::unexpected {projection.error()};
+    }
+    return {};
 }
 }
 
@@ -247,12 +293,34 @@ auto SceneState::createEntity(const EntityDesc& description) -> Result<Entity>
     {
         return std::unexpected {validated.error()};
     }
+    return insertEntity(generateObjectId(), description, *validated);
+}
+
+auto SceneState::createEntity(ObjectId objectId, const EntityDesc& description) -> Result<Entity>
+{
+    auto validated = validateTransform(description.transform);
+    if (!validated)
+    {
+        return std::unexpected {validated.error()};
+    }
+    return insertEntity(objectId, description, *validated);
+}
+
+auto SceneState::insertEntity(ObjectId objectId,
+                              const EntityDesc& description,
+                              const std::pair<Transform, glm::mat4>& validatedTransform) -> Result<Entity>
+{
+    if (_objectSlots.contains(objectId))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene already used this ObjectId")};
+    }
     auto slotIndex = allocateSlot();
     auto& slot = _slots[slotIndex];
     slot = Slot {.name = description.name,
-                 .local = validated->first,
-                 .localMatrix = validated->second,
-                 .worldMatrix = validated->second,
+                 .objectId = objectId,
+                 .local = validatedTransform.first,
+                 .localMatrix = validatedTransform.second,
+                 .worldMatrix = validatedTransform.second,
                  .parent = std::nullopt,
                  .children = {},
                  .reuseCount = slot.reuseCount,
@@ -260,8 +328,22 @@ auto SceneState::createEntity(const EntityDesc& description) -> Result<Entity>
                  .dirty = false,
                  .mesh = std::nullopt,
                  .camera = std::nullopt,
+                 .orthographicCamera = std::nullopt,
                  .light = std::nullopt};
+    _objectSlots.emplace(objectId, slotIndex);
     return makeEntity(slotIndex);
+}
+
+auto SceneState::generateObjectId() -> ObjectId
+{
+    auto candidate = _nextObjectId;
+    while (_objectSlots.contains(candidate))
+    {
+        ++_nextObjectId._value;
+        candidate = _nextObjectId;
+    }
+    ++_nextObjectId._value;
+    return candidate;
 }
 
 auto SceneState::makeEntity(std::size_t index) const -> Entity
@@ -290,6 +372,35 @@ auto SceneState::isAlive(const Entity& entity) const noexcept -> bool
     const auto identity = entity._scene.lock();
     return identity && identity.get() == _identity.get() && entity._slot < _slots.size() &&
            _slots[entity._slot].alive && _slots[entity._slot].reuseCount == entity._slotReuseCount;
+}
+
+auto SceneState::getObjectId(const Entity& entity) const -> Result<ObjectId>
+{
+    auto slot = resolve(entity);
+    if (!slot)
+    {
+        return std::unexpected {slot.error()};
+    }
+    const auto& objectId = _slots[*slot].objectId;
+    if (!objectId)
+    {
+        return std::unexpected {makeError(ErrorCode::BackendFailure, "Live Scene entity is missing its ObjectId")};
+    }
+    return *objectId;
+}
+
+auto SceneState::findEntity(ObjectId objectId) const -> std::optional<Entity>
+{
+    const auto found = _objectSlots.find(objectId);
+    if (found == _objectSlots.end())
+    {
+        return std::nullopt;
+    }
+    if (!found->second.has_value())
+    {
+        return std::nullopt;
+    }
+    return makeEntity(found->second.value());
 }
 
 auto SceneState::getLocalTransform(const Entity& entity) const -> Result<Transform>
@@ -610,19 +721,17 @@ void SceneState::destroySlot(std::size_t slotIndex)
     {
         std::erase(_slots[*slot.parent].children, slotIndex);
     }
-    slot.name.clear();
-    slot.mesh.reset();
-    slot.camera.reset();
-    slot.light.reset();
+    if (slot.objectId)
+    {
+        _objectSlots[*slot.objectId].reset();
+    }
     if (_activeCamera == slotIndex)
     {
         _activeCamera.reset();
     }
-    slot.parent.reset();
-    slot.children.clear();
-    slot.alive = false;
-    slot.dirty = true;
-    ++slot.reuseCount;
+    const auto reuseCount = slot.reuseCount + 1;
+    slot = Slot {};
+    slot.reuseCount = reuseCount;
     _freeSlots.push_back(slotIndex);
 }
 
@@ -649,17 +758,41 @@ auto SceneState::setCamera(const Entity& entity, std::optional<PerspectiveCamera
     {
         return std::unexpected {index.error()};
     }
-    if (camera)
+    auto validation = validateCamera(camera);
+    if (!validation)
     {
-        auto projection =
-            createPerspectiveProjection(camera->verticalFieldOfViewRadians, 1.0F, camera->nearPlane, camera->farPlane);
-        if (!projection)
-        {
-            return std::unexpected {projection.error()};
-        }
+        return std::unexpected {validation.error()};
     }
     _slots[*index].camera = camera;
-    if (!camera && _activeCamera == *index)
+    if (camera)
+    {
+        _slots[*index].orthographicCamera.reset();
+    }
+    if (!camera && !_slots[*index].orthographicCamera && _activeCamera == *index)
+    {
+        _activeCamera.reset();
+    }
+    return {};
+}
+
+auto SceneState::setOrthographicCamera(const Entity& entity, std::optional<OrthographicCamera> camera) -> Result<void>
+{
+    auto index = resolve(entity);
+    if (!index)
+    {
+        return std::unexpected {index.error()};
+    }
+    auto validation = validateCamera(camera);
+    if (!validation)
+    {
+        return std::unexpected {validation.error()};
+    }
+    _slots[*index].orthographicCamera = camera;
+    if (camera)
+    {
+        _slots[*index].camera.reset();
+    }
+    if (!camera && !_slots[*index].camera && _activeCamera == *index)
     {
         _activeCamera.reset();
     }
@@ -700,7 +833,7 @@ auto SceneState::setActiveCamera(const Entity& entity) -> Result<void>
     {
         return std::unexpected {index.error()};
     }
-    if (!_slots[*index].camera)
+    if (!_slots[*index].camera && !_slots[*index].orthographicCamera)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Active object has no camera")};
     }
@@ -759,8 +892,8 @@ auto SceneState::activeRenderCamera(float aspectRatio) -> Result<RenderCamera>
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene has no active camera")};
     }
-    const auto lens = _slots[*cameraIndex].camera;
-    if (!lens)
+    const auto& slot = _slots[*cameraIndex];
+    if (!slot.camera && !slot.orthographicCamera)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Active object has no camera lens")};
     }
@@ -769,7 +902,11 @@ auto SceneState::activeRenderCamera(float aspectRatio) -> Result<RenderCamera>
     {
         return std::unexpected {updated.error()};
     }
-    return makeCamera(_slots[*cameraIndex].worldMatrix, *lens, aspectRatio);
+    if (slot.camera)
+    {
+        return makeCamera(slot.worldMatrix, *slot.camera, aspectRatio);
+    }
+    return makeCamera(slot.worldMatrix, *slot.orthographicCamera, aspectRatio);
 }
 
 auto SceneState::createRenderView(float aspectRatio) -> Result<RenderView>

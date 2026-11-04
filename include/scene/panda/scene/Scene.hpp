@@ -11,6 +11,8 @@
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Transform.hpp>
+#include <panda/scene/Entity.hpp>
+#include <panda/scene/ObjectId.hpp>
 #include <string>
 
 namespace panda
@@ -20,8 +22,6 @@ class Context;
 
 namespace panda::scene
 {
-class Entity;
-
 namespace detail
 {
 class SceneState;
@@ -66,6 +66,17 @@ struct PerspectiveCamera
     float farPlane {1000.0F};
 };
 
+/// @brief Orthographic lens; pose comes from the object's world transform, looking along local -Z.
+struct OrthographicCamera
+{
+    /// Positive vertical span in meters.
+    float height {10.0F};
+    /// Positive near distance in meters.
+    float nearPlane {0.05F};
+    /// Far distance in meters, greater than nearPlane.
+    float farPlane {1000.0F};
+};
+
 /// @brief Directional light shining along the object's local -Z axis.
 struct DirectionalLight
 {
@@ -73,25 +84,6 @@ struct DirectionalLight
     glm::vec3 color {1.0F};
     /// Nonnegative finite intensity multiplier; uses the renderer's directional shadow pass.
     float intensity {3.0F};
-};
-
-/// @brief Non-owning, scene-scoped identity for one object.
-class Entity final
-{
-public:
-    /// @brief Creates an empty handle that does not resolve in any scene.
-    Entity() = default;
-
-    /// @brief Compares scene identity, slot and its reuse count.
-    [[nodiscard]] auto operator==(const Entity& other) const noexcept -> bool;
-
-private:
-    friend class detail::SceneState;
-    friend class Scene;
-
-    std::weak_ptr<const detail::SceneIdentity> _scene;
-    std::size_t _slot {0};
-    std::uint64_t _slotReuseCount {0};
 };
 
 /// @brief Move-only owner of scene objects, transform hierarchy and retained mesh associations.
@@ -104,7 +96,7 @@ private:
 class Scene final
 {
 public:
-    /// @brief Creates an empty scene associated with a live Context.
+    /// @brief Creates an empty Scene associated with a live Context.
     /// @param context Context that must outlive the returned Scene and remain at the same address.
     /// @return An empty scene, or InvalidArgument if the Context is moved-from.
     [[nodiscard]] static auto create(Context& context) -> Result<Scene>;
@@ -125,6 +117,17 @@ public:
     /// @param description Name and initial transform.
     /// @return A scene-scoped handle, or InvalidArgument when the transform is invalid.
     [[nodiscard]] auto createEntity(const EntityDesc& description = {}) -> Result<Entity>;
+
+    /// @brief Creates an object with a supplied ID, for future scene reconstruction.
+    /// @return A scene-scoped handle, or InvalidArgument for an invalid transform or duplicate ID.
+    [[nodiscard]] auto createEntity(ObjectId objectId, const EntityDesc& description = {}) -> Result<Entity>;
+
+    /// @brief Returns the stable object identifier for a live object.
+    [[nodiscard]] auto getObjectId(const Entity& entity) const -> Result<ObjectId>;
+
+    /// @brief Finds a live object by stable object identifier.
+    /// @return The current handle, or empty when the identifier is unknown or its object was deleted.
+    [[nodiscard]] auto findEntity(ObjectId objectId) const -> std::optional<Entity>;
 
     /// @brief Reports whether this Scene currently owns the supplied live handle.
     [[nodiscard]] auto isAlive(const Entity& entity) const noexcept -> bool;
@@ -168,6 +171,10 @@ public:
 
     /// @brief Attaches or removes a validated perspective lens; removing it clears active selection.
     [[nodiscard]] auto setCamera(const Entity& entity, std::optional<PerspectiveCamera> camera) -> Result<void>;
+
+    /// @brief Attaches or removes a validated orthographic lens; setting either lens replaces the other kind.
+    [[nodiscard]] auto setOrthographicCamera(const Entity& entity, std::optional<OrthographicCamera> camera)
+        -> Result<void>;
 
     /// @brief Attaches or removes validated light parameters. Direction follows the world rotation.
     [[nodiscard]] auto setDirectionalLight(const Entity& entity, std::optional<DirectionalLight> light) -> Result<void>;

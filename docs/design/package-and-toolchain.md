@@ -21,13 +21,14 @@ static linking of every OS/driver/dependency library.
 | `Panda::Physics` | `panda/Physics.hpp` | `PANDA_BUILD_PHYSICS` |
 
 Core, Tools, the CUDA availability facade and the first CPU identity/transform
-slice of Scene are implemented; Import and Physics remain planned. Scene currently
-provides runtime handles, names, TRS hierarchy, cached world matrices and render-view
-snapshots from visible meshes, the active perspective camera and one directional
-light. Stable document IDs, persistence, importing and physics remain planned.
-The C++ scene API lives in `panda::scene`, including `Scene`, `Entity`,
-`MeshInstance`, `PerspectiveCamera` and `DirectionalLight`. Shared renderer resources
-and math remain in `panda`; `Panda::Scene` is the CMake target name.
+slice of Scene are implemented; Import and Physics remain planned. Scene starts
+empty and provides runtime handles, scene-lifetime object IDs, names, TRS hierarchy,
+cached world matrices, perspective and orthographic cameras, directional lights,
+and render-view snapshots. Persistence, importing and physics remain planned.
+The C++ scene API lives in `panda::scene`, including `Scene`, `Entity`, `ObjectId`,
+`MeshInstance`, `PerspectiveCamera`, `OrthographicCamera` and `DirectionalLight`.
+Shared renderer resources and math remain in `panda`; `Panda::Scene` is the CMake
+target name.
 Introduce each optional CMake switch with its implementation; do not expose switches
 for unavailable modules. The
 umbrella includes only core headers. Add-ons publicly depend on the core;

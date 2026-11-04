@@ -3,30 +3,32 @@
 ## Goal and boundary
 
 An application asks optional `Panda::Scene` to prepare a `RenderView` containing its
-visible meshes, active perspective camera and directional light. **Panda::Scene**
+visible meshes, active camera and directional light. **Panda::Scene** starts empty,
 owns runtime identities, transforms and component values, and retains associated
-mesh handles. **The application** creates/uploads GPU assets, selects the camera,
-updates the scene and owns the frame loop. This flow ends with a complete snapshot
+mesh handles. **The application** creates entities, attaches camera/light
+components, creates/uploads GPU assets, selects the camera, updates the scene and
+owns the frame loop. This flow ends with a complete snapshot
 or an `Error`; rendering follows
 [UC Render and present an application view](render-view.md).
 
 The [scene demo](../../examples/scene_demo/README.md) shows this path.
 The [simple scene example](../../examples/simple_scene/README.md) shows direct
-renderer use without Scene. Stable document IDs, persistence and Studio defaults
-remain in the [scene task](../development/tasks/scene-transforms.md).
+renderer use without Scene. Persistence remains in the
+[scene persistence task](../development/tasks/scene-persistence.md).
 
 ## Preconditions
 
 1. A live Context remains at the same address and outlives Scene and retained meshes.
-2. The application has created scene objects, attached meshes/lenses/light parameters,
-   and selected an active camera. Mesh upload completes before rendering.
+2. The application has created a camera entity, attached a perspective or
+   orthographic lens, selected it, and optionally created light entities. It has
+   attached uploaded meshes to renderable objects. Mesh upload completes before rendering.
 
 ## Main flow
 
 1. **Request a snapshot.** The application calls `Scene::createRenderView()` with the
    current framebuffer aspect ratio. Scene checks that its Context remains valid.
 2. **Prepare the camera.** `SceneState` requires an active camera, updates its dirty
-   world transform and builds a perspective view-projection matrix. Its world pose
+   world transform and builds the lens's view-projection matrix. Its world pose
    must have positive uniform scale and no shear; the lens ignores uniform scale.
 3. **Collect visible objects.** `SceneState` updates required world caches, copies
    visible mesh transforms/tints and retains their mesh handles. The light's world

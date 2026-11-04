@@ -15,8 +15,10 @@
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/Plane.hpp>
+#include <panda/Sphere.hpp>
 #include <panda/Transform.hpp>
 #include <panda/UploadBatch.hpp>
+#include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <span>
@@ -28,7 +30,7 @@ namespace
 struct AnimatedObjects
 {
     panda::scene::Entity group;
-    std::vector<panda::scene::Entity> cubes;
+    std::vector<panda::scene::Entity> objects;
 };
 
 void addCameraAndLight(panda::scene::Scene& scene)
@@ -69,6 +71,21 @@ void addGround(panda::scene::Scene& scene, const panda::Mesh& ground)
                   "Attach ground");
 }
 
+auto addSphere(panda::scene::Scene& scene, const panda::Mesh& sphere, const panda::scene::Entity& group)
+    -> panda::scene::Entity
+{
+    const auto object = panda::expect(scene.createEntity({.name = "Sphere", .transform = {.scale = glm::vec3 {1.3F}}}),
+                                      "Create sphere object");
+    panda::expect(scene.setMesh(object,
+                                panda::scene::MeshInstance {
+                                    .mesh = sphere,
+                                    .tint = {0.95F, 0.38F, 0.12F, 1.0F}
+    }),
+                  "Attach sphere mesh");
+    panda::expect(scene.setParent(object, group), "Parent sphere to group");
+    return object;
+}
+
 auto addCube(panda::scene::Scene& scene, const panda::Mesh& cube, const panda::scene::Entity& group, glm::vec2 grid)
     -> panda::scene::Entity
 {
@@ -86,17 +103,29 @@ auto addCube(panda::scene::Scene& scene, const panda::Mesh& cube, const panda::s
     return object;
 }
 
-auto addObjects(panda::scene::Scene& scene, const panda::Mesh& cube, const panda::Mesh& ground) -> AnimatedObjects
+auto addObjects(panda::scene::Scene& scene,
+                const panda::Mesh& cube,
+                const panda::Mesh& ground,
+                const panda::Mesh& sphere) -> AnimatedObjects
 {
     addGround(scene, ground);
+    static constexpr auto gridRadius = 1;
+    static constexpr auto gridSide = (gridRadius * 2) + 1;
+    static constexpr auto centerIndex = (gridSide * gridSide) / 2;
     auto objects =
         AnimatedObjects {.group = panda::expect(scene.createEntity({.name = "Animated group"}), "Create group"),
-                         .cubes = {}};
-    for (auto column = -1; column <= 1; ++column)
+                         .objects = {}};
+    for (auto index = 0; index < gridSide * gridSide; ++index)
     {
-        for (auto row = -1; row <= 1; ++row)
+        const auto column = (index / gridSide) - gridRadius;
+        const auto row = (index % gridSide) - gridRadius;
+        if (index == centerIndex)
         {
-            objects.cubes.push_back(
+            objects.objects.push_back(addSphere(scene, sphere, objects.group));
+        }
+        else
+        {
+            objects.objects.push_back(
                 addCube(scene, cube, objects.group, glm::vec2 {static_cast<float>(column), static_cast<float>(row)}));
         }
     }
@@ -141,7 +170,7 @@ void drawLoop(const panda::tools::Window& window,
         }
         const auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
         animateGroup(scene, objects.group, elapsed);
-        animateWave(scene, objects.cubes, elapsed);
+        animateWave(scene, objects.objects, elapsed);
         const auto aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
         const auto view = panda::expect(scene.createRenderView(aspect), "Prepare scene");
         const auto frame = panda::expect(context.render(view), "Render scene");
@@ -155,17 +184,22 @@ void run(const panda::tools::Window& window, panda::Context& context)
 {
     const auto cubeGeometry = panda::createCubeGeometry();
     const auto groundGeometry = panda::createPlaneGeometry();
+    const auto sphereGeometry =
+        panda::expect(panda::createSphereGeometry({.longitudeSegments = 48, .latitudeRings = 24}),
+                      "Create sphere geometry");
     const auto cube = panda::expect(context.createMeshFromGeometry(cubeGeometry), "Create cube mesh");
     const auto ground = panda::expect(context.createMeshFromGeometry(groundGeometry), "Create ground mesh");
+    const auto sphere = panda::expect(context.createMeshFromGeometry(sphereGeometry), "Create sphere mesh");
     auto batch = panda::expect(context.createUploadBatch(), "Create upload batch");
     panda::expect(batch.write(cube, cubeGeometry), "Stage cube");
     panda::expect(batch.write(ground, groundGeometry), "Stage ground");
+    panda::expect(batch.write(sphere, sphereGeometry), "Stage sphere");
     const auto completion = panda::expect(batch.submit(), "Submit geometry upload");
     const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for geometry upload");
     panda::expect(status == panda::WaitStatus::Completed, "Geometry upload did not finish in time");
     auto scene = panda::expect(panda::scene::Scene::create(context), "Create scene");
     addCameraAndLight(scene);
-    const auto objects = addObjects(scene, cube, ground);
+    const auto objects = addObjects(scene, cube, ground, sphere);
     drawLoop(window, context, scene, objects);
 }
 }
