@@ -107,9 +107,15 @@ TEST_F(SceneRenderingSystem, StartsEmptyAndRendersExplicitlyCreatedCameraAndLigh
     EXPECT_FLOAT_EQ(editedLightView->directionalLight.intensity, 1.5F);
 }
 
-TEST_F(SceneRenderingSystem, ResolvesObjectIdsThroughPublicSceneApi)
+TEST(ScenePublicApi, ExercisesObjectIdentityAndOrthographicCameraApi)
 {
-    auto scene = panda::scene::Scene::create(activeContext());
+    auto created = panda::Context::create({.applicationName = "Panda scene API", .enableValidation = false});
+    if (!created && created.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << created.error().message;
+    }
+    ASSERT_TRUE(created) << created.error().message;
+    auto scene = panda::scene::Scene::create(*created);
     ASSERT_TRUE(scene);
     const auto objectId = panda::scene::ObjectId {0xfedcba9876543210ULL};
     const auto object = scene->createEntity(objectId, {.name = "stable"});
@@ -126,8 +132,30 @@ TEST_F(SceneRenderingSystem, ResolvesObjectIdsThroughPublicSceneApi)
     {
         FAIL() << "The explicit ObjectId should resolve while its entity is alive";
     }
+    EXPECT_FALSE(scene->findEntity(panda::scene::ObjectId {0}));
     ASSERT_TRUE(scene->destroyEntity(*object));
     EXPECT_FALSE(scene->findEntity(objectId));
+
+    const auto camera = scene->createEntity({.name = "Orthographic camera"});
+    ASSERT_TRUE(camera);
+    ASSERT_TRUE(scene->setOrthographicCamera(*camera, panda::scene::OrthographicCamera {}));
+    ASSERT_TRUE(scene->setActiveCamera(*camera));
+    ASSERT_TRUE(scene->createRenderView(1.0F));
+
+    const auto child = scene->createEntity({.name = "Mesh and light"});
+    ASSERT_TRUE(child);
+    auto mesh = created->createMeshFromGeometry(panda::createCubeGeometry());
+    ASSERT_TRUE(mesh);
+    ASSERT_TRUE(scene->setParent(*child, *camera));
+    ASSERT_TRUE(scene->setMesh(*child, panda::scene::MeshInstance {.mesh = *mesh}));
+    ASSERT_TRUE(scene->setDirectionalLight(*child, panda::scene::DirectionalLight {}));
+    ASSERT_TRUE(scene->destroySubtree(*camera));
+
+    const auto survivor = scene->createEntity();
+    ASSERT_TRUE(survivor);
+    auto moved = std::move(*scene);
+    EXPECT_TRUE(moved.isAlive(*survivor));
+    EXPECT_FALSE(scene->createEntity(panda::scene::ObjectId {99}));
 }
 
 TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherContextBeforeSubmission)

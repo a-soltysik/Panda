@@ -55,6 +55,11 @@ TEST(SceneState, GeneratesStableObjectIdsAndRejectsReuse)
 {
     auto scene = panda::scene::detail::SceneState {};
     const auto explicitId = panda::scene::ObjectId {0x0123456789abcdefULL};
+    EXPECT_FALSE(scene.getObjectId(panda::scene::Entity {}));
+    EXPECT_FALSE(scene.findEntity(panda::scene::ObjectId {0}));
+    EXPECT_FALSE(scene.createEntity(
+        explicitId,
+        {.name = {}, .transform = {.position = {std::numeric_limits<float>::quiet_NaN(), 0.0F, 0.0F}}}));
 
     const auto object = scene.createEntity(explicitId, {.name = "explicit"});
     ASSERT_TRUE(object);
@@ -85,6 +90,18 @@ TEST(SceneState, GeneratesStableObjectIdsAndRejectsReuse)
     ASSERT_TRUE(replacementId);
     EXPECT_NE(*replacementId, *generatedId);
     EXPECT_FALSE(scene.findEntity(*generatedId));
+}
+
+TEST(SceneState, AdvancesGeneratedObjectIdPastExplicitCollision)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    ASSERT_TRUE(scene.createEntity(panda::scene::ObjectId {1}, {.name = "explicit"}));
+
+    const auto generated = createObject(scene);
+    const auto generatedId = scene.getObjectId(generated);
+
+    ASSERT_TRUE(generatedId);
+    EXPECT_EQ(generatedId->value(), 2);
 }
 
 TEST(ObjectId, RetainsItsValueAndOrdersNumerically)
@@ -408,6 +425,7 @@ TEST(SceneState, BuildsOrthographicCameraAndSwitchesLensWithoutLosingSelection)
 {
     auto scene = panda::scene::detail::SceneState {};
     const auto camera = createObject(scene);
+    const auto inactiveCamera = createObject(scene);
     ASSERT_TRUE(scene.setOrthographicCamera(
         camera,
         panda::scene::OrthographicCamera {.height = 4.0F, .nearPlane = 0.1F, .farPlane = 100.0F}));
@@ -422,6 +440,10 @@ TEST(SceneState, BuildsOrthographicCameraAndSwitchesLensWithoutLosingSelection)
     EXPECT_NEAR(nearClip.z / nearClip.w, 0.0F, 1.0e-6F);
     EXPECT_NEAR(farClip.z / farClip.w, 1.0F, 1.0e-6F);
 
+    ASSERT_TRUE(scene.setCamera(inactiveCamera, std::nullopt));
+    ASSERT_TRUE(scene.setOrthographicCamera(inactiveCamera, std::nullopt));
+    EXPECT_TRUE(scene.createRenderView(2.0F));
+
     EXPECT_FALSE(scene.setOrthographicCamera(
         camera,
         panda::scene::OrthographicCamera {.height = std::numeric_limits<float>::quiet_NaN()}));
@@ -431,6 +453,32 @@ TEST(SceneState, BuildsOrthographicCameraAndSwitchesLensWithoutLosingSelection)
     EXPECT_TRUE(scene.createRenderView(2.0F));
     ASSERT_TRUE(scene.setOrthographicCamera(camera, std::nullopt));
     EXPECT_FALSE(scene.createRenderView(2.0F));
+
+    ASSERT_TRUE(scene.setCamera(camera, panda::scene::PerspectiveCamera {}));
+    ASSERT_TRUE(scene.setActiveCamera(camera));
+    ASSERT_TRUE(scene.setCamera(camera, std::nullopt));
+    EXPECT_FALSE(scene.createRenderView(2.0F));
+}
+
+TEST(SceneState, RejectsUnrepresentableCameraProjectionAndViewMatrices)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto camera = selectCamera(scene);
+    const auto tinyAspect = std::numeric_limits<float>::denorm_min();
+    EXPECT_FALSE(scene.createRenderView(tinyAspect));
+
+    ASSERT_TRUE(scene.setOrthographicCamera(camera, panda::scene::OrthographicCamera {}));
+    EXPECT_FALSE(scene.createRenderView(tinyAspect));
+
+    ASSERT_TRUE(scene.setCamera(camera, panda::scene::PerspectiveCamera {}));
+    const auto largestPosition = std::numeric_limits<float>::max();
+    ASSERT_TRUE(scene.setLocalTransform(camera,
+                                        {
+                                            .position = {largestPosition, 0.0F, 0.0F}
+    }));
+    const auto view = scene.createRenderView(1.0F);
+    ASSERT_FALSE(view);
+    EXPECT_EQ(view.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST(SceneState, RejectsDirectionalLightWithNonUniformWorldPose)
@@ -455,10 +503,36 @@ TEST(SceneState, RejectsForeignComponentHandlesAndEmptyMeshes)
     const auto foreign = createObject(other);
     const auto local = createObject(scene);
     EXPECT_FALSE(scene.setCamera(foreign, panda::scene::PerspectiveCamera {}));
+    EXPECT_FALSE(scene.setOrthographicCamera(foreign, panda::scene::OrthographicCamera {}));
     EXPECT_FALSE(scene.setDirectionalLight(foreign, panda::scene::DirectionalLight {}));
     EXPECT_FALSE(scene.setVisible(foreign, false));
     EXPECT_FALSE(scene.setMesh(local, panda::scene::MeshInstance {}));
     EXPECT_FALSE(scene.setActiveCamera(local));
+}
+
+TEST(Entity, ComparesSceneSlotReuseAndExpiredIdentity)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    auto otherScene = panda::scene::detail::SceneState {};
+    const auto first = createObject(scene);
+    const auto otherSlot = createObject(scene);
+    const auto foreign = createObject(otherScene);
+
+    EXPECT_EQ(first, first);
+    EXPECT_NE(first, otherSlot);
+    EXPECT_NE(first, foreign);
+    EXPECT_NE(foreign, first);
+
+    ASSERT_TRUE(scene.destroyEntity(first));
+    const auto replacement = createObject(scene);
+    EXPECT_NE(first, replacement);
+
+    const auto expired = [] {
+        auto temporary = panda::scene::detail::SceneState {};
+        return createObject(temporary);
+    }();
+    EXPECT_NE(expired, panda::scene::Entity {});
+    EXPECT_NE(panda::scene::Entity {}, expired);
 }
 
 TEST(SceneState, IgnoresSmallPositiveUniformWorldScaleForCameraLens)

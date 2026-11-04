@@ -51,14 +51,17 @@ encoding or serialization interface is implemented yet.
   edits under translated/rotated parents, keep-world/shear failure atomicity,
   invalid values, perspective and orthographic cameras, light transforms,
   visibility, and configurable sphere geometry. Headless public-API cases cover
-  Scene moves, snapshots, explicit camera/light creation and foreign-mesh rejection.
+  Scene moves and destruction, snapshots, object-ID lookup, orthographic cameras,
+  component forwarding, and foreign-mesh rejection. Coverage leaves one private
+  missing-object-ID invariant error path unexecuted; public operations cannot create
+  that invalid slot state.
 - Windows, MSVC 14.51.36231, CMake 4.4.2 and ccache 4.13.6 passed
   `cmake --preset msvc-quality`, `cmake --build --preset msvc-quality`,
   `cmake --build --preset msvc-quality --target all_verify_interface_header_sets panda_format_checks`,
   `cmake --preset clang-cuda-analysis-windows`,
   `cmake --build --preset clang-cuda-analysis-windows`, `cmake --preset msvc-fast`,
   `cmake --build --preset msvc-fast --parallel` and `ctest --preset msvc-fast`.
-  All 522 cases passed or skipped: 518 passed and four skipped (buffered-output and
+  All 525 cases passed or skipped: 521 passed and four skipped (buffered-output and
   three noncoherent-memory variants). CUDA analysis reported that the installed
   CUDA version is newer than Clang's latest partially supported version (12.9).
 - The synchronized WSL Ubuntu mirror, GCC 16.0.1, CMake 4.2.3 and ccache 4.12.3
@@ -66,13 +69,15 @@ encoding or serialization interface is implemented yet.
   `cmake --build --preset gcc-quality --target all_verify_interface_header_sets panda_format_checks`,
   `cmake --preset clang-cuda-analysis`, `cmake --build --preset clang-cuda-analysis`,
   `cmake --preset gcc-fast`, `cmake --build --preset gcc-fast --parallel` and
-  `ctest --preset gcc-fast`: 514 of 522 cases passed and eight skipped (five
+  `ctest --preset gcc-fast`: 517 of 525 cases passed and eight skipped (five
   CUDA/device-capability cases and three noncoherent-memory variants). CUDA
   analysis reported the same toolkit support warning as Windows.
 - `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
   78 Markdown files and the task queue; `cmake --preset docs-checks` and its build
   validated 42 diagrams in 81 files; `cmake --preset gcc-docs` and its build
-  generated the public API docs.
+  generated the public API docs. The latest GCC coverage report measured 89.5%
+  overall line coverage; all changed production lines in `Scene.cpp`, `Entity.cpp`
+  and `Sphere.cpp` were exercised.
 - A screenshot inspected earlier showed the sphere in the center of the eight-cube
   scene. This final verification rebuilt and tested the example but did not capture
   a new GPU image. Sanitizers and a RenderDoc capture were not run.

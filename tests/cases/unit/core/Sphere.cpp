@@ -43,6 +43,7 @@ TEST(SphereGeometry, UsesRequestedResolutionAndRejectsInvalidOrUnrepresentableCo
     EXPECT_FALSE(panda::createSphereGeometry({.longitudeSegments = 2, .latitudeRings = 4}));
     EXPECT_FALSE(panda::createSphereGeometry({.longitudeSegments = 8, .latitudeRings = 1}));
     EXPECT_FALSE(panda::createSphereGeometry({.longitudeSegments = 100000, .latitudeRings = 100000}));
+    EXPECT_FALSE(panda::createSphereGeometry({.longitudeSegments = 49000000, .latitudeRings = 86}));
     const auto largeSphere = panda::createSphereGeometry({.longitudeSegments = 256, .latitudeRings = 256});
     ASSERT_TRUE(largeSphere);
     EXPECT_TRUE(std::holds_alternative<std::vector<std::uint32_t>>(largeSphere->indices));
