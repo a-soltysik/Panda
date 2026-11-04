@@ -27,7 +27,7 @@ features, compute integration and application modules remain planned. See
 | What physics is included? | [Prototype physics](design/contracts/physics.md) |
 | How do we measure and learn? | [Benchmarks](development/benchmarking.md), [learning](development/learning.md) |
 | How do I build and run the benchmark? | [Benchmark README](../benchmarks/README.md) |
-| Where are useful examples? | [Simple scene](../examples/simple_scene/README.md), [buffer allocation](../examples/buffer_allocation/README.md), [error handling](../examples/error_handling/README.md), [CUDA connection](../examples/cuda_connection/README.md), [reference code](../legacy/README.md) |
+| Where are useful examples? | [Direct renderer](../examples/simple_scene/README.md), [Scene hierarchy](../examples/scene_demo/README.md), [buffer allocation](../examples/buffer_allocation/README.md), [error handling](../examples/error_handling/README.md), [CUDA connection](../examples/cuda_connection/README.md), [reference code](../legacy/README.md) |
 
 Read only the sections relevant to a change. Specifications describe intended
 behavior and invariants; task cards record delivery criteria and current evidence.

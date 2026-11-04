@@ -22,7 +22,8 @@
         "PANDA_ENABLE_CPPCHECK": "ON",
         "PANDA_ENABLE_CLANG_FORMAT": "ON",
         "PANDA_ENABLE_UNITY": "OFF",
-        "PANDA_BUILD_TESTS": "ON"
+        "PANDA_BUILD_TESTS": "ON",
+        "PANDA_BUILD_SCENE": "ON"
       }
     },
     {
@@ -83,6 +84,7 @@
         "PANDA_BUILD_TESTS": "OFF",
         "PANDA_BUILD_TOOLS": "ON",
         "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_SCENE": "ON",
         "PANDA_BUILD_CUDA": "OFF",
         "PANDA_ENABLE_CLANG_TIDY": "OFF",
         "PANDA_ENABLE_CPPCHECK": "OFF",
@@ -152,6 +154,7 @@
         "PANDA_BUILD_TESTS": "OFF",
         "PANDA_BUILD_TOOLS": "ON",
         "PANDA_BUILD_EXAMPLES": "ON",
+        "PANDA_BUILD_SCENE": "ON",
         "PANDA_BUILD_CUDA": "OFF",
         "PANDA_ENABLE_CLANG_TIDY": "OFF",
         "PANDA_ENABLE_CPPCHECK": "OFF",

@@ -11,6 +11,7 @@ forwarding and helper calculations.
 | [UC Select a compatible Vulkan device](select-vulkan-device.md) | Required capabilities, work and present queues, and window-surface support |
 | [UC Create and release a native window](create-window.md) | Optional Panda::Tools/GLFW wrapper; applications may provide their own `WindowSurface` |
 | [UC Run a window event loop](run-window-event-loop.md) | Process input and close requests; poll while active and wait while presentation is suspended |
+| [UC Prepare a render view from scene objects](render-scene-transforms.md) | Collect visible meshes, active camera and light into a renderer snapshot |
 | [UC Create a buffer](create-buffer.md) | Worked example: positive sequence, ownership and binding-failure cleanup for an ordinary buffer |
 | [UC Create and import an external buffer](create-external-buffer.md) | Dedicated Vulkan allocation and optional CUDA import; ends before GPU work |
 | [UC Alternate Vulkan and CUDA work on a shared buffer](alternate-shared-buffer-work.md) | Repeat Vulkan upload, CUDA work and Vulkan reacquisition on one buffer |

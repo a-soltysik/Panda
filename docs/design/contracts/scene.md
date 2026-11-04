@@ -4,7 +4,11 @@ Specification for optional scenes, transforms, persistence, import and tools.
 Implementation follows [the plan](../../development/PLAN.md).
 Applications may supply render data directly without a scene, tools or ECS. The
 optional `Panda::Scene` module supports rapid prototyping and runs without the GUI;
-its API remains to be designed against the renderer's direct interface.
+it builds on the renderer's direct interface. The current implementation provides
+runtime object identity, names, transform hierarchy, mesh associations, perspective
+cameras and directional-light objects. `Scene::createRenderView()` prepares a
+snapshot for the direct renderer. Stable document IDs, Studio defaults
+and primitive helpers remain planned work.
 
 ## Useful scene defaults
 
@@ -53,7 +57,8 @@ invent an inverse.
 ## Public scene boundary
 
 Use a move-only `Scene` with stable internal storage, owned by the application and
-bound to one `Context`. The context outlives it. Ordinary headers expose Panda
+bound to one `Context`. The C++ scene types live in `panda::scene`; the context and
+shared renderer resources remain in `panda`. The context outlives the scene. Ordinary headers expose Panda
 object handles, descriptions and value snapshots, not an application registry. Scene
 storage types stay private; public `Transform` is a value, not a mutable registry
 component reference. Mutators validate and mark derived data dirty themselves.
@@ -63,7 +68,7 @@ The scene provides these behaviors; choose public names and signatures during im
 - Create with Studio defaults unless Empty is selected; created resources use the
   scene's context. Create objects with identity, name, identity local transform and
   no parent, and provide convenient cube, plane and sphere mesh creation.
-- Check scene identity and generation when resolving handles. Support explicit
+- Check scene identity and the slot reuse count when resolving handles. Support explicit
   subtree deletion or deletion of one object; reject the latter when it has children.
 - Return local transforms as value snapshots. Validate edits before committing,
   leaving the previous state unchanged on failure. World queries update required
@@ -76,15 +81,10 @@ The scene provides these behaviors; choose public names and signatures during im
   [frame protocol](resources.md#frame-and-window-state).
 
 `Entity` is a small non-owning value with scene-instance identity and an opaque
-generation-aware runtime identifier. It has no scene pointer to dereference after
+runtime identifier that includes the slot reuse count. It has no scene pointer to dereference after
 scene destruction; all resolving operations take a live Scene. Moving a Scene
 preserves identity; replacing/loading a different scene does not. Reject stale and
 cross-scene handles. Do not expose the raw ID as a persistent identifier.
-
-Scene-instance counters and generation
-exhaustion must not wrap into an old valid handle; reject exhaustion rather than
-silently aliasing a stale reference. Implementation tests must exercise the guard
-through a reduced test counter range, not billions of real operations.
 
 `ObjectId` is an opaque 128-bit identifier, rendered as 32 hexadecimal digits in
 scene files. Generate/check uniqueness within a document; it is not a secret

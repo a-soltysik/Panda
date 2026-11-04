@@ -14,15 +14,22 @@ static linking of every OS/driver/dependency library.
 | Target | Public entry point | Build switch |
 | --- | --- | --- |
 | `Panda::Panda` | `panda/Panda.hpp` and focused renderer/resource headers | Always built |
-| `Panda::Scene` | Planned scene headers; exact entry point to be designed | `PANDA_BUILD_SCENE` (planned) |
+| `Panda::Scene` | `panda/scene/Scene.hpp` | `PANDA_BUILD_SCENE` |
 | `Panda::Import` | `panda/Import.hpp` | `PANDA_BUILD_IMPORT` |
 | `Panda::Tools` | `panda/Tools.hpp` | `PANDA_BUILD_TOOLS` |
 | `Panda::Cuda` | `panda/cuda/Cuda.hpp` | `PANDA_BUILD_CUDA` |
 | `Panda::Physics` | `panda/Physics.hpp` | `PANDA_BUILD_PHYSICS` |
 
-Core, Tools and the CUDA availability facade are implemented; the other entries
-describe the intended package. Introduce each optional CMake switch with its
-implementation; do not expose switches for unavailable modules. The
+Core, Tools, the CUDA availability facade and the first CPU identity/transform
+slice of Scene are implemented; Import and Physics remain planned. Scene currently
+provides runtime handles, names, TRS hierarchy, cached world matrices and render-view
+snapshots from visible meshes, the active perspective camera and one directional
+light. Stable document IDs, persistence, importing and physics remain planned.
+The C++ scene API lives in `panda::scene`, including `Scene`, `Entity`,
+`MeshInstance`, `PerspectiveCamera` and `DirectionalLight`. Shared renderer resources
+and math remain in `panda`; `Panda::Scene` is the CMake target name.
+Introduce each optional CMake switch with its implementation; do not expose switches
+for unavailable modules. The
 umbrella includes only core headers. Add-ons publicly depend on the core;
 disabled add-ons expose no usable target and trigger no discovery of their exclusive
 dependencies. Internal compilation boundaries need not become extra public targets.
@@ -153,6 +160,12 @@ for an event while the framebuffer is suspended. Closing the window ends the
 loop; destruction releases the Context before the Window, including failure or
 exception unwinding. Creation, event and frame errors are logged and return a
 failing process exit status.
+
+When `PANDA_BUILD_SCENE=ON`, the example switch also builds
+[`scene_demo`](../../examples/scene_demo/README.md). It puts meshes, a camera and a
+directional light into scene objects and renders snapshots from
+`Scene::createRenderView()`. An animated hierarchy demonstrates shared meshes and
+derived world transforms.
 
 When `PANDA_BUILD_CUDA=ON`, the same example switch also builds
 [`cuda_connection`](../../examples/cuda_connection/README.md). It links

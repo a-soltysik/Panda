@@ -5,10 +5,11 @@ selects cases discovered by GoogleTest. Dependencies are pinned through
 CPM only when `PANDA_BUILD_TESTS` is enabled. Tests do not introduce virtual functions
 or mock configuration into production interfaces.
 
-`PANDA_BUILD_TESTS=ON` enables the implemented modules and builds every
-test level, including Tools tests when `PANDA_BUILD_TOOLS` is OFF in the cache.
-CUDA remains selected explicitly with `PANDA_BUILD_CUDA` so an ordinary test
-build needs no toolkit. The CUDA connection is a runnable example, not a CTest
+`PANDA_BUILD_TESTS=ON` builds every test level for the selected modules and enables
+Tools tests even when `PANDA_BUILD_TOOLS` is OFF in the cache. Scene is selected with
+`PANDA_BUILD_SCENE`; standard test, fast and quality presets enable it. CUDA remains
+selected explicitly with `PANDA_BUILD_CUDA` so an ordinary test build needs no
+toolkit. The CUDA connection is a runnable example, not a CTest
 case. With CUDA selected, unit cases run the real `CudaAdapter.cpp` against a
 controlled `cudaGetDeviceCount` call, and an integration case calls the real
 CUDA Runtime through the public facade;
