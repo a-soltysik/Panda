@@ -154,7 +154,8 @@ limits remain errors, and nesting is held to the production limit.
 Vulkan SDK or GPU setup. It builds `panda_check_diagrams`, which runs the pinned
 `@mermaid-lint/cli` package pinned in `tools/documentation/` on maintained Markdown, including fenced
 Markdown templates. Syntax errors fail the job with
-file/line diagnostics. See the [functional documentation conventions](functional-documentation.md#maintenance-and-review)
+file/line diagnostics. See
+the [functional documentation conventions](functional-documentation.md#maintenance-and-review)
 for scope, local commands and the distinction between parsing, rendering and
 technical correctness.
 
@@ -267,13 +268,13 @@ owns capture timing, failure behavior and limits.
 The `PANDA_ENABLE_SANITIZER_*` options are independent `ON/OFF` switches, visible
 in `ccmake`, and default to OFF:
 
-| Suffix | Purpose | Configured toolchains |
-| --- | --- | --- |
-| `ADDRESS` | Invalid memory access and lifetime errors | GCC/Clang with an available runtime; MSVC ASan |
-| `UNDEFINED_BEHAVIOR` | Undefined behavior, including invalid arithmetic | GCC/Clang |
-| `THREAD` | Data races | Linux GCC/Clang |
-| `MEMORY` | Uninitialized reads | Linux Clang with an instrumented C++ toolchain |
-| `LEAK` | Standalone leak detection | Linux GCC/Clang |
+| Suffix               | Purpose                                          | Configured toolchains                          |
+|----------------------|--------------------------------------------------|------------------------------------------------|
+| `ADDRESS`            | Invalid memory access and lifetime errors        | GCC/Clang with an available runtime; MSVC ASan |
+| `UNDEFINED_BEHAVIOR` | Undefined behavior, including invalid arithmetic | GCC/Clang                                      |
+| `THREAD`             | Data races                                       | Linux GCC/Clang                                |
+| `MEMORY`             | Uninitialized reads                              | Linux Clang with an instrumented C++ toolchain |
+| `LEAK`               | Standalone leak detection                        | Linux GCC/Clang                                |
 
 ASan and UBSan can run together. TSan and MSan need separate builds from ASan,
 LSan and each other; incompatible selections fail configuration. UBSan can accompany
@@ -323,13 +324,13 @@ an implementation assertion. Do not write a custom test framework or synthetic
 projects merely to inspect CMake variables. Validate consumption through a real
 application as the renderer becomes available.
 
-| Check | What it establishes |
-| --- | --- |
-| CPU tests and appropriate sanitizers | Algorithms, state transitions, error paths and host lifetimes |
-| Compile and package checks | Header isolation, ordinary/unity builds and language/dependency boundaries |
-| Shader/ABI checks | Reflected offsets, strides, supported interfaces and rejection of invalid layouts |
-| Vulkan/CUDA tests | Actual device behavior, synchronization, retirement and failure handling |
-| Visual inspection and benchmarks | Image behavior and performance under recorded effective settings |
+| Check                                | What it establishes                                                               |
+|--------------------------------------|-----------------------------------------------------------------------------------|
+| CPU tests and appropriate sanitizers | Algorithms, state transitions, error paths and host lifetimes                     |
+| Compile and package checks           | Header isolation, ordinary/unity builds and language/dependency boundaries        |
+| Shader/ABI checks                    | Reflected offsets, strides, supported interfaces and rejection of invalid layouts |
+| Vulkan/CUDA tests                    | Actual device behavior, synchronization, retirement and failure handling          |
+| Visual inspection and benchmarks     | Image behavior and performance under recorded effective settings                  |
 
 Use Vulkan validation, including synchronization validation, and Compute Sanitizer
 where applicable. Keep diagnostic overhead out of performance baselines. A screenshot

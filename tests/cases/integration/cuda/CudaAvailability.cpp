@@ -5,7 +5,7 @@
 TEST(CudaAvailabilityIntegration, StartsAndReportsRuntimeAvailability)
 {
     const auto result = panda::cuda::queryAvailability();
-    ASSERT_TRUE(result.has_value()) << "CUDA Runtime status: " << result.error().nativeCode;
+    ASSERT_TRUE(result.has_value()) << "CUDA Runtime availability query failed";
 
     const auto availability = *result;
     EXPECT_TRUE(availability == panda::cuda::Availability::Available ||

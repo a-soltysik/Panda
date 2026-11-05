@@ -102,8 +102,8 @@ color-attachment output stage. A slot's previous result is collected before its 
 is reset for a new frame. Before reading results, the manager nonblockingly confirms
 completion of that slot's exact frame submission on the shared timeline. Availability
 left by an earlier use of the query slot cannot be attributed to the new frame.
-These are GPU-written device timestamps, not CPU stopwatch readings
-([`vkCmdWriteTimestamp2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdWriteTimestamp2.html)).
+These are GPU-written device timestamps, not CPU stopwatch readings ([
+`vkCmdWriteTimestamp2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdWriteTimestamp2.html)).
 
 The manager requests 64-bit results with an availability value for each query, without
 the Vulkan wait flag. If either query is not ready, the sample stays pending. Once
@@ -151,10 +151,10 @@ This is a comparison system, not the engine's minimum hardware requirement.
 The reference fixture below defines 100 objects, one million candidate triangles,
 32 lights, one 2048-square directional shadow, requested 4x MSAA and 8x anisotropy.
 
-| Metric | Provisional target |
-| --- | --- |
-| Active CPU render preparation p95, excluding GPU waits | At most 1 ms |
-| GPU rendering p95, including shadows and final image work | At most 4 ms |
+| Metric                                                    | Provisional target |
+|-----------------------------------------------------------|--------------------|
+| Active CPU render preparation p95, excluding GPU waits    | At most 1 ms       |
+| GPU rendering p95, including shadows and final image work | At most 4 ms       |
 
 These are design targets, **not measured results or release guarantees**. They do
 not include application simulation, loading, or optional tools. Do not lower quality
@@ -194,12 +194,12 @@ and label the result CUDA.
 
 ## Tools and questions
 
-| Tool | Use it to answer |
-| --- | --- |
-| RenderDoc | Which draws, resources, attachments, and shader values produce this frame? |
-| Nsight Systems | Where does CPU/GPU time go, and are Vulkan/CUDA queues waiting in the intended order? |
-| Nsight Compute | What limits a selected CUDA kernel? |
-| Nsight Graphics | What limits the Vulkan rendering/shader workload on supported hardware? |
+| Tool            | Use it to answer                                                                      |
+|-----------------|---------------------------------------------------------------------------------------|
+| RenderDoc       | Which draws, resources, attachments, and shader values produce this frame?            |
+| Nsight Systems  | Where does CPU/GPU time go, and are Vulkan/CUDA queues waiting in the intended order? |
+| Nsight Compute  | What limits a selected CUDA kernel?                                                   |
+| Nsight Graphics | What limits the Vulkan rendering/shader workload on supported hardware?               |
 
 Choose a tool for a specific question, reproduce the case, inspect evidence together,
 then validate an improvement with an unprofiled benchmark. Capturing and replaying

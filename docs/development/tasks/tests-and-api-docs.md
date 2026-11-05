@@ -82,8 +82,8 @@ restoring it passed. `panda::detail` and `panda::log::detail` are excluded from
 the generated API.
 
 The Linux GCC coverage preset passed all 383 non-system tests (238 unit and 145
-integration). gcovr 7.2 reported 85.7% lines (3226/3766), 90.2% functions
-(535/593), and 69.0% branches (2797/4053), including
+integration). gcovr 7.2 reported 85.7% lines (3226/3766), 90.2% functions (535/593), and 69.0% branches (2797/4053),
+including
 `benchmarks/src/Arguments.cpp`, `Report.cpp` and `Statistics.cpp`. This measures
 CPU test paths; the Vulkan smoke path is not exercised by this coverage run.
 Hosted CI uploaded the `panda-coverage` and `panda-api-docs` artifacts and passed

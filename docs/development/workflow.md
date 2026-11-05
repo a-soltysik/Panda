@@ -8,7 +8,8 @@ A specific request can select other work within its authorized scope. Reviews ar
 read-only unless changes are requested. Do not start a later phase without approval.
 
 Read the task, its linked specification sections, the [quality policy](quality.md),
-the [project conventions](conventions.md) and relevant code. Before editing, give a brief implementation outline: the result,
+the [project conventions](conventions.md) and relevant code. Before editing, give a brief implementation outline: the
+result,
 invariants, existing patterns, consequential choices and verification. This is an
 engineering check, not an extra permission step or a request for the maintainer to
 design the solution. Check current upstream documentation when choosing dependency
@@ -45,14 +46,14 @@ author's summary before acceptance.
 
 ## Status and evidence
 
-| State | Meaning |
-| --- | --- |
-| Planned | Defined, but not yet authorized to start |
-| Ready | Prerequisites accepted and its phase authorized |
-| In progress | Work underway; acceptance items remain |
-| Blocked | A named decision or unavailable capability prevents progress |
-| Review | Implementation and required evidence are ready for maintainer review |
-| Accepted | Maintainer accepted the result and its learning handoff |
+| State       | Meaning                                                              |
+|-------------|----------------------------------------------------------------------|
+| Planned     | Defined, but not yet authorized to start                             |
+| Ready       | Prerequisites accepted and its phase authorized                      |
+| In progress | Work underway; acceptance items remain                               |
+| Blocked     | A named decision or unavailable capability prevents progress         |
+| Review      | Implementation and required evidence are ready for maintainer review |
+| Accepted    | Maintainer accepted the result and its learning handoff              |
 
 The contributor may move a task to Review, but cannot accept it or authorize the
 next phase. Report a failed prerequisite before dependent work; do not conceal it

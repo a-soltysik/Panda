@@ -10,15 +10,15 @@ passes. Destroying the final shared-buffer owner synchronizes the CUDA stream to
 release its imported resources.
 
 **The application** chooses the work for each pass and serializes submissions for
-this buffer. **Panda Core** queues Vulkan work and ownership transfers.
-**`Panda::Cuda`** orders the application's callback on its session stream.
+this buffer. **Panda Core** queues Vulkan work and ownership transfers. **`Panda::Cuda`** orders the application's
+callback on its session stream.
 
-| Boundary | Meaning |
-| --- | --- |
-| Trigger and input | Application has more Vulkan/CUDA work to perform on the shared buffer |
-| Successful end | The last pass has queued a Vulkan acquire after the CUDA signal |
-| Failure end | The operation reports an error; the buffer's state depends on the failing step |
-| Outside this flow | Creating/importing the buffer, multi-step compute policy, GPU data proof |
+| Boundary          | Meaning                                                                        |
+|-------------------|--------------------------------------------------------------------------------|
+| Trigger and input | Application has more Vulkan/CUDA work to perform on the shared buffer          |
+| Successful end    | The last pass has queued a Vulkan acquire after the CUDA signal                |
+| Failure end       | The operation reports an error; the buffer's state depends on the failing step |
+| Outside this flow | Creating/importing the buffer, multi-step compute policy, GPU data proof       |
 
 ## Preconditions
 
@@ -56,19 +56,19 @@ sequenceDiagram
     participant Q as SharedCudaBuffer
     participant R as CUDA Runtime
     loop Each pass on the same buffer
-        A->>U: Step 1 - write next value and submit
-        U-)V: Step 1 - enqueue Vulkan transfer
-        A->>X: Step 2 - releaseToExternal(Buffer)
-        X-)V: Step 2 - enqueue release barrier and timeline signal N
-        X-->>A: Step 2 - return N
-        A->>Q: Step 3 - submitWork(N, callback)
-        Q-)R: Step 3 - enqueue wait for N on session stream
-        Q->>A: Step 3 - callback(stream, device pointer, size)
-        A-)R: Step 3 - enqueue CUDA work on session stream
-        Q-)R: Step 3 - enqueue signal N+1
-        Q-->>A: Step 3 - return N+1 and callback result
-        A->>X: Step 4 - acquireFromExternal(Buffer, N+1)
-        X-)V: Step 4 - enqueue timeline wait and acquire barrier
+        A ->> U: Step 1 - write next value and submit
+        U -) V: Step 1 - enqueue Vulkan transfer
+        A ->> X: Step 2 - releaseToExternal(Buffer)
+        X -) V: Step 2 - enqueue release barrier and timeline signal N
+        X -->> A: Step 2 - return N
+        A ->> Q: Step 3 - submitWork(N, callback)
+        Q -) R: Step 3 - enqueue wait for N on session stream
+        Q ->> A: Step 3 - callback(stream, device pointer, size)
+        A -) R: Step 3 - enqueue CUDA work on session stream
+        Q -) R: Step 3 - enqueue signal N+1
+        Q -->> A: Step 3 - return N+1 and callback result
+        A ->> X: Step 4 - acquireFromExternal(Buffer, N+1)
+        X -) V: Step 4 - enqueue timeline wait and acquire barrier
     end
 ```
 
@@ -95,15 +95,15 @@ separately. Queue Vulkan reacquisition with the returned signal value before
 handling that error. The example stops after reporting it, but the buffer has
 returned to Vulkan ownership.
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 2: the buffer has no paired timeline semaphore | `releaseToExternal` returns `Unsupported` before submitting a release | No timeline value `N` exists; keep Vulkan ownership and use memory-sharing only |
-| **Error&nbsp;1** | Step 1: upload write or submission fails | Return the upload error before releasing the buffer | Vulkan still owns the buffer; resolve the cause before retrying |
-| **Error&nbsp;2** | Step 2: the buffer is invalid or already released | Return the error before this release is submitted | Vulkan still owns the buffer; correct the state before retrying |
-| **Error&nbsp;3** | Step 3: CUDA cannot enqueue its wait | Return a CUDA error without invoking the callback or queuing a signal | The earlier Vulkan release remains submitted; no acquire value is available for automatic recovery |
-| **Error&nbsp;4** | Step 3: the callback reports an enqueue error or throws | Return the callback error alongside the queued signal value | Queue Step 4 before handling the callback error; already-enqueued work may have run |
-| **Error&nbsp;5** | Step 3: CUDA cannot enqueue its signal | Return a CUDA error and fault this imported handoff | No successful signal value is available; the application has no automatic recovery path |
-| **Error&nbsp;6** | Step 4: acquire uses an unexpected timeline value | Return `InvalidArgument` before submitting the acquire | Keep the externally owned state; use the value returned by `submitWork` |
+|                    | Point and condition                                     | Response                                                              | Resulting state and next action                                                                    |
+|--------------------|---------------------------------------------------------|-----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 2: the buffer has no paired timeline semaphore     | `releaseToExternal` returns `Unsupported` before submitting a release | No timeline value `N` exists; keep Vulkan ownership and use memory-sharing only                    |
+| **Error&nbsp;1**   | Step 1: upload write or submission fails                | Return the upload error before releasing the buffer                   | Vulkan still owns the buffer; resolve the cause before retrying                                    |
+| **Error&nbsp;2**   | Step 2: the buffer is invalid or already released       | Return the error before this release is submitted                     | Vulkan still owns the buffer; correct the state before retrying                                    |
+| **Error&nbsp;3**   | Step 3: CUDA cannot enqueue its wait                    | Return a CUDA error without invoking the callback or queuing a signal | The earlier Vulkan release remains submitted; no acquire value is available for automatic recovery |
+| **Error&nbsp;4**   | Step 3: the callback reports an enqueue error or throws | Return the callback error alongside the queued signal value           | Queue Step 4 before handling the callback error; already-enqueued work may have run                |
+| **Error&nbsp;5**   | Step 3: CUDA cannot enqueue its signal                  | Return a CUDA error and fault this imported handoff                   | No successful signal value is available; the application has no automatic recovery path            |
+| **Error&nbsp;6**   | Step 4: acquire uses an unexpected timeline value       | Return `InvalidArgument` before submitting the acquire                | Keep the externally owned state; use the value returned by `submitWork`                            |
 
 **Success.** The application can queue another pass after Step 4; it need not wait
 on the CPU between passes.

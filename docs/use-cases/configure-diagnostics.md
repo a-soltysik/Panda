@@ -8,8 +8,8 @@ the application configures the process logger and ends after an entry has been
 delivered to its registered sinks. Panda API errors returned as `panda::Error`
 remain caller-owned results; the application decides whether to log them.
 
-**The application** selects the minimum severity and registers sinks.
-**Panda** owns each registered sink and delivers entries from the logger and,
+**The application** selects the minimum severity and registers sinks. **Panda** owns each registered sink and delivers
+entries from the logger and,
 when Context validation is enabled, the Vulkan validation callback. Fatal
 `expect`/`panic` diagnostics are a separate direct-to-stderr path.
 
@@ -39,26 +39,26 @@ sequenceDiagram
     participant V as Vulkan validation callback
     participant L as Logger
     participant S as Registered sink
-    A->>L: Step 1 - setLevel(), addSink()
-    A->>L: Step 2 - log::info() or log::error()
+    A ->> L: Step 1 - setLevel(), addSink()
+    A ->> L: Step 2 - log::info() or log::error()
     opt Context validation is enabled
-        V->>L: Step 2 - write(validation severity, message)
+        V ->> L: Step 2 - write(validation severity, message)
     end
-    L->>L: Step 3 - filter and capture enabled Entry
+    L ->> L: Step 3 - filter and capture enabled Entry
     loop Each registered sink
-        L->>S: Step 4 - write(entry)
-        S-->>L: Step 4 - sink result
+        L ->> S: Step 4 - write(entry)
+        S -->> L: Step 4 - sink result
         opt Entry level is Error
-            L->>S: Step 4 - flush()
-            S-->>L: Step 4 - flush result
+            L ->> S: Step 4 - flush()
+            S -->> L: Step 4 - flush result
         end
     end
-    A->>L: Step 4 - flush()
+    A ->> L: Step 4 - flush()
     loop Each registered sink
-        L->>S: Flush pending output
-        S-->>L: Flush result
+        L ->> S: Flush pending output
+        S -->> L: Flush result
     end
-    L-->>A: Step 4 - flush completed
+    L -->> A: Step 4 - flush completed
 ```
 
 ## Notes
@@ -83,12 +83,12 @@ They do not become recoverable log entries. See the [resource error contract](..
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 3: the entry is below the threshold or logging is `Off` | Discard the entry without formatting or sink delivery | No output is produced; lower the threshold if the message is needed |
-| **Variant&nbsp;2** | Step 3: no sink is registered | The logger has no destination to receive the entry | The entry is not retained for later sinks; register a destination before emitting diagnostics |
-| **Error&nbsp;1** | Step 1: `FileSink::open()` cannot append to the requested path | Return its path-bearing error without registering a sink | Existing sinks remain active; create the parent directory or choose a writable path, then retry |
-| **Error&nbsp;2** | Step 4: a sink write or flush fails | Report the sink failure directly to stderr and continue with other sinks | The logging call does not return that sink error; repair or remove the failing sink |
+|                    | Point and condition                                            | Response                                                                 | Resulting state and next action                                                                 |
+|--------------------|----------------------------------------------------------------|--------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 3: the entry is below the threshold or logging is `Off`   | Discard the entry without formatting or sink delivery                    | No output is produced; lower the threshold if the message is needed                             |
+| **Variant&nbsp;2** | Step 3: no sink is registered                                  | The logger has no destination to receive the entry                       | The entry is not retained for later sinks; register a destination before emitting diagnostics   |
+| **Error&nbsp;1**   | Step 1: `FileSink::open()` cannot append to the requested path | Return its path-bearing error without registering a sink                 | Existing sinks remain active; create the parent directory or choose a writable path, then retry |
+| **Error&nbsp;2**   | Step 4: a sink write or flush fails                            | Report the sink failure directly to stderr and continue with other sinks | The logging call does not return that sink error; repair or remove the failing sink             |
 
 ## Outcomes
 

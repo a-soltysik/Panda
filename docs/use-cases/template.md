@@ -23,9 +23,9 @@ assigning responsibilities. Put exact code symbols in `monospace`.
 Add a compact role map only when it clarifies responsibilities beyond the goal,
 flow and diagram. Remove this section when it would repeat those descriptions.
 
-| Participant | Responsibility |
-| --- | --- |
-| Caller | Triggers the flow or supplies its input |
+| Participant       | Responsibility                                            |
+| ----------------- | --------------------------------------------------------- |
+| Caller            | Triggers the flow or supplies its input                   |
 | Main collaborator | Performs a consequential operation or owns relevant state |
 
 ## Preconditions (optional)
@@ -68,8 +68,8 @@ Use emphasis sparingly; do not bold whole explanations.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
+|                  | Point and condition       | Response                                                                | Resulting state and next action                       |
+| ---------------- | ------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------- |
 | **Error&nbsp;1** | Step 2: preparation fails | Explain returned error and cleanup; link a substantial failure sequence | State what remains valid and whether retry is allowed |
 
 ### Error 1 - Preparation cleanup

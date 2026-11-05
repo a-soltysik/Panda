@@ -6,6 +6,7 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_uint2.hpp>
 #include <glm/trigonometric.hpp>
+#include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Cube.hpp>
@@ -16,7 +17,6 @@
 #include <panda/RenderView.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
-#include <panda/tools/Camera.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -68,7 +68,7 @@ auto statusFromPanda(panda::FrameResult::Status status) -> FrameStatus
 auto configureCubeCamera(panda::RenderView& view, panda::FramebufferExtent extent) -> std::expected<void, Failure>
 {
     const auto cameraPosition = glm::vec3 {3.0F, 2.5F, 4.0F};
-    const auto camera = panda::tools::createPerspectiveCamera({
+    const auto camera = panda::createPerspectiveCamera({
         .position = cameraPosition,
         .target = {},
         .up = {0, 1, 0},

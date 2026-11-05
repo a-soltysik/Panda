@@ -79,13 +79,13 @@ services they borrow.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 1: no pending packets and the queue is not marked device-lost | Return success without querying the queue | No packet changes state |
-| **Variant&nbsp;2** | Step 2: `Context::wait()` reaches its deadline without confirming that the completed value has reached the point's value | Return `WaitStatus::Timeout` as a successful result | Packets with completion values no greater than the known completed value may be released; all others stay retained, and the caller may poll or wait again |
-| **Error&nbsp;1** | Step 2: timeline query fails or the device is lost | Propagate the error | Pending packets remain retained; follow the error category and do not assume safe release |
-| **Error&nbsp;2** | `UploadManager::drain()` times out while waiting for the pending upload with the greatest completion value | Return `Timeout` | The pending list remains; no uncompleted owner is released, and a later drain may retry if the device remains usable |
-| **Error&nbsp;3** | Shutdown cannot confirm a safe drain | Context emits a fatal diagnostic and stops teardown | No recoverable Context remains; pending packets are not treated as completed. See the [resource lifetime contract](../design/contracts/resources.md#frame-contexts-and-retirement) |
+|                    | Point and condition                                                                                                      | Response                                            | Resulting state and next action                                                                                                                                                    |
+|--------------------|--------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 1: no pending packets and the queue is not marked device-lost                                                       | Return success without querying the queue           | No packet changes state                                                                                                                                                            |
+| **Variant&nbsp;2** | Step 2: `Context::wait()` reaches its deadline without confirming that the completed value has reached the point's value | Return `WaitStatus::Timeout` as a successful result | Packets with completion values no greater than the known completed value may be released; all others stay retained, and the caller may poll or wait again                          |
+| **Error&nbsp;1**   | Step 2: timeline query fails or the device is lost                                                                       | Propagate the error                                 | Pending packets remain retained; follow the error category and do not assume safe release                                                                                          |
+| **Error&nbsp;2**   | `UploadManager::drain()` times out while waiting for the pending upload with the greatest completion value               | Return `Timeout`                                    | The pending list remains; no uncompleted owner is released, and a later drain may retry if the device remains usable                                                               |
+| **Error&nbsp;3**   | Shutdown cannot confirm a safe drain                                                                                     | Context emits a fatal diagnostic and stops teardown | No recoverable Context remains; pending packets are not treated as completed. See the [resource lifetime contract](../design/contracts/resources.md#frame-contexts-and-retirement) |
 
 ## Outcomes
 

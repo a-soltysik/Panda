@@ -9,6 +9,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <panda/Error.hpp>
+#include <panda/cuda/Cuda.hpp>
 #include <span>
 #include <utility>
 
@@ -94,6 +96,27 @@ TEST_F(CudaAdapterTest, PreservesUnexpectedRuntimeFailure)
     const auto result = panda::cuda::detail::queryNativeAvailability();
     EXPECT_EQ(result.availability, NativeAvailability::Failure);
     EXPECT_EQ(result.nativeCode, cudaErrorInitializationError);
+}
+
+TEST_F(CudaAdapterTest, MapsUnexpectedRuntimeFailureToPandaError)
+{
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
+        .WillOnce(testing::Return(cudaErrorInitializationError));
+
+    const auto result = panda::cuda::queryAvailability();
+
+    ASSERT_FALSE(result);
+    const auto& error = result.error();
+    EXPECT_EQ(error.code, panda::ErrorCode::BackendFailure);
+    if (error.native.has_value())
+    {
+        EXPECT_EQ(error.native->api, "CUDA");
+        EXPECT_EQ(error.native->code, static_cast<std::int64_t>(cudaErrorInitializationError));
+    }
+    else
+    {
+        FAIL() << "Expected native CUDA error";
+    }
 }
 
 TEST_F(CudaAdapterTest, MatchesUuidBeforeCreatingSession)

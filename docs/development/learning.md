@@ -24,17 +24,17 @@ A proposed experiment is not completed evidence. The contributor reports when
 understanding has not yet been checked; only the maintainer can confirm that the
 learning handoff is clear and accept the task.
 
-| Area | Useful experiment or question |
-| --- | --- |
-| Build and toolchain | Which properties reach consumers? Why does CUDA avoid C++23 engine headers? |
-| GPU lifetime | Release the last application handle while a frame still uses its resource. |
-| Vulkan/CUDA | Trace one producer-to-consumer handoff and explain why importing memory alone does not synchronize it. |
-| Transforms | Reparent a rotated child under nonuniform scale and explain shear rejection. |
-| Materials and shadows | Inspect color space, face orientation and shadow depth in a capture. |
-| Shader ABI | Reject an incompatible block layout before publishing a program. |
-| Persistence and tools | Reload scene edits and identify application state that must be reconstructed. |
-| Physics | Demonstrate pose authority and a high-speed tunneling limitation. |
-| Performance | Reproduce a baseline and explain one measured bottleneck. |
+| Area                  | Useful experiment or question                                                                          |
+|-----------------------|--------------------------------------------------------------------------------------------------------|
+| Build and toolchain   | Which properties reach consumers? Why does CUDA avoid C++23 engine headers?                            |
+| GPU lifetime          | Release the last application handle while a frame still uses its resource.                             |
+| Vulkan/CUDA           | Trace one producer-to-consumer handoff and explain why importing memory alone does not synchronize it. |
+| Transforms            | Reparent a rotated child under nonuniform scale and explain shear rejection.                           |
+| Materials and shadows | Inspect color space, face orientation and shadow depth in a capture.                                   |
+| Shader ABI            | Reject an incompatible block layout before publishing a program.                                       |
+| Persistence and tools | Reload scene edits and identify application state that must be reconstructed.                          |
+| Physics               | Demonstrate pose authority and a high-speed tunneling limitation.                                      |
+| Performance           | Reproduce a baseline and explain one measured bottleneck.                                              |
 
 API comments belong at declarations, usage examples in compiled examples, and
 shared-rule rationale in the owning specification. [Use cases](../use-cases/README.md)

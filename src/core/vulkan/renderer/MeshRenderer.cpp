@@ -610,6 +610,10 @@ auto MeshRenderer::resize(vk::Extent2D extent, vk::Format colorFormat) -> std::e
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid renderer output extent or format")};
     }
+    if (extent.width == _extent.width && extent.height == _extent.height && colorFormat == _colorFormat)
+    {
+        return {};
+    }
     const auto extentChanged = extent.width != _extent.width || extent.height != _extent.height;
     const auto formatChanged = colorFormat != _colorFormat;
     const auto sampleCount = chooseSampleCount(colorFormat);
@@ -623,10 +627,6 @@ auto MeshRenderer::resize(vk::Extent2D extent, vk::Format colorFormat) -> std::e
                                         .extentChanged = extentChanged,
                                         .formatChanged = formatChanged,
                                         .sampleCountChanged = *sampleCount != _sampleCount};
-    if (!request.extentChanged && !request.formatChanged && !request.sampleCountChanged)
-    {
-        return {};
-    }
     auto resources = createResizeResources(request);
     if (!resources)
     {

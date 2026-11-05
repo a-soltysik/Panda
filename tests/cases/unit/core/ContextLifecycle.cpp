@@ -686,6 +686,8 @@ TEST_F(ContextLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOr
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
     EXPECT_FALSE(context->isValid());
+    auto movedAgain = std::move(*context);
+    EXPECT_FALSE(movedAgain.isValid());
     EXPECT_EQ(moved.getDeviceInfo().name, "Unit GPU");
     EXPECT_EQ(moved.getDeviceInfo().queueFamily, 0U);
     EXPECT_FALSE(moved.getDeviceInfo().externalBufferExportEnabled);

@@ -10,12 +10,12 @@ the returned offset. The **Context-owned pool** owns device-memory blocks. This
 flow does not bind or initialize the resource, submit GPU work, wait for
 completion or relocate live ranges.
 
-| Boundary | Meaning |
-| --- | --- |
+| Boundary          | Meaning                                                                                                                                          |
+|-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
 | Trigger and input | A resource creator supplies Vulkan memory requirements, dedicated-allocation requirements, the native resource and required/preferred properties |
-| Successful end | A move-only `MemoryAllocation` reserves a compatible aligned range for the caller to bind |
-| Failure end | An `Error` is returned without publishing a new range; existing live allocations remain owned |
-| Outside this flow | Native resource creation/binding, GPU-use retirement and returning the range after resource destruction |
+| Successful end    | A move-only `MemoryAllocation` reserves a compatible aligned range for the caller to bind                                                        |
+| Failure end       | An `Error` is returned without publishing a new range; existing live allocations remain owned                                                    |
+| Outside this flow | Native resource creation/binding, GPU-use retirement and returning the range after resource destruction                                          |
 
 ## Preconditions
 
@@ -105,14 +105,14 @@ caller must satisfy the [resource lifetime contract](../design/contracts/resourc
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 3: a compatible ordinary block is available | Select it without allocating another Vulkan memory block | The pool's committed bytes stay unchanged; Step 4 reserves the requested aligned range |
-| **Variant&nbsp;2** | Step 3: Vulkan requires/prefers dedicated memory or the request exceeds half a block | Create an exact-size block dedicated to the named resource | Step 4 reserves its range at offset zero; normal binding remains the caller's responsibility |
-| **Error&nbsp;1** | Step 1: malformed requirements or resource identity | Return `InvalidArgument` | No range is published; correct the internal request |
-| **Error&nbsp;2** | Step 2: no eligible memory type satisfies the required properties | Return `Unsupported` | No range is published; choose a supported request or device |
-| **Error&nbsp;3** | Step 3: budget remains exhausted after eligible empty blocks are reclaimed, or Vulkan allocation fails | Return `ResourceExhausted` or the classified native error | No new range is published; existing owners remain valid; retry only after resolving the cause |
-| **Error&nbsp;4** | Step 3: ordinary block growth fails with `ResourceExhausted` or mapping failure | Make one exact-size dedicated attempt; on success continue with Step 4; otherwise return that attempt's error | Existing live ranges remain unchanged; device loss does not enter this retry path |
+|                    | Point and condition                                                                                    | Response                                                                                                      | Resulting state and next action                                                               |
+|--------------------|--------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 3: a compatible ordinary block is available                                                       | Select it without allocating another Vulkan memory block                                                      | The pool's committed bytes stay unchanged; Step 4 reserves the requested aligned range        |
+| **Variant&nbsp;2** | Step 3: Vulkan requires/prefers dedicated memory or the request exceeds half a block                   | Create an exact-size block dedicated to the named resource                                                    | Step 4 reserves its range at offset zero; normal binding remains the caller's responsibility  |
+| **Error&nbsp;1**   | Step 1: malformed requirements or resource identity                                                    | Return `InvalidArgument`                                                                                      | No range is published; correct the internal request                                           |
+| **Error&nbsp;2**   | Step 2: no eligible memory type satisfies the required properties                                      | Return `Unsupported`                                                                                          | No range is published; choose a supported request or device                                   |
+| **Error&nbsp;3**   | Step 3: budget remains exhausted after eligible empty blocks are reclaimed, or Vulkan allocation fails | Return `ResourceExhausted` or the classified native error                                                     | No new range is published; existing owners remain valid; retry only after resolving the cause |
+| **Error&nbsp;4**   | Step 3: ordinary block growth fails with `ResourceExhausted` or mapping failure                        | Make one exact-size dedicated attempt; on success continue with Step 4; otherwise return that attempt's error | Existing live ranges remain unchanged; device loss does not enter this retry path             |
 
 ### Error 4 - Fallback after ordinary-block failure
 

@@ -406,24 +406,29 @@ auto ExternalContext::exportMemoryHandle(vk::DeviceMemory memory) const -> Resul
 {
 #ifdef _WIN32
     const auto info = vk::MemoryGetWin32HandleInfoKHR {.memory = memory, .handleType = _support.memoryHandleType};
-    const auto exported = _device.getMemoryWin32HandleKHR(info);
+    void* nativeHandle {};
+    const auto result =
+        static_cast<vk::Device>(_device).getMemoryWin32HandleKHR(&info, &nativeHandle, *_device.getDispatcher());
 #elifdef __linux__
     const auto info = vk::MemoryGetFdInfoKHR {.memory = memory, .handleType = _support.memoryHandleType};
-    const auto exported = _device.getMemoryFdKHR(info);
+    int nativeHandle {-1};
+    const auto result = static_cast<vk::Device>(_device).getMemoryFdKHR(&info, &nativeHandle, *_device.getDispatcher());
 #else
     std::ignore = memory;
     return std::unexpected {makeError(ErrorCode::Unsupported, "External memory handles are unsupported on this OS")};
 #endif
-#ifdef _WIN32
-    if (exported.result != vk::Result::eSuccess)
+#if defined(_WIN32) || defined(__linux__)
+    if (result != vk::Result::eSuccess)
     {
-        return std::unexpected {makeVulkanError(exported.result)};
+        return std::unexpected {makeVulkanError(result)};
     }
+#endif
+#ifdef _WIN32
     // Vulkan returns a HANDLE here; Panda carries opaque native handles as intptr_t.
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast, performance-no-int-to-ptr)
-    return reinterpret_cast<std::intptr_t>(exported.value);
+    return reinterpret_cast<std::intptr_t>(nativeHandle);
 #elifdef __linux__
-    return static_cast<std::intptr_t>(exported.value);
+    return static_cast<std::intptr_t>(nativeHandle);
 #endif
 }
 

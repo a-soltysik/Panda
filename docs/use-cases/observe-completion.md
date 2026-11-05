@@ -8,8 +8,8 @@ come from `UploadBatch::submit()` or from a submitted `FrameResult`. The flow st
 with that point and a live owning `Context`, and ends when `Context::poll()` or
 `Context::wait()` returns a completion state or error.
 
-**Panda** validates the point and observes the Context's shared submission timeline.
-**The application** chooses whether to poll or wait and keeps the owning Context
+**Panda** validates the point and observes the Context's shared submission timeline. **The application** chooses whether
+to poll or wait and keeps the owning Context
 alive. GPU completion does not establish that a frame has finished presenting or
 appeared on screen.
 
@@ -23,7 +23,8 @@ appeared on screen.
    reads the timeline without waiting; waiting returns immediately if the value is
    already known complete, otherwise it waits up to the requested duration.
 3. **Retire known-complete uploads.** After a successful query or wait, Context
-   calls `UploadManager` to collect completed packets; [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+   calls `UploadManager` to collect completed
+   packets; [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
    explains which owners this releases.
 4. **Return the observation.** `poll()` returns `true` when the point is complete
    and `false` while it is pending. `wait()` returns `WaitStatus::Completed` or
@@ -72,12 +73,12 @@ defines that boundary.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 2: the timeline's completed value is less than the value in the submitted `CompletionPoint` | Return `false` | The work may still be running; keep the point and poll again or wait |
-| **Variant&nbsp;2** | Step 2: the wait deadline expires first | Return `WaitStatus::Timeout` as a successful result | The work may still be running; keep the point and poll or wait again |
-| **Error&nbsp;1** | Step 1 or 2: negative timeout, empty or foreign point, or no owning submission queue | Return `InvalidArgument` | No completion is established; use the owning live Context and a valid point, or a nonnegative timeout |
-| **Error&nbsp;2** | Step 2: timeline query or wait reports a backend failure, including device loss | Return the backend error | This call establishes no new completion; pending upload owners remain retained, and general device-loss recovery is not promised |
+|                    | Point and condition                                                                              | Response                                            | Resulting state and next action                                                                                                  |
+|--------------------|--------------------------------------------------------------------------------------------------|-----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 2: the timeline's completed value is less than the value in the submitted `CompletionPoint` | Return `false`                                      | The work may still be running; keep the point and poll again or wait                                                             |
+| **Variant&nbsp;2** | Step 2: the wait deadline expires first                                                          | Return `WaitStatus::Timeout` as a successful result | The work may still be running; keep the point and poll or wait again                                                             |
+| **Error&nbsp;1**   | Step 1 or 2: negative timeout, empty or foreign point, or no owning submission queue             | Return `InvalidArgument`                            | No completion is established; use the owning live Context and a valid point, or a nonnegative timeout                            |
+| **Error&nbsp;2**   | Step 2: timeline query or wait reports a backend failure, including device loss                  | Return the backend error                            | This call establishes no new completion; pending upload owners remain retained, and general device-loss recovery is not promised |
 
 ## Outcomes
 

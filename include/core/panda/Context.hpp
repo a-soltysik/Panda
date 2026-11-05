@@ -28,7 +28,7 @@ class WindowSurface;
 struct ContextOptions
 {
     /// Whether external Vulkan buffers are unavailable, enabled when supported,
-    /// or required during device selection.
+    /// or required on the selected device.
     enum class ExternalBufferSupport : std::uint8_t
     {
         Disabled,

@@ -21,7 +21,8 @@ Specifications: [Package](../../design/package-and-toolchain.md#c23-and-cuda20-w
 
 ## Acceptance
 
-Record exact compiler, SDK, toolkit and runtime linkage on Windows/Linux; build/link/run or report unsupported. Resolve a failed probe in the package specification before GPU expansion.
+Record exact compiler, SDK, toolkit and runtime linkage on Windows/Linux; build/link/run or report unsupported. Resolve
+a failed probe in the package specification before GPU expansion.
 
 Learning: Show why the CUDA translation unit cannot include the C++23 engine facade.
 

@@ -65,56 +65,56 @@ sequenceDiagram
     participant U as UploadBatch
     participant P as PerformanceManager
     participant F as Output files
-    A->>M: Step 1 - provide smoke settings
-    M->>F: Step 2 - create output directory and open log
+    A ->> M: Step 1 - provide smoke settings
+    M ->> F: Step 2 - create output directory and open log
     loop Each requested run
-        M->>S: Step 3 - execute one run
-        S->>B: Step 3 - initialize with options
-        B->>W: Create requested window
-        B->>C: Create Context with sampling enabled
-        C-->>B: Context and selected device
-        B->>P: Check timestamp capabilities
-        B->>B: Capture extent and environment
+        M ->> S: Step 3 - execute one run
+        S ->> B: Step 3 - initialize with options
+        B ->> W: Create requested window
+        B ->> C: Create Context with sampling enabled
+        C -->> B: Context and selected device
+        B ->> P: Check timestamp capabilities
+        B ->> B: Capture extent and environment
         opt Initial framebuffer extent is nonzero
-            B->>C: createMeshFromGeometry(cube geometry)
-            C-->>B: Mesh
-            B->>C: createUploadBatch()
-            C-->>B: UploadBatch
-            B->>U: write(mesh, cube geometry)
-            B->>U: submit()
-            U-->>B: Upload completion point
-            B->>C: wait(upload completion)
-            C-->>B: Upload completed
-            B->>B: Prepare fixed camera and mesh view
+            B ->> C: createMeshFromGeometry(cube geometry)
+            C -->> B: Mesh
+            B ->> C: createUploadBatch()
+            C -->> B: UploadBatch
+            B ->> U: write(mesh, cube geometry)
+            B ->> U: submit()
+            U -->> B: Upload completion point
+            B ->> C: wait(upload completion)
+            C -->> B: Upload completed
+            B ->> B: Prepare fixed camera and mesh view
         end
-        B-->>S: Step 3 - environment and prepared workload
+        B -->> S: Step 3 - environment and prepared workload
         loop Until warmup duration ends
-            S->>B: Step 4 - verify window and submit frame
-            B->>C: render(fixed cube view)
-            C-->>B: Presented frame and completion point
-            S->>P: Step 4 - drain and discard warmup samples
-            S->>W: Process events and recheck extent
+            S ->> B: Step 4 - verify window and submit frame
+            B ->> C: render(fixed cube view)
+            C -->> B: Presented frame and completion point
+            S ->> P: Step 4 - drain and discard warmup samples
+            S ->> W: Process events and recheck extent
         end
         loop Until measurement duration ends
-            S->>B: Step 5 - verify window and submit frame
-            B->>C: render(fixed cube view)
-            C-->>B: Presented frame and completion point
-            S->>P: Step 5 - drain and retain measurement-range samples
-            S->>W: Process events and recheck extent
+            S ->> B: Step 5 - verify window and submit frame
+            B ->> C: render(fixed cube view)
+            C -->> B: Presented frame and completion point
+            S ->> P: Step 5 - drain and retain measurement-range samples
+            S ->> W: Process events and recheck extent
         end
-        S->>B: Step 6 - wait for last frame, then drain remaining samples
-        B->>C: wait(lastCompletion, 30 seconds)
-        B->>P: takeAvailableSamples()
-        P-->>B: Ready samples
-        B-->>S: Completion and sample results
-        S->>S: Check sample count against submitted frames
-        S->>B: Step 7 - teardown
-        B->>B: Release view's mesh handle
-        B->>C: Destroy Context
-        B->>W: Destroy window
+        S ->> B: Step 6 - wait for last frame, then drain remaining samples
+        B ->> C: wait(lastCompletion, 30 seconds)
+        B ->> P: takeAvailableSamples()
+        P -->> B: Ready samples
+        B -->> S: Completion and sample results
+        S ->> S: Check sample count against submitted frames
+        S ->> B: Step 7 - teardown
+        B ->> B: Release view's mesh handle
+        B ->> C: Destroy Context
+        B ->> W: Destroy window
     end
-    M->>F: Step 7 - write JSON report
-    M-->>A: Print summary and return process status
+    M ->> F: Step 7 - write JSON report
+    M -->> A: Print summary and return process status
 ```
 
 ## Notes
@@ -162,16 +162,16 @@ an empty sample set has no statistics summary.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 1: `--help` is requested | Print the available options and exit successfully | No output directory, log or report is created |
-| **Variant&nbsp;2** | Step 1: warmup is zero, or more than one run is requested | Skip warmup, or execute runs sequentially with a fresh backend for each | A zero-warmup run may include first-use renderer setup in its first sample; each run retains its own sample set and report entry |
-| **Error&nbsp;1** | Step 1: arguments are malformed, out of range or select an unimplemented profile | Print the parser error and return `EXIT_FAILURE` | No benchmark run or report is started; correct the options and retry |
-| **Error&nbsp;2** | Step 2: output directory creation or log sink setup fails | Report the setup error and return `EXIT_FAILURE` | No run starts and no JSON report is guaranteed; choose a writable output directory |
-| **Error&nbsp;3** | Step 3: window/context, cube mesh or upload setup fails, or the selected queue lacks timestamp support | Stop initialization; use [failed-run teardown](#failed-run-teardown); preserve `unsupported` or `failed` as the run outcome | The benchmark still attempts to write a report if output setup succeeded; use a supported display/device or resolve the setup error |
-| **Error&nbsp;4** | Steps 3 through 5: the initial or later framebuffer is minimized, the window closes, its extent changes, or a frame is not presented | Mark the run `invalid` and stop its timed phases; use [failed-run teardown](#failed-run-teardown) | Inspect the reported reason and repeat under a stable display configuration |
-| **Error&nbsp;5** | Steps 4 through 6: a window/backend operation or sample retrieval fails, the final frame wait times out, or sample count differs from measured submissions | Stop with the returned error outcome, or mark it `invalid` for a count mismatch; use [failed-run teardown](#failed-run-teardown) | A report is attempted; fix the reported backend/query problem before comparing results |
-| **Error&nbsp;6** | Step 7: report cannot be opened or fully written | Print the report error and return `EXIT_FAILURE` | A complete JSON report is not guaranteed; use a writable destination and rerun |
+|                    | Point and condition                                                                                                                                        | Response                                                                                                                         | Resulting state and next action                                                                                                     |
+|--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 1: `--help` is requested                                                                                                                              | Print the available options and exit successfully                                                                                | No output directory, log or report is created                                                                                       |
+| **Variant&nbsp;2** | Step 1: warmup is zero, or more than one run is requested                                                                                                  | Skip warmup, or execute runs sequentially with a fresh backend for each                                                          | A zero-warmup run may include first-use renderer setup in its first sample; each run retains its own sample set and report entry    |
+| **Error&nbsp;1**   | Step 1: arguments are malformed, out of range or select an unimplemented profile                                                                           | Print the parser error and return `EXIT_FAILURE`                                                                                 | No benchmark run or report is started; correct the options and retry                                                                |
+| **Error&nbsp;2**   | Step 2: output directory creation or log sink setup fails                                                                                                  | Report the setup error and return `EXIT_FAILURE`                                                                                 | No run starts and no JSON report is guaranteed; choose a writable output directory                                                  |
+| **Error&nbsp;3**   | Step 3: window/context, cube mesh or upload setup fails, or the selected queue lacks timestamp support                                                     | Stop initialization; use [failed-run teardown](#failed-run-teardown); preserve `unsupported` or `failed` as the run outcome      | The benchmark still attempts to write a report if output setup succeeded; use a supported display/device or resolve the setup error |
+| **Error&nbsp;4**   | Steps 3 through 5: the initial or later framebuffer is minimized, the window closes, its extent changes, or a frame is not presented                       | Mark the run `invalid` and stop its timed phases; use [failed-run teardown](#failed-run-teardown)                                | Inspect the reported reason and repeat under a stable display configuration                                                         |
+| **Error&nbsp;5**   | Steps 4 through 6: a window/backend operation or sample retrieval fails, the final frame wait times out, or sample count differs from measured submissions | Stop with the returned error outcome, or mark it `invalid` for a count mismatch; use [failed-run teardown](#failed-run-teardown) | A report is attempted; fix the reported backend/query problem before comparing results                                              |
+| **Error&nbsp;6**   | Step 7: report cannot be opened or fully written                                                                                                           | Print the report error and return `EXIT_FAILURE`                                                                                 | A complete JSON report is not guaranteed; use a writable destination and rerun                                                      |
 
 ### Failed-run teardown
 
@@ -189,18 +189,18 @@ sequenceDiagram
     participant B as Vulkan backend
     participant C as Context
     participant W as Window
-    B-->>S: Initialization or run error
-    S->>B: Step 7 - teardown()
-    B->>B: Release view's mesh handle
+    B -->> S: Initialization or run error
+    S ->> B: Step 7 - teardown()
+    B ->> B: Release view's mesh handle
     opt Context was created
-        B->>C: Destroy Context
+        B ->> C: Destroy Context
     end
     opt Window was created
-        B->>W: Destroy window
+        B ->> W: Destroy window
     end
-    B-->>S: Teardown completed
-    S-->>M: Failure and teardown duration
-    M->>M: Record outcome and stop further runs
+    B -->> S: Teardown completed
+    S -->> M: Failure and teardown duration
+    M ->> M: Record outcome and stop further runs
 ```
 
 ## Outcomes

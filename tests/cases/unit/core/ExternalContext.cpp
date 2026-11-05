@@ -409,6 +409,42 @@ TEST_F(ExternalContextTest, ReleaseAndAcquireRecordOwnershipBarriersAndTimelineS
     EXPECT_EQ(resource->getExternalTimelineValue(), 2U);
 }
 
+TEST_F(ExternalContextTest, PropagatesMemoryHandleExportFailure)
+{
+    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(44);
+    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
+    auto externalContext = makeContext(uploads);
+    expectBufferResourceCreation(description, nativeMemory);
+#ifdef _WIN32
+    EXPECT_CALL(vulkan, vkGetMemoryWin32HandleKHR(deviceHandle, NotNull(), NotNull()))
+        .WillOnce([](VkDevice, const VkMemoryGetWin32HandleInfoKHR*, HANDLE* output) {
+            EXPECT_EQ(*output, nullptr);
+            return static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory);
+        });
+#else
+    EXPECT_CALL(vulkan, vkGetMemoryFdKHR(deviceHandle, NotNull(), NotNull()))
+        .WillOnce([](VkDevice, const VkMemoryGetFdInfoKHR*, int* output) {
+            EXPECT_EQ(*output, -1);
+            return static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory);
+        });
+#endif
+
+    const auto created = externalContext.createBuffer(description);
+
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
+    if (const auto& native = created.error().native; native)
+    {
+        EXPECT_EQ(native->api, "Vulkan");
+        EXPECT_EQ(native->code, static_cast<std::int64_t>(vk::Result::eErrorOutOfHostMemory));
+    }
+    else
+    {
+        FAIL() << "Expected native Vulkan error";
+    }
+}
+
 TEST_F(ExternalContextTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimelineValue)
 {
     auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(60);

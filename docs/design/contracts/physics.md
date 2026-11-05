@@ -15,11 +15,11 @@ remain free to integrate such libraries independently.
 
 ## Supported first-version model
 
-| Body | Shapes | Authority |
-| --- | --- | --- |
-| Dynamic | Sphere | Physics advances linear motion; application uses forces, impulses, or explicit teleport |
-| Static | Sphere, box, plane | Fixed collider pose |
-| Kinematic | Sphere, box | Application supplies target motion/pose |
+| Body      | Shapes             | Authority                                                                               |
+|-----------|--------------------|-----------------------------------------------------------------------------------------|
+| Dynamic   | Sphere             | Physics advances linear motion; application uses forces, impulses, or explicit teleport |
+| Static    | Sphere, box, plane | Fixed collider pose                                                                     |
+| Kinematic | Sphere, box        | Application supplies target motion/pose                                                 |
 
 Support dynamic sphere versus sphere, box, and plane contacts, including dynamic
 sphere-sphere pairs. Provide gravity, linear velocity, force, impulse, penetration
@@ -69,8 +69,8 @@ the authority and stepping rules, and measure CPU cost separately from rendering
 The module has no Vulkan or CUDA dependency. A move-only world provides
 generation-aware body handles and checked main-thread operations to add and remove
 bodies, apply forces and impulses, set kinematic targets, teleport and step.
-Contact data is read-only and valid until the next step or mutation. Default gravity is
-(0,-9.81,0) m/s² and fixedDt is 1/60 s; the application decides how many steps to
+Contact data is read-only and valid until the next step or mutation. Default gravity is (0,-9.81,0) m/s² and fixedDt is
+1/60 s; the application decides how many steps to
 execute. Reject nonpositive/nonfinite dt, mass, radius or half extents, and invalid
 poses. No hidden frame-time accumulator or presentation-rate coupling exists.
 

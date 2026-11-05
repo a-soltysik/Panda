@@ -562,16 +562,17 @@ auto SceneState::destroySubtree(const Entity& entity) -> Result<void>
         return std::unexpected {root.error()};
     }
     auto pending = std::vector<std::size_t> {*root};
-    auto ordered = std::vector<std::size_t> {};
+    if (const auto parent = _slots[*root].parent)
+    {
+        std::erase(_slots[*parent].children, *root);
+    }
     while (!pending.empty())
     {
         const auto current = pending.back();
         pending.pop_back();
-        ordered.push_back(current);
-        pending.insert(pending.end(), _slots[current].children.begin(), _slots[current].children.end());
-    }
-    for (const auto current : std::views::reverse(ordered))
-    {
+        auto children = std::move(_slots[current].children);
+        pending.insert(pending.end(), children.begin(), children.end());
+        _slots[current].parent.reset();
         destroySlot(current);
     }
     return {};

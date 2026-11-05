@@ -3,13 +3,13 @@
 #include <cmath>
 #include <glm/ext/vector_float3.hpp>
 #include <limits>
+#include <panda/Camera.hpp>
 #include <panda/Error.hpp>
-#include <panda/tools/Camera.hpp>
 
 TEST(Camera, CreatesPerspectiveRenderCamera)
 {
     const auto position = glm::vec3 {3.0F, 2.5F, 4.0F};
-    const auto camera = panda::tools::createPerspectiveCamera({
+    const auto camera = panda::createPerspectiveCamera({
         .position = position,
         .target = {},
         .up = {0, 1, 0},
@@ -29,7 +29,7 @@ TEST(Camera, CreatesPerspectiveRenderCamera)
 TEST(Camera, RejectsDegeneratePoseAndProjection)
 {
     const auto position = glm::vec3 {};
-    auto description = panda::tools::PerspectiveCameraDesc {
+    auto description = panda::PerspectiveCameraDesc {
         .position = position,
         .target = position,
         .up = {0, 1, 0},
@@ -38,32 +38,32 @@ TEST(Camera, RejectsDegeneratePoseAndProjection)
         .nearPlane = 0.1F,
         .farPlane = 100.0F
     };
-    const auto degenerateCamera = panda::tools::createPerspectiveCamera(description);
+    const auto degenerateCamera = panda::createPerspectiveCamera(description);
     ASSERT_FALSE(degenerateCamera);
     EXPECT_EQ(degenerateCamera.error().code, panda::ErrorCode::InvalidArgument);
     description.target = {0, 1, 0};
     description.up = {0, 2, 0};
-    EXPECT_FALSE(panda::tools::createPerspectiveCamera(description));
+    EXPECT_FALSE(panda::createPerspectiveCamera(description));
     description.target = {0, 0, -1};
     description.up = {0, 1, 0};
     description.verticalFieldOfViewRadians = 0.0F;
-    EXPECT_FALSE(panda::tools::createPerspectiveCamera(description));
+    EXPECT_FALSE(panda::createPerspectiveCamera(description));
     description.position = {std::numeric_limits<float>::infinity(), 0, 0};
     description.verticalFieldOfViewRadians = 1.0F;
-    EXPECT_FALSE(panda::tools::createPerspectiveCamera(description));
+    EXPECT_FALSE(panda::createPerspectiveCamera(description));
 
     description.position = {};
     description.target.y = std::numeric_limits<float>::quiet_NaN();
-    EXPECT_FALSE(panda::tools::createPerspectiveCamera(description));
+    EXPECT_FALSE(panda::createPerspectiveCamera(description));
     description.target = {0, 0, -1};
     description.up.z = std::numeric_limits<float>::infinity();
-    EXPECT_FALSE(panda::tools::createPerspectiveCamera(description));
+    EXPECT_FALSE(panda::createPerspectiveCamera(description));
 }
 
 TEST(Camera, RejectsOverflowingViewProjection)
 {
     const auto maximum = std::numeric_limits<float>::max();
-    const auto camera = panda::tools::createPerspectiveCamera({
+    const auto camera = panda::createPerspectiveCamera({
         .position = {maximum, 0, 0},
         .target = {maximum, 1, 0},
         .up = {0,       0, 1},

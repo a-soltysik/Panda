@@ -15,7 +15,8 @@ MAILBOX also presents on vertical blanking, but replaces a pending request with 
 newest frame. IMMEDIATE does not wait for vertical blanking and may tear. The API's
 default and behavior when a requested mode is unsupported are decisions for this task;
 the benchmark must report the effective mode and cannot silently label a fallback as
-the requested mode. See the [Vulkan present-mode reference](https://docs.vulkan.org/refpages/latest/refpages/source/VkPresentModeKHR.html)
+the requested mode. See
+the [Vulkan present-mode reference](https://docs.vulkan.org/refpages/latest/refpages/source/VkPresentModeKHR.html)
 for exact mode semantics.
 
 Current implementation always creates FIFO swapchains. `ContextOptions` has no

@@ -3,6 +3,7 @@ panda_add_component(panda_core
     INCLUDE_DIRECTORY "${PROJECT_SOURCE_DIR}/include/core"
     SOURCES
         Panda.cpp
+        Camera.cpp
         Error.cpp
         Math.cpp
         Projection.cpp
@@ -46,6 +47,7 @@ panda_add_component(panda_core
         vulkan/resources/TextureResource.cpp
     PUBLIC_HEADERS
         panda/Buffer.hpp
+        panda/Camera.hpp
         panda/CompletionPoint.hpp
         panda/Context.hpp
         panda/Error.hpp
