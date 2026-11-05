@@ -7,8 +7,8 @@ Panda renders and presents that view without requiring a scene or entity system.
 empty `RenderView::meshes` list is a valid view that presents only the background.
 This flow ends with a `FrameResult` or an `Error`.
 
-**The application** owns scene data, transforms and the lifetime of its `Context`.
-**Panda** validates the view, records the built-in mesh rendering path, retains mesh
+**The application** owns scene data, transforms and the lifetime of its `Context`. **Panda** validates the view, records
+the built-in mesh rendering path, retains mesh
 handles through GPU use, and owns frame-slot and swapchain synchronization. A returned
 `CompletionPoint` identifies submitted GPU work; it does not mean the image has been
 displayed.
@@ -136,16 +136,16 @@ already submitted work was rolled back.
 
 ## Variants and errors
 
-| Condition | Result and next action |
-| --- | --- |
-| Framebuffer width or height is zero | Return `Suspended` without acquiring an image; process events and retry after restoration. |
-| Acquire returns timeout or not-ready | Return `Skipped` without a completion point. |
-| Acquire reports out-of-date | Return `RecreatePending` without a completion point; the next call attempts recreation. |
-| Acquire or present is suboptimal, or present reports out-of-date | Return `RecreatePending`; keep the accepted submission's completion point. |
-| Invalid view data, foreign mesh, or nonstandard vertex stride | Return `InvalidArgument` before acquiring an image. |
-| Context has no window presentation service | Return `Unsupported`. |
-| Recording, submission or cleanup fails after acquire | Return the relevant error; retire the acquired image. Failed retirement faults presentation. |
-| Surface or device is lost | Return the Vulkan error and fault presentation; Context teardown still attempts its drain. |
+| Condition                                                        | Result and next action                                                                       |
+|------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| Framebuffer width or height is zero                              | Return `Suspended` without acquiring an image; process events and retry after restoration.   |
+| Acquire returns timeout or not-ready                             | Return `Skipped` without a completion point.                                                 |
+| Acquire reports out-of-date                                      | Return `RecreatePending` without a completion point; the next call attempts recreation.      |
+| Acquire or present is suboptimal, or present reports out-of-date | Return `RecreatePending`; keep the accepted submission's completion point.                   |
+| Invalid view data, foreign mesh, or nonstandard vertex stride    | Return `InvalidArgument` before acquiring an image.                                          |
+| Context has no window presentation service                       | Return `Unsupported`.                                                                        |
+| Recording, submission or cleanup fails after acquire             | Return the relevant error; retire the acquired image. Failed retirement faults presentation. |
+| Surface or device is lost                                        | Return the Vulkan error and fault presentation; Context teardown still attempts its drain.   |
 
 ## Related information
 

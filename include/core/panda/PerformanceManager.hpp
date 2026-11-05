@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <panda/Error.hpp>
 #include <vector>
@@ -74,9 +75,11 @@ public:
 private:
     friend class Context;
 
-    explicit PerformanceManager(detail::PerformanceManagerImpl& implementation) noexcept;
+    explicit PerformanceManager(
+        std::optional<std::reference_wrapper<detail::PerformanceManagerImpl>> implementation) noexcept;
 
-    detail::PerformanceManagerImpl* _implementation;
+    // A moved-from Context may need an empty facade.
+    std::optional<std::reference_wrapper<detail::PerformanceManagerImpl>> _implementation;
 };
 
 }

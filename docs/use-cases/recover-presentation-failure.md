@@ -71,14 +71,14 @@ to destroy.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 1: present succeeds | Mark the image's present fence pending and return `Presented` with a valid completion point | Caller may observe GPU completion separately; the present fence governs resource reuse |
-| **Variant&nbsp;2** | Step 1: present is suboptimal/out-of-date, or acquire was suboptimal | Keep the presentation record and return `RecreatePending` with a valid point | The next frame boundary drains before creating a replacement generation |
-| **Error&nbsp;1** | Step 1: surface lost | Record pending presentation, fault the Context and return the Vulkan error | No automatic surface recovery; drain still waits recorded GPU/presentation work |
-| **Error&nbsp;2** | Step 1: device lost | Fault the Context and return the Vulkan error | Stop window work; transparent device reconstruction is not promised |
-| **Error&nbsp;3** | Step 2 through 4: timeline wait, semaphore creation or image release fails | Fault presentation and return that cleanup error | Pending recovery remains; `drain()` can resume a failed wait or semaphore creation, but refuses success after an unconfirmed release |
-| **Error&nbsp;4** | Step 4: the original present request was not enqueued | Return the original present error after successful cleanup | Recreation is pending; caller can make another frame call if presentation remains usable |
+|                    | Point and condition                                                        | Response                                                                                    | Resulting state and next action                                                                                                      |
+|--------------------|----------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 1: present succeeds                                                   | Mark the image's present fence pending and return `Presented` with a valid completion point | Caller may observe GPU completion separately; the present fence governs resource reuse                                               |
+| **Variant&nbsp;2** | Step 1: present is suboptimal/out-of-date, or acquire was suboptimal       | Keep the presentation record and return `RecreatePending` with a valid point                | The next frame boundary drains before creating a replacement generation                                                              |
+| **Error&nbsp;1**   | Step 1: surface lost                                                       | Record pending presentation, fault the Context and return the Vulkan error                  | No automatic surface recovery; drain still waits recorded GPU/presentation work                                                      |
+| **Error&nbsp;2**   | Step 1: device lost                                                        | Fault the Context and return the Vulkan error                                               | Stop window work; transparent device reconstruction is not promised                                                                  |
+| **Error&nbsp;3**   | Step 2 through 4: timeline wait, semaphore creation or image release fails | Fault presentation and return that cleanup error                                            | Pending recovery remains; `drain()` can resume a failed wait or semaphore creation, but refuses success after an unconfirmed release |
+| **Error&nbsp;4**   | Step 4: the original present request was not enqueued                      | Return the original present error after successful cleanup                                  | Recreation is pending; caller can make another frame call if presentation remains usable                                             |
 
 ## Related information
 
@@ -88,6 +88,8 @@ to destroy.
   fences are waited.
 - [Resources and frames](../design/contracts/resources.md#frame-and-window-state)
   defines the acquired-image and semaphore lifetime requirements.
-- The [presentation-fence specification](https://docs.vulkan.org/refpages/latest/refpages/source/VkSwapchainPresentFenceInfoKHR.html)
-  defines when present-associated resources can be destroyed; its fence need not
-  wait for display completion.
+-
+
+The [presentation-fence specification](https://docs.vulkan.org/refpages/latest/refpages/source/VkSwapchainPresentFenceInfoKHR.html)
+defines when present-associated resources can be destroyed; its fence need not
+wait for display completion.

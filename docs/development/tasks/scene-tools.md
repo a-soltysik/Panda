@@ -4,13 +4,16 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Add optional ImGui/ImGuizmo panels, input capture and update-phase intents, including scene-owned material edits and application apply/reset hooks. Scene editing uses `Panda::Scene`; preserve use of the existing window wrapper without the scene module.
+Add optional ImGui/ImGuizmo panels, input capture and update-phase intents, including scene-owned material edits and
+application apply/reset hooks. Scene editing uses `Panda::Scene`; preserve use of the existing window wrapper without
+the scene module.
 
 Non-goal: No reflection system, automatic solver save or implicit buffer mutation.
 
 Interface: Panda::Tools panels, input-capture result and update-phase intent sink.
 
-Paths: `../../../include/core/panda`, `src/tools/`, `examples/tools/`, `tests/tools/` and directly affected documentation.
+Paths: `../../../include/core/panda`, `src/tools/`, `examples/tools/`, `tests/tools/` and directly affected
+documentation.
 Specifications: [Tools](../../design/contracts/scene.md#optional-tools-and-safe-edits), [physics authority](../../design/contracts/physics.md#scene-integration-and-stepping), [resource replacement](../../design/contracts/resources.md#mutation-and-replacement).
 
 ## Acceptance

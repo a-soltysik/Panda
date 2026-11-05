@@ -8,17 +8,17 @@ CUDA session. This flow ends when the application has a live `SharedCudaBuffer`.
 It does not submit work to either API. Repeated use is covered by
 [UC Alternate Vulkan and CUDA work on a shared buffer](alternate-shared-buffer-work.md).
 
-**The application** chooses the buffer description and whether to use CUDA.
-**Panda Core** creates the Vulkan resource and exports platform handles without
+**The application** chooses the buffer description and whether to use CUDA. **Panda Core** creates the Vulkan resource
+and exports platform handles without
 depending on CUDA. **`Panda::Cuda`** matches the Vulkan device and imports the
 allocation and, when available, its paired timeline semaphore.
 
-| Boundary | Meaning |
-| --- | --- |
-| Trigger and input | Application has a live Context and requests a shareable buffer |
-| Successful end | A SharedCudaBuffer retains the Vulkan resource and CUDA mapping; Vulkan owns the buffer |
-| Failure end | An error is returned and no partially initialized wrapper escapes |
-| Outside this flow | GPU work, ownership transfers, application compute policy |
+| Boundary          | Meaning                                                                                 |
+|-------------------|-----------------------------------------------------------------------------------------|
+| Trigger and input | Application has a live Context and requests a shareable buffer                          |
+| Successful end    | A SharedCudaBuffer retains the Vulkan resource and CUDA mapping; Vulkan owns the buffer |
+| Failure end       | An error is returned and no partially initialized wrapper escapes                       |
+| Outside this flow | GPU work, ownership transfers, application compute policy                               |
 
 ## Main flow
 
@@ -94,17 +94,17 @@ was exported. Such a buffer cannot use
 [UC Alternate Vulkan and CUDA work on a shared buffer](alternate-shared-buffer-work.md);
 that flow requires the timeline semaphore.
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 1: optional external-memory support is unavailable | Context creation succeeds and reports export disabled | Use the application's fallback before requesting a shared buffer |
-| **Variant&nbsp;2** | Step 1: memory export is available but semaphore export is not | Buffer creation and memory import remain available, but no timeline handoff value can be produced | Use memory-sharing only; do not submit cross-API work |
-| **Error&nbsp;1** | Step 1: required Context/device initialization fails | Return the initialization error | No Context or external buffer is published; choose a compatible runtime/device |
-| **Error&nbsp;2** | Step 2: no CUDA device matches the Vulkan UUID | Return `Unsupported` | No CUDA session is published; use the application's fallback |
-| **Error&nbsp;3** | Step 3: size, usage or memory intent is invalid | Return the validation error before native buffer creation | No native resource is published; correct the description |
-| **Error&nbsp;4** | Step 4: requested memory usage or handle cannot be exported | Return `Unsupported` and release unpublished state | No ExternalBuffer is published; choose a supported usage/device |
-| **Error&nbsp;5** | Step 4: timeline semaphore creation or export fails | Return the Vulkan error and release unpublished resources | No ExternalBuffer is published; inspect the native failure before retrying |
-| **Error&nbsp;6** | Step 5: CUDA import or mapping fails | Return the CUDA error and release partial imports | No SharedCudaBuffer is published; correct the reported cause |
-| **Error&nbsp;7** | Closing the CUDA session while a SharedCudaBuffer owner remains | Return `ResourcesInUse` | Session stays usable; release all shared-buffer owners before closing |
+|                    | Point and condition                                             | Response                                                                                          | Resulting state and next action                                                |
+|--------------------|-----------------------------------------------------------------|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 1: optional external-memory support is unavailable         | Context creation succeeds and reports export disabled                                             | Use the application's fallback before requesting a shared buffer               |
+| **Variant&nbsp;2** | Step 1: memory export is available but semaphore export is not  | Buffer creation and memory import remain available, but no timeline handoff value can be produced | Use memory-sharing only; do not submit cross-API work                          |
+| **Error&nbsp;1**   | Step 1: required Context/device initialization fails            | Return the initialization error                                                                   | No Context or external buffer is published; choose a compatible runtime/device |
+| **Error&nbsp;2**   | Step 2: no CUDA device matches the Vulkan UUID                  | Return `Unsupported`                                                                              | No CUDA session is published; use the application's fallback                   |
+| **Error&nbsp;3**   | Step 3: size, usage or memory intent is invalid                 | Return the validation error before native buffer creation                                         | No native resource is published; correct the description                       |
+| **Error&nbsp;4**   | Step 4: requested memory usage or handle cannot be exported     | Return `Unsupported` and release unpublished state                                                | No ExternalBuffer is published; choose a supported usage/device                |
+| **Error&nbsp;5**   | Step 4: timeline semaphore creation or export fails             | Return the Vulkan error and release unpublished resources                                         | No ExternalBuffer is published; inspect the native failure before retrying     |
+| **Error&nbsp;6**   | Step 5: CUDA import or mapping fails                            | Return the CUDA error and release partial imports                                                 | No SharedCudaBuffer is published; correct the reported cause                   |
+| **Error&nbsp;7**   | Closing the CUDA session while a SharedCudaBuffer owner remains | Return `ResourcesInUse`                                                                           | Session stays usable; release all shared-buffer owners before closing          |
 
 **Success.** The application owns a SharedCudaBuffer ready for a later handoff.
 Its creation and import do not imply GPU work or completion.

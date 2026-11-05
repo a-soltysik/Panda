@@ -10,7 +10,8 @@ Non-goal: No CUDA export or per-object device idle.
 
 Interface: Buffer/Texture/Mesh handles, UploadBatch and context-scoped CompletionPoint.
 
-Paths: `../../../include/core/panda`, `src/core/vulkan/resources/`, `tests/cases/unit/`, `tests/cases/system/`, `tests/gpu/` and directly affected documentation.
+Paths: `../../../include/core/panda`, `src/core/vulkan/resources/`, `tests/cases/unit/`, `tests/cases/system/`,
+`tests/gpu/` and directly affected documentation.
 Specifications: [Ownership, allocation and completion](../../design/contracts/resources.md#handles-and-api-boundary).
 
 Implement the CPU allocation algorithm first, then GPU allocation/upload, then
@@ -18,7 +19,8 @@ retirement and in-flight replacement. Verify each boundary before expanding.
 
 ## Acceptance
 
-CPU split/coalesce/overflow tests; GPU copy-range ordering and visibility, noncoherent flush, failed growth and in-flight release tests with validation.
+CPU split/coalesce/overflow tests; GPU copy-range ordering and visibility, noncoherent flush, failed growth and
+in-flight release tests with validation.
 
 Learning: Explain why a live CPU handle and completed GPU use are separate conditions.
 
@@ -49,7 +51,8 @@ GPU use and destroy bound resources before releasing their ranges.
 
 `MemoryPool` selects a compatible memory type, ranks explicit preferred properties
 first and uses host coherence as a tie-breaker for host requests. Pool selection
-and block creation share the same unsupported-property policy. It partitions ordinary blocks by memory type and buffers versus
+and block creation share the same unsupported-property policy. It partitions ordinary blocks by memory type and buffers
+versus
 optimal-tiled images, reuses existing ranges, and grows lazily within single-size,
 heap-commitment and allocation-count limits. Required/preferred dedicated requests
 and requests above half a block receive dedicated allocations. Failed ordinary

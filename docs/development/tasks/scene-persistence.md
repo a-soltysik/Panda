@@ -4,7 +4,8 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Implement strict version-one JSON load/save, stable IDs, scene-owned material sharing, app asset resolver, cloud placeholder and atomic replacement.
+Implement strict version-one JSON load/save, stable IDs, scene-owned material sharing, app asset resolver, cloud
+placeholder and atomic replacement.
 
 Non-goal: No solver configuration, arbitrary ECS serialization or GPU checkpoint.
 

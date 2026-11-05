@@ -2,7 +2,9 @@
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 // clang-format on
 
+#include <functional>
 #include <optional>
+#include <panda/Assert.hpp>
 #include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <vector>
@@ -11,28 +13,45 @@
 
 namespace panda
 {
-PerformanceManager::PerformanceManager(detail::PerformanceManagerImpl& implementation) noexcept
-    : _implementation {&implementation}
+PerformanceManager::PerformanceManager(
+    std::optional<std::reference_wrapper<detail::PerformanceManagerImpl>> implementation) noexcept
+    : _implementation {implementation}
 {
 }
 
 auto PerformanceManager::getCapabilities() const noexcept -> PerformanceCapabilities
 {
-    return _implementation->getCapabilities();
+    if (!_implementation)
+    {
+        panda::panic("Cannot use a moved-from PerformanceManager");
+    }
+    return (*_implementation).get().getCapabilities();
 }
 
 auto PerformanceManager::getLatestSample() -> Result<std::optional<FramePerformanceSample>>
 {
-    return _implementation->getLatestSample();
+    if (!_implementation)
+    {
+        panda::panic("Cannot use a moved-from PerformanceManager");
+    }
+    return (*_implementation).get().getLatestSample();
 }
 
 auto PerformanceManager::takeNextSample() -> Result<std::optional<FramePerformanceSample>>
 {
-    return _implementation->takeNextSample();
+    if (!_implementation)
+    {
+        panda::panic("Cannot use a moved-from PerformanceManager");
+    }
+    return (*_implementation).get().takeNextSample();
 }
 
 auto PerformanceManager::takeAvailableSamples() -> Result<std::vector<FramePerformanceSample>>
 {
-    return _implementation->takeAvailableSamples();
+    if (!_implementation)
+    {
+        panda::panic("Cannot use a moved-from PerformanceManager");
+    }
+    return (*_implementation).get().takeAvailableSamples();
 }
 }

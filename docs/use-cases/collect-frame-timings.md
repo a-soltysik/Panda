@@ -45,13 +45,13 @@ samples are owned by the Context; the borrowed manager must not outlive it.
    submitted slot's exact completion point. That point only gates a safe query read;
    it is not used as the GPU duration. The manager requests both 64-bit query values
    with per-query availability and without a wait. Once both are available, it
-   subtracts the start tick from the end tick using the queue's valid counter bits
-   (so counter wrap is handled), multiplies by the device's nanoseconds-per-tick
+   subtracts the start tick from the end tick using the queue's valid counter bits (so counter wrap is handled),
+   multiplies by the device's nanoseconds-per-tick
    `VkPhysicalDeviceLimits::timestampPeriod`, and rounds to nanoseconds. In terms
    of the returned timestamps:
 
-   - `deltaTicks = (endTick - startTick) modulo 2^timestampValidBits`
-   - `gpuExecutionDuration = round(deltaTicks * timestampPeriod)`
+    - `deltaTicks = (endTick - startTick) modulo 2^timestampValidBits`
+    - `gpuExecutionDuration = round(deltaTicks * timestampPeriod)`
 
    For example, 40 ticks at 2 ns per tick produce 80 ns. Panda pairs that duration
    with the CPU measurement and orders ready samples by frame index.
@@ -64,29 +64,29 @@ sequenceDiagram
     participant M as PerformanceManager
     participant Q as SubmissionQueue
     participant V as Vulkan
-    A->>C: Step 1 - getPerformanceManager()
-    C-->>A: Borrowed manager
-    A->>M: Step 1 - getCapabilities()
-    M-->>A: Timestamp support and sampling state
-    A->>C: Step 2 - render(view)
-    C->>P: Step 2 - start CPU clock and render view
-    P->>M: Step 2 - record start and end GPU timestamp markers
-    M->>V: Record vkCmdWriteTimestamp2 at color-attachment output stage
-    P->>Q: Step 2 - submit marked command buffer
-    Q-)V: Queue accepts frame work and timeline signal
-    Q-->>P: Committed completion point
-    P->>M: Associate slot queries with completion point and frame index
-    P-->>C: Frame result or post-submit presentation error
-    C->>M: Step 3 - record CPU frame duration
-    C-->>A: Step 3 - return frame result or error
-    A->>M: Step 4 - peek or take ready samples
-    M->>Q: Step 4 - poll each submitted completion point
-    Q-->>M: Completed or pending
+    A ->> C: Step 1 - getPerformanceManager()
+    C -->> A: Borrowed manager
+    A ->> M: Step 1 - getCapabilities()
+    M -->> A: Timestamp support and sampling state
+    A ->> C: Step 2 - render(view)
+    C ->> P: Step 2 - start CPU clock and render view
+    P ->> M: Step 2 - record start and end GPU timestamp markers
+    M ->> V: Record vkCmdWriteTimestamp2 at color-attachment output stage
+    P ->> Q: Step 2 - submit marked command buffer
+    Q -) V: Queue accepts frame work and timeline signal
+    Q -->> P: Committed completion point
+    P ->> M: Associate slot queries with completion point and frame index
+    P -->> C: Frame result or post-submit presentation error
+    C ->> M: Step 3 - record CPU frame duration
+    C -->> A: Step 3 - return frame result or error
+    A ->> M: Step 4 - peek or take ready samples
+    M ->> Q: Step 4 - poll each submitted completion point
+    Q -->> M: Completed or pending
     opt Completion is known
-        M->>V: Read both timestamps without waiting
-        V-->>M: Values and per-query availability
+        M ->> V: Read both timestamps without waiting
+        V -->> M: Values and per-query availability
     end
-    M-->>A: Step 4 - ordered samples or no ready sample
+    M -->> A: Step 4 - ordered samples or no ready sample
 ```
 
 ## Notes
@@ -122,13 +122,13 @@ recovery outcomes.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 1: sampling was not requested, or the graphics queue has no timestamp support | Capabilities report sampling disabled; no timestamp pools or paired samples are produced | Enable sampling when creating a new Context; unsupported hardware needs a queue with timestamp support |
-| **Variant&nbsp;2** | Step 2: the frame is suspended, skipped or fails before queue submission | No submitted slot is associated with a frame index and no paired sample is produced | Follow [UC Render and present an application view](render-view.md); submit a later frame when presentation can proceed |
-| **Variant&nbsp;3** | Step 4: the submitted point is pending, or either query is not yet available | Return an empty optional/vector without waiting | Keep running and query again later; the sample remains pending |
-| **Error&nbsp;1** | Step 2: the previous slot submission is complete, but a timestamp remains unavailable when `Presentation` tries to reuse its query pool | Frame recording returns `BackendFailure`; after image acquisition, presentation retires that image through [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | The query pool is not reset over the pending result; inspect the error and Context state before continuing |
-| **Error&nbsp;2** | Step 4: completion polling, query readback or duration conversion fails | Return the backend error rather than a fabricated timing | No new sample is returned; device loss has no general recovery path |
+|                    | Point and condition                                                                                                                     | Response                                                                                                                                                                                  | Resulting state and next action                                                                                        |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 1: sampling was not requested, or the graphics queue has no timestamp support                                                      | Capabilities report sampling disabled; no timestamp pools or paired samples are produced                                                                                                  | Enable sampling when creating a new Context; unsupported hardware needs a queue with timestamp support                 |
+| **Variant&nbsp;2** | Step 2: the frame is suspended, skipped or fails before queue submission                                                                | No submitted slot is associated with a frame index and no paired sample is produced                                                                                                       | Follow [UC Render and present an application view](render-view.md); submit a later frame when presentation can proceed |
+| **Variant&nbsp;3** | Step 4: the submitted point is pending, or either query is not yet available                                                            | Return an empty optional/vector without waiting                                                                                                                                           | Keep running and query again later; the sample remains pending                                                         |
+| **Error&nbsp;1**   | Step 2: the previous slot submission is complete, but a timestamp remains unavailable when `Presentation` tries to reuse its query pool | Frame recording returns `BackendFailure`; after image acquisition, presentation retires that image through [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | The query pool is not reset over the pending result; inspect the error and Context state before continuing             |
+| **Error&nbsp;2**   | Step 4: completion polling, query readback or duration conversion fails                                                                 | Return the backend error rather than a fabricated timing                                                                                                                                  | No new sample is returned; device loss has no general recovery path                                                    |
 
 ## Outcomes
 

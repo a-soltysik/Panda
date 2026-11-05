@@ -14,25 +14,25 @@ The legacy Panda engine is reference material, not a compatibility constraint.
 
 ## Requirements
 
-| Area | Requirement |
-| --- | --- |
-| Platforms | Support Windows and Linux; render on capable NVIDIA, AMD, and Intel GPUs. Require Vulkan 1.3 and explicitly check required features and limits. Windowed rendering also requires KHR or equivalent EXT swapchain maintenance1 with its dependencies. |
-| Language | Target C++23 for Panda, with a narrow C++20 boundary for CUDA translation units. Validate real compiler/toolkit combinations before declaring support. |
-| Packaging | Allow consumption through CPM without copying engine code or adding application-specific logic to Panda. Optional modules must not become core dependencies. |
-| Rendering | Implement rendering, lighting, shadows, and anti-aliasing within Panda using Vulkan. Vulkan-Hpp and SPIRV-Reflect are permitted. |
-| Defaults | Examples make a useful camera, lighting, shadow, and material setup easy to compose. `Scene::create()` starts empty and adds no objects or resources. |
-| Scenes | Support editable scenes defined in C++ or loaded from files, hierarchy, runtime transforms, reusable assets, and optional parameter panels/gizmos. |
-| Lights | Support a few to a few dozen lights without a small fixed shader light array. Handle color-only, textured, and instanced materials consistently. |
-| Instancing | Support efficient instanced geometry and GPU-resident billboard clouds. Particle count must not imply one entity, CPU update, or draw call per particle. |
-| Shaders | Make complete custom shaders practical, including build integration, layout validation, and an explicit shadow-pass contract. No material DSL is required. |
-| Compute availability | Keep Vulkan graphics and external resources independent of optional CUDA. CUDA is disabled by default at CMake configuration time; an application may choose either backend when its required submission and handoff APIs are available. |
-| Compute boundary | Provide small explicit work and resource-handoff building blocks. The application owns the algorithm, timestep, step count and call frequency; Panda does not register recurring compute callbacks or schedule work per frame. |
-| Persistence | Persist scene setup and references, not a hidden checkpoint of all GPU simulation state. Domain-specific configuration remains application-owned. |
-| Import | Provide optional model import through a support library, with glTF/GLB preferred and common static formats available at runtime. |
-| Physics | Provide optional, deliberately small CPU physics for prototyping: gravity, linear motion, and a restricted set of collisions. |
-| Quality | Use explicit recoverable errors, clear ownership, strong static analysis, documented public APIs, and readable modern C++. |
-| Benchmarks | Include an automated benchmark executable and reproducible profiles; make correctness, performance, and learning evidence part of delivery. |
-| Reference code | Keep legacy Panda and the selected drip engine snapshot, including supporting context, in the repository until the replacement is working and accepted. Later removal requires explicit maintainer approval. |
+| Area                 | Requirement                                                                                                                                                                                                                                          |
+|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Platforms            | Support Windows and Linux; render on capable NVIDIA, AMD, and Intel GPUs. Require Vulkan 1.3 and explicitly check required features and limits. Windowed rendering also requires KHR or equivalent EXT swapchain maintenance1 with its dependencies. |
+| Language             | Target C++23 for Panda, with a narrow C++20 boundary for CUDA translation units. Validate real compiler/toolkit combinations before declaring support.                                                                                               |
+| Packaging            | Allow consumption through CPM without copying engine code or adding application-specific logic to Panda. Optional modules must not become core dependencies.                                                                                         |
+| Rendering            | Implement rendering, lighting, shadows, and anti-aliasing within Panda using Vulkan. Vulkan-Hpp and SPIRV-Reflect are permitted.                                                                                                                     |
+| Defaults             | Examples make a useful camera, lighting, shadow, and material setup easy to compose. `Scene::create()` starts empty and adds no objects or resources.                                                                                                |
+| Scenes               | Support editable scenes defined in C++ or loaded from files, hierarchy, runtime transforms, reusable assets, and optional parameter panels/gizmos.                                                                                                   |
+| Lights               | Support a few to a few dozen lights without a small fixed shader light array. Handle color-only, textured, and instanced materials consistently.                                                                                                     |
+| Instancing           | Support efficient instanced geometry and GPU-resident billboard clouds. Particle count must not imply one entity, CPU update, or draw call per particle.                                                                                             |
+| Shaders              | Make complete custom shaders practical, including build integration, layout validation, and an explicit shadow-pass contract. No material DSL is required.                                                                                           |
+| Compute availability | Keep Vulkan graphics and external resources independent of optional CUDA. CUDA is disabled by default at CMake configuration time; an application may choose either backend when its required submission and handoff APIs are available.             |
+| Compute boundary     | Provide small explicit work and resource-handoff building blocks. The application owns the algorithm, timestep, step count and call frequency; Panda does not register recurring compute callbacks or schedule work per frame.                       |
+| Persistence          | Persist scene setup and references, not a hidden checkpoint of all GPU simulation state. Domain-specific configuration remains application-owned.                                                                                                    |
+| Import               | Provide optional model import through a support library, with glTF/GLB preferred and common static formats available at runtime.                                                                                                                     |
+| Physics              | Provide optional, deliberately small CPU physics for prototyping: gravity, linear motion, and a restricted set of collisions.                                                                                                                        |
+| Quality              | Use explicit recoverable errors, clear ownership, strong static analysis, documented public APIs, and readable modern C++.                                                                                                                           |
+| Benchmarks           | Include an automated benchmark executable and reproducible profiles; make correctness, performance, and learning evidence part of delivery.                                                                                                          |
+| Reference code       | Keep legacy Panda and the selected drip engine snapshot, including supporting context, in the repository until the replacement is working and accepted. Later removal requires explicit maintainer approval.                                         |
 
 ## Representative applications
 
@@ -51,7 +51,8 @@ vehicle simulator or general-purpose game framework.
 - Skeletal animation, animation clips, skinning, and morph-target systems.
 - Fluid, hair, cloth, soft-body, or vehicle solvers.
 - General-purpose rigid-body physics, robust stacks, joints, or mandatory physics middleware.
-- Automatic translation between CUDA and Vulkan compute, automatic CPU fallback, runtime migration of algorithm state, or a persistent compute callback scheduler.
+- Automatic translation between CUDA and Vulkan compute, automatic CPU fallback, runtime migration of algorithm state,
+  or a persistent compute callback scheduler.
 - Mandatory reflection-based object systems, a shader graph, or a custom material language.
 - Full simulation checkpoints and serialization of individual GPU-only particles.
 - Unbounded scene scale, unrestricted transparency correctness, or a promise of high performance on every GPU.

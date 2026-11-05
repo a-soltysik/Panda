@@ -7,13 +7,13 @@ reader would otherwise have to infer from code.
 
 ## Responsibilities and location
 
-| Document | Owns |
-| --- | --- |
-| Design contracts | Shared behavioral rules and invariants, including intended behavior |
-| Use cases and subflows | Goals, paths, outcomes and their realization in code |
-| Public API comments | Exact declaration-level obligations and results |
-| Runnable examples | Current application usage |
-| Task cards and plan | Delivery evidence, task status and acceptance |
+| Document               | Owns                                                                |
+|------------------------|---------------------------------------------------------------------|
+| Design contracts       | Shared behavioral rules and invariants, including intended behavior |
+| Use cases and subflows | Goals, paths, outcomes and their realization in code                |
+| Public API comments    | Exact declaration-level obligations and results                     |
+| Runnable examples      | Current application usage                                           |
+| Task cards and plan    | Delivery evidence, task status and acceptance                       |
 
 A contract is an authoritative rule, such as Context outliving its resources or
 submission not implying completion. Link its owning section from the relevant step.
@@ -103,12 +103,12 @@ that example's README. Related information may link to an example as an illustra
 Use formatting by meaning so readers can scan a scenario and locate symbols in code.
 Follow the [project text and markup conventions](conventions.md#text-and-markup).
 
-| Format | Use | Example |
-| --- | --- | --- |
-| **Bold** | Responsible party, key guarantee or important restriction | **Panda** owns native creation; initial contents are **undefined** |
-| `Monospace` | Exact code symbols: types, methods, parameters and enum values | `MemoryPool`, `Context::createBuffer()`, `BufferMemory::Upload` |
-| *Italics* | A conceptual term when first introduced | The *publication point* is the moment a prepared result becomes visible |
-| Plain text | Explanations and ordinary domain words | A memory pool can serve several resources |
+| Format      | Use                                                            | Example                                                                 |
+|-------------|----------------------------------------------------------------|-------------------------------------------------------------------------|
+| **Bold**    | Responsible party, key guarantee or important restriction      | **Panda** owns native creation; initial contents are **undefined**      |
+| `Monospace` | Exact code symbols: types, methods, parameters and enum values | `MemoryPool`, `Context::createBuffer()`, `BufferMemory::Upload`         |
+| *Italics*   | A conceptual term when first introduced                        | The *publication point* is the moment a prepared result becomes visible |
+| Plain text  | Explanations and ordinary domain words                         | A memory pool can serve several resources                               |
 
 Begin numbered steps with a short bold action label, such as **Allocate memory.**
 Begin notes with their main point, such as **Ownership** or **Failure guarantee**.
@@ -133,13 +133,13 @@ website is optional and must use the same sources rather than a second content c
 Keep references to local steps as plain `Step 5` labels. Link to an ordinary
 section heading when navigation is useful; do not insert HTML anchors for each step.
 
-| Diagram | Useful question |
-| --- | --- |
-| Sequence | Which main objects call each other and exchange data, in what order? |
-| State | Which lifecycle transitions, guards and fault states are allowed? |
-| Activity/flowchart | Which decisions determine the path? |
-| Ownership | Who owns, borrows or retains an object until completion? |
-| Component | Where are project/module responsibility boundaries? |
+| Diagram            | Useful question                                                      |
+|--------------------|----------------------------------------------------------------------|
+| Sequence           | Which main objects call each other and exchange data, in what order? |
+| State              | Which lifecycle transitions, guards and fault states are allowed?    |
+| Activity/flowchart | Which decisions determine the path?                                  |
+| Ownership          | Who owns, borrows or retains an object until completion?             |
+| Component          | Where are project/module responsibility boundaries?                  |
 
 The positive sequence is the default. Add other types when they contribute
 information; there is no mandatory set. Show main participants, not the full stack.
@@ -168,8 +168,8 @@ table and separate sequences; do not mix error handling into the main diagram.
 
 ## Variants and errors
 
-For each meaningful error case or ordinary alternative give a distinct identifier
-(`Error 1`, `Error 2` for error cases; `Variant 1`, `Variant 2` for ordinary
+For each meaningful error case or ordinary alternative give a distinct identifier (`Error 1`, `Error 2` for error cases;
+`Variant 1`, `Variant 2` for ordinary
 alternatives), the main step, condition, response, resulting state and permitted
 next action. Number errors and variants separately. Keep outcomes such as skipped
 frames as variants when they describe a normal alternative. Use *failure* for an

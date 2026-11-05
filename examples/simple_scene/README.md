@@ -3,7 +3,7 @@
 `simple_scene` opens a window, creates a unit cube and unit plane, uploads both
 meshes, then renders the cube on a scaled ground plane with the built-in directional
 light, depth-map shadows and lit material.
-`panda::tools::createPerspectiveCamera` builds the camera values, and the
+`panda::createPerspectiveCamera` builds the camera values from Core, and the
 application supplies the mesh draw; no scene or ECS library is involved.
 Requires a display, Vulkan 1.3 with swapchain maintenance1, and the Khronos validation
 layer. CUDA is not needed.

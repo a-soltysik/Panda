@@ -4,20 +4,25 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Add two frame slots, descriptor/attachment reuse, the first clear/triangle path, and public performance data collection that ordinary applications and `panda-bench` can both use.
+Add two frame slots, descriptor/attachment reuse, the first clear/triangle path, and public performance data collection
+that ordinary applications and `panda-bench` can both use.
 
 Non-goal: No complete scene, shadow system or measured performance promise.
 
-Interface: Context-owned `PerformanceManager` for capabilities and asynchronous samples; the benchmark is a normal public-API client.
+Interface: Context-owned `PerformanceManager` for capabilities and asynchronous samples; the benchmark is a normal
+public-API client.
 
-Paths: `include/core/panda/PerformanceManager.hpp`, `src/core/vulkan/performance/`, `src/core/vulkan/presentation/`, `tests/`, `benchmarks/` and directly affected documentation.
+Paths: `include/core/panda/PerformanceManager.hpp`, `src/core/vulkan/performance/`, `src/core/vulkan/presentation/`,
+`tests/`, `benchmarks/` and directly affected documentation.
 Specifications: [Frame reuse](../../design/contracts/resources.md#frame-and-window-state), [rendering](../../design/contracts/rendering.md#rendering-path), [benchmarks](../benchmarking.md).
 
 ## Acceptance
 
-Capture a frame and retrieve its public paired CPU/GPU sample; test resize/skip/reuse and verify no routine device idle; run a short benchmark smoke profile through the public API.
+Capture a frame and retrieve its public paired CPU/GPU sample; test resize/skip/reuse and verify no routine device idle;
+run a short benchmark smoke profile through the public API.
 
-Learning: Explain the CPU frame wall duration boundary, what the GPU execution duration covers, and how its timestamps are collected.
+Learning: Explain the CPU frame wall duration boundary, what the GPU execution duration covers, and how its timestamps
+are collected.
 
 ## Current verification
 

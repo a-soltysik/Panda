@@ -74,6 +74,10 @@ panda_add_test(panda_unit_core unit
 target_compile_definitions(panda_unit_core PRIVATE
     PANDA_EXPECTED_VERSION="${PROJECT_VERSION}")
 
+panda_add_test(panda_unit_camera unit
+    SOURCES Camera.cpp
+    LIBRARIES Panda::Panda)
+
 panda_add_test(panda_unit_context unit
     VULKAN_INTERNAL
     SOURCES Context.cpp ContextLifecycle.cpp

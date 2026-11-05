@@ -8,17 +8,17 @@ An application requests a fixed-size 2D GPU image through
 and created its internal default image view. Initial texels are **undefined**.
 Creation submits no GPU work and does not upload or initialize contents.
 
-**Panda** owns the native image, its memory range and the default view.
-**The application** chooses extent, format and usage, and keeps `Context` alive
+**Panda** owns the native image, its memory range and the default view. **The application** chooses extent, format and
+usage, and keeps `Context` alive
 for every `Texture` owner. The implemented scope follows
 [Allocation, uploads and resource lifetimes](../development/tasks/resource-lifetimes.md).
 
-| Boundary | Meaning |
-| --- | --- |
-| Trigger and input | Application calls `Context::createTexture` with a `TextureDesc` |
-| Successful end | `Result<Texture>` contains a shared owner of a bound 2D image and its internal default view |
-| Failure end | An `Error` is returned with no published `Texture`, or a fatal caller-contract violation |
-| Outside this flow | Uploading texels, submitting GPU work, later synchronization and texture sampling |
+| Boundary          | Meaning                                                                                     |
+|-------------------|---------------------------------------------------------------------------------------------|
+| Trigger and input | Application calls `Context::createTexture` with a `TextureDesc`                             |
+| Successful end    | `Result<Texture>` contains a shared owner of a bound 2D image and its internal default view |
+| Failure end       | An `Error` is returned with no published `Texture`, or a fatal caller-contract violation    |
+| Outside this flow | Uploading texels, submitting GPU work, later synchronization and texture sampling           |
 
 ## Preconditions
 
@@ -101,22 +101,23 @@ the native image or view.
 **Contents and lifetime.** Image creation does not initialize texels or enqueue
 work. A copied `Texture` retains the same resource state; it does not copy image
 contents. `Context` must outlive every copy. The final owner must not release the
-image while submitted work still uses it; the [resource contract](../design/contracts/resources.md#frame-contexts-and-retirement)
+image while submitted work still uses it;
+the [resource contract](../design/contracts/resources.md#frame-contexts-and-retirement)
 and [UC Return a resource memory range](release-memory-range.md) define those boundaries.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Error&nbsp;1** | Step 1: moved-from `Context` | Checked fatal diagnostic | No recoverable result; use a live `Context` |
-| **Error&nbsp;2** | Step 2: completed-upload collection fails | Propagate its error before validating or creating the image | No new image; follow the error category rather than retrying unconditionally |
-| **Error&nbsp;3** | Step 3: zero extent, undefined format, empty usage or usage without a view-capable bit | Return `InvalidArgument` | No native image is created; correct the description |
-| **Error&nbsp;4** | Step 3: unsupported usage bit or format/usage combination | Return `Unsupported` | No native image is created; choose a supported usage or format |
-| **Error&nbsp;5** | Step 3: extent exceeds the device limit or the support query fails | Return `InvalidArgument` for an excessive extent, otherwise the classified Vulkan error | No native image is created; adjust the request or follow the reported error |
-| **Error&nbsp;6** | Step 4: native image creation fails | Convert the Vulkan status without adopting its failed output | No resource state or public handle is created |
-| **Error&nbsp;7** | Step 5: memory allocation fails | Destroy the unpublished image and propagate the allocation error | No range or public handle escapes; existing live allocations remain owned |
-| **Error&nbsp;8** | Step 5: image binding fails | [Destroy the image, then release its range](#error-8---cleanup-before-publication); propagate the native error | No `Texture` is published; the pool applies its empty-block policy |
-| **Error&nbsp;9** | Step 6: default view creation fails | [Destroy the image, then release its range](#error-8---cleanup-before-publication); do not adopt the failed view output | No `Texture` is published; the pool applies its empty-block policy |
+|                  | Point and condition                                                                    | Response                                                                                                                | Resulting state and next action                                              |
+|------------------|----------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
+| **Error&nbsp;1** | Step 1: moved-from `Context`                                                           | Checked fatal diagnostic                                                                                                | No recoverable result; use a live `Context`                                  |
+| **Error&nbsp;2** | Step 2: completed-upload collection fails                                              | Propagate its error before validating or creating the image                                                             | No new image; follow the error category rather than retrying unconditionally |
+| **Error&nbsp;3** | Step 3: zero extent, undefined format, empty usage or usage without a view-capable bit | Return `InvalidArgument`                                                                                                | No native image is created; correct the description                          |
+| **Error&nbsp;4** | Step 3: unsupported usage bit or format/usage combination                              | Return `Unsupported`                                                                                                    | No native image is created; choose a supported usage or format               |
+| **Error&nbsp;5** | Step 3: extent exceeds the device limit or the support query fails                     | Return `InvalidArgument` for an excessive extent, otherwise the classified Vulkan error                                 | No native image is created; adjust the request or follow the reported error  |
+| **Error&nbsp;6** | Step 4: native image creation fails                                                    | Convert the Vulkan status without adopting its failed output                                                            | No resource state or public handle is created                                |
+| **Error&nbsp;7** | Step 5: memory allocation fails                                                        | Destroy the unpublished image and propagate the allocation error                                                        | No range or public handle escapes; existing live allocations remain owned    |
+| **Error&nbsp;8** | Step 5: image binding fails                                                            | [Destroy the image, then release its range](#error-8---cleanup-before-publication); propagate the native error          | No `Texture` is published; the pool applies its empty-block policy           |
+| **Error&nbsp;9** | Step 6: default view creation fails                                                    | [Destroy the image, then release its range](#error-8---cleanup-before-publication); do not adopt the failed view output | No `Texture` is published; the pool applies its empty-block policy           |
 
 **Errors 2–9** return `Result` errors, but not every category permits recovery
 on the same `Context`. **Error 1 is fatal.** Host allocation failure follows

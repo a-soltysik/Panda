@@ -3,18 +3,18 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/geometric.hpp>
+#include <panda/Camera.hpp>
 #include <panda/Error.hpp>
 #include <panda/Projection.hpp>
 #include <panda/RenderView.hpp>
-#include <panda/tools/Camera.hpp>
 
 #include "Math.hpp"
 
-namespace panda::tools
+namespace panda
 {
 namespace
 {
-using panda::detail::isFinite;
+using detail::isFinite;
 
 auto isValidLookAt(glm::vec3 position, glm::vec3 target, glm::vec3 up) -> bool
 {
@@ -29,7 +29,6 @@ auto isValidLookAt(glm::vec3 position, glm::vec3 target, glm::vec3 up) -> bool
     return isFinite(direction) && isFinite(right) && std::isfinite(directionLengthSquared) &&
            directionLengthSquared > 0.0F && std::isfinite(rightLengthSquared) && rightLengthSquared > 0.0F;
 }
-
 }
 
 auto createPerspectiveCamera(const PerspectiveCameraDesc& description) -> Result<RenderCamera>

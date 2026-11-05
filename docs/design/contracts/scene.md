@@ -135,12 +135,12 @@ scale. Non-finite derived world results fail validation before frame submission.
 
 Compute world/normal matrices only when local or ancestor state changes. World
 queries update necessary ancestors even before rendering; no public `update_matrix`
-call is required. Keep-world reparenting computes inverse(newParentWorld) * oldWorld
+call is required. Keep-world reparenting computes inverse (newParentWorld) * oldWorld
 and commits only if a local TRS reconstructs it. Detect shear using normalized basis
 orthogonality (tolerance 1e-5) and require reconstruction residual at most 1e-5 relative
 to matrix magnitude. For inverse validation, reject zero-length basis columns,
 absolute determinant of the column-normalized basis at most 1e-8, non-finite results,
-or max-element residual of A * inverse(A) against identity above 1e-4. Do not test
+or max-element residual of A * inverse (A) against identity above 1e-4. Do not test
 only determinant != 0. Put a negative
 determinant's sign on the X scale for deterministic decomposition; quaternion sign
 equivalence must not count as a changed physical orientation. Tolerances are testable

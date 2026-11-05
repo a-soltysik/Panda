@@ -88,9 +88,9 @@ stage.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Error&nbsp;1** | Step 1: source bytes are empty or the requested alignment is zero | Return `InvalidArgument` before selecting a page | No slice is returned and the caller queues no operation; provide a valid write |
+|                  | Point and condition                                                                   | Response                                              | Resulting state and next action                                                                             |
+|------------------|---------------------------------------------------------------------------------------|-------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| **Error&nbsp;1** | Step 1: source bytes are empty or the requested alignment is zero                     | Return `InvalidArgument` before selecting a page      | No slice is returned and the caller queues no operation; provide a valid write                              |
 | **Error&nbsp;2** | Steps 1–3: completion collection, page allocation, mapped access or cache flush fails | Propagate the error without returning a staging slice | The current write is not appended; earlier accepted writes remain and may be retried when the error permits |
 
 ## Outcomes

@@ -118,13 +118,13 @@ that point; windowed Contexts use the timeline already shared with presentation.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Error&nbsp;1** | Step 1: Context is moved-from or upload service/timeline initialization fails | Return `InvalidArgument` or the initialization error | No batch or upload work is published; use a live Context or resolve the reported backend/capability problem |
-| **Error&nbsp;2** | Step 2: empty bytes, foreign/empty buffer, missing transfer-destination usage or out-of-range write | Return a validation error before appending the write | Earlier writes remain in the batch; correct the request or discard the batch |
-| **Error&nbsp;3** | Step 2: completion query, staging allocation, mapped write or cache flush fails | Propagate the error without appending this write | Earlier writes remain available; retry only when the error category permits it |
-| **Error&nbsp;4** | Step 3: submit is called with no writes | Return `InvalidArgument` | The batch remains valid; add a write or destroy it |
-| **Error&nbsp;5** | Steps 3–4: capacity check, command preparation or queue submission fails | Return the error without a `CompletionPoint` | The batch retains its writes and pages for a permitted retry; device loss does not promise recovery |
+|                  | Point and condition                                                                                 | Response                                             | Resulting state and next action                                                                             |
+|------------------|-----------------------------------------------------------------------------------------------------|------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| **Error&nbsp;1** | Step 1: Context is moved-from or upload service/timeline initialization fails                       | Return `InvalidArgument` or the initialization error | No batch or upload work is published; use a live Context or resolve the reported backend/capability problem |
+| **Error&nbsp;2** | Step 2: empty bytes, foreign/empty buffer, missing transfer-destination usage or out-of-range write | Return a validation error before appending the write | Earlier writes remain in the batch; correct the request or discard the batch                                |
+| **Error&nbsp;3** | Step 2: completion query, staging allocation, mapped write or cache flush fails                     | Propagate the error without appending this write     | Earlier writes remain available; retry only when the error category permits it                              |
+| **Error&nbsp;4** | Step 3: submit is called with no writes                                                             | Return `InvalidArgument`                             | The batch remains valid; add a write or destroy it                                                          |
+| **Error&nbsp;5** | Steps 3–4: capacity check, command preparation or queue submission fails                            | Return the error without a `CompletionPoint`         | The batch retains its writes and pages for a permitted retry; device loss does not promise recovery         |
 
 ## Outcomes
 

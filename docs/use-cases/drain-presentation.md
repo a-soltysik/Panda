@@ -78,13 +78,13 @@ as fatal rather than destroying state under uncertain submitted work.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 2: the timeline's known completed value is greater than or equal to the maximum `lastCompletion` stored in any frame slot | Continue immediately without a GPU wait | Pending acquired-image recovery and present fences still need their own checks |
-| **Error&nbsp;1** | Step 1: acquire retirement did not commit | Return `BackendFailure` before waiting | No safe retirement is claimed; Context teardown treats the failure as fatal |
-| **Error&nbsp;2** | Step 2: timeline wait fails or times out | Return the wait error and preserve pending recovery | Do not release the generation; a later drain may retry the wait if the device remains usable |
-| **Error&nbsp;3** | Step 3: acquired-image recovery or release fails | Return the cleanup error and preserve unresolved state | Do not claim successful drain; a release error is not repeated |
-| **Error&nbsp;4** | Step 4: any pending present fence fails or times out | Return the Vulkan error and leave that image pending | The presentation resources remain unretired; do not claim successful drain |
+|                    | Point and condition                                                                                                            | Response                                               | Resulting state and next action                                                              |
+|--------------------|--------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 2: the timeline's known completed value is greater than or equal to the maximum `lastCompletion` stored in any frame slot | Continue immediately without a GPU wait                | Pending acquired-image recovery and present fences still need their own checks               |
+| **Error&nbsp;1**   | Step 1: acquire retirement did not commit                                                                                      | Return `BackendFailure` before waiting                 | No safe retirement is claimed; Context teardown treats the failure as fatal                  |
+| **Error&nbsp;2**   | Step 2: timeline wait fails or times out                                                                                       | Return the wait error and preserve pending recovery    | Do not release the generation; a later drain may retry the wait if the device remains usable |
+| **Error&nbsp;3**   | Step 3: acquired-image recovery or release fails                                                                               | Return the cleanup error and preserve unresolved state | Do not claim successful drain; a release error is not repeated                               |
+| **Error&nbsp;4**   | Step 4: any pending present fence fails or times out                                                                           | Return the Vulkan error and leave that image pending   | The presentation resources remain unretired; do not claim successful drain                   |
 
 ## Related information
 
@@ -93,10 +93,13 @@ as fatal rather than destroying state under uncertain submitted work.
 - [UC Retire an acquired image after frame work fails](retire-acquired-image.md)
   describes the other acquire-related cleanup state.
 - [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md)
-  describes the submitted-work cleanup state. [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md)
+  describes the submitted-work cleanup
+  state. [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md)
   and [UC Shut down a Context safely](shutdown-context.md) call this drain before
   releasing presentation resources.
 - [Resources and frames](../design/contracts/resources.md#frame-and-window-state)
   defines the intended image-release and generation-drain rules.
-- The [swapchain destruction specification](https://docs.vulkan.org/refpages/latest/refpages/source/vkDestroySwapchainKHR.html)
-  requires acquired-image uses to have completed before the swapchain is destroyed.
+-
+
+The [swapchain destruction specification](https://docs.vulkan.org/refpages/latest/refpages/source/vkDestroySwapchainKHR.html)
+requires acquired-image uses to have completed before the swapchain is destroyed.

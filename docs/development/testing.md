@@ -18,10 +18,10 @@ through CTest labels; building system tests does not require running them.
 
 ## Levels and execution
 
-| Level        | Directory                    | Purpose                                                                        | CTest labels  |
-|--------------|------------------------------|--------------------------------------------------------------------------------|---------------|
-| Unit         | `tests/cases/unit/<module>`        | Test real Panda implementation with controlled dependencies, or pure CPU logic | `unit`        |
-| Integration  | `tests/cases/integration/<module>` | Test real components and dependencies together                                 | `integration` |
+| Level        | Directory                          | Purpose                                                                             | CTest labels  |
+|--------------|------------------------------------|-------------------------------------------------------------------------------------|---------------|
+| Unit         | `tests/cases/unit/<module>`        | Test real Panda implementation with controlled dependencies, or pure CPU logic      | `unit`        |
+| Integration  | `tests/cases/integration/<module>` | Test real components and dependencies together                                      | `integration` |
 | System smoke | `tests/cases/system`               | Exercise bounded native startup, resource allocation, event processing and teardown | `system`      |
 
 Test executables are grouped by level and compatible dependency selections, not

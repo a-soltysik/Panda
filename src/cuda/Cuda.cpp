@@ -1,11 +1,12 @@
 #include <expected>
+#include <panda/Error.hpp>
 #include <panda/cuda/Cuda.hpp>
 
 #include "CudaAdapter.hpp"
 
 namespace panda::cuda
 {
-auto queryAvailability() noexcept -> std::expected<Availability, Error>
+auto queryAvailability() -> Result<Availability>
 {
     const auto result = detail::queryNativeAvailability();
     switch (result.availability)
@@ -17,8 +18,10 @@ auto queryAvailability() noexcept -> std::expected<Availability, Error>
     case detail::NativeAvailability::NoDevice:
         return Availability::NoDevice;
     case detail::NativeAvailability::Failure:
-        return std::unexpected {Error {.nativeCode = result.nativeCode}};
+        break;
     }
-    return std::unexpected {Error {.nativeCode = result.nativeCode}};
+    return std::unexpected {makeError(ErrorCode::BackendFailure,
+                                      "CUDA Runtime availability query failed",
+                                      NativeError {.api = "CUDA", .code = result.nativeCode})};
 }
 }

@@ -81,12 +81,12 @@ check.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 1: another handle or retained packet still owns the resource | Do not destroy the resource or return its range | Keep the Context and pool alive until the final owner is released |
-| **Variant&nbsp;2** | Step 5: an ordinary block becomes empty and no peer empty block exists in its partition | Retain that block for a later allocation | Its committed bytes remain until reuse, budget reclamation or pool destruction |
-| **Variant&nbsp;3** | Step 5: a dedicated block or a duplicate empty ordinary block becomes empty | Destroy the block and release its device-memory allocation | Pool committed-byte and allocation-count totals decrease |
-| **Error&nbsp;1** | Step 3 or 4: the allocation ID or range is missing from the pool | `expect` emits a fatal diagnostic | This is a broken ownership/accounting invariant; no recoverable release result exists |
+|                    | Point and condition                                                                     | Response                                                   | Resulting state and next action                                                       |
+|--------------------|-----------------------------------------------------------------------------------------|------------------------------------------------------------|---------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 1: another handle or retained packet still owns the resource                       | Do not destroy the resource or return its range            | Keep the Context and pool alive until the final owner is released                     |
+| **Variant&nbsp;2** | Step 5: an ordinary block becomes empty and no peer empty block exists in its partition | Retain that block for a later allocation                   | Its committed bytes remain until reuse, budget reclamation or pool destruction        |
+| **Variant&nbsp;3** | Step 5: a dedicated block or a duplicate empty ordinary block becomes empty             | Destroy the block and release its device-memory allocation | Pool committed-byte and allocation-count totals decrease                              |
+| **Error&nbsp;1**   | Step 3 or 4: the allocation ID or range is missing from the pool                        | `expect` emits a fatal diagnostic                          | This is a broken ownership/accounting invariant; no recoverable release result exists |
 
 ## Outcomes
 

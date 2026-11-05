@@ -713,15 +713,17 @@ void Context::Impl::drain()
 
 Context::Context(std::unique_ptr<Impl> implementation) noexcept
     : _implementation {std::move(implementation)},
-      _performanceManager {_implementation->getPerformanceManagerImplementation()},
+      _performanceManager {std::ref(_implementation->getPerformanceManagerImplementation())},
       _externalBufferManager {_implementation->getExternalContext()}
 {
 }
 
 Context::Context(Context&& other) noexcept
     : _implementation {std::move(other._implementation)},
-      _performanceManager {_implementation->getPerformanceManagerImplementation()},
-      _externalBufferManager {_implementation->getExternalContext()}
+      _performanceManager {_implementation
+                               ? std::optional {std::ref(_implementation->getPerformanceManagerImplementation())}
+                               : std::nullopt},
+      _externalBufferManager {_implementation ? _implementation->getExternalContext() : std::nullopt}
 {
 }
 

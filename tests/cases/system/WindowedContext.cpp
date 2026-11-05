@@ -8,6 +8,7 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/trigonometric.hpp>
+#include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Cube.hpp>
@@ -18,7 +19,6 @@
 #include <panda/RenderView.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
-#include <panda/tools/Camera.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <string>
 #include <utility>
@@ -166,7 +166,7 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, std::array<panda::Me
     -> panda::Result<panda::RenderView>
 {
     const auto aspectRatio = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-    const auto camera = panda::tools::createPerspectiveCamera({
+    const auto camera = panda::createPerspectiveCamera({
         .position = {3.0F, 2.5F, 4.0F},
         .target = {},
         .up = {0, 1, 0},

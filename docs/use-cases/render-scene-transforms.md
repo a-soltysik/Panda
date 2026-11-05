@@ -74,11 +74,11 @@ Deleting the active camera clears selection instead of choosing another object.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Error&nbsp;1** | Step 2: no selected camera, invalid lens/aspect, reflected/nonuniform/sheared pose | Return `InvalidArgument` | No snapshot is published; select or correct the camera. |
-| **Error&nbsp;2** | Step 3: multiple visible directional lights | Return `Unsupported` | No snapshot is published; hide or remove additional lights. |
-| **Error&nbsp;3** | Step 3: invalid light pose or non-finite derived world transform | Return `InvalidArgument` | Logical scene state is unchanged; correct the object data. |
+|                  | Point and condition                                                                | Response                 | Resulting state and next action                             |
+|------------------|------------------------------------------------------------------------------------|--------------------------|-------------------------------------------------------------|
+| **Error&nbsp;1** | Step 2: no selected camera, invalid lens/aspect, reflected/nonuniform/sheared pose | Return `InvalidArgument` | No snapshot is published; select or correct the camera.     |
+| **Error&nbsp;2** | Step 3: multiple visible directional lights                                        | Return `Unsupported`     | No snapshot is published; hide or remove additional lights. |
+| **Error&nbsp;3** | Step 3: invalid light pose or non-finite derived world transform                   | Return `InvalidArgument` | Logical scene state is unchanged; correct the object data.  |
 
 ## Outcomes
 
@@ -91,7 +91,8 @@ the authoritative transforms or component values.
 
 ## Related information
 
-- [Scene API and transforms](../design/contracts/scene.md#entities-and-transforms) owns hierarchy, TRS validation and shear rules.
+- [Scene API and transforms](../design/contracts/scene.md#entities-and-transforms) owns hierarchy, TRS validation and
+  shear rules.
 - [UC Render and present an application view](render-view.md) explains submission and mesh retention.
 - [Scene identities and transforms](../development/tasks/scene-transforms.md) tracks remaining work and verification.
 - [Scene demo](../../examples/scene_demo/README.md) shows the complete application loop.

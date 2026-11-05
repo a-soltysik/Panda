@@ -32,15 +32,15 @@ sequenceDiagram
     participant C as Upload or Presentation caller
     participant Q as SubmissionQueue
     participant V as Vulkan queue
-    C->>Q: Step 1 - submit(work, optional binary wait/signal)
-    Q->>Q: prepareSubmit() and choose candidate value
-    Q->>V: Step 2 - vkQueueSubmit2(candidate timeline value)
-    V-->>Q: VK_SUCCESS or error
+    C ->> Q: Step 1 - submit(work, optional binary wait/signal)
+    Q ->> Q: prepareSubmit() and choose candidate value
+    Q ->> V: Step 2 - vkQueueSubmit2(candidate timeline value)
+    V -->> Q: VK_SUCCESS or error
     alt Queue accepts work
-        Q->>Q: Step 3 - publish committed value
-        Q-->>C: Committed value
+        Q ->> Q: Step 3 - publish committed value
+        Q -->> C: Committed value
     else Queue rejects work
-        Q-->>C: Error, candidate value remains uncommitted
+        Q -->> C: Error, candidate value remains uncommitted
     end
 ```
 
@@ -58,10 +58,10 @@ presentation-engine references.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Error&nbsp;1** | Step 1: timeline is lost, exhausted or has no available outstanding capacity | Return an error before queue submit | No new value or work is committed; caller may retry only if the reported condition is recoverable |
-| **Error&nbsp;2** | Step 2: `vkQueueSubmit2` rejects work | Return the Vulkan error; mark the queue lost on device loss | Candidate value remains uncommitted; a binary acquire wait that did not commit needs the caller's failure policy, described by [UC Retire an acquired image after frame work fails](retire-acquired-image.md) |
+|                  | Point and condition                                                          | Response                                                    | Resulting state and next action                                                                                                                                                                               |
+|------------------|------------------------------------------------------------------------------|-------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Error&nbsp;1** | Step 1: timeline is lost, exhausted or has no available outstanding capacity | Return an error before queue submit                         | No new value or work is committed; caller may retry only if the reported condition is recoverable                                                                                                             |
+| **Error&nbsp;2** | Step 2: `vkQueueSubmit2` rejects work                                        | Return the Vulkan error; mark the queue lost on device loss | Candidate value remains uncommitted; a binary acquire wait that did not commit needs the caller's failure policy, described by [UC Retire an acquired image after frame work fails](retire-acquired-image.md) |
 
 ## Related information
 

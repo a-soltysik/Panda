@@ -31,7 +31,7 @@ falls back to the first compatible device in Vulkan enumeration order.
    selection asks the Vulkan instance for its physical devices. For a windowed
    Context, setup resolves and enables `VK_KHR_surface`, the provider's platform
    surface extension, `VK_KHR_get_surface_capabilities2` and the available KHR or
-   EXT surface-maintenance1 instance extension(s); at least one maintenance variant
+   EXT surface-maintenance1 instance extension (s); at least one maintenance variant
    is required before selection begins.
 2. **Filter device capabilities.** Panda requires a device API version of at
    least 1.3 and queries support for timeline semaphores, dynamic rendering and
@@ -102,14 +102,14 @@ window/surface request rather than one adapter.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Error&nbsp;1** | Step 1: physical-device enumeration fails | Propagate the instance-level Vulkan error | No candidate is inspected; Context creation fails with no logical device |
-| **Variant&nbsp;1** | Steps 2–3: device lacks a required capability, queue, extension or usable surface format/present mode | Skip that device without treating the capability mismatch as an API error | Other devices remain eligible; if none qualify, continue to Error 4 or Error 5 |
-| **Error&nbsp;2** | Steps 2–3: device inspection returns `SurfaceLost` or `InvalidArgument` | Stop selection and propagate the error | Context creation fails; surface repair or correcting the request is required before retry |
-| **Error&nbsp;3** | Steps 2–3: another adapter inspection error occurs, and a later device is usable | Log and skip the failing adapter; return the compatible device | Context creation may proceed with the later device |
-| **Error&nbsp;4** | Steps 2–3: no candidate qualifies, and at least one adapter inspection failed | Return the first recorded inspection error after all candidates are checked | Context creation fails with that error; resolve the backend/device issue before retry |
-| **Error&nbsp;5** | Steps 2–3: no candidate qualifies and no inspection error occurred | Return `Unsupported` with a headless- or windowed-capability message | No logical device is created; use a compatible device/runtime or headless path |
+|                    | Point and condition                                                                                   | Response                                                                    | Resulting state and next action                                                           |
+|--------------------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| **Error&nbsp;1**   | Step 1: physical-device enumeration fails                                                             | Propagate the instance-level Vulkan error                                   | No candidate is inspected; Context creation fails with no logical device                  |
+| **Variant&nbsp;1** | Steps 2–3: device lacks a required capability, queue, extension or usable surface format/present mode | Skip that device without treating the capability mismatch as an API error   | Other devices remain eligible; if none qualify, continue to Error 4 or Error 5            |
+| **Error&nbsp;2**   | Steps 2–3: device inspection returns `SurfaceLost` or `InvalidArgument`                               | Stop selection and propagate the error                                      | Context creation fails; surface repair or correcting the request is required before retry |
+| **Error&nbsp;3**   | Steps 2–3: another adapter inspection error occurs, and a later device is usable                      | Log and skip the failing adapter; return the compatible device              | Context creation may proceed with the later device                                        |
+| **Error&nbsp;4**   | Steps 2–3: no candidate qualifies, and at least one adapter inspection failed                         | Return the first recorded inspection error after all candidates are checked | Context creation fails with that error; resolve the backend/device issue before retry     |
+| **Error&nbsp;5**   | Steps 2–3: no candidate qualifies and no inspection error occurred                                    | Return `Unsupported` with a headless- or windowed-capability message        | No logical device is created; use a compatible device/runtime or headless path            |
 
 `DeviceLost`, `Timeout`, `ResourceExhausted`, `BackendFailure` and other
 nonfatal-to-selection inspection errors follow the skip-and-remember path. If a
@@ -134,5 +134,6 @@ older presentation protocol when a windowed device lacks maintenance1 support.
   explains physical-device queries, queue families and logical-device creation.
 - The Vulkan specification's [feature chapter](https://docs.vulkan.org/spec/latest/chapters/features.html)
   explains querying and enabling feature bits.
-- The Vulkan specification's [window-system integration chapter](https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html)
+- The Vulkan
+  specification's [window-system integration chapter](https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html)
   defines surface presentation support and capabilities.

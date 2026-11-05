@@ -11,14 +11,14 @@ install/export package. Source consumption satisfies the initial integration goa
 without adding a second distribution workflow. Static Panda libraries do not imply
 static linking of every OS/driver/dependency library.
 
-| Target | Public entry point | Build switch |
-| --- | --- | --- |
-| `Panda::Panda` | `panda/Panda.hpp` and focused renderer/resource headers | Always built |
-| `Panda::Scene` | `panda/scene/Scene.hpp` | `PANDA_BUILD_SCENE` |
-| `Panda::Import` | `panda/Import.hpp` | `PANDA_BUILD_IMPORT` |
-| `Panda::Tools` | `panda/Tools.hpp` | `PANDA_BUILD_TOOLS` |
-| `Panda::Cuda` | `panda/cuda/Cuda.hpp` | `PANDA_BUILD_CUDA` |
-| `Panda::Physics` | `panda/Physics.hpp` | `PANDA_BUILD_PHYSICS` |
+| Target           | Public entry point                                      | Build switch          |
+|------------------|---------------------------------------------------------|-----------------------|
+| `Panda::Panda`   | `panda/Panda.hpp` and focused renderer/resource headers | Always built          |
+| `Panda::Scene`   | `panda/scene/Scene.hpp`                                 | `PANDA_BUILD_SCENE`   |
+| `Panda::Import`  | `panda/Import.hpp`                                      | `PANDA_BUILD_IMPORT`  |
+| `Panda::Tools`   | `panda/Tools.hpp`                                       | `PANDA_BUILD_TOOLS`   |
+| `Panda::Cuda`    | `panda/cuda/Cuda.hpp`                                   | `PANDA_BUILD_CUDA`    |
+| `Panda::Physics` | `panda/Physics.hpp`                                     | `PANDA_BUILD_PHYSICS` |
 
 Core, Tools, the CUDA availability facade and the first CPU identity/transform
 slice of Scene are implemented; Import and Physics remain planned. Scene starts
@@ -45,7 +45,8 @@ private C++20 Runtime adapter for device matching and importing one Panda-owned
 dedicated external buffer. Cross-API synchronization remains planned.
 Production libraries follow module responsibilities, not unit-test boundaries.
 Tests can supply mock object files for individual implementations while linking
-the same module archives as applications; see [controlled dependencies](../development/testing.md#controlled-dependencies).
+the same module archives as applications;
+see [controlled dependencies](../development/testing.md#controlled-dependencies).
 
 Keep module headers under `include/<module>/panda` and implementations under
 `src/<module>`, plus `shaders/` and `cmake/`. Shared diagnostics live in
@@ -108,10 +109,10 @@ These are the only supported component types.
 
 ```cmake
 panda_add_component(panda_tools
-    ALIAS Panda::Tools
-    INCLUDE_DIRECTORY "${PROJECT_SOURCE_DIR}/include/tools"
-    SOURCES gui/Window.cpp gui/GlfwSession.cpp
-    LIBRARIES PUBLIC Panda::Panda PRIVATE glm::glm glfw)
+        ALIAS Panda::Tools
+        INCLUDE_DIRECTORY "${PROJECT_SOURCE_DIR}/include/tools"
+        SOURCES gui/Window.cpp gui/GlfwSession.cpp
+        LIBRARIES PUBLIC Panda::Panda PRIVATE glm::glm glfw)
 ```
 
 `ALIAS` optionally declares a public target name. The required `INCLUDE_DIRECTORY`
@@ -213,18 +214,18 @@ destruction. This wrapper does not create Vulkan surfaces or implement rendering
 
 ### Accepted dependencies
 
-| Role | Accepted choice | Exposure |
-| --- | --- | --- |
-| Vulkan binding | Vulkan-Hpp | Public values, flags and borrowed `vk` handles; private `vk::raii` owners |
-| Shader metadata | SPIRV-Reflect | Private shader-load validation |
-| Windowing | GLFW | Private window/input implementation |
-| Math | GLM | Public value types with a documented layout/configuration contract |
-| Scene parser | nlohmann/json | Private; schema and integration follow the [scene specification](contracts/scene.md#persistence-import-and-tools) |
-| Image codec | `stb_image` | Private adapter with a restricted, tested feature set |
-| Model import | Assimp | Only `Panda::Import`; selected static importers |
-| GUI/gizmos | Dear ImGui and ImGuizmo | Only `Panda::Tools`; direct application ImGui panels remain possible |
-| Physics | Panda code | No external physics engine |
-| GPU allocation | Panda code | No VMA; limited allocation design in the resource contract |
+| Role            | Accepted choice         | Exposure                                                                                                          |
+|-----------------|-------------------------|-------------------------------------------------------------------------------------------------------------------|
+| Vulkan binding  | Vulkan-Hpp              | Public values, flags and borrowed `vk` handles; private `vk::raii` owners                                         |
+| Shader metadata | SPIRV-Reflect           | Private shader-load validation                                                                                    |
+| Windowing       | GLFW                    | Private window/input implementation                                                                               |
+| Math            | GLM                     | Public value types with a documented layout/configuration contract                                                |
+| Scene parser    | nlohmann/json           | Private; schema and integration follow the [scene specification](contracts/scene.md#persistence-import-and-tools) |
+| Image codec     | `stb_image`             | Private adapter with a restricted, tested feature set                                                             |
+| Model import    | Assimp                  | Only `Panda::Import`; selected static importers                                                                   |
+| GUI/gizmos      | Dear ImGui and ImGuizmo | Only `Panda::Tools`; direct application ImGui panels remain possible                                              |
+| Physics         | Panda code              | No external physics engine                                                                                        |
+| GPU allocation  | Panda code              | No VMA; limited allocation design in the resource contract                                                        |
 
 A JSON parser does not imply automatic serialization of C++
 objects. Support libraries do not implement lighting, shadows, AA, or simulation.
@@ -360,11 +361,11 @@ guarantee startup for arbitrary additional CUDA-dependent libraries linked by an
 These are **probe candidates**, not minimum supported versions or successful builds.
 Use one exact host toolchain per build and reuse it as NVCC's host compiler.
 
-| Job | Initial candidate | Language modes |
-| --- | --- | --- |
-| Windows x64 | Windows 11; VS 2022 Build Tools, MSVC 19.38/STL; CUDA 13.4 when enabled | Engine C++23 feature set; native adapter and `.cu` C++20 |
-| Linux x64 | Ubuntu 24.04; GCC 16/libstdc++ 14; CUDA 13.4 when enabled | Engine C++23; adapter/NVCC C++20 |
-| Additional Linux analysis | Clang 22 with the same libstdc++ 14; CUDA OFF initially | Non-unity C++23 analysis/build |
+| Job                       | Initial candidate                                                       | Language modes                                           |
+|---------------------------|-------------------------------------------------------------------------|----------------------------------------------------------|
+| Windows x64               | Windows 11; VS 2022 Build Tools, MSVC 19.38/STL; CUDA 13.4 when enabled | Engine C++23 feature set; native adapter and `.cu` C++20 |
+| Linux x64                 | Ubuntu 24.04; GCC 16/libstdc++ 14; CUDA 13.4 when enabled               | Engine C++23; adapter/NVCC C++20                         |
+| Additional Linux analysis | Clang 22 with the same libstdc++ 14; CUDA OFF initially                 | Non-unity C++23 analysis/build                           |
 
 CMake 3.28 or newer and Ninja are the initial build-tool candidates. A newer Vulkan
 SDK may build a Vulkan 1.3-targeted engine; unchecked newer API use must not silently

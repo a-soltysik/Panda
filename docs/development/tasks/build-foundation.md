@@ -58,7 +58,6 @@ probes produced symbolized frames on Windows GCC/MSVC and Linux GCC/Clang. Debug
 symbols and optimization still govern frame detail; failure-injection for trace
 allocation/symbolization remains unverified.
 
-
 Windows/MSYS2 UCRT64: GCC 16.1.0, CMake 4.4.2, Ninja 1.13.2,
 clang-tidy/clang-format 22.1.8 and cppcheck 2.22.0. The non-unity Debug build
 passed with compiler warnings-as-errors and all three quality tools enabled.
@@ -153,7 +152,8 @@ formatting; its analyzers were disabled. Its noninteractive suite passed all 50
 checks. Function-name formatting skips Clang anonymous-namespace qualifiers before
 recognizing the parameter list, preserving the existing bounded, allocation-free
 parser. Text diagnostics also strip the Panda source-root prefix using a
-non-owning view, preserving original metadata and external paths. The compiler-signature, real-method/lambda and bounded-output cases also
+non-owning view, preserving original metadata and external paths. The compiler-signature, real-method/lambda and
+bounded-output cases also
 passed on Windows GCC and MSVC with their quality builds enabled.
 Release, unity, documentation generation and GPU execution remain
 unverified for the current source. The subsequent toolchain

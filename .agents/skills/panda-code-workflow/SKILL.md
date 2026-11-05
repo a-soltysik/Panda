@@ -32,10 +32,10 @@ pre-commit procedure still applies before every commit.
 Use native CMake/CTest commands from the repository root. Presets own options,
 compiler launchers and build paths; do not add a wrapper or override `binaryDir`.
 
-| Platform | Fast | Quality | CUDA analysis |
-| --- | --- | --- | --- |
-| Windows | `msvc-fast` | `msvc-quality` | `clang-cuda-analysis-windows` |
-| Linux | `gcc-fast` | `gcc-quality` | `clang-cuda-analysis` |
+| Platform | Fast        | Quality        | CUDA analysis                 |
+|----------|-------------|----------------|-------------------------------|
+| Windows  | `msvc-fast` | `msvc-quality` | `clang-cuda-analysis-windows` |
+| Linux    | `gcc-fast`  | `gcc-quality`  | `clang-cuda-analysis`         |
 
 Fast presets enable tests, tools, examples, benchmarks and CUDA, disable static
 analyzers, and request unity wherever existing target rules permit.

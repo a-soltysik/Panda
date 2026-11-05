@@ -50,11 +50,11 @@ memory handle, later Runtime calls or a kernel.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 2: the Runtime returns `cudaErrorNoDevice`, or succeeds with a zero device count | Return `Availability::NoDevice` | CUDA work is unavailable for this query; continue without optional CUDA work or handle the absence |
-| **Variant&nbsp;2** | Step 2: the Runtime returns `cudaErrorInsufficientDriver` or `cudaErrorSystemDriverMismatch` | Return `Availability::NoDriver` | The Runtime cannot use the installed driver; continue without optional CUDA work or resolve the driver mismatch |
-| **Error&nbsp;1** | Step 2: the Runtime returns another non-success status | Return `std::unexpected` with the native status in `panda::cuda::Error::nativeCode` | The query failed for an unexpected reason; report or handle the native code before deciding whether to continue |
+|                    | Point and condition                                                                          | Response                                                                            | Resulting state and next action                                                                                 |
+|--------------------|----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 2: the Runtime returns `cudaErrorNoDevice`, or succeeds with a zero device count        | Return `Availability::NoDevice`                                                     | CUDA work is unavailable for this query; continue without optional CUDA work or handle the absence              |
+| **Variant&nbsp;2** | Step 2: the Runtime returns `cudaErrorInsufficientDriver` or `cudaErrorSystemDriverMismatch` | Return `Availability::NoDriver`                                                     | The Runtime cannot use the installed driver; continue without optional CUDA work or resolve the driver mismatch |
+| **Error&nbsp;1**   | Step 2: the Runtime returns another non-success status                                       | Return `std::unexpected` with the native status in `panda::cuda::Error::nativeCode` | The query failed for an unexpected reason; report or handle the native code before deciding whether to continue |
 
 ## Outcomes
 

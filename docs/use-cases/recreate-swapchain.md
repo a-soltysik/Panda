@@ -106,14 +106,14 @@ still-usable Context retries without passing an old swapchain handle.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 2: framebuffer width or height is zero | Return `FrameResult::Status::Suspended` without acquire or frame submission | Keep processing window events; after restoration, call again and recreate if needed |
-| **Variant&nbsp;2** | Step 3: the current generation matches and recreation is not pending | Reuse it and continue to the normal frame path | No drain or replacement is needed |
-| **Variant&nbsp;3** | Step 3: no generation exists, the extent changed, or a prior frame requested recreation | Drain and build a complete generation before acquiring an image | On success, the same call continues through the normal frame path |
-| **Error&nbsp;1** | Step 2: framebuffer extent query fails | Return that error without replacing the generation | Resolve the window-surface failure before retrying |
-| **Error&nbsp;2** | Step 4: drain times out or cannot confirm acquired-image/presentation retirement | Return the drain error and do not create a replacement | Any existing generation remains owned; a later call can retry if presentation remains usable. See the [UC Drain frame and presentation use](drain-presentation.md) |
-| **Error&nbsp;3** | Step 5: surface configuration or generation creation fails | Return the creation error, discard any old generation and keep recreation pending | A later nonzero call retries without an old swapchain; surface/device recovery is not promised |
+|                    | Point and condition                                                                     | Response                                                                          | Resulting state and next action                                                                                                                                    |
+|--------------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 2: framebuffer width or height is zero                                             | Return `FrameResult::Status::Suspended` without acquire or frame submission       | Keep processing window events; after restoration, call again and recreate if needed                                                                                |
+| **Variant&nbsp;2** | Step 3: the current generation matches and recreation is not pending                    | Reuse it and continue to the normal frame path                                    | No drain or replacement is needed                                                                                                                                  |
+| **Variant&nbsp;3** | Step 3: no generation exists, the extent changed, or a prior frame requested recreation | Drain and build a complete generation before acquiring an image                   | On success, the same call continues through the normal frame path                                                                                                  |
+| **Error&nbsp;1**   | Step 2: framebuffer extent query fails                                                  | Return that error without replacing the generation                                | Resolve the window-surface failure before retrying                                                                                                                 |
+| **Error&nbsp;2**   | Step 4: drain times out or cannot confirm acquired-image/presentation retirement        | Return the drain error and do not create a replacement                            | Any existing generation remains owned; a later call can retry if presentation remains usable. See the [UC Drain frame and presentation use](drain-presentation.md) |
+| **Error&nbsp;3**   | Step 5: surface configuration or generation creation fails                              | Return the creation error, discard any old generation and keep recreation pending | A later nonzero call retries without an old swapchain; surface/device recovery is not promised                                                                     |
 
 ### Error 3 - Failed generation replacement
 

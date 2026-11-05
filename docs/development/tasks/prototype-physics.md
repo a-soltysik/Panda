@@ -10,7 +10,8 @@ Non-goal: No general rigid-body engine, joints or CCD.
 
 Interface: PhysicsWorld/Body/Contact operations and optional Scene binding.
 
-Paths: `../../../include/core/panda`, `src/physics/`, `tests/physics/`, `examples/physics/` and directly affected documentation.
+Paths: `../../../include/core/panda`, `src/physics/`, `tests/physics/`, `examples/physics/` and directly affected
+documentation.
 Specifications: [Physics](../../design/contracts/physics.md), [transforms](../../design/contracts/scene.md#transforms-and-camera-conventions).
 
 ## Acceptance

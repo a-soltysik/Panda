@@ -104,14 +104,14 @@ returned. See the [UC Return a resource memory range](release-memory-range.md).
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 3: upload service was never created or has no pending packets | Skip the corresponding wait | Continue to presentation drain or the resource-owner check |
-| **Variant&nbsp;2** | Step 4: headless Context has no presentation service | Skip presentation drain | Continue to the resource-owner check |
-| **Error&nbsp;1** | Step 3: an unsubmitted batch is still alive | Fatal lifetime diagnostic before upload waiting | Context destruction cannot return; destroy or submit batches before Context |
-| **Error&nbsp;2** | Step 3: the upload completion wait times out or fails, including device loss | `expect` emits a fatal diagnostic | Pending owners are not treated as completed; teardown stops |
-| **Error&nbsp;3** | Step 4: a timeline or present-fence wait times out/fails, or acquired-image recovery is unsafe (including device loss) | `expect` emits a fatal diagnostic | Presentation resources are not claimed safe; teardown stops. See the [UC Drain frame and presentation use](drain-presentation.md) |
-| **Error&nbsp;4** | Step 5: `liveBytes` is nonzero after internal drains | Fatal lifetime diagnostic naming live resource owners | Release every external handle before destroying Context; no recoverable Context remains |
+|                    | Point and condition                                                                                                    | Response                                              | Resulting state and next action                                                                                                   |
+|--------------------|------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 3: upload service was never created or has no pending packets                                                     | Skip the corresponding wait                           | Continue to presentation drain or the resource-owner check                                                                        |
+| **Variant&nbsp;2** | Step 4: headless Context has no presentation service                                                                   | Skip presentation drain                               | Continue to the resource-owner check                                                                                              |
+| **Error&nbsp;1**   | Step 3: an unsubmitted batch is still alive                                                                            | Fatal lifetime diagnostic before upload waiting       | Context destruction cannot return; destroy or submit batches before Context                                                       |
+| **Error&nbsp;2**   | Step 3: the upload completion wait times out or fails, including device loss                                           | `expect` emits a fatal diagnostic                     | Pending owners are not treated as completed; teardown stops                                                                       |
+| **Error&nbsp;3**   | Step 4: a timeline or present-fence wait times out/fails, or acquired-image recovery is unsafe (including device loss) | `expect` emits a fatal diagnostic                     | Presentation resources are not claimed safe; teardown stops. See the [UC Drain frame and presentation use](drain-presentation.md) |
+| **Error&nbsp;4**   | Step 5: `liveBytes` is nonzero after internal drains                                                                   | Fatal lifetime diagnostic naming live resource owners | Release every external handle before destroying Context; no recoverable Context remains                                           |
 
 ## Outcomes
 

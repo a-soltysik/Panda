@@ -9,7 +9,8 @@ budget, spot/point atlas views, color space, tone map and pipeline keys.
 
 Non-goal: No custom material DSL or IBL.
 
-Interface: Material and light data, shadow views and renderer pipeline keys; finalize public names and GPU layout during implementation.
+Interface: Material and light data, shadow views and renderer pipeline keys; finalize public names and GPU layout during
+implementation.
 
 Paths: `../../../include/core/panda`, `src/renderer/`, `shaders/`, `tests/gpu/` and directly affected documentation.
 Specifications: [Renderer layout and materials](../../design/contracts/rendering.md#first-version-renderer-contract), [transform conventions](../../design/contracts/scene.md#transforms-and-camera-conventions).

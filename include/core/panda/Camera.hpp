@@ -7,7 +7,7 @@
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 
-namespace panda::tools
+namespace panda
 {
 /// @brief Inputs for constructing a right-handed perspective camera.
 struct PerspectiveCameraDesc

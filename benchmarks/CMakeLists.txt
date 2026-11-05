@@ -21,18 +21,19 @@ set_target_properties(panda-bench PROPERTIES
 target_include_directories(panda-bench PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(panda-bench PRIVATE Panda::Panda Panda::Tools argparse::argparse nlohmann_json::nlohmann_json)
 
-execute_process(
-    COMMAND git rev-parse --short=12 HEAD
-    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-    OUTPUT_VARIABLE PANDA_BENCH_REVISION
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
-)
-if(NOT PANDA_BENCH_REVISION)
-    set(PANDA_BENCH_REVISION "unknown")
-endif()
+set(PANDA_BENCH_GENERATED_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(PANDA_BENCH_REVISION_HEADER "${PANDA_BENCH_GENERATED_DIRECTORY}/panda_bench/Revision.hpp")
+add_custom_target(panda_bench_revision
+    COMMAND "${CMAKE_COMMAND}"
+            "-DPANDA_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DPANDA_OUTPUT_FILE=${PANDA_BENCH_REVISION_HEADER}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/UpdateBenchmarkRevision.cmake"
+    BYPRODUCTS "${PANDA_BENCH_REVISION_HEADER}"
+    VERBATIM)
+set_target_properties(panda_bench_revision PROPERTIES FOLDER "Panda/Benchmarks")
+add_dependencies(panda-bench panda_bench_revision)
+target_include_directories(panda-bench PRIVATE "${PANDA_BENCH_GENERATED_DIRECTORY}")
 target_compile_definitions(panda-bench PRIVATE
-    "PANDA_BENCH_REVISION=\"${PANDA_BENCH_REVISION}\""
     "PANDA_BENCH_COMPILER=\"${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}\""
     "PANDA_BENCH_OS=\"${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_VERSION}\""
     "PANDA_BENCH_BUILD_MODE=\"$<CONFIG>\""

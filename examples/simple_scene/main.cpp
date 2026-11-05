@@ -7,6 +7,7 @@
 #include <iostream>
 #include <memory>
 #include <panda/Assert.hpp>
+#include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Cube.hpp>
@@ -16,7 +17,6 @@
 #include <panda/RenderView.hpp>
 #include <panda/Transform.hpp>
 #include <panda/UploadBatch.hpp>
-#include <panda/tools/Camera.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <tuple>
 
@@ -53,7 +53,7 @@ void run(const panda::tools::Window& window,
             continue;
         }
         view.camera =
-            panda::expect(panda::tools::createPerspectiveCamera({
+            panda::expect(panda::createPerspectiveCamera({
                               .position = cameraPosition,
                               .target = {},
                               .up = {0, 1, 0},

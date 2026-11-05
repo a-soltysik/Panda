@@ -11,7 +11,7 @@
 TEST(CudaExternalBufferIntegration, ImportsPandaOwnedBufferOnce)
 {
     const auto availability = panda::cuda::queryAvailability();
-    ASSERT_TRUE(availability.has_value()) << "CUDA Runtime status: " << availability.error().nativeCode;
+    ASSERT_TRUE(availability.has_value()) << "CUDA Runtime availability query failed";
     if (*availability != panda::cuda::Availability::Available)
     {
         GTEST_SKIP() << "CUDA runtime has no usable device";

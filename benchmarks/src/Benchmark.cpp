@@ -11,6 +11,7 @@
 #include <panda/Logger.hpp>
 #include <panda_bench/Arguments.hpp>
 #include <panda_bench/Report.hpp>
+#include <panda_bench/Revision.hpp>
 #include <panda_bench/Statistics.hpp>
 #include <print>
 #include <string>

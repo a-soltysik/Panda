@@ -65,12 +65,12 @@ to destroy.
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Error&nbsp;1** | Step 1: command recording or image present-fence handling reports an error | Attempt empty acquire-retirement submission | On full cleanup success, return the original error; normal rendering may continue only if presentation remains usable |
-| **Error&nbsp;2** | Step 2: empty submission is rejected | Return the submission error and set `_acquireRetirementFailed` | Acquire wait was not committed; presentation is faulted and `drain()` refuses to claim safe retirement |
-| **Error&nbsp;3** | Step 3: committed retirement wait times out or fails | Return the wait error and fault presentation | Pending recovery remains; a later drain retries the wait and releases the image if the device remains usable |
-| **Error&nbsp;4** | Step 4: maintenance release fails | Return the release error and fault presentation | The release result is unconfirmed; a later drain also fails and does not issue a second release |
+|                  | Point and condition                                                        | Response                                                       | Resulting state and next action                                                                                       |
+|------------------|----------------------------------------------------------------------------|----------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| **Error&nbsp;1** | Step 1: command recording or image present-fence handling reports an error | Attempt empty acquire-retirement submission                    | On full cleanup success, return the original error; normal rendering may continue only if presentation remains usable |
+| **Error&nbsp;2** | Step 2: empty submission is rejected                                       | Return the submission error and set `_acquireRetirementFailed` | Acquire wait was not committed; presentation is faulted and `drain()` refuses to claim safe retirement                |
+| **Error&nbsp;3** | Step 3: committed retirement wait times out or fails                       | Return the wait error and fault presentation                   | Pending recovery remains; a later drain retries the wait and releases the image if the device remains usable          |
+| **Error&nbsp;4** | Step 4: maintenance release fails                                          | Return the release error and fault presentation                | The release result is unconfirmed; a later drain also fails and does not issue a second release                       |
 
 ## Related information
 
@@ -78,5 +78,7 @@ to destroy.
   which pre-submit failures enter this UC.
 - [UC Drain frame and presentation use](drain-presentation.md) explains shutdown and
   generation waits after a committed cleanup submission.
-- The [unused-image release specification](https://docs.vulkan.org/refpages/latest/refpages/source/VkReleaseSwapchainImagesInfoKHR.html)
-  requires that all uses of the released image have completed.
+-
+
+The [unused-image release specification](https://docs.vulkan.org/refpages/latest/refpages/source/VkReleaseSwapchainImagesInfoKHR.html)
+requires that all uses of the released image have completed.

@@ -13,11 +13,11 @@ defines vertex attributes and supplies valid index values when it later uploads
 data. The implemented scope follows
 [Allocation, uploads and resource lifetimes](../development/tasks/resource-lifetimes.md).
 
-| Boundary | Meaning |
-| --- | --- |
-| Trigger and input | Application calls `Context::createMesh` with vertex count/stride and optional index count/type |
-| Successful end | `Result<Mesh>` owns fixed vertex storage and, when requested, index storage |
-| Failure end | An `Error` is returned with no published `Mesh`, or a fatal caller-contract violation |
+| Boundary          | Meaning                                                                                               |
+|-------------------|-------------------------------------------------------------------------------------------------------|
+| Trigger and input | Application calls `Context::createMesh` with vertex count/stride and optional index count/type        |
+| Successful end    | `Result<Mesh>` owns fixed vertex storage and, when requested, index storage                           |
+| Failure end       | An `Error` is returned with no published `Mesh`, or a fatal caller-contract violation                 |
 | Outside this flow | Vertex/index bytes, attribute interpretation, index-value validation, drawing and GPU synchronization |
 
 ## Preconditions
@@ -123,15 +123,15 @@ is a separate operation described by the
 
 ## Variants and errors
 
-|  | Point and condition | Response | Resulting state and next action |
-| --- | --- | --- | --- |
-| **Variant&nbsp;1** | Step 3: index description is absent | Create only vertex storage | The returned mesh reports zero index count and size, with no index type |
-| **Variant&nbsp;2** | Step 3: index type is `UInt16` or `UInt32` | Derive the corresponding index-buffer size | The caller supplies matching bytes when uploading the payload |
-| **Error&nbsp;1** | Step 1: moved-from `Context` | Checked fatal diagnostic | No recoverable result; use a live `Context` |
-| **Error&nbsp;2** | Step 2: completed-upload collection fails | Propagate its error before layout validation or buffer creation | No new mesh buffers; follow the error category rather than retrying unconditionally |
-| **Error&nbsp;3** | Step 3: vertex count/stride is zero, index count is zero or index type is invalid | Return `InvalidArgument` | No native buffers are created; correct the description |
-| **Error&nbsp;4** | Step 4: vertex-buffer creation, allocation or binding fails | Propagate the buffer error | No index buffer or `Mesh` is published |
-| **Error&nbsp;5** | Step 5: optional index-buffer creation, allocation or binding fails | [Release the unpublished vertex buffer](#error-5---cleanup-after-index-buffer-failure); propagate the index error | No partial `Mesh` escapes; the vertex range returns to the pool |
+|                    | Point and condition                                                               | Response                                                                                                          | Resulting state and next action                                                     |
+|--------------------|-----------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 3: index description is absent                                               | Create only vertex storage                                                                                        | The returned mesh reports zero index count and size, with no index type             |
+| **Variant&nbsp;2** | Step 3: index type is `UInt16` or `UInt32`                                        | Derive the corresponding index-buffer size                                                                        | The caller supplies matching bytes when uploading the payload                       |
+| **Error&nbsp;1**   | Step 1: moved-from `Context`                                                      | Checked fatal diagnostic                                                                                          | No recoverable result; use a live `Context`                                         |
+| **Error&nbsp;2**   | Step 2: completed-upload collection fails                                         | Propagate its error before layout validation or buffer creation                                                   | No new mesh buffers; follow the error category rather than retrying unconditionally |
+| **Error&nbsp;3**   | Step 3: vertex count/stride is zero, index count is zero or index type is invalid | Return `InvalidArgument`                                                                                          | No native buffers are created; correct the description                              |
+| **Error&nbsp;4**   | Step 4: vertex-buffer creation, allocation or binding fails                       | Propagate the buffer error                                                                                        | No index buffer or `Mesh` is published                                              |
+| **Error&nbsp;5**   | Step 5: optional index-buffer creation, allocation or binding fails               | [Release the unpublished vertex buffer](#error-5---cleanup-after-index-buffer-failure); propagate the index error | No partial `Mesh` escapes; the vertex range returns to the pool                     |
 
 **Errors 2–5** return `Result` errors, but not every category permits recovery
 on the same `Context`. **Error 1 is fatal.** Host allocation failure follows
