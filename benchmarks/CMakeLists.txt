@@ -47,3 +47,6 @@ panda_configure_target(panda-bench
     "${CMAKE_CURRENT_SOURCE_DIR}/src/SmokeRunBackend.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/VulkanSmokeRunBackend.hpp"
 )
+if(TARGET panda_static_analysis)
+    add_dependencies(panda_static_analysis panda_bench_revision)
+endif()

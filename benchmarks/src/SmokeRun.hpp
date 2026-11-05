@@ -34,7 +34,7 @@ private:
     auto finishMeasurement() -> std::expected<void, Failure>;
     auto waitForLastFrame() -> std::expected<void, Failure>;
     auto drainSamples() -> std::expected<void, Failure>;
-    auto verifySampleCount() const -> std::expected<void, Failure>;
+    [[nodiscard]] auto verifySampleCount() const -> std::expected<void, Failure>;
 
     const Options& _options;
     Report& _report;
