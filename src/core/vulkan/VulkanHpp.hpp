@@ -17,8 +17,8 @@
 #    endif
 #endif
 #ifndef VULKAN_HPP_ASSERT_ON_RESULT
-#    define VULKAN_HPP_ASSERT_ON_RESULT(condition) \
-        static_cast<void>(condition)  // NOLINT(cppcoreguidelines-macro-usage)
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
+#    define VULKAN_HPP_ASSERT_ON_RESULT(condition) static_cast<void>(condition)
 #endif
 
 #include <vulkan/vulkan.hpp>            // IWYU pragma: export
