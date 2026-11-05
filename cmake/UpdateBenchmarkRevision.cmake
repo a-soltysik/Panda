@@ -16,5 +16,5 @@ endif()
 
 get_filename_component(output_directory "${PANDA_OUTPUT_FILE}" DIRECTORY)
 file(MAKE_DIRECTORY "${output_directory}")
-set(content "#pragma once\n#define PANDA_BENCH_REVISION \"${revision}\"\n")
+set(content "#pragma once\n\n#include <string_view>\n\nnamespace panda_bench\n{\ninline constexpr std::string_view revision {\"${revision}\"};\n}\n")
 file(CONFIGURE OUTPUT "${PANDA_OUTPUT_FILE}" CONTENT "${content}")

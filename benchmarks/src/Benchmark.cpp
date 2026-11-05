@@ -21,9 +21,6 @@
 #include "SmokeRun.hpp"
 #include "VulkanSmokeRunBackend.hpp"
 
-#ifndef PANDA_BENCH_REVISION
-#    define PANDA_BENCH_REVISION "unknown"
-#endif
 #ifndef PANDA_BENCH_COMPILER
 #    define PANDA_BENCH_COMPILER "unknown"
 #endif
@@ -41,7 +38,7 @@ auto makeReport(const Options& options) -> Report
 {
     const auto hostInfo = panda::getHostInfo();
     auto report = Report {};
-    report.revision = PANDA_BENCH_REVISION;
+    report.revision = revision;
     report.operatingSystem = PANDA_BENCH_OS;
     report.compiler = PANDA_BENCH_COMPILER;
     report.buildMode = PANDA_BENCH_BUILD_MODE;
