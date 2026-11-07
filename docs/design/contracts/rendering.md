@@ -18,6 +18,15 @@ accepted [camera contract](scene.md#transforms-and-camera-conventions). The exac
 presentation/color-space handling are specified in the first-version renderer contract below. Full environment
 lighting/IBL is not an implicit first-version requirement.
 
+## Offscreen output
+
+Applications can render a `RenderView` into an explicit single-sample SDR offscreen color target with depth, without a
+window surface or swapchain. It uses the built-in renderer's normal material, lighting, alpha, shadow, tone-mapping and
+output-encoding behavior. GPU rendering stays asynchronous and returns a completion point; copying pixels to host memory
+is explicit and follows that completion rather than making ordinary rendering wait. The offscreen output has a stable
+extent, channel order and color-space contract for image consumers and pixel tests. Image-file encoding and a general
+render graph are outside this capability.
+
 ## Built-in materials
 
 Provide a metallic-roughness lit material for direct lighting and an unlit material. Simple ambient illumination is
@@ -39,11 +48,12 @@ compile a pipeline. Sharing a material shares its parameters; cloning is explici
 |--------|---------------------------------------------------------------------------------------------------|
 | Opaque | Depth test/write and the standard opaque rendering path                                           |
 | Mask   | Explicit cutoff, depth test/write, matching clipping in shadow passes                             |
-| Blend  | Render after opaque objects, object-level back-to-front order, depth test on and depth writes off |
+| Blend  | Straight-alpha source-over after Opaque/Mask, object-level back-to-front order, depth test on and writes off |
 
-Blend does not promise correct arbitrary intersecting transparency, per-triangle sorting, order-independent
-transparency, refraction, or colored transparent shadows. GPU instances are not automatically read back to the CPU to
-sort them. Applications may supply a GPU sorting/custom rendering path when needed.
+Blend uses the product of material, draw and optional vertex alpha, clamped to [0,1]. Blended meshes do not cast
+shadows. Blend does not promise correct arbitrary intersecting transparency, per-triangle sorting,
+order-independent transparency, refraction, or colored transparent shadows. GPU instances are not automatically read
+back to the CPU to sort them. Applications may supply a GPU sorting/custom rendering path when needed.
 
 `RenderFace::Front`, `Back`, and `Both` are ordinary material render state, not a separate hierarchy of material
 classes. Face culling and shading-normal orientation are distinct: the built-in shader must handle the selected
@@ -367,8 +377,9 @@ Keep unused attributes out of vertex data. The current Unlit material uses base
 color without lighting. Emissive lighting, procedural clouds without a vertex
 binding and instance-driven data remain outside this implementation slice.
 
-Current material parameters use one 16-byte std430 storage-buffer record per
-draw: metallic, roughness, the Lit flag and `RenderFace`. Records are tightly
+Current material parameters use one 32-byte std430 storage-buffer record per
+draw: metallic at offset 0, roughness at 4, the Lit flag at 8, `RenderFace` at
+12, alpha cutoff at 16 and three padding uints at 20. Records are tightly
 packed per frame slot; the direct draw's `firstInstance` supplies the flat
 material index to the fragment shader. Keep this host/shader record layout
 synchronized.

@@ -83,8 +83,8 @@ sequenceDiagram
         P->>V: Clear background with dynamic rendering
     else View contains meshes
         P->>R: Create/resize renderer and update frame and material data
-        R->>V: Record face-aware shadow pass with matching alpha cutouts
-        R->>V: Select material/alpha/layout/face pipelines and record camera pass
+        R->>V: Record shadow pass with matching Mask cutouts and skip Blend meshes
+        R->>V: Record Opaque and Mask draws, then back-to-front Blend draws
         R->>V: Sample shadow map for Lit draws
     end
     P->>Q: Submit commands and signal timeline
@@ -126,13 +126,17 @@ for UNORM formats. Direct directional light is shadowed with one 2048² depth ma
 frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
 orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
 Points outside that fixed camera-centered region receive no shadow. Material textures,
-Blend alpha handling, multiple lights, spot/point shadows and improved shadow coverage and
-filtering remain work in
+multiple lights, spot/point shadows and improved shadow coverage and filtering remain work in
 [Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
 current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and
 the current visual result. The first mesh draw selects the highest common color/depth
 attachment sample count supported by the active formats and device limits (4x, then
 2x, then 1x); `FrameResult::effectiveSampleCount` reports it.
+
+`AlphaMode::Blend` uses the combined material, draw and optional vertex alpha for
+straight-alpha compositing. It runs after Opaque and Mask with depth testing enabled
+and depth writes disabled; mesh origins are sorted back-to-front. Blended meshes do
+not cast shadows. Intersecting transparent meshes can still sort incorrectly.
 
 **Slot and image lifetimes differ.** Panda has two reusable frame slots while the
 swapchain supplies its own image count. Command buffers and retained mesh handles

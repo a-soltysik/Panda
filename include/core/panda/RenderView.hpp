@@ -38,7 +38,9 @@ enum class AlphaMode : std::uint8_t
     /// Render the entire surface as opaque, without using alpha for coverage.
     Opaque,
     /// Use alpha as a cutout: below alphaCutoff is invisible, otherwise fully opaque.
-    Mask
+    Mask,
+    /// Blend combined alpha over prior color draws; blended meshes do not cast shadows.
+    Blend
 };
 
 /// @brief Built-in material values shared by mesh draws.
@@ -54,7 +56,7 @@ struct Material
     float roughness {1.0F};
     /// Mesh side(s) rendered by the built-in pipelines.
     RenderFace renderFace {RenderFace::Front};
-    /// Whether to render the full surface or cut out pixels below alphaCutoff.
+    /// Whether to render opaque, cut out by alphaCutoff, or blend by alpha.
     AlphaMode alphaMode {AlphaMode::Opaque};
     /// Linear alpha threshold used by Mask materials; must be in [0,1].
     float alphaCutoff {0.5F};

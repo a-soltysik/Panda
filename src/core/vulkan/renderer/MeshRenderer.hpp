@@ -123,6 +123,13 @@ private:
         bool sampleCountChanged {false};
     };
 
+    struct BlendDraw
+    {
+        const MeshDraw* draw {};
+        std::uint32_t materialIndex {};
+        float cameraDepth {};
+    };
+
     explicit MeshRenderer(const MeshRendererCreateInfo& info);
 
     [[nodiscard]] auto initialize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
@@ -181,6 +188,7 @@ private:
     static void transitionDepth(vk::CommandBuffer command, FrameResources& frame);
     static void transitionShadowForAttachment(vk::CommandBuffer command, FrameResources& frame);
     static void transitionShadowForSampling(vk::CommandBuffer command, FrameResources& frame);
+    void recordBlendedDraws(vk::CommandBuffer command);
     void recordAttachments(vk::CommandBuffer command,
                            vk::ImageView swapchainView,
                            const FrameResources& frame,
@@ -204,6 +212,7 @@ private:
     vk::raii::Sampler _shadowSampler {nullptr};
     std::vector<FrameResources> _frames;
     std::vector<MaterialRecord> _materialRecords;
+    std::vector<BlendDraw> _blendDraws;
     std::map<MeshPipelineKey, vk::raii::Pipeline> _pipelines;
     std::map<ShadowPipelineKey, vk::raii::Pipeline> _shadowPipelines;
     vk::Format _colorFormat {vk::Format::eUndefined};

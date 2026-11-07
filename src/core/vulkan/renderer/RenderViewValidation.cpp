@@ -55,7 +55,8 @@ auto isValidMaterial(const Material& material) -> bool
     return (material.model == MaterialModel::Lit || material.model == MaterialModel::Unlit) &&
            (material.renderFace == RenderFace::Front || material.renderFace == RenderFace::Back ||
             material.renderFace == RenderFace::Both) &&
-           (material.alphaMode == AlphaMode::Opaque || material.alphaMode == AlphaMode::Mask) &&
+           (material.alphaMode == AlphaMode::Opaque || material.alphaMode == AlphaMode::Mask ||
+            material.alphaMode == AlphaMode::Blend) &&
            isFinite(material.baseColor) && material.baseColor.r >= 0.0F && material.baseColor.g >= 0.0F &&
            material.baseColor.b >= 0.0F && material.baseColor.a >= 0.0F && std::isfinite(material.metallic) &&
            std::isfinite(material.roughness) && std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0F &&
