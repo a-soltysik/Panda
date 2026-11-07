@@ -69,11 +69,13 @@ static_assert(offsetof(FrameUniform, ambient) == 176);
 static_assert(sizeof(DrawConstants) == 128);
 static_assert(offsetof(DrawConstants, normalColumns) == 64);
 static_assert(offsetof(DrawConstants, tint) == 112);
-static_assert(sizeof(MaterialRecord) == 16);
 static_assert(offsetof(MaterialRecord, metallic) == 0);
 static_assert(offsetof(MaterialRecord, roughness) == 4);
 static_assert(offsetof(MaterialRecord, isLit) == 8);
 static_assert(offsetof(MaterialRecord, renderFace) == 12);
+static_assert(sizeof(MaterialRecord) == 32);
+static_assert(offsetof(MaterialRecord, alphaCutoff) == 16);
+static_assert(offsetof(MaterialRecord, padding) == 20);
 
 auto isSrgb(vk::Format format) -> bool
 {
@@ -114,7 +116,7 @@ auto makeRasterizationState(RenderFace renderFace, bool mirrored) -> vk::Pipelin
     }
     return {.polygonMode = vk::PolygonMode::eFill,
             .cullMode = cullMode,
-            .frontFace = mirrored ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise,
+            .frontFace = mirrored ? vk::FrontFace::eClockwise : vk::FrontFace::eCounterClockwise,
             .lineWidth = 1.0F};
 }
 
@@ -154,7 +156,8 @@ auto makeMaterialRecord(const Material& material) -> MaterialRecord
     return MaterialRecord {.metallic = std::clamp(material.metallic, 0.0F, 1.0F),
                            .roughness = std::clamp(material.roughness, 0.0F, 1.0F),
                            .isLit = material.model == MaterialModel::Lit ? 1U : 0U,
-                           .renderFace = static_cast<std::uint32_t>(material.renderFace)};
+                           .renderFace = static_cast<std::uint32_t>(material.renderFace),
+                           .alphaCutoff = material.alphaCutoff};
 }
 
 auto createDepthFormatSupport(vk::PhysicalDevice physicalDevice, vk::Format format) -> std::expected<bool, Error>
@@ -206,6 +209,31 @@ auto makeShaderStages(vk::ShaderModule vertex, vk::ShaderModule fragment, const 
     };
 }
 
+auto makeShadowShaderStages(vk::ShaderModule vertex,
+                            const std::optional<vk::raii::ShaderModule>& fragment,
+                            const vk::SpecializationInfo& specialization)
+    -> std::pair<std::array<vk::PipelineShaderStageCreateInfo, 2>, std::size_t>
+{
+    const auto vertexStage = vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eVertex,
+                                                                .module = vertex,
+                                                                .pName = "main"};
+    if (!fragment)
+    {
+        return {
+            std::array {vertexStage, vertexStage},
+            1U
+        };
+    }
+    const auto fragmentStage = vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eFragment,
+                                                                  .module = **fragment,
+                                                                  .pName = "main",
+                                                                  .pSpecializationInfo = &specialization};
+    return {
+        std::array {vertexStage, fragmentStage},
+        2U
+    };
+}
+
 struct GraphicsPipelineState
 {
     std::span<const vk::PipelineShaderStageCreateInfo> stages;
@@ -220,14 +248,26 @@ struct GraphicsPipelineState
 struct ShadowVertexInput
 {
     vk::VertexInputBindingDescription binding;
-    vk::VertexInputAttributeDescription attribute;
+    std::array<vk::VertexInputAttributeDescription, 2> attributes;
+    std::uint32_t attributeCount {};
 };
 
-auto makeShadowVertexInput(std::uint32_t vertexStride, std::uint32_t positionOffset) -> ShadowVertexInput
+auto makeShadowVertexInput(std::uint32_t vertexStride,
+                           std::uint32_t positionOffset,
+                           std::uint32_t colorOffset,
+                           bool hasColor) -> ShadowVertexInput
 {
     return {
         .binding = {.binding = 0, .stride = vertexStride, .inputRate = vk::VertexInputRate::eVertex},
-        .attribute = {.location = 0, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = positionOffset}
+        .attributes = {vk::VertexInputAttributeDescription {.location = 0,
+                                                            .binding = 0,
+                                                            .format = vk::Format::eR32G32B32Sfloat,
+                                                            .offset = positionOffset},
+                    vk::VertexInputAttributeDescription {.location = 4,
+                                                            .binding = 0,
+                                                            .format = vk::Format::eR32G32B32A32Sfloat,
+                                                            .offset = colorOffset}},
+        .attributeCount = hasColor ? 2U : 1U
     };
 }
 
@@ -249,11 +289,99 @@ auto makeGraphicsPipelineCreateInfo(const GraphicsPipelineState& state) -> vk::G
             .basePipelineIndex = -1};
 }
 
+struct FragmentSpecializationData
+{
+    std::uint32_t outputIsSrgb;
+    std::uint32_t alphaMode;
+};
+
+auto makeFragmentSpecialization(const FragmentSpecializationData& data) -> vk::SpecializationInfo
+{
+    static constexpr auto entries = std::array {
+        vk::SpecializationMapEntry {.constantID = 0,
+                                    .offset = offsetof(FragmentSpecializationData, outputIsSrgb),
+                                    .size = sizeof(std::uint32_t)},
+        vk::SpecializationMapEntry {.constantID = 1,
+                                    .offset = offsetof(FragmentSpecializationData, alphaMode),
+                                    .size = sizeof(std::uint32_t)}
+    };
+    return {.mapEntryCount = static_cast<std::uint32_t>(entries.size()),
+            .pMapEntries = entries.data(),
+            .dataSize = sizeof(data),
+            .pData = &data};
+}
+
 auto makeOutputSrgbSpecialization(const std::uint32_t& outputIsSrgb) -> vk::SpecializationInfo
 {
     static constexpr auto entry =
         vk::SpecializationMapEntry {.constantID = 0, .offset = 0, .size = sizeof(std::uint32_t)};
     return {.mapEntryCount = 1, .pMapEntries = &entry, .dataSize = sizeof(outputIsSrgb), .pData = &outputIsSrgb};
+}
+
+auto makeMeshFragmentSpecialization(AlphaMode alphaMode, const FragmentSpecializationData& data)
+    -> vk::SpecializationInfo
+{
+    return alphaMode == AlphaMode::Mask ? makeFragmentSpecialization(data)
+                                        : makeOutputSrgbSpecialization(data.outputIsSrgb);
+}
+
+auto makeAlphaModeSpecialization(const std::uint32_t& alphaMode) -> vk::SpecializationInfo
+{
+    static constexpr auto entry =
+        vk::SpecializationMapEntry {.constantID = 0, .offset = 0, .size = sizeof(std::uint32_t)};
+    return {.mapEntryCount = 1, .pMapEntries = &entry, .dataSize = sizeof(alphaMode), .pData = &alphaMode};
+}
+
+auto createShaderModule(const vk::raii::Device& device, std::span<const std::uint32_t> words)
+    -> std::expected<vk::raii::ShaderModule, Error>
+{
+    const auto info = vk::ShaderModuleCreateInfo {.codeSize = words.size_bytes(), .pCode = words.data()};
+    const auto module = (*device).createShaderModule(info, nullptr, *device.getDispatcher());
+    if (module.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {makeVulkanError(module.result)};
+    }
+    return std::expected<vk::raii::ShaderModule, Error> {std::in_place,
+                                                         device,
+                                                         static_cast<vk::ShaderModule::CType>(module.value)};
+}
+
+struct ShadowShaderModules
+{
+    vk::raii::ShaderModule vertex {nullptr};
+    std::optional<vk::raii::ShaderModule> fragment;
+};
+
+auto createShadowShaderModules(const vk::raii::Device& device,
+                               std::span<const std::uint32_t> vertexWords,
+                               bool hasAlphaMask) -> std::expected<ShadowShaderModules, Error>
+{
+    auto vertex = createShaderModule(device, vertexWords);
+    if (!vertex)
+    {
+        return std::unexpected {vertex.error()};
+    }
+    auto fragment = std::optional<vk::raii::ShaderModule> {};
+    if (hasAlphaMask)
+    {
+        auto created = createShaderModule(device, shaders::shadowFragment);
+        if (!created)
+        {
+            return std::unexpected {created.error()};
+        }
+        fragment.emplace(std::move(*created));
+    }
+    return ShadowShaderModules {.vertex = std::move(*vertex), .fragment = std::move(fragment)};
+}
+
+auto makeVertexInputState(const vk::VertexInputBindingDescription& binding,
+                          std::span<const vk::VertexInputAttributeDescription> attributes)
+    -> vk::PipelineVertexInputStateCreateInfo
+{
+    return {.vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &binding,
+            .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size()),
+            .pVertexAttributeDescriptions = attributes.data()};
 }
 
 }
@@ -749,20 +877,6 @@ void MeshRenderer::publishColorAttachments(std::vector<std::shared_ptr<::panda::
     }
 }
 
-auto MeshRenderer::createShaderModule(std::span<const std::uint32_t> words) const
-    -> std::expected<vk::raii::ShaderModule, Error>
-{
-    const auto info = vk::ShaderModuleCreateInfo {.codeSize = words.size_bytes(), .pCode = words.data()};
-    const auto module = (*_device).createShaderModule(info, nullptr, *_device.getDispatcher());
-    if (module.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(module.result)};
-    }
-    return std::expected<vk::raii::ShaderModule, Error> {std::in_place,
-                                                         _device,
-                                                         static_cast<vk::ShaderModule::CType>(module.value)};
-}
-
 auto MeshRenderer::getMeshPipelineKey(const MeshDraw& draw) -> MeshPipelineKey
 {
     const auto attributes = draw.mesh.getVertexAttributes();
@@ -781,6 +895,7 @@ auto MeshRenderer::getMeshPipelineKey(const MeshDraw& draw) -> MeshPipelineKey
             .normalOffset = lit ? findOffset(VertexAttributeSemantic::Normal) : 0U,
             .colorOffset = hasColor ? findOffset(VertexAttributeSemantic::Color) : 0U,
             .renderFace = draw.material.renderFace,
+            .alphaMode = draw.material.alphaMode,
             .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F};
 }
 
@@ -788,16 +903,21 @@ auto MeshRenderer::getShadowPipelineKey(const MeshDraw& draw) -> ShadowPipelineK
 {
     const auto attributes = draw.mesh.getVertexAttributes();
     const auto position = std::ranges::find(attributes, VertexAttributeSemantic::Position, &VertexAttribute::semantic);
+    const auto color = std::ranges::find(attributes, VertexAttributeSemantic::Color, &VertexAttribute::semantic);
+    const auto hasColor = draw.material.alphaMode == AlphaMode::Mask && color != attributes.end();
     return {.vertexStride = draw.mesh.getVertexStride(),
             .positionOffset = position->offset,
+            .colorOffset = hasColor ? color->offset : 0U,
+            .hasColor = hasColor,
             .renderFace = draw.material.renderFace,
+            .alphaMode = draw.material.alphaMode,
             .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F};
 }
 
 auto MeshRenderer::makeVertexAttributeDescriptions(const MeshPipelineKey& key)
     -> std::vector<vk::VertexInputAttributeDescription>
 {
-    auto attributes = std::vector<vk::VertexInputAttributeDescription> {
+    auto attributes = std::vector {
         vk::VertexInputAttributeDescription {.location = 0,
                                              .binding = 0,
                                              .format = vk::Format::eR32G32B32Sfloat,
@@ -827,12 +947,12 @@ auto MeshRenderer::createPipeline(const MeshPipelineKey& key) const -> std::expe
         return key.hasColor ? std::span<const std::uint32_t> {shaders::meshUnlitColorVertex}
                             : std::span<const std::uint32_t> {shaders::meshUnlitPlainVertex};
     }();
-    auto vertex = createShaderModule(vertexWords);
+    auto vertex = createShaderModule(_device, vertexWords);
     if (!vertex)
     {
         return std::unexpected {vertex.error()};
     }
-    auto fragment = createShaderModule(shaders::meshFragment);
+    auto fragment = createShaderModule(_device, shaders::meshFragment);
     if (!fragment)
     {
         return std::unexpected {fragment.error()};
@@ -848,13 +968,11 @@ auto MeshRenderer::createGraphicsPipeline(vk::ShaderModule vertex,
                                                             .stride = key.vertexStride,
                                                             .inputRate = vk::VertexInputRate::eVertex};
     const auto attributes = makeVertexAttributeDescriptions(key);
-    const auto vertexInput = vk::PipelineVertexInputStateCreateInfo {
-        .vertexBindingDescriptionCount = 1,
-        .pVertexBindingDescriptions = &binding,
-        .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size()),
-        .pVertexAttributeDescriptions = attributes.data()};
+    const auto vertexInput = makeVertexInputState(binding, attributes);
     const auto outputIsSrgb = static_cast<std::uint32_t>(isSrgb(_colorFormat));
-    const auto specialization = makeOutputSrgbSpecialization(outputIsSrgb);
+    const auto specializationData = FragmentSpecializationData {.outputIsSrgb = outputIsSrgb,
+                                                                .alphaMode = static_cast<std::uint32_t>(key.alphaMode)};
+    const auto specialization = makeMeshFragmentSpecialization(key.alphaMode, specializationData);
     const auto stages = makeShaderStages(vertex, fragment, specialization);
     const auto colorOutput = _colorFormat;
     const auto rendering = vk::PipelineRenderingCreateInfo {.colorAttachmentCount = 1,
@@ -874,23 +992,21 @@ auto MeshRenderer::createGraphicsPipeline(vk::ShaderModule vertex,
 
 auto MeshRenderer::createShadowPipeline(const ShadowPipelineKey& key) const -> std::expected<vk::raii::Pipeline, Error>
 {
-    auto vertex = createShaderModule(shaders::shadowVertex);
-    if (!vertex)
+    const auto vertexWords = key.hasColor ? std::span<const std::uint32_t> {shaders::shadowVertexAlphaVertex}
+                                          : std::span<const std::uint32_t> {shaders::shadowVertex};
+    auto modules = createShadowShaderModules(_device, vertexWords, key.alphaMode == AlphaMode::Mask);
+    if (!modules)
     {
-        return std::unexpected {vertex.error()};
+        return std::unexpected {modules.error()};
     }
-    const auto stages = std::array {
-        vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eVertex,
-                                           .module = **vertex,
-                                           .pName = "main"}
-    };
+    const auto alphaMode = static_cast<std::uint32_t>(key.alphaMode);
+    const auto specialization = makeAlphaModeSpecialization(alphaMode);
+    const auto [stages, stageCount] = makeShadowShaderStages(*modules->vertex, modules->fragment, specialization);
     const auto rendering = vk::PipelineRenderingCreateInfo {.depthAttachmentFormat = _depthFormat};
-    const auto input = makeShadowVertexInput(key.vertexStride, key.positionOffset);
-    const auto vertexInput = vk::PipelineVertexInputStateCreateInfo {.vertexBindingDescriptionCount = 1,
-                                                                     .pVertexBindingDescriptions = &input.binding,
-                                                                     .vertexAttributeDescriptionCount = 1,
-                                                                     .pVertexAttributeDescriptions = &input.attribute};
-    const auto state = GraphicsPipelineState {.stages = stages,
+    const auto input = makeShadowVertexInput(key.vertexStride, key.positionOffset, key.colorOffset, key.hasColor);
+    const auto vertexInput =
+        makeVertexInputState(input.binding, std::span {input.attributes}.first(input.attributeCount));
+    const auto state = GraphicsPipelineState {.stages = std::span {stages}.first(stageCount),
                                               .rendering = rendering,
                                               .multisampling = multisample,
                                               .rasterization = makeRasterizationState(key.renderFace, key.mirrored),

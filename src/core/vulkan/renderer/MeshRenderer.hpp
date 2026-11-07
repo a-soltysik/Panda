@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
+#include <array>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -39,10 +40,12 @@ struct MeshRendererCreateInfo
 
 struct alignas(16) MaterialRecord
 {
-    float metallic;
-    float roughness;
-    std::uint32_t isLit;
-    std::uint32_t renderFace;
+    float metallic {};
+    float roughness {};
+    std::uint32_t isLit {};
+    std::uint32_t renderFace {};
+    float alphaCutoff {};
+    std::array<std::uint32_t, 3> padding {};
 };
 
 class MeshRenderer final
@@ -93,6 +96,7 @@ private:
         std::uint32_t normalOffset {0};
         std::uint32_t colorOffset {0};
         RenderFace renderFace {RenderFace::Front};
+        AlphaMode alphaMode {AlphaMode::Opaque};
         bool mirrored {false};
         friend auto operator<=>(const MeshPipelineKey&, const MeshPipelineKey&) = default;
     };
@@ -101,7 +105,10 @@ private:
     {
         std::uint32_t vertexStride {0};
         std::uint32_t positionOffset {0};
+        std::uint32_t colorOffset {0};
+        bool hasColor {false};
         RenderFace renderFace {RenderFace::Front};
+        AlphaMode alphaMode {AlphaMode::Opaque};
         bool mirrored {false};
         friend auto operator<=>(const ShadowPipelineKey&, const ShadowPipelineKey&) = default;
     };
@@ -153,8 +160,6 @@ private:
         -> std::expected<vk::raii::Pipeline, Error>;
     [[nodiscard]] static auto makeVertexAttributeDescriptions(const MeshPipelineKey& key)
         -> std::vector<vk::VertexInputAttributeDescription>;
-    [[nodiscard]] auto createShaderModule(std::span<const std::uint32_t> words) const
-        -> std::expected<vk::raii::ShaderModule, Error>;
     [[nodiscard]] static auto writeFrameUniform(FrameResources& frame, const RenderView& view)
         -> std::expected<void, Error>;
     [[nodiscard]] auto ensureMaterialBuffer(FrameResources& frame, std::size_t drawCount) -> std::expected<void, Error>;

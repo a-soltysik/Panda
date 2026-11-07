@@ -25,10 +25,14 @@ function(panda_add_builtin_shaders target)
     panda_add_builtin_shader_command(mesh_lit_plain.vert mesh_lit_plain.vert)
     panda_add_builtin_shader_command(mesh_unlit_color.vert mesh_unlit_color.vert)
     panda_add_builtin_shader_command(mesh_unlit_plain.vert mesh_unlit_plain.vert)
-    panda_add_builtin_shader_command(mesh.frag mesh.frag)
+    # Keep discard compatible with devices that lack shaderDemoteToHelperInvocation.
+    panda_add_builtin_shader_command(mesh.frag mesh.frag --target-spv=spv1.3)
     panda_add_builtin_shader_command(shadow.vert shadow.vert)
+    panda_add_builtin_shader_command(shadow_vertex_alpha.vert shadow_vertex_alpha.vert)
+    panda_add_builtin_shader_command(shadow.frag shadow.frag --target-spv=spv1.3)
     list(REMOVE_DUPLICATES PANDA_BUILTIN_SHADER_SOURCES)
     list(APPEND PANDA_BUILTIN_SHADER_SOURCES "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh_vertex_common.glsl")
+    list(APPEND PANDA_BUILTIN_SHADER_SOURCES "${PROJECT_SOURCE_DIR}/shaders/builtin/shadow_vertex_common.glsl")
     add_custom_command(
         OUTPUT "${PANDA_BUILTIN_SHADER_HEADER}" ${PANDA_BUILTIN_SHADER_SPIRV_FILES}
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${PANDA_BUILTIN_SHADER_DIRECTORY}"

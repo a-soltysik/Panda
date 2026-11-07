@@ -32,6 +32,15 @@ enum class RenderFace : std::uint8_t
     Both
 };
 
+/// @brief Alpha handling provided by Panda's built-in renderer.
+enum class AlphaMode : std::uint8_t
+{
+    /// Render the entire surface as opaque, without using alpha for coverage.
+    Opaque,
+    /// Use alpha as a cutout: below alphaCutoff is invisible, otherwise fully opaque.
+    Mask
+};
+
 /// @brief Built-in material values shared by mesh draws.
 struct Material
 {
@@ -45,6 +54,10 @@ struct Material
     float roughness {1.0F};
     /// Mesh side(s) rendered by the built-in pipelines.
     RenderFace renderFace {RenderFace::Front};
+    /// Whether to render the full surface or cut out pixels below alphaCutoff.
+    AlphaMode alphaMode {AlphaMode::Opaque};
+    /// Linear alpha threshold used by Mask materials; must be in [0,1].
+    float alphaCutoff {0.5F};
 };
 
 /// @brief Camera data for one rendered view.

@@ -162,3 +162,31 @@ TEST(RenderViewValidation, RejectsEachNegativeMaterialColorChannelAndNonFiniteRo
     view.meshes.back().material.roughness = std::numeric_limits<float>::infinity();
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
+
+TEST(RenderViewValidation, ValidatesAlphaModeAndCutoff)
+{
+    auto view = RenderView {};
+    view.meshes.push_back({});
+    auto& material = view.meshes.back().material;
+    EXPECT_TRUE(validateRenderViewData(view));
+
+    material.alphaMode = panda::AlphaMode::Mask;
+    material.alphaCutoff = 0.0F;
+    EXPECT_TRUE(validateRenderViewData(view));
+    material.alphaCutoff = 1.0F;
+    EXPECT_TRUE(validateRenderViewData(view));
+
+    material.alphaCutoff = -0.01F;
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+    material.alphaCutoff = 1.01F;
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+    material.alphaCutoff = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+    material.alphaCutoff = std::numeric_limits<float>::infinity();
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    // Exercise rejection of an out-of-range enum supplied by malformed application data.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    material.alphaMode = static_cast<panda::AlphaMode>(255);
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+}
