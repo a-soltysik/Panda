@@ -22,32 +22,44 @@ behavior. Each slice needs its relevant visual or ABI evidence.
 
 `MeshDesc` declares per-mesh stride and standard semantic attributes; the renderer
 selects Lit or Unlit pipelines and accepts compact Position/Color meshes. Lit draws
-require Position and Normal. Material values use a named 16-byte record packed
+require Position and Normal. Material values use a named 32-byte record packed
 contiguously in a per-frame storage buffer with one mapped write per frame. `Material`
-selects front, back or both faces; camera and shadow pipelines account for negative
-determinants, and Lit shading flips normals on rendered back faces. `simple_scene`
-shows the compact layout and an Unlit draw; `scene_demo` puts an upright,
-vertex-colored triangle into the existing animated object grid.
+selects front, back or both faces and Opaque or Mask alpha handling. Mask uses the
+product of material alpha, draw tint alpha and vertex alpha (one when Color is
+absent), with one cutoff in camera and shadow passes. Camera and shadow pipelines
+account for negative determinants, and Lit shading flips normals on rendered back
+faces. `simple_scene` shows the compact layout and an Unlit draw; `scene_demo` puts an
+upright, vertex-colored triangle into the existing animated object grid.
 
-Maps and alpha modes, multiple lights, spot/point shadows, normal-map fallback,
-and the required shadow-quality captures remain incomplete. This task is not accepted.
+Material maps, Blend alpha handling, multiple lights, spot/point shadows,
+normal-map fallback, and the required shadow-quality captures remain incomplete.
+This task is not accepted.
 
 ## Current verification
 
-- Windows 11: `msvc-quality`, public-header and format checks passed. `msvc-fast`
-  built all targets and CTest ran 530 cases with zero failures and 4 skips (one
-  benchmark and three noncoherent-memory variants). The windowed
-  `RendersFaceModesAndReflectedMeshesWithValidation` test passed with Vulkan
-  validation. Tool versions: CMake 4.4.2, Ninja 1.13.2 and ccache 4.13.6.
-- WSL Ubuntu 26.04: `gcc-quality` built all targets. The synchronized
-  `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1` `gcc-fast` run
-  built all targets and CTest ran 530 cases with zero failures and 8 skips (five
-  CUDA capability cases and three noncoherent-memory variants). The same windowed
-  face/reflection test passed. Tool versions: CMake 4.2.3, GCC 16.0.1 and ccache
-  4.12.3.
-- `check_docs.py` checked 79 Markdown files; `docs-checks` accepted 42 Mermaid
-  diagrams in 82 files; `git diff --check` passed. CUDA-analysis and API-doc
-  presets were not rerun after this slice.
+- Windows 11: `msvc-quality`, isolated public headers, format checks and
+  `clang-cuda-analysis-windows` passed. `msvc-fast` full build passed; CTest
+  passed 533/533 with 4 skips (one benchmark and three noncoherent-memory
+  variants). Tool versions: CMake 4.4.2, Ninja 1.13.2, ccache 4.13.6.
+- WSL Ubuntu 26.04, synchronized with
+  `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1`: `gcc-quality`,
+  isolated public headers, format checks, `clang-cuda-analysis` and `gcc-docs`
+  passed. `gcc-fast` full build passed; CTest passed 533/533 with 8 skips (five
+  CUDA capability cases and three noncoherent-memory variants). Tool versions:
+  CMake 4.2.3, GCC 16.0.1, Ninja 1.13.2, ccache 4.12.3.
+- `gcc-coverage-all` with Mesa lavapipe passed 516/516 with 4 hardware-dependent
+  skips. Overall coverage: 89.7% lines, 94.5% functions and 73.8% branches.
+  `MeshRenderer.cpp`: 90.4% lines, 59.1% branches;
+  `RenderViewValidation.cpp`: 100% lines, 92.9% branches.
+- Captures of the running Windows `simple_scene` and `scene_demo` windows after
+  the front-face correction show the ground and colored triangle again. This is
+  a visual smoke check, not an automated pixel comparison or shadow-quality
+  assessment; the windowed system test checks presentation and Vulkan validation.
+- The windowed system test runs Mask draws with and without a Color vertex
+  attribute through camera and shadow passes, then checks presentation and
+  absence of Vulkan validation errors. It does not compare pixels.
+  `check_docs.py` checked 79 Markdown files; `docs-checks` accepted 42 Mermaid
+  diagrams in 82 files. No RenderDoc shadow-quality capture was made.
 
 ## Acceptance
 

@@ -1,21 +1,11 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
 
 layout(location = 0) in vec3 vertexPosition;
 
-layout(set = 0, binding = 0) uniform FrameData
-{
-    mat4 viewProjection;
-    mat4 lightViewProjection;
-} frameData;
-
-layout(push_constant) uniform DrawData
-{
-    mat4 modelMatrix;
-    mat3x4 normalColumns;
-    vec4 tint;
-} drawData;
+#include "shadow_vertex_common.glsl"
 
 void main()
 {
-    gl_Position = frameData.lightViewProjection * drawData.modelMatrix * vec4(vertexPosition, 1.0);
+    writeShadowVertex(vertexPosition, 1.0);
 }

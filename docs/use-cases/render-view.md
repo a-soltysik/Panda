@@ -30,7 +30,7 @@ handles through GPU use, and owns frame-slot and swapchain synchronization. A re
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
 2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, light,
-   tint and material values, then verifies each mesh's Context and required attributes.
+   tint, material alpha mode and cutoff, then verifies each mesh's Context and required attributes.
    It collects completed upload packets before delegating to `Presentation`.
 3. **Prepare the window frame.** `Presentation::prepareWindowFrame()` checks the
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
@@ -43,10 +43,11 @@ handles through GPU use, and owns frame-slot and swapchain synchronization. A re
 5. **Record the view.** An empty mesh list clears the acquired image to the configured
    background. Otherwise, `Presentation` creates or resizes the internal `MeshRenderer`,
    updates frame data and that slot's tightly packed per-draw material storage buffer,
-   then records a depth-only pass into its directional shadow map. It records camera color/depth
-   rendering, selecting pipelines from each material model, consumed vertex
-   attributes, face mode and transform handedness while sampling the shadow map
-   for Lit draws. The shadow pass uses the same selected face and handedness.
+   then records the directional shadow depth pass. Opaque draws cast a full silhouette;
+   Mask draws use material alpha, draw tint alpha and vertex alpha with the material's
+   cutoff. The camera pass applies the same cutoff, selecting pipelines from each
+   material model, alpha mode, consumed vertex attributes, face mode and transform
+   handedness while sampling the shadow map for Lit draws.
 6. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
    Context timeline. Successful submission commits its timeline value, stores it on
@@ -82,8 +83,8 @@ sequenceDiagram
         P->>V: Clear background with dynamic rendering
     else View contains meshes
         P->>R: Create/resize renderer and update frame and material data
-        R->>V: Record face-aware light-depth pass for mesh draws
-        R->>V: Select material/layout/face pipelines and record camera pass
+        R->>V: Record face-aware shadow pass with matching alpha cutouts
+        R->>V: Select material/alpha/layout/face pipelines and record camera pass
         R->>V: Sample shadow map for Lit draws
     end
     P->>Q: Submit commands and signal timeline
@@ -111,8 +112,11 @@ light with a Cook-Torrance microfacet specular term: GGX normal distribution,
 Schlick-GGX geometry and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is
 combined with that specular term. Each Lit material supplies metallic and roughness,
 clamped to the supported range. Unlit materials skip light evaluation and shadow
-lookup while shading, but still cast shadows in the current depth pass. The
-material's `RenderFace` selects front sides, back sides or both; transforms with
+lookup while shading, but still cast shadows in the current depth pass.
+`AlphaMode::Opaque` renders the whole surface without alpha blending.
+`AlphaMode::Mask` turns alpha into a binary cutout: values below `alphaCutoff` are
+discarded, and the rest render fully opaque. The same cutoff controls the shadow
+silhouette. The material's `RenderFace` selects front sides, back sides or both; transforms with
 a negative determinant reverse pipeline winding in both passes. Lit shading
 orients back-facing normals consistently when rendering `Back` or `Both`. They
 use base color, not emissive lighting. A constant ambient term contributes
@@ -122,7 +126,7 @@ for UNORM formats. Direct directional light is shadowed with one 2048² depth ma
 frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
 orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
 Points outside that fixed camera-centered region receive no shadow. Material textures,
-alpha/faces, multiple lights, spot/point shadows and improved shadow coverage and
+Blend alpha handling, multiple lights, spot/point shadows and improved shadow coverage and
 filtering remain work in
 [Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
 current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and

@@ -1,6 +1,7 @@
 #version 450
 
 layout(constant_id = 0) const uint outputIsSrgb = 1u;
+layout(constant_id = 1) const uint alphaMode = 0u;
 
 layout(set = 0, binding = 0) uniform FrameData
 {
@@ -19,6 +20,8 @@ struct MaterialRecord
     float roughness;
     uint isLit;
     uint renderFace;
+    float alphaCutoff;
+    uint padding[3];
 };
 
 layout(set = 0, binding = 2, std430) readonly buffer MaterialData
@@ -97,6 +100,10 @@ float shadowVisibility(vec3 normal)
 void main()
 {
     const MaterialRecord material = materialData.records[materialIndex];
+    if (alphaMode == 1u && baseColor.a < material.alphaCutoff)
+    {
+        discard;
+    }
     if (material.isLit == 0u)
     {
         const vec3 mapped = toneMapAces(baseColor.rgb);

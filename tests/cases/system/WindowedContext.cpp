@@ -168,7 +168,7 @@ auto uploadSceneMeshes(const panda::Context& context,
 {
     static constexpr auto triangleVertices =
         std::array {-0.5F, -0.5F, 0.0F, 1.0F, 0.2F, 0.2F, 1.0F, 0.5F, -0.5F, 0.0F, 0.2F,
-                    1.0F,  0.2F,  1.0F, 0.0F, 0.5F, 0.0F, 0.2F, 0.2F, 1.0F,  1.0F};
+                    1.0F,  0.2F,  1.0F, 0.0F, 0.5F, 0.0F, 0.2F, 0.2F, 1.0F,  0.0F};
     auto batch = context.createUploadBatch();
     if (!batch)
     {
@@ -217,10 +217,10 @@ auto createUploadedCubeGroundAndCompactTriangle(const panda::Context& context) -
     return meshes;
 }
 
-auto makeCubeAndGroundView(panda::FramebufferExtent extent, SceneMeshes meshes) -> panda::Result<panda::RenderView>
+auto makeTestCamera(panda::FramebufferExtent extent) -> panda::Result<panda::RenderCamera>
 {
     const auto aspectRatio = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-    const auto camera = panda::createPerspectiveCamera({
+    return panda::createPerspectiveCamera({
         .position = {3.0F, 2.5F, 4.0F},
         .target = {},
         .up = {0, 1, 0},
@@ -229,6 +229,11 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, SceneMeshes meshes) 
         .nearPlane = 0.1F,
         .farPlane = 100.0F
     });
+}
+
+auto makeCubeAndGroundView(panda::FramebufferExtent extent, SceneMeshes meshes) -> panda::Result<panda::RenderView>
+{
+    const auto camera = makeTestCamera(extent);
     if (!camera)
     {
         return std::unexpected {camera.error()};
@@ -257,10 +262,10 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, SceneMeshes meshes) 
                          .material = {.renderFace = panda::RenderFace::Back}},
         panda::MeshDraw {.mesh = meshes.cube,
                          .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, -1.5F}),
-                         .material = {.renderFace = panda::RenderFace::Both}},
+                         .material = {.renderFace = panda::RenderFace::Both, .alphaMode = panda::AlphaMode::Mask}},
         panda::MeshDraw {.mesh = std::move(meshes.triangle),
                          .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, -0.25F, 0.0F}),
-                         .material = {.model = panda::MaterialModel::Unlit}}
+                         .material = {.model = panda::MaterialModel::Unlit, .alphaMode = panda::AlphaMode::Mask}}
     };
     return view;
 }
@@ -343,7 +348,7 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     EXPECT_NE(empty.error().message.find("null Vulkan surface"), std::string::npos);
 }
 
-TEST(WindowedContextSystem, RendersFaceModesAndReflectedMeshesWithValidation)
+TEST(WindowedContextSystem, PresentsMaskedAlphaFaceModesAndReflectedMeshesWithoutValidationErrors)
 {
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};

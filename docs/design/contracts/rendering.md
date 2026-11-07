@@ -388,10 +388,11 @@ UV/tangents are unusable it disables the normal map with a warning. Tangent `.w`
 is handedness and bitangent is `cross(N,T)*tangent.w*sign(det(model))` after
 normal-matrix transform and tangent orthogonalization. For a rendered back face,
 flip N before forming the bitangent. The projection applies the Vulkan Y flip
-once; positive viewport height and clockwise front face represent
-positive-determinant meshes. A negative world determinant reverses front-face
-state in camera and shadow passes. Face mode controls culling independently of
-the corrected shading normal.
+once; with the positive-height viewport, counterclockwise front-face state
+represents the outward-wound positive-determinant meshes used by Panda's geometry
+helpers. A negative world determinant reverses front-face state in camera and
+shadow passes. Face mode controls culling independently of the corrected
+shading normal.
 
 Use `R16G16B16A16_SFLOAT` HDR color and MSAA resolve attachments, checking
 required format/sample/usage support. Prefer `D32_SFLOAT` camera/shadow depth,
