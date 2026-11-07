@@ -76,17 +76,29 @@ TEST(RenderViewValidation, AcceptsLargeOrthographicProjection)
     EXPECT_TRUE(validateRenderViewData(view));
 }
 
-TEST(RenderViewValidation, RejectsSingularModelAndNegativeTint)
+TEST(RenderViewValidation, RejectsSingularModel)
 {
     auto view = RenderView {};
     view.meshes.push_back({.mesh = {}, .modelMatrix = glm::mat4 {0.0F}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+}
 
-    view.meshes.clear();
-    view.meshes.push_back({
-        .mesh = {},
-        .tint = {-1.0F, 1.0F, 1.0F, 1.0F}
-    });
+TEST(RenderViewValidation, RejectsEachNegativeTintChannelAndNonFiniteTint)
+{
+    auto view = RenderView {};
+    view.meshes.push_back({});
+    auto& tint = view.meshes.back().tint;
+    const auto rejectNegative = [&view](float& component) {
+        component = -1.0F;
+        EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+        component = 1.0F;
+    };
+    rejectNegative(tint.r);
+    rejectNegative(tint.g);
+    rejectNegative(tint.b);
+    rejectNegative(tint.a);
+
+    tint.r = std::numeric_limits<float>::infinity();
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
 
@@ -102,13 +114,6 @@ TEST(RenderViewValidation, RejectsNonAffineAndNonInvertibleModels)
     model = glm::mat4 {1.0F};
     model[0][0] = 1.0e-40F;
     view.meshes.push_back({.mesh = {}, .modelMatrix = model});
-    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
-
-    view.meshes.clear();
-    view.meshes.push_back({
-        .mesh = {},
-        .tint = {1.0F, 1.0F, 1.0F, -1.0F}
-    });
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
 
@@ -127,5 +132,33 @@ TEST(RenderViewValidation, RejectsNonFiniteMaterialValuesAndUnknownModel)
     // Exercise rejection of an out-of-range enum supplied by malformed application data.
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     view.meshes.back().material.model = static_cast<panda::MaterialModel>(255);
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    view.meshes.back().material.model = panda::MaterialModel::Lit;
+    view.meshes.back().material.renderFace = panda::RenderFace::Both;
+    EXPECT_TRUE(validateRenderViewData(view));
+
+    // Exercise rejection of an out-of-range enum supplied by malformed application data.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    view.meshes.back().material.renderFace = static_cast<panda::RenderFace>(255);
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+}
+
+TEST(RenderViewValidation, RejectsEachNegativeMaterialColorChannelAndNonFiniteRoughness)
+{
+    auto view = RenderView {};
+    view.meshes.push_back({});
+    auto& color = view.meshes.back().material.baseColor;
+    const auto rejectNegative = [&view](float& component) {
+        component = -1.0F;
+        EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+        component = 1.0F;
+    };
+    rejectNegative(color.r);
+    rejectNegative(color.g);
+    rejectNegative(color.b);
+    rejectNegative(color.a);
+
+    view.meshes.back().material.roughness = std::numeric_limits<float>::infinity();
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }

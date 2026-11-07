@@ -12,7 +12,7 @@ Non-goal: No custom material DSL or IBL.
 Interface: Material and light data, shadow views and renderer pipeline keys; finalize public names and GPU layout during
 implementation.
 
-Paths: `../../../include/core/panda`, `src/renderer/`, `shaders/`, `tests/gpu/` and directly affected documentation.
+Paths: `../../../include/core/panda`, `src/core/vulkan/renderer/`, `shaders/`, `tests/cases/`, examples and directly affected documentation.
 Specifications: [Renderer layout and materials](../../design/contracts/rendering.md#first-version-renderer-contract), [transform conventions](../../design/contracts/scene.md#transforms-and-camera-conventions).
 
 Verify material/host layouts first, then lighting/shadows, then quality and pipeline
@@ -22,32 +22,32 @@ behavior. Each slice needs its relevant visual or ABI evidence.
 
 `MeshDesc` declares per-mesh stride and standard semantic attributes; the renderer
 selects Lit or Unlit pipelines and accepts compact Position/Color meshes. Lit draws
-require Position and Normal. Material values are stored as named 16-byte records,
-packed contiguously in a per-frame storage buffer with one mapped write per frame.
-`simple_scene` shows the compact layout and an Unlit draw; `scene_demo` puts a
-upright, vertex-colored triangle into the existing animated object grid.
+require Position and Normal. Material values use a named 16-byte record packed
+contiguously in a per-frame storage buffer with one mapped write per frame. `Material`
+selects front, back or both faces; camera and shadow pipelines account for negative
+determinants, and Lit shading flips normals on rendered back faces. `simple_scene`
+shows the compact layout and an Unlit draw; `scene_demo` puts an upright,
+vertex-colored triangle into the existing animated object grid.
 
-Maps, alpha and face modes, multiple lights, spot/point shadows, normal-map fallback,
+Maps and alpha modes, multiple lights, spot/point shadows, normal-map fallback,
 and the required shadow-quality captures remain incomplete. This task is not accepted.
 
 ## Current verification
 
-- Windows presets: `msvc-quality`, `clang-cuda-analysis-windows`, format and public
-  header checks passed; `msvc-fast` built and CTest ran 530 cases with zero failures
-  and 4 skipped (one benchmark and three noncoherent-memory variants). Tool versions:
-  CMake 4.4.2, Ninja 1.13.2 and ccache 4.13.6.
-- WSL Ubuntu presets: `gcc-quality`, `clang-cuda-analysis`, format and public header
-  checks passed; `gcc-fast` built and CTest ran 530 cases with zero failures and 8
-  skipped (CUDA interop/handoff and noncoherent-memory variants). `gcc-docs`
-  generated API docs. Tool versions: CMake 4.2.3, GCC 16.0.1, Clang 22.1.2 and
-  ccache 4.12.3.
-- After the final Doxygen comment edits, `check_docs.py` checked 79 Markdown files;
-  `docs-checks` accepted 42 Mermaid diagrams in 82 files; Windows format/header
-  checks, Linux API docs and `git diff --check` passed. Both complete platform
-  quality/CUDA-analysis/fast sequences were rerun on the final feature branch;
-  Clang reported that CUDA 13.1 is newer than its latest partially supported 12.9.
-- No GPU screenshot or RenderDoc capture was inspected. The demo triangle's placement
-  and orientation were checked in source, not visually validated.
+- Windows 11: `msvc-quality`, public-header and format checks passed. `msvc-fast`
+  built all targets and CTest ran 530 cases with zero failures and 4 skips (one
+  benchmark and three noncoherent-memory variants). The windowed
+  `RendersFaceModesAndReflectedMeshesWithValidation` test passed with Vulkan
+  validation. Tool versions: CMake 4.4.2, Ninja 1.13.2 and ccache 4.13.6.
+- WSL Ubuntu 26.04: `gcc-quality` built all targets. The synchronized
+  `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1` `gcc-fast` run
+  built all targets and CTest ran 530 cases with zero failures and 8 skips (five
+  CUDA capability cases and three noncoherent-memory variants). The same windowed
+  face/reflection test passed. Tool versions: CMake 4.2.3, GCC 16.0.1 and ccache
+  4.12.3.
+- `check_docs.py` checked 79 Markdown files; `docs-checks` accepted 42 Mermaid
+  diagrams in 82 files; `git diff --check` passed. CUDA-analysis and API-doc
+  presets were not rerun after this slice.
 
 ## Acceptance
 
