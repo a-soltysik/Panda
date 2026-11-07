@@ -3,6 +3,7 @@
 /// @file
 /// Application-owned camera, lighting and mesh draw data.
 
+#include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -11,6 +12,28 @@
 
 namespace panda
 {
+/// @brief Shading model provided by Panda's built-in renderer.
+enum class MaterialModel : std::uint8_t
+{
+    /// Metallic-roughness direct lighting; the mesh must provide normals.
+    Lit,
+    /// Base color without lighting; normals are not required.
+    Unlit
+};
+
+/// @brief Built-in material values shared by mesh draws.
+struct Material
+{
+    /// Direct GGX lighting or tone-mapped base color without lighting.
+    MaterialModel model {MaterialModel::Lit};
+    /// Linear RGBA material color multiplied by draw tint and vertex color.
+    glm::vec4 baseColor {1.0F, 1.0F, 1.0F, 1.0F};
+    /// Metallic response, clamped to [0,1] when uploaded.
+    float metallic {0.0F};
+    /// Perceptual roughness, clamped to [0,1] when uploaded.
+    float roughness {1.0F};
+};
+
 /// @brief Camera data for one rendered view.
 struct RenderCamera
 {
@@ -31,15 +54,17 @@ struct DirectionalLight
     float intensity {3.0F};
 };
 
-/// @brief One uploaded standard-format mesh with an object-to-world transform and linear tint.
+/// @brief One uploaded mesh with an object-to-world transform, linear tint and material.
 struct MeshDraw
 {
-    /// Retained GPU mesh; its vertex stride must be standardMeshVertexStrideBytes.
+    /// Retained GPU mesh with attributes compatible with its material.
     Mesh mesh;
     /// Full object-to-world transform in column-major order.
     glm::mat4 modelMatrix {1.0F};
-    /// Linear RGBA tint multiplied by vertex color and the built-in material.
+    /// Linear RGBA per-draw modulation multiplied by material and vertex color.
     glm::vec4 tint {1.0F, 1.0F, 1.0F, 1.0F};
+    /// Built-in material parameters for this mesh.
+    Material material {};
 };
 
 /// @brief Transient application-owned inputs for one renderer frame.

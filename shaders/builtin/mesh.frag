@@ -13,16 +13,27 @@ layout(set = 0, binding = 0) uniform FrameData
 } frameData;
 
 layout(set = 0, binding = 1) uniform sampler2D shadowMap;
+struct MaterialRecord
+{
+    float metallic;
+    float roughness;
+    uint isLit;
+    uint padding;
+};
+
+layout(set = 0, binding = 2, std430) readonly buffer MaterialData
+{
+    MaterialRecord records[];
+} materialData;
 
 layout(location = 0) in vec3 worldPosition;
 layout(location = 1) in vec3 worldNormal;
 layout(location = 2) in vec4 baseColor;
+layout(location = 3) flat in uint materialIndex;
 layout(location = 0) out vec4 fragmentColor;
 
 const float pi = 3.14159265359;
 const vec3 dielectricF0 = vec3(0.04);
-const float metallic = 0.0;
-const float roughness = 1.0;
 
 float distributionGgx(float normalHalf, float alphaSquared)
 {
@@ -85,7 +96,17 @@ float shadowVisibility(vec3 normal)
 
 void main()
 {
+    const MaterialRecord material = materialData.records[materialIndex];
+    if (material.isLit == 0u)
+    {
+        const vec3 mapped = toneMapAces(baseColor.rgb);
+        const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
+        fragmentColor = vec4(outputColor, baseColor.a);
+        return;
+    }
     const vec3 normal = normalize(worldNormal);
+    const float metallic = material.metallic;
+    const float roughness = clamp(material.roughness, 0.045, 1.0);
     const vec3 viewDirection = normalize(frameData.cameraPosition.xyz - worldPosition);
     const vec3 lightDirection = normalize(-frameData.lightDirection.xyz);
     const vec3 halfDirection = normalize(viewDirection + lightDirection);

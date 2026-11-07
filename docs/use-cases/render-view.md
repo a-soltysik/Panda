@@ -7,30 +7,31 @@ Panda renders and presents that view without requiring a scene or entity system.
 empty `RenderView::meshes` list is a valid view that presents only the background.
 This flow ends with a `FrameResult` or an `Error`.
 
-**The application** owns scene data, transforms and the lifetime of its `Context`. **Panda** validates the view, records
-the built-in mesh rendering path, retains mesh
+**The application** owns scene data, transforms and the lifetime of its `Context`.
+**Panda** validates the view, records the built-in mesh rendering path, retains mesh
 handles through GPU use, and owns frame-slot and swapchain synchronization. A returned
-`CompletionPoint` identifies submitted GPU work; it does not mean the image has been
-displayed.
+`CompletionPoint` identifies submitted GPU work; it does not mean the image has been displayed.
 
 ## Preconditions
 
 1. A live windowed `Context` exists. Calls to it are serialized on its execution thread.
-2. Every mesh draw refers to a valid mesh from that Context, uses the standard vertex
-   format and has been uploaded before rendering.
-3. Camera, light, transform and tint values are finite and representable by the built-in
-   renderer. A zero-sized framebuffer is allowed and returns `Suspended`.
+2. Every mesh draw refers to a valid, uploaded mesh from that Context and declares a
+   layout compatible with its material. All draws require Position; Lit also requires
+   Normal. Color is optional and defaults to white.
+3. Camera, light, transform, tint and material values are finite and valid for the
+   built-in renderer. A zero-sized framebuffer is allowed and returns `Suspended`.
 
 ## Main flow
 
 1. **Build the view.** The application supplies a view-projection matrix, camera
-   position, one directional light and zero or more standard-mesh draws. Mesh handles
-   are ordinary values; Panda does not create entities or own application transforms.
+   position, one directional light and zero or more mesh draws with per-mesh materials.
+   Mesh handles are ordinary values; Panda does not create entities or own application
+   transforms.
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
-2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, light
-   and tint values, then verifies each mesh's Context and vertex stride. It collects
-   completed upload packets before delegating to `Presentation`.
+2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, light,
+   tint and material values, then verifies each mesh's Context and required attributes.
+   It collects completed upload packets before delegating to `Presentation`.
 3. **Prepare the window frame.** `Presentation::prepareWindowFrame()` checks the
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
    without acquiring an image. See [UC Suspend presentation and recreate the
@@ -41,10 +42,10 @@ displayed.
    presentation fence before reuse.
 5. **Record the view.** An empty mesh list clears the acquired image to the configured
    background. Otherwise, `Presentation` creates or resizes the internal `MeshRenderer`,
-   updates the frame uniform buffer, and records a depth-only pass into that slot's
-   directional shadow map. It then records camera color/depth rendering, sampling the
-   shadow map while shading each `MeshDraw` with the standard vertex layout, built-in
-   lit material and model/tint push constants.
+   updates frame data and that slot's tightly packed per-draw material storage buffer,
+   then records a depth-only pass into its directional shadow map. It records camera color/depth
+   rendering, selecting pipelines from each material model and consumed vertex
+   attributes while sampling the shadow map for Lit draws.
 6. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
    Context timeline. Successful submission commits its timeline value, stores it on
@@ -67,7 +68,7 @@ sequenceDiagram
     participant Q as SubmissionQueue
     participant V as Vulkan
     A->>C: render(view)
-    C->>C: Validate camera, light, draws and Context ownership
+    C->>C: Validate camera, light, materials, layouts and Context ownership
     opt UploadManager exists
         C->>U: Collect completed upload packets
         U-->>C: Collection result
@@ -79,9 +80,10 @@ sequenceDiagram
     alt View has no meshes
         P->>V: Clear background with dynamic rendering
     else View contains meshes
-        P->>R: Create/resize renderer and update frame data
+        P->>R: Create/resize renderer and update frame and material data
         R->>V: Record light-depth pass for mesh draws
-        R->>V: Record camera color/depth pass and sample shadow map
+        R->>V: Select material/layout pipelines and record camera pass
+        R->>V: Sample shadow map for Lit draws
     end
     P->>Q: Submit commands and signal timeline
     Q-)V: Queue accepts frame work
@@ -102,18 +104,22 @@ does not depend on that library.
 checked perspective projection with right-handed look-at vectors and returns a
 `RenderCamera` for the view.
 
-**Current shading model.** The first built-in mesh shader uses vertex color multiplied
-by draw tint as linear base color. It evaluates one directional light with a
-Cook-Torrance microfacet specular term: GGX normal distribution, Schlick-GGX geometry
-and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is combined with that
-specular term. Metallic is fixed at 0 and roughness at 1; a constant ambient term
-contributes 0.06 times base color. The shader applies the ACES fitted tone curve and
+**Current shading model.** Built-in materials multiply linear `baseColor`, draw tint
+and optional vertex color (white when absent). Lit materials evaluate one directional
+light with a Cook-Torrance microfacet specular term: GGX normal distribution,
+Schlick-GGX geometry and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is
+combined with that specular term. Each Lit material supplies metallic and roughness,
+clamped to the supported range. Unlit materials skip light evaluation and shadow
+lookup while shading, but still cast shadows in the current depth pass. They use
+base color, not emissive lighting. A constant ambient term contributes
+0.06 times base color to Lit materials. The shader applies the ACES fitted tone curve and
 outputs sRGB, using hardware conversion for sRGB swapchain formats or shader encoding
 for UNORM formats. Direct directional light is shadowed with one 2048² depth map per
 frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
 orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
 Points outside that fixed camera-centered region receive no shadow. Material textures,
-parameter overrides and improved shadow coverage/filtering remain future work in
+alpha/faces, multiple lights, spot/point shadows and improved shadow coverage and
+filtering remain work in
 [Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
 current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and
 the current visual result. The first mesh draw selects the highest common color/depth
@@ -142,7 +148,7 @@ already submitted work was rolled back.
 | Acquire returns timeout or not-ready                             | Return `Skipped` without a completion point.                                                 |
 | Acquire reports out-of-date                                      | Return `RecreatePending` without a completion point; the next call attempts recreation.      |
 | Acquire or present is suboptimal, or present reports out-of-date | Return `RecreatePending`; keep the accepted submission's completion point.                   |
-| Invalid view data, foreign mesh, or nonstandard vertex stride    | Return `InvalidArgument` before acquiring an image.                                          |
+| Invalid view/material data, foreign mesh or incompatible layout | Return `InvalidArgument` before acquiring an image. |
 | Context has no window presentation service                       | Return `Unsupported`.                                                                        |
 | Recording, submission or cleanup fails after acquire             | Return the relevant error; retire the acquired image. Failed retirement faults presentation. |
 | Surface or device is lost                                        | Return the Vulkan error and fault presentation; Context teardown still attempts its drain.   |

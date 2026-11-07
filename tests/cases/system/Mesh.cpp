@@ -39,7 +39,8 @@ auto indexedDescription() -> panda::MeshDesc
         .vertexCount = static_cast<std::uint32_t>(vertices.size()),
         .vertexStride = static_cast<std::uint32_t>(sizeof(vertices.front())),
         .indices = panda::MeshIndexDesc {.count = static_cast<std::uint32_t>(indices.size()),
-                                         .type = panda::MeshIndexType::UInt16}
+                                         .type = panda::MeshIndexType::UInt16},
+        .attributes = {}
     };
 }
 
@@ -47,7 +48,8 @@ auto nonIndexedDescription() -> panda::MeshDesc
 {
     return {.vertexCount = static_cast<std::uint32_t>(vertices.size()),
             .vertexStride = static_cast<std::uint32_t>(sizeof(vertices.front())),
-            .indices = std::nullopt};
+            .indices = std::nullopt,
+            .attributes = {}};
 }
 
 class MeshSystem : public testing::Test
@@ -181,7 +183,8 @@ TEST_F(MeshSystem, RejectsGeometryWithMismatchedIndexType)
         .vertexCount = static_cast<std::uint32_t>(geometry.vertices.size()),
         .vertexStride = sizeof(panda::MeshVertex),
         .indices = panda::MeshIndexDesc {.count = static_cast<std::uint32_t>(cubeIndices.size()),
-                                         .type = panda::MeshIndexType::UInt32}
+                                         .type = panda::MeshIndexType::UInt32},
+        .attributes = {}
     };
     auto mesh = activeContext().createMesh(description);
     ASSERT_TRUE(mesh) << mesh.error().message;
@@ -223,7 +226,8 @@ TEST_F(MeshSystem, RejectsThirtyTwoBitGeometryForSixteenBitMeshOfSameByteSize)
     const auto description = panda::MeshDesc {
         .vertexCount = 3,
         .vertexStride = sizeof(panda::MeshVertex),
-        .indices = panda::MeshIndexDesc {.count = 6, .type = panda::MeshIndexType::UInt16}
+        .indices = panda::MeshIndexDesc {.count = 6, .type = panda::MeshIndexType::UInt16},
+        .attributes = {}
     };
     auto mesh = activeContext().createMesh(description);
     ASSERT_TRUE(mesh) << mesh.error().message;

@@ -12,6 +12,7 @@
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Cube.hpp>
+#include <panda/Geometry.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/Plane.hpp>
@@ -32,6 +33,42 @@ struct AnimatedObjects
     panda::scene::Entity group;
     std::vector<panda::scene::Entity> objects;
 };
+
+struct SceneMeshes
+{
+    panda::Mesh cube;
+    panda::Mesh ground;
+    panda::Mesh sphere;
+    panda::Mesh triangle;
+};
+
+auto createTriangleGeometry() -> panda::Geometry
+{
+    auto geometry = panda::Geometry {};
+    geometry.vertices = {
+        {.position = {-0.7F, 0.0F, 0.0F}, .normal = {0.0F, 0.0F, 1.0F}, .color = {1.0F, 0.2F, 0.1F, 1.0F}},
+        {.position = {0.7F, 0.0F, 0.0F},  .normal = {0.0F, 0.0F, 1.0F}, .color = {0.1F, 1.0F, 0.2F, 1.0F}},
+        {.position = {0.0F, 1.4F, 0.0F},  .normal = {0.0F, 0.0F, 1.0F}, .color = {0.2F, 0.3F, 1.0F, 1.0F}}
+    };
+    return geometry;
+}
+
+auto addTriangle(panda::scene::Scene& scene,
+                 const panda::Mesh& triangle,
+                 const panda::scene::Entity& group,
+                 glm::vec2 grid) -> panda::scene::Entity
+{
+    const auto object = panda::expect(
+        scene.createEntity({
+            .name = "Vertex-colored triangle",
+            .transform = {.position = {2.0F * grid.x, 0.0F, 2.0F * grid.y},
+                          .rotation = glm::angleAxis(glm::radians(30.0F), glm::vec3 {0.0F, 1.0F, 0.0F})}
+    }),
+        "Create triangle object");
+    panda::expect(scene.setMesh(object, panda::scene::MeshInstance {.mesh = triangle}), "Attach triangle mesh");
+    panda::expect(scene.setParent(object, group), "Parent triangle to group");
+    return object;
+}
 
 void addCameraAndLight(panda::scene::Scene& scene)
 {
@@ -103,32 +140,44 @@ auto addCube(panda::scene::Scene& scene, const panda::Mesh& cube, const panda::s
     return object;
 }
 
-auto addObjects(panda::scene::Scene& scene,
-                const panda::Mesh& cube,
-                const panda::Mesh& ground,
-                const panda::Mesh& sphere) -> AnimatedObjects
+void addGridObjects(panda::scene::Scene& scene, const SceneMeshes& meshes, AnimatedObjects& objects)
 {
-    addGround(scene, ground);
     static constexpr auto gridRadius = 1;
     static constexpr auto gridSide = (gridRadius * 2) + 1;
     static constexpr auto centerIndex = (gridSide * gridSide) / 2;
-    auto objects =
-        AnimatedObjects {.group = panda::expect(scene.createEntity({.name = "Animated group"}), "Create group"),
-                         .objects = {}};
+    static constexpr auto triangleIndex = (gridSide * gridSide) - 1;
     for (auto index = 0; index < gridSide * gridSide; ++index)
     {
         const auto column = (index / gridSide) - gridRadius;
         const auto row = (index % gridSide) - gridRadius;
         if (index == centerIndex)
         {
-            objects.objects.push_back(addSphere(scene, sphere, objects.group));
+            objects.objects.push_back(addSphere(scene, meshes.sphere, objects.group));
+        }
+        else if (index == triangleIndex)
+        {
+            objects.objects.push_back(addTriangle(scene,
+                                                  meshes.triangle,
+                                                  objects.group,
+                                                  glm::vec2 {static_cast<float>(column), static_cast<float>(row)}));
         }
         else
         {
-            objects.objects.push_back(
-                addCube(scene, cube, objects.group, glm::vec2 {static_cast<float>(column), static_cast<float>(row)}));
+            objects.objects.push_back(addCube(scene,
+                                              meshes.cube,
+                                              objects.group,
+                                              glm::vec2 {static_cast<float>(column), static_cast<float>(row)}));
         }
     }
+}
+
+auto addObjects(panda::scene::Scene& scene, const SceneMeshes& meshes) -> AnimatedObjects
+{
+    addGround(scene, meshes.ground);
+    auto objects =
+        AnimatedObjects {.group = panda::expect(scene.createEntity({.name = "Animated group"}), "Create group"),
+                         .objects = {}};
+    addGridObjects(scene, meshes, objects);
     return objects;
 }
 
@@ -141,16 +190,16 @@ void animateGroup(panda::scene::Scene& scene, const panda::scene::Entity& group,
         "Rotate group");
 }
 
-void animateWave(panda::scene::Scene& scene, std::span<const panda::scene::Entity> cubes, float elapsed)
+void animateWave(panda::scene::Scene& scene, std::span<const panda::scene::Entity> objects, float elapsed)
 {
     static constexpr auto amplitude = 0.8F;
     static constexpr auto angularSpeed = 2.0F;
-    for (const auto& cube : cubes)
+    for (const auto& object : objects)
     {
-        auto transform = panda::expect(scene.getLocalTransform(cube), "Read cube transform");
+        auto transform = panda::expect(scene.getLocalTransform(object), "Read object transform");
         const auto radius = glm::length(glm::vec2 {transform.position.x, transform.position.z});
         transform.position.y = amplitude * (1.0F + glm::sin((angularSpeed * elapsed) - radius));
-        panda::expect(scene.setLocalTransform(cube, transform), "Animate cube wave");
+        panda::expect(scene.setLocalTransform(object, transform), "Animate object wave");
     }
 }
 
@@ -187,19 +236,23 @@ void run(const panda::tools::Window& window, panda::Context& context)
     const auto sphereGeometry =
         panda::expect(panda::createSphereGeometry({.longitudeSegments = 48, .latitudeRings = 24}),
                       "Create sphere geometry");
-    const auto cube = panda::expect(context.createMeshFromGeometry(cubeGeometry), "Create cube mesh");
-    const auto ground = panda::expect(context.createMeshFromGeometry(groundGeometry), "Create ground mesh");
-    const auto sphere = panda::expect(context.createMeshFromGeometry(sphereGeometry), "Create sphere mesh");
+    const auto triangleGeometry = createTriangleGeometry();
+    const auto meshes = SceneMeshes {
+        .cube = panda::expect(context.createMeshFromGeometry(cubeGeometry), "Create cube mesh"),
+        .ground = panda::expect(context.createMeshFromGeometry(groundGeometry), "Create ground mesh"),
+        .sphere = panda::expect(context.createMeshFromGeometry(sphereGeometry), "Create sphere mesh"),
+        .triangle = panda::expect(context.createMeshFromGeometry(triangleGeometry), "Create triangle mesh")};
     auto batch = panda::expect(context.createUploadBatch(), "Create upload batch");
-    panda::expect(batch.write(cube, cubeGeometry), "Stage cube");
-    panda::expect(batch.write(ground, groundGeometry), "Stage ground");
-    panda::expect(batch.write(sphere, sphereGeometry), "Stage sphere");
+    panda::expect(batch.write(meshes.cube, cubeGeometry), "Stage cube");
+    panda::expect(batch.write(meshes.ground, groundGeometry), "Stage ground");
+    panda::expect(batch.write(meshes.sphere, sphereGeometry), "Stage sphere");
+    panda::expect(batch.write(meshes.triangle, triangleGeometry), "Stage triangle");
     const auto completion = panda::expect(batch.submit(), "Submit geometry upload");
     const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for geometry upload");
     panda::expect(status == panda::WaitStatus::Completed, "Geometry upload did not finish in time");
     auto scene = panda::expect(panda::scene::Scene::create(context), "Create scene");
     addCameraAndLight(scene);
-    const auto objects = addObjects(scene, cube, ground, sphere);
+    const auto objects = addObjects(scene, meshes);
     drawLoop(window, context, scene, objects);
 }
 }

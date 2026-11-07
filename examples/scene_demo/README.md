@@ -1,19 +1,20 @@
 # Scene hierarchy example
 
-`scene_demo` uses `Panda::Scene` to render eight colored cubes, a sphere and a ground
-plane. The cubes and sphere share a parent group; the sphere replaces the center cube
-and uses a separate uploaded mesh. The application updates each object's local
-height with a radial sine wave: its phase depends on its distance from the group's
-origin. Local heights range from 0 to 1.6 m; each object's local horizontal position,
-rotation and scale remain fixed. Independently, the whole group rotates around Y at
-0.3 radians per second. `animateWave()` demonstrates per-object animation and
+`scene_demo` uses `Panda::Scene` to render seven colored cubes, a sphere, an
+upright vertex-colored triangle and a ground plane. The sphere occupies the center
+grid slot, and the triangle replaces one corner cube. The triangle and sphere use
+separate meshes; the full grid shares one animated parent group. The application
+updates each object's local height with a radial sine wave whose phase depends on
+its distance from the group's origin. Local heights range from 0 to 1.6 m. Horizontal
+position, rotation and scale remain fixed. Independently, the whole group rotates
+around Y at 0.3 radians per second. `animateWave()` demonstrates per-object animation and
 `animateGroup()` demonstrates parent animation; their transforms compose automatically
 into the world matrices used by the renderer.
 
 The scene starts empty. The application explicitly creates its camera and
 directional-light entities, attaches their components and selects the camera. It
-also creates and uploads the cube, ground and configurable sphere meshes, then
-associates them with scene objects. The sphere uses 48 longitude segments and 24
+also creates and uploads the cube, ground, configurable sphere and triangle meshes,
+then associates them with scene objects. The sphere uses 48 longitude segments and 24
 latitude rings. Each frame supplies the current framebuffer aspect ratio to
 `Scene::createRenderView()` and passes the returned snapshot to
 `Context::render()`. The application owns the loop and uploads; scene objects and

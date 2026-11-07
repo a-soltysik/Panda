@@ -613,10 +613,10 @@ TEST_F(BufferUploadIntegration, WrongUsageAndForeignPoolAreRejected)
         .extent = vk::Extent2D {.width = 8, .height = 6}
     };
     EXPECT_FALSE(batch->write(*foreignTexture, textureBytes, region));
-    const auto foreignMesh =
-        panda::detail::MeshResource::create(device,
-                                            *otherPool,
-                                            {.vertexCount = 3, .vertexStride = 4, .indices = std::nullopt});
+    const auto foreignMesh = panda::detail::MeshResource::create(
+        device,
+        *otherPool,
+        {.vertexCount = 3, .vertexStride = 4, .indices = std::nullopt, .attributes = {}});
     ASSERT_TRUE(foreignMesh);
     const auto vertexBytes = std::array {std::byte {1},
                                          std::byte {2},
@@ -642,7 +642,8 @@ TEST_F(BufferUploadIntegration, MeshWriteCopiesVertexAndIndexStorageInOrder)
         {
             .vertexCount = 3,
             .vertexStride = 4,
-            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16},
+            .attributes = {}
     });
     ASSERT_TRUE(mesh);
     const auto vertexBytes = std::array {std::byte {1},
@@ -673,10 +674,10 @@ TEST_F(BufferUploadIntegration, MeshWriteCopiesVertexAndIndexStorageInOrder)
 
 TEST_F(BufferUploadIntegration, NonIndexedMeshWriteCopiesOnlyVertexStorage)
 {
-    const auto mesh =
-        panda::detail::MeshResource::create(device,
-                                            *pool,
-                                            {.vertexCount = 3, .vertexStride = 4, .indices = std::nullopt});
+    const auto mesh = panda::detail::MeshResource::create(
+        device,
+        *pool,
+        {.vertexCount = 3, .vertexStride = 4, .indices = std::nullopt, .attributes = {}});
     ASSERT_TRUE(mesh);
     ASSERT_FALSE((*mesh)->getIndexBuffer());
     const auto vertexBytes = std::array {std::byte {1},
@@ -706,10 +707,10 @@ TEST_F(BufferUploadIntegration, FailedVertexBufferCreationDoesNotPublishMesh)
 {
     failBufferCreationAt = 1;
 
-    const auto mesh =
-        panda::detail::MeshResource::create(device,
-                                            *pool,
-                                            {.vertexCount = 3, .vertexStride = 4, .indices = std::nullopt});
+    const auto mesh = panda::detail::MeshResource::create(
+        device,
+        *pool,
+        {.vertexCount = 3, .vertexStride = 4, .indices = std::nullopt, .attributes = {}});
 
     ASSERT_FALSE(mesh);
     EXPECT_EQ(mesh.error().code, panda::ErrorCode::ResourceExhausted);
@@ -727,7 +728,8 @@ TEST_F(BufferUploadIntegration, FailedIndexBufferCreationReleasesUnpublishedVert
         {
             .vertexCount = 3,
             .vertexStride = 4,
-            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16},
+            .attributes = {}
     });
 
     ASSERT_FALSE(mesh);
@@ -744,7 +746,8 @@ TEST_F(BufferUploadIntegration, InvalidMeshWriteQueuesNoPartialData)
         {
             .vertexCount = 3,
             .vertexStride = 4,
-            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16},
+            .attributes = {}
     });
     ASSERT_TRUE(mesh);
     auto batch = uploads->createBatch();
@@ -774,7 +777,8 @@ TEST_F(BufferUploadIntegration, SecondMeshStagingFailurePreservesOnlyEarlierBatc
         {
             .vertexCount = 3,
             .vertexStride = 4,
-            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16},
+            .attributes = {}
     });
     ASSERT_TRUE(mesh);
     auto batch = uploads->createBatch();
@@ -815,7 +819,8 @@ TEST_F(BufferUploadIntegration, FirstMeshStagingFailurePreservesOnlyEarlierBatch
         {
             .vertexCount = 3,
             .vertexStride = 4,
-            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16},
+            .attributes = {}
     });
     ASSERT_TRUE(mesh);
     auto batch = uploads->createBatch();

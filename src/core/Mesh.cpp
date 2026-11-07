@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <panda/Mesh.hpp>
+#include <span>
 #include <utility>
 
 #include "vulkan/resources/MeshResource.hpp"
@@ -37,6 +38,11 @@ auto Mesh::getVertexCount() const noexcept -> std::uint32_t
 auto Mesh::getVertexStride() const noexcept -> std::uint32_t
 {
     return _resource ? _resource->getLayout().getVertexStride() : 0;
+}
+
+auto Mesh::getVertexAttributes() const noexcept -> std::span<const VertexAttribute>
+{
+    return _resource ? std::span {_resource->getLayout().getVertexAttributes()} : std::span<const VertexAttribute> {};
 }
 
 auto Mesh::getVertexSize() const noexcept -> std::uint64_t

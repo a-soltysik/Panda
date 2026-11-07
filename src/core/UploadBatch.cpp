@@ -70,7 +70,8 @@ auto UploadBatch::write(const Mesh& destination, const Geometry& geometry) -> Re
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Geometry indices have no value")};
     }
-    if (destination.getVertexStride() != standardMeshVertexStrideBytes)
+    if (destination.getVertexStride() != standardMeshVertexStrideBytes ||
+        !std::ranges::equal(destination.getVertexAttributes(), standardMeshVertexAttributes))
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Mesh does not match standard geometry")};
     }

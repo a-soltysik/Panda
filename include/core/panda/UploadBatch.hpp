@@ -69,7 +69,7 @@ public:
                              std::span<const std::byte> vertexBytes,
                              std::span<const std::byte> indexBytes = {}) -> Result<void>;
     /// @brief Snapshots standard CPU geometry into a matching Mesh.
-    /// @param destination Mesh with matching vertex count, standard stride and index type.
+    /// @param destination Mesh with the standard geometry vertex layout and matching index type.
     /// @param geometry CPU geometry whose lifetime may end after this call.
     /// Indices must refer to supplied vertices; validation examines each index once.
     /// @return Success or a validation/allocation/cache error; failure queues no part of this mesh write.

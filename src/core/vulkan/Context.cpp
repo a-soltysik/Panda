@@ -849,7 +849,8 @@ auto Context::createMeshFromGeometry(const Geometry& geometry) const -> Result<M
     }
     return createMesh({.vertexCount = static_cast<std::uint32_t>(geometry.vertices.size()),
                        .vertexStride = standardMeshVertexStrideBytes,
-                       .indices = indexDescription});
+                       .indices = indexDescription,
+                       .attributes = std::ranges::to<std::vector<VertexAttribute>>(standardMeshVertexAttributes)});
 }
 
 auto Context::createUploadBatch() const -> Result<UploadBatch>

@@ -74,16 +74,16 @@ auto MeshResource::create(const vk::raii::Device& device, MemoryPool& pool, cons
     }
 
     return std::shared_ptr<MeshResource> {
-        new MeshResource {std::move(*vertexBuffer), std::move(*indexBuffer), *layout}
+        new MeshResource {std::move(*vertexBuffer), std::move(*indexBuffer), std::move(*layout)}
     };
 }
 
 MeshResource::MeshResource(std::shared_ptr<BufferResource> vertexBuffer,
                            std::shared_ptr<BufferResource> indexBuffer,
-                           const MeshLayout& layout)
+                           MeshLayout layout)
     : _vertexBuffer {std::move(vertexBuffer)},
       _indexBuffer {std::move(indexBuffer)},
-      _layout {layout}
+      _layout {std::move(layout)}
 {
 }
 

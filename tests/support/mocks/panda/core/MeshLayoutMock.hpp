@@ -13,7 +13,6 @@ namespace panda::test
 {
 struct MeshLayoutPlan
 {
-    panda::MeshDesc description;
     std::uint64_t vertexSize {0};
     std::uint64_t indexSize {0};
 };

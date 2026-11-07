@@ -8,6 +8,7 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/trigonometric.hpp>
+#include <optional>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
@@ -20,6 +21,7 @@
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
 #include <panda/tools/gui/Window.hpp>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -118,34 +120,31 @@ void verifyCompletion(const panda::Context& context, panda::CompletionPoint poin
     EXPECT_TRUE(*polled);
 }
 
-auto createUploadedCubeAndGround(const panda::Context& context) -> panda::Result<std::array<panda::Mesh, 2>>
+struct SceneMeshes
 {
-    const auto cubeGeometry = panda::createCubeGeometry();
-    const auto groundGeometry = panda::createPlaneGeometry();
-    auto cube = context.createMeshFromGeometry(cubeGeometry);
-    if (!cube)
-    {
-        return std::unexpected {cube.error()};
-    }
-    auto ground = context.createMeshFromGeometry(groundGeometry);
-    if (!ground)
-    {
-        return std::unexpected {ground.error()};
-    }
-    auto batch = context.createUploadBatch();
-    if (!batch)
-    {
-        return std::unexpected {batch.error()};
-    }
-    if (const auto written = batch->write(*cube, cubeGeometry); !written)
-    {
-        return std::unexpected {written.error()};
-    }
-    if (const auto written = batch->write(*ground, groundGeometry); !written)
-    {
-        return std::unexpected {written.error()};
-    }
-    const auto completion = batch->submit();
+    panda::Mesh cube;
+    panda::Mesh ground;
+    panda::Mesh triangle;
+};
+
+auto createCompactTriangle(const panda::Context& context) -> panda::Result<panda::Mesh>
+{
+    return context.createMesh({
+        .vertexCount = 3,
+        .vertexStride = 28,
+        .indices = std::nullopt,
+        .attributes = {{.semantic = panda::VertexAttributeSemantic::Position,
+                        .format = panda::VertexAttributeFormat::Float3,
+                        .offset = 0},
+                       {.semantic = panda::VertexAttributeSemantic::Color,
+                        .format = panda::VertexAttributeFormat::Float4,
+                        .offset = 12}}
+    });
+}
+
+auto finishSceneMeshUpload(const panda::Context& context, panda::UploadBatch& batch) -> panda::Result<void>
+{
+    const auto completion = batch.submit();
     if (!completion)
     {
         return std::unexpected {completion.error()};
@@ -159,11 +158,66 @@ auto createUploadedCubeAndGround(const panda::Context& context) -> panda::Result
     {
         return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Scene mesh upload did not complete")};
     }
-    return std::array<panda::Mesh, 2> {std::move(*cube), std::move(*ground)};
+    return {};
 }
 
-auto makeCubeAndGroundView(panda::FramebufferExtent extent, std::array<panda::Mesh, 2> meshes)
-    -> panda::Result<panda::RenderView>
+auto uploadSceneMeshes(const panda::Context& context,
+                       const SceneMeshes& meshes,
+                       const panda::Geometry& cubeGeometry,
+                       const panda::Geometry& groundGeometry) -> panda::Result<void>
+{
+    static constexpr auto triangleVertices =
+        std::array {-0.5F, -0.5F, 0.0F, 1.0F, 0.2F, 0.2F, 1.0F, 0.5F, -0.5F, 0.0F, 0.2F,
+                    1.0F,  0.2F,  1.0F, 0.0F, 0.5F, 0.0F, 0.2F, 0.2F, 1.0F,  1.0F};
+    auto batch = context.createUploadBatch();
+    if (!batch)
+    {
+        return std::unexpected {batch.error()};
+    }
+    if (const auto written = batch->write(meshes.cube, cubeGeometry); !written)
+    {
+        return std::unexpected {written.error()};
+    }
+    if (const auto written = batch->write(meshes.ground, groundGeometry); !written)
+    {
+        return std::unexpected {written.error()};
+    }
+    if (const auto written = batch->write(meshes.triangle, std::as_bytes(std::span {triangleVertices})); !written)
+    {
+        return std::unexpected {written.error()};
+    }
+    return finishSceneMeshUpload(context, *batch);
+}
+
+auto createUploadedCubeGroundAndCompactTriangle(const panda::Context& context) -> panda::Result<SceneMeshes>
+{
+    const auto cubeGeometry = panda::createCubeGeometry();
+    const auto groundGeometry = panda::createPlaneGeometry();
+    auto cube = context.createMeshFromGeometry(cubeGeometry);
+    if (!cube)
+    {
+        return std::unexpected {cube.error()};
+    }
+    auto ground = context.createMeshFromGeometry(groundGeometry);
+    if (!ground)
+    {
+        return std::unexpected {ground.error()};
+    }
+    auto triangle = createCompactTriangle(context);
+    if (!triangle)
+    {
+        return std::unexpected {triangle.error()};
+    }
+    auto meshes =
+        SceneMeshes {.cube = std::move(*cube), .ground = std::move(*ground), .triangle = std::move(*triangle)};
+    if (const auto uploaded = uploadSceneMeshes(context, meshes, cubeGeometry, groundGeometry); !uploaded)
+    {
+        return std::unexpected {uploaded.error()};
+    }
+    return meshes;
+}
+
+auto makeCubeAndGroundView(panda::FramebufferExtent extent, SceneMeshes meshes) -> panda::Result<panda::RenderView>
 {
     const auto aspectRatio = static_cast<float>(extent.width) / static_cast<float>(extent.height);
     const auto camera = panda::createPerspectiveCamera({
@@ -184,10 +238,13 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, std::array<panda::Me
     const auto groundTransform =
         glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, -0.5F, 0.0F}), glm::vec3 {10.0F, 1.0F, 10.0F});
     view.meshes = {
-        panda::MeshDraw {.mesh = std::move(meshes[1]),
+        panda::MeshDraw {.mesh = std::move(meshes.ground),
                          .modelMatrix = groundTransform,
                          .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
-        panda::MeshDraw {.mesh = std::move(meshes[0])}
+        panda::MeshDraw {.mesh = std::move(meshes.cube)},
+        panda::MeshDraw {.mesh = std::move(meshes.triangle),
+                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, -0.25F, 0.0F}),
+                         .material = {.model = panda::MaterialModel::Unlit}}
     };
     return view;
 }
@@ -291,7 +348,7 @@ TEST(WindowedContextSystem, RendersUploadedCubeAndGroundWithValidation)
         }
         ASSERT_TRUE(created.has_value()) << created.error().message;
         auto context = std::move(*created);
-        auto meshes = createUploadedCubeAndGround(context);
+        auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
         ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
         const auto extent = window->getFramebufferExtent();
         ASSERT_TRUE(extent.has_value()) << extent.error().message;

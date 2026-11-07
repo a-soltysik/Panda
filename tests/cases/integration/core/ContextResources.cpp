@@ -863,10 +863,11 @@ TEST_F(ContextResourcesIntegration, EmptyAndInvalidMeshesNeverCreateNativeBuffer
     empty.reset();
     const auto descriptions = std::array {
         panda::MeshDesc {},
-        panda::MeshDesc {.vertexCount = 3, .vertexStride = 0, .indices = std::nullopt},
+        panda::MeshDesc {.vertexCount = 3, .vertexStride = 0, .indices = std::nullopt, .attributes = {}},
         panda::MeshDesc {.vertexCount = 3,
                          .vertexStride = 12,
-                         .indices = panda::MeshIndexDesc {.count = 0, .type = panda::MeshIndexType::UInt16}}
+                         .indices = panda::MeshIndexDesc {.count = 0, .type = panda::MeshIndexType::UInt16},
+                         .attributes = {}}
     };
     for (const auto& description : descriptions)
     {
@@ -901,7 +902,8 @@ TEST_F(ContextResourcesIntegration, CreatesIndexedAndNonIndexedMeshesWithSharedS
     auto indexedResult = context->createMesh({
         .vertexCount = 3,
         .vertexStride = 12,
-        .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+        .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16},
+        .attributes = {}
     });
     ASSERT_TRUE(indexedResult);
     auto indexed = *indexedResult;
@@ -914,7 +916,8 @@ TEST_F(ContextResourcesIntegration, CreatesIndexedAndNonIndexedMeshesWithSharedS
     EXPECT_EQ(indexed.getIndexType(), panda::MeshIndexType::UInt16);
     EXPECT_EQ(indexed.getIndexSize(), 6);
 
-    auto nonIndexedResult = context->createMesh({.vertexCount = 4, .vertexStride = 8, .indices = std::nullopt});
+    auto nonIndexedResult =
+        context->createMesh({.vertexCount = 4, .vertexStride = 8, .indices = std::nullopt, .attributes = {}});
     ASSERT_TRUE(nonIndexedResult);
     auto nonIndexed = std::move(*nonIndexedResult);
     EXPECT_EQ(nonIndexed.getVertexSize(), 32);

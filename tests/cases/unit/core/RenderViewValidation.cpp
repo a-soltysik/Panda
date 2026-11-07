@@ -111,3 +111,21 @@ TEST(RenderViewValidation, RejectsNonAffineAndNonInvertibleModels)
     });
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
+
+TEST(RenderViewValidation, RejectsNonFiniteMaterialValuesAndUnknownModel)
+{
+    auto view = RenderView {};
+    view.meshes.push_back({});
+    view.meshes.back().material.metallic = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    view.meshes.back().material.metallic = 0.0F;
+    view.meshes.back().material.baseColor.g = std::numeric_limits<float>::infinity();
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    view.meshes.back().material.baseColor = glm::vec4 {1.0F};
+    // Exercise rejection of an out-of-range enum supplied by malformed application data.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    view.meshes.back().material.model = static_cast<panda::MaterialModel>(255);
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+}
