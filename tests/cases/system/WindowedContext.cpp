@@ -233,15 +233,31 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, SceneMeshes meshes) 
     {
         return std::unexpected {camera.error()};
     }
-    auto view = panda::RenderView {};
-    view.camera = *camera;
+    auto view = panda::RenderView {.camera = *camera, .directionalLight = {}, .meshes = {}};
     const auto groundTransform =
         glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, -0.5F, 0.0F}), glm::vec3 {10.0F, 1.0F, 10.0F});
+    const auto reflectedModel = glm::scale(glm::mat4 {1.0F}, glm::vec3 {-1.0F, 1.0F, 1.0F});
     view.meshes = {
         panda::MeshDraw {.mesh = std::move(meshes.ground),
                          .modelMatrix = groundTransform,
                          .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
-        panda::MeshDraw {.mesh = std::move(meshes.cube)},
+        panda::MeshDraw {.mesh = meshes.cube},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, 0.0F, 0.0F}),
+                         .material = {.renderFace = panda::RenderFace::Back}},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, 0.0F}),
+                         glm::vec3 {-1.0F, 1.0F, 1.0F}),
+                         .material = {.renderFace = panda::RenderFace::Both}},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = reflectedModel,
+                         .material = {.renderFace = panda::RenderFace::Front}},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(reflectedModel, glm::vec3 {0.0F, 0.0F, -1.5F}),
+                         .material = {.renderFace = panda::RenderFace::Back}},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, -1.5F}),
+                         .material = {.renderFace = panda::RenderFace::Both}},
         panda::MeshDraw {.mesh = std::move(meshes.triangle),
                          .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, -0.25F, 0.0F}),
                          .material = {.model = panda::MaterialModel::Unlit}}
@@ -327,7 +343,7 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     EXPECT_NE(empty.error().message.find("null Vulkan surface"), std::string::npos);
 }
 
-TEST(WindowedContextSystem, RendersUploadedCubeAndGroundWithValidation)
+TEST(WindowedContextSystem, RendersFaceModesAndReflectedMeshesWithValidation)
 {
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};

@@ -21,6 +21,17 @@ enum class MaterialModel : std::uint8_t
     Unlit
 };
 
+/// @brief Mesh faces selected for rendering by a material.
+enum class RenderFace : std::uint8_t
+{
+    /// Render front-facing triangles and cull back-facing triangles.
+    Front,
+    /// Render back-facing triangles and cull front-facing triangles.
+    Back,
+    /// Render both sides and orient back-facing shading normals inward.
+    Both
+};
+
 /// @brief Built-in material values shared by mesh draws.
 struct Material
 {
@@ -32,6 +43,8 @@ struct Material
     float metallic {0.0F};
     /// Perceptual roughness, clamped to [0,1] when uploaded.
     float roughness {1.0F};
+    /// Mesh side(s) rendered by the built-in pipelines.
+    RenderFace renderFace {RenderFace::Front};
 };
 
 /// @brief Camera data for one rendered view.

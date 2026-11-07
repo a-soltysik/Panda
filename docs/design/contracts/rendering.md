@@ -356,18 +356,22 @@ upload-only storage.
 The current built-in renderer consumes Position for every draw, Normal for Lit
 materials, and optional Color for either material model; a missing vertex color
 contributes white. It selects a compatible pipeline from the material model,
-layout stride and consumed attribute offsets. UV and Tangent layouts are
-validated but are not consumed by the current shader. Texture maps will require
-UVs, and only a normal map will require tangents; a missing normal remains a
-clear preflight error for Lit materials. Keep unused attributes out of vertex
-data. The current Unlit material uses base color without lighting. Emissive
-lighting, procedural clouds without a vertex binding and instance-driven data
-remain outside this implementation slice.
+layout stride, consumed attribute offsets, face mode and model determinant sign.
+`RenderFace::Front`, `Back` and `Both` select the visible side(s); negative
+determinants reverse the pipeline's front-face winding in both camera and shadow
+passes. Lit shading flips the normal for rendered back faces in `Back` and `Both`
+modes. UV and Tangent layouts are validated but are not consumed by the current
+shader. Texture maps will require UVs, and only a normal map will require
+tangents; a missing normal remains a clear preflight error for Lit materials.
+Keep unused attributes out of vertex data. The current Unlit material uses base
+color without lighting. Emissive lighting, procedural clouds without a vertex
+binding and instance-driven data remain outside this implementation slice.
 
 Current material parameters use one 16-byte std430 storage-buffer record per
-draw: metallic, roughness, the Lit flag and padding. Records are tightly packed
-per frame slot; the direct draw's `firstInstance` supplies the flat material
-index to the fragment shader. Keep this host/shader record layout synchronized.
+draw: metallic, roughness, the Lit flag and `RenderFace`. Records are tightly
+packed per frame slot; the direct draw's `firstInstance` supplies the flat
+material index to the fragment shader. Keep this host/shader record layout
+synchronized.
 
 ### Materials, faces, and output
 
