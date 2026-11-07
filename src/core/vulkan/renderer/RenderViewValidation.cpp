@@ -50,6 +50,16 @@ auto isRenderableModel(const glm::mat4& model) -> bool
     return isFinite(normalMatrix);
 }
 
+auto isValidMaterial(const Material& material) -> bool
+{
+    return (material.model == MaterialModel::Lit || material.model == MaterialModel::Unlit) &&
+           (material.renderFace == RenderFace::Front || material.renderFace == RenderFace::Back ||
+            material.renderFace == RenderFace::Both) &&
+           isFinite(material.baseColor) && material.baseColor.r >= 0.0F && material.baseColor.g >= 0.0F &&
+           material.baseColor.b >= 0.0F && material.baseColor.a >= 0.0F && std::isfinite(material.metallic) &&
+           std::isfinite(material.roughness);
+}
+
 auto hasAttribute(const Mesh& mesh, VertexAttributeSemantic semantic) -> bool
 {
     const auto attributes = mesh.getVertexAttributes();
@@ -84,14 +94,8 @@ auto validateRenderViewData(const RenderView& view) -> Result<void>
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Directional light is invalid")};
     }
     if (std::ranges::any_of(view.meshes, [](const auto& draw) {
-            const auto validMaterial =
-                (draw.material.model == MaterialModel::Lit || draw.material.model == MaterialModel::Unlit) &&
-                isFinite(draw.material.baseColor) && draw.material.baseColor.r >= 0.0F &&
-                draw.material.baseColor.g >= 0.0F && draw.material.baseColor.b >= 0.0F &&
-                draw.material.baseColor.a >= 0.0F && std::isfinite(draw.material.metallic) &&
-                std::isfinite(draw.material.roughness);
             return !isRenderableModel(draw.modelMatrix) || !isFinite(draw.tint) || draw.tint.r < 0.0F ||
-                   draw.tint.g < 0.0F || draw.tint.b < 0.0F || draw.tint.a < 0.0F || !validMaterial;
+                   draw.tint.g < 0.0F || draw.tint.b < 0.0F || draw.tint.a < 0.0F || !isValidMaterial(draw.material);
         }))
     {
         return std::unexpected {

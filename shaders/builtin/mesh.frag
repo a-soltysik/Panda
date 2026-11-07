@@ -18,7 +18,7 @@ struct MaterialRecord
     float metallic;
     float roughness;
     uint isLit;
-    uint padding;
+    uint renderFace;
 };
 
 layout(set = 0, binding = 2, std430) readonly buffer MaterialData
@@ -104,7 +104,11 @@ void main()
         fragmentColor = vec4(outputColor, baseColor.a);
         return;
     }
-    const vec3 normal = normalize(worldNormal);
+    vec3 normal = normalize(worldNormal);
+    if (material.renderFace != 0u && !gl_FrontFacing)
+    {
+        normal = -normal;
+    }
     const float metallic = material.metallic;
     const float roughness = clamp(material.roughness, 0.045, 1.0);
     const vec3 viewDirection = normalize(frameData.cameraPosition.xyz - worldPosition);

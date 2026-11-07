@@ -241,7 +241,14 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, SceneMeshes meshes) 
         panda::MeshDraw {.mesh = std::move(meshes.ground),
                          .modelMatrix = groundTransform,
                          .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
-        panda::MeshDraw {.mesh = std::move(meshes.cube)},
+        panda::MeshDraw {.mesh = meshes.cube},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, 0.0F, 0.0F}),
+                         .material = {.renderFace = panda::RenderFace::Back}},
+        panda::MeshDraw {.mesh = std::move(meshes.cube),
+                         .modelMatrix = glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, 0.0F}),
+                         glm::vec3 {-1.0F, 1.0F, 1.0F}),
+                         .material = {.renderFace = panda::RenderFace::Both}},
         panda::MeshDraw {.mesh = std::move(meshes.triangle),
                          .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, -0.25F, 0.0F}),
                          .material = {.model = panda::MaterialModel::Unlit}}
@@ -327,7 +334,7 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     EXPECT_NE(empty.error().message.find("null Vulkan surface"), std::string::npos);
 }
 
-TEST(WindowedContextSystem, RendersUploadedCubeAndGroundWithValidation)
+TEST(WindowedContextSystem, RendersFaceModesAndReflectedMeshesWithValidation)
 {
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};

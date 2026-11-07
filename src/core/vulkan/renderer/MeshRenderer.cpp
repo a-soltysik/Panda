@@ -73,7 +73,7 @@ static_assert(sizeof(MaterialRecord) == 16);
 static_assert(offsetof(MaterialRecord, metallic) == 0);
 static_assert(offsetof(MaterialRecord, roughness) == 4);
 static_assert(offsetof(MaterialRecord, isLit) == 8);
-static_assert(offsetof(MaterialRecord, padding) == 12);
+static_assert(offsetof(MaterialRecord, renderFace) == 12);
 
 auto isSrgb(vk::Format format) -> bool
 {
@@ -84,10 +84,6 @@ constexpr auto dynamicStates = std::array {vk::DynamicState::eViewport, vk::Dyna
 constexpr auto inputAssembly =
     vk::PipelineInputAssemblyStateCreateInfo {.topology = vk::PrimitiveTopology::eTriangleList};
 constexpr auto viewport = vk::PipelineViewportStateCreateInfo {.viewportCount = 1, .scissorCount = 1};
-constexpr auto rasterization = vk::PipelineRasterizationStateCreateInfo {.polygonMode = vk::PolygonMode::eFill,
-                                                                         .cullMode = vk::CullModeFlagBits::eNone,
-                                                                         .frontFace = vk::FrontFace::eCounterClockwise,
-                                                                         .lineWidth = 1.0F};
 constexpr auto multisample =
     vk::PipelineMultisampleStateCreateInfo {.rasterizationSamples = vk::SampleCountFlagBits::e1};
 constexpr auto depthStencil = vk::PipelineDepthStencilStateCreateInfo {
@@ -101,6 +97,26 @@ constexpr auto noColorBlend = vk::PipelineColorBlendStateCreateInfo {};
 constexpr auto shadowExtent = vk::Extent2D {.width = 2048, .height = 2048};
 constexpr auto dynamic = vk::PipelineDynamicStateCreateInfo {
     .dynamicStateCount = static_cast<std::uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
+
+auto makeRasterizationState(RenderFace renderFace, bool mirrored) -> vk::PipelineRasterizationStateCreateInfo
+{
+    auto cullMode = vk::CullModeFlagBits::eNone;
+    switch (renderFace)
+    {
+    case RenderFace::Front:
+        cullMode = vk::CullModeFlagBits::eBack;
+        break;
+    case RenderFace::Back:
+        cullMode = vk::CullModeFlagBits::eFront;
+        break;
+    case RenderFace::Both:
+        break;
+    }
+    return {.polygonMode = vk::PolygonMode::eFill,
+            .cullMode = cullMode,
+            .frontFace = mirrored ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise,
+            .lineWidth = 1.0F};
+}
 
 auto makeFrameUniform(const RenderView& view) -> std::expected<FrameUniform, Error>
 {
@@ -138,7 +154,7 @@ auto makeMaterialRecord(const Material& material) -> MaterialRecord
     return MaterialRecord {.metallic = std::clamp(material.metallic, 0.0F, 1.0F),
                            .roughness = std::clamp(material.roughness, 0.0F, 1.0F),
                            .isLit = material.model == MaterialModel::Lit ? 1U : 0U,
-                           .padding = 0U};
+                           .renderFace = static_cast<std::uint32_t>(material.renderFace)};
 }
 
 auto createDepthFormatSupport(vk::PhysicalDevice physicalDevice, vk::Format format) -> std::expected<bool, Error>
@@ -195,10 +211,25 @@ struct GraphicsPipelineState
     std::span<const vk::PipelineShaderStageCreateInfo> stages;
     const vk::PipelineRenderingCreateInfo& rendering;
     const vk::PipelineMultisampleStateCreateInfo& multisampling;
+    vk::PipelineRasterizationStateCreateInfo rasterization;
     const vk::PipelineColorBlendStateCreateInfo& colorBlend;
     const vk::PipelineVertexInputStateCreateInfo& vertexInput;
     vk::PipelineLayout layout;
 };
+
+struct ShadowVertexInput
+{
+    vk::VertexInputBindingDescription binding;
+    vk::VertexInputAttributeDescription attribute;
+};
+
+auto makeShadowVertexInput(std::uint32_t vertexStride, std::uint32_t positionOffset) -> ShadowVertexInput
+{
+    return {
+        .binding = {.binding = 0, .stride = vertexStride, .inputRate = vk::VertexInputRate::eVertex},
+        .attribute = {.location = 0, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = positionOffset}
+    };
+}
 
 auto makeGraphicsPipelineCreateInfo(const GraphicsPipelineState& state) -> vk::GraphicsPipelineCreateInfo
 {
@@ -208,7 +239,7 @@ auto makeGraphicsPipelineCreateInfo(const GraphicsPipelineState& state) -> vk::G
             .pVertexInputState = &state.vertexInput,
             .pInputAssemblyState = &inputAssembly,
             .pViewportState = &viewport,
-            .pRasterizationState = &rasterization,
+            .pRasterizationState = &state.rasterization,
             .pMultisampleState = &state.multisampling,
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &state.colorBlend,
@@ -748,14 +779,19 @@ auto MeshRenderer::getMeshPipelineKey(const MeshDraw& draw) -> MeshPipelineKey
             .vertexStride = draw.mesh.getVertexStride(),
             .positionOffset = findOffset(VertexAttributeSemantic::Position),
             .normalOffset = lit ? findOffset(VertexAttributeSemantic::Normal) : 0U,
-            .colorOffset = hasColor ? findOffset(VertexAttributeSemantic::Color) : 0U};
+            .colorOffset = hasColor ? findOffset(VertexAttributeSemantic::Color) : 0U,
+            .renderFace = draw.material.renderFace,
+            .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F};
 }
 
 auto MeshRenderer::getShadowPipelineKey(const MeshDraw& draw) -> ShadowPipelineKey
 {
     const auto attributes = draw.mesh.getVertexAttributes();
     const auto position = std::ranges::find(attributes, VertexAttributeSemantic::Position, &VertexAttribute::semantic);
-    return {.vertexStride = draw.mesh.getVertexStride(), .positionOffset = position->offset};
+    return {.vertexStride = draw.mesh.getVertexStride(),
+            .positionOffset = position->offset,
+            .renderFace = draw.material.renderFace,
+            .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F};
 }
 
 auto MeshRenderer::makeVertexAttributeDescriptions(const MeshPipelineKey& key)
@@ -828,6 +864,7 @@ auto MeshRenderer::createGraphicsPipeline(vk::ShaderModule vertex,
     const auto state = GraphicsPipelineState {.stages = stages,
                                               .rendering = rendering,
                                               .multisampling = multisampling,
+                                              .rasterization = makeRasterizationState(key.renderFace, key.mirrored),
                                               .colorBlend = blend,
                                               .vertexInput = vertexInput,
                                               .layout = *_pipelineLayout};
@@ -848,20 +885,15 @@ auto MeshRenderer::createShadowPipeline(const ShadowPipelineKey& key) const -> s
                                            .pName = "main"}
     };
     const auto rendering = vk::PipelineRenderingCreateInfo {.depthAttachmentFormat = _depthFormat};
-    const auto binding = vk::VertexInputBindingDescription {.binding = 0,
-                                                            .stride = key.vertexStride,
-                                                            .inputRate = vk::VertexInputRate::eVertex};
-    const auto attribute = vk::VertexInputAttributeDescription {.location = 0,
-                                                                .binding = 0,
-                                                                .format = vk::Format::eR32G32B32Sfloat,
-                                                                .offset = key.positionOffset};
+    const auto input = makeShadowVertexInput(key.vertexStride, key.positionOffset);
     const auto vertexInput = vk::PipelineVertexInputStateCreateInfo {.vertexBindingDescriptionCount = 1,
-                                                                     .pVertexBindingDescriptions = &binding,
+                                                                     .pVertexBindingDescriptions = &input.binding,
                                                                      .vertexAttributeDescriptionCount = 1,
-                                                                     .pVertexAttributeDescriptions = &attribute};
+                                                                     .pVertexAttributeDescriptions = &input.attribute};
     const auto state = GraphicsPipelineState {.stages = stages,
                                               .rendering = rendering,
                                               .multisampling = multisample,
+                                              .rasterization = makeRasterizationState(key.renderFace, key.mirrored),
                                               .colorBlend = noColorBlend,
                                               .vertexInput = vertexInput,
                                               .layout = *_pipelineLayout};
