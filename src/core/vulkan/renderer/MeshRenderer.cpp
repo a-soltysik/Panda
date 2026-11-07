@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -90,11 +91,26 @@ constexpr auto multisample =
     vk::PipelineMultisampleStateCreateInfo {.rasterizationSamples = vk::SampleCountFlagBits::e1};
 constexpr auto depthStencil = vk::PipelineDepthStencilStateCreateInfo {
     .depthTestEnable = vk::True, .depthWriteEnable = vk::True, .depthCompareOp = vk::CompareOp::eLess};
-constexpr auto blendAttachment = vk::PipelineColorBlendAttachmentState {
+constexpr auto blendDepthStencil = vk::PipelineDepthStencilStateCreateInfo {
+    .depthTestEnable = vk::True, .depthWriteEnable = vk::False, .depthCompareOp = vk::CompareOp::eLess};
+constexpr auto opaqueBlendAttachment = vk::PipelineColorBlendAttachmentState {
     .blendEnable = vk::False,
     .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB |
                       vk::ColorComponentFlagBits::eA};
-constexpr auto blend = vk::PipelineColorBlendStateCreateInfo {.attachmentCount = 1, .pAttachments = &blendAttachment};
+constexpr auto alphaBlendAttachment = vk::PipelineColorBlendAttachmentState {
+    .blendEnable = vk::True,
+    .srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
+    .dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
+    .colorBlendOp = vk::BlendOp::eAdd,
+    .srcAlphaBlendFactor = vk::BlendFactor::eOne,
+    .dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
+    .alphaBlendOp = vk::BlendOp::eAdd,
+    .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB |
+                      vk::ColorComponentFlagBits::eA};
+constexpr auto opaqueBlend =
+    vk::PipelineColorBlendStateCreateInfo {.attachmentCount = 1, .pAttachments = &opaqueBlendAttachment};
+constexpr auto alphaBlend =
+    vk::PipelineColorBlendStateCreateInfo {.attachmentCount = 1, .pAttachments = &alphaBlendAttachment};
 constexpr auto noColorBlend = vk::PipelineColorBlendStateCreateInfo {};
 constexpr auto shadowExtent = vk::Extent2D {.width = 2048, .height = 2048};
 constexpr auto dynamic = vk::PipelineDynamicStateCreateInfo {
@@ -158,6 +174,18 @@ auto makeMaterialRecord(const Material& material) -> MaterialRecord
                            .isLit = material.model == MaterialModel::Lit ? 1U : 0U,
                            .renderFace = static_cast<std::uint32_t>(material.renderFace),
                            .alphaCutoff = material.alphaCutoff};
+}
+
+auto cameraDepthForMesh(const glm::mat4& viewProjection, const glm::mat4& modelMatrix) -> float
+{
+    const auto meshOrigin = glm::vec4 {0.0F, 0.0F, 0.0F, 1.0F};
+    const auto clipPosition = viewProjection * modelMatrix * meshOrigin;
+    if (!std::isfinite(clipPosition.z) || !std::isfinite(clipPosition.w) || clipPosition.w <= 0.0F)
+    {
+        return std::numeric_limits<float>::infinity();
+    }
+    const auto depth = clipPosition.z / clipPosition.w;
+    return std::isfinite(depth) ? depth : std::numeric_limits<float>::infinity();
 }
 
 auto createDepthFormatSupport(vk::PhysicalDevice physicalDevice, vk::Format format) -> std::expected<bool, Error>
@@ -240,6 +268,7 @@ struct GraphicsPipelineState
     const vk::PipelineRenderingCreateInfo& rendering;
     const vk::PipelineMultisampleStateCreateInfo& multisampling;
     vk::PipelineRasterizationStateCreateInfo rasterization;
+    const vk::PipelineDepthStencilStateCreateInfo& depthStencil;
     const vk::PipelineColorBlendStateCreateInfo& colorBlend;
     const vk::PipelineVertexInputStateCreateInfo& vertexInput;
     vk::PipelineLayout layout;
@@ -281,7 +310,7 @@ auto makeGraphicsPipelineCreateInfo(const GraphicsPipelineState& state) -> vk::G
             .pViewportState = &viewport,
             .pRasterizationState = &state.rasterization,
             .pMultisampleState = &state.multisampling,
-            .pDepthStencilState = &depthStencil,
+            .pDepthStencilState = &state.depthStencil,
             .pColorBlendState = &state.colorBlend,
             .pDynamicState = &dynamic,
             .layout = state.layout,
@@ -321,8 +350,8 @@ auto makeOutputSrgbSpecialization(const std::uint32_t& outputIsSrgb) -> vk::Spec
 auto makeMeshFragmentSpecialization(AlphaMode alphaMode, const FragmentSpecializationData& data)
     -> vk::SpecializationInfo
 {
-    return alphaMode == AlphaMode::Mask ? makeFragmentSpecialization(data)
-                                        : makeOutputSrgbSpecialization(data.outputIsSrgb);
+    return alphaMode == AlphaMode::Opaque ? makeOutputSrgbSpecialization(data.outputIsSrgb)
+                                          : makeFragmentSpecialization(data);
 }
 
 auto makeAlphaModeSpecialization(const std::uint32_t& alphaMode) -> vk::SpecializationInfo
@@ -979,13 +1008,15 @@ auto MeshRenderer::createGraphicsPipeline(vk::ShaderModule vertex,
                                                             .pColorAttachmentFormats = &colorOutput,
                                                             .depthAttachmentFormat = _depthFormat};
     const auto multisampling = vk::PipelineMultisampleStateCreateInfo {.rasterizationSamples = _sampleCount};
-    const auto state = GraphicsPipelineState {.stages = stages,
-                                              .rendering = rendering,
-                                              .multisampling = multisampling,
-                                              .rasterization = makeRasterizationState(key.renderFace, key.mirrored),
-                                              .colorBlend = blend,
-                                              .vertexInput = vertexInput,
-                                              .layout = *_pipelineLayout};
+    const auto state =
+        GraphicsPipelineState {.stages = stages,
+                               .rendering = rendering,
+                               .multisampling = multisampling,
+                               .rasterization = makeRasterizationState(key.renderFace, key.mirrored),
+                               .depthStencil = key.alphaMode == AlphaMode::Blend ? blendDepthStencil : depthStencil,
+                               .colorBlend = key.alphaMode == AlphaMode::Blend ? alphaBlend : opaqueBlend,
+                               .vertexInput = vertexInput,
+                               .layout = *_pipelineLayout};
     const auto createInfo = makeGraphicsPipelineCreateInfo(state);
     return checkedCreation(_device.createGraphicsPipeline(nullptr, createInfo));
 }
@@ -1010,6 +1041,7 @@ auto MeshRenderer::createShadowPipeline(const ShadowPipelineKey& key) const -> s
                                               .rendering = rendering,
                                               .multisampling = multisample,
                                               .rasterization = makeRasterizationState(key.renderFace, key.mirrored),
+                                              .depthStencil = depthStencil,
                                               .colorBlend = noColorBlend,
                                               .vertexInput = vertexInput,
                                               .layout = *_pipelineLayout};
@@ -1089,7 +1121,7 @@ auto MeshRenderer::prepareDrawPipeline(const MeshDraw& draw) -> std::expected<vo
         _pipelines.emplace(key, std::move(*pipeline));
     }
     const auto shadowKey = getShadowPipelineKey(draw);
-    if (!_shadowPipelines.contains(shadowKey))
+    if (draw.material.alphaMode != AlphaMode::Blend && !_shadowPipelines.contains(shadowKey))
     {
         auto pipeline = createShadowPipeline(shadowKey);
         if (!pipeline)
@@ -1154,7 +1186,10 @@ void MeshRenderer::recordShadowPass(vk::CommandBuffer command, FrameResources& f
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
     {
-        recordDraw(command, draw, true, materialIndex);
+        if (draw.material.alphaMode != AlphaMode::Blend)
+        {
+            recordDraw(command, draw, true, materialIndex);
+        }
         ++materialIndex;
     }
     command.endRendering();
@@ -1173,10 +1208,33 @@ void MeshRenderer::recordColorPass(vk::CommandBuffer command,
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
     {
-        recordDraw(command, draw, false, materialIndex);
+        if (draw.material.alphaMode == AlphaMode::Blend)
+        {
+            // shortcut: sort by mesh origin; intersecting meshes need finer sorting.
+            _blendDraws.push_back({.draw = &draw,
+                                   .materialIndex = materialIndex,
+                                   .cameraDepth = cameraDepthForMesh(view.camera.viewProjection, draw.modelMatrix)});
+        }
+        else
+        {
+            recordDraw(command, draw, false, materialIndex);
+        }
         ++materialIndex;
     }
+    recordBlendedDraws(command);
     command.endRendering();
+}
+
+void MeshRenderer::recordBlendedDraws(vk::CommandBuffer command)
+{
+    std::ranges::stable_sort(_blendDraws, [](const BlendDraw& left, const BlendDraw& right) {
+        return left.cameraDepth > right.cameraDepth;
+    });
+    for (const auto& blendDraw : _blendDraws)
+    {
+        recordDraw(command, *blendDraw.draw, false, blendDraw.materialIndex);
+    }
+    _blendDraws.clear();
 }
 
 void MeshRenderer::transitionColor(vk::CommandBuffer command, FrameResources& frame)

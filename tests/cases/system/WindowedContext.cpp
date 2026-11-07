@@ -248,6 +248,12 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, SceneMeshes meshes) 
                          .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
         panda::MeshDraw {.mesh = meshes.cube},
         panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.5F}),
+                         .material = {.baseColor = {1.0F, 1.0F, 1.0F, 0.5F}, .alphaMode = panda::AlphaMode::Blend}},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.2F}),
+                         .material = {.baseColor = {0.8F, 0.5F, 1.0F, 0.5F}, .alphaMode = panda::AlphaMode::Blend}},
+        panda::MeshDraw {.mesh = meshes.cube,
                          .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, 0.0F, 0.0F}),
                          .material = {.renderFace = panda::RenderFace::Back}},
         panda::MeshDraw {.mesh = meshes.cube,
@@ -348,7 +354,7 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     EXPECT_NE(empty.error().message.find("null Vulkan surface"), std::string::npos);
 }
 
-TEST(WindowedContextSystem, PresentsMaskedAlphaFaceModesAndReflectedMeshesWithoutValidationErrors)
+TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMeshesWithoutValidationErrors)
 {
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};

@@ -173,6 +173,10 @@ TEST(RenderViewValidation, ValidatesAlphaModeAndCutoff)
     material.alphaMode = panda::AlphaMode::Mask;
     material.alphaCutoff = 0.0F;
     EXPECT_TRUE(validateRenderViewData(view));
+    material.alphaMode = panda::AlphaMode::Blend;
+    EXPECT_TRUE(validateRenderViewData(view));
+
+    material.alphaMode = panda::AlphaMode::Mask;
     material.alphaCutoff = 1.0F;
     EXPECT_TRUE(validateRenderViewData(view));
 

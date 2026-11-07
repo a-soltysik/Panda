@@ -104,11 +104,12 @@ void main()
     {
         discard;
     }
+    const float opacity = alphaMode == 2u ? clamp(baseColor.a, 0.0, 1.0) : baseColor.a;
     if (material.isLit == 0u)
     {
         const vec3 mapped = toneMapAces(baseColor.rgb);
         const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
-        fragmentColor = vec4(outputColor, baseColor.a);
+        fragmentColor = vec4(outputColor, opacity);
         return;
     }
     vec3 normal = normalize(worldNormal);
@@ -138,5 +139,5 @@ void main()
     const vec3 ambient = baseColor.rgb * frameData.ambient.rgb * frameData.ambient.w;
     const vec3 mapped = toneMapAces(ambient + direct);
     const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
-    fragmentColor = vec4(outputColor, baseColor.a);
+    fragmentColor = vec4(outputColor, opacity);
 }
