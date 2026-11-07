@@ -345,24 +345,29 @@ Draw data supplies a full model matrix, inverse-transpose normal transform and
 linear tint. Select separate pipeline variants for single meshes and instanced
 meshes before the draw; the first renderer needs only the single-mesh variant.
 The instanced path reads per-instance data without a CPU update per vertex. The
-first-scene implementation stores `MeshVertex` records with a 64-byte stride:
+standard CPU geometry helper stores `MeshVertex` records with a 64-byte stride:
 position at offset 0, normal at 12, UV at 24, tangent at 32 and linear vertex
-color at 48 (white when absent in source). Its current built-in pipeline
-consumes position, normal and vertex color; UV and tangent are not yet consumed
-by that shader. This is the current implementation format, not a requirement
-that every mesh store every attribute.
+color at 48 (white by default). This convenience format is not required for
+every mesh. `MeshDesc` can declare a different stride and a subset of attributes.
+A nonempty layout requires Position; semantics must be unique, use their defined
+float format, fit within the stride and not overlap. An empty layout creates
+upload-only storage.
 
-The materials/import implementation must support a vertex layout per mesh.
-Position is required; normals, UVs, tangents and vertex colors are optional
-attributes. A mesh's layout describes its available attributes, formats, offsets
-and stride, and is shared by all its vertices. The renderer validates that the
-selected shader's required inputs are present and selects or creates a
-compatible pipeline; a missing required input is a clear preflight error. Keep
-unused attributes out of a mesh's vertex data. Built-in lit materials require
-normals (which import may generate), texture maps require UVs, and only a normal
-map requires tangents. Missing vertex color contributes white. Procedural clouds
-have no vertex binding and generate six vertices per instance; their shader must
-not assume a CPU-visible particle object.
+The current built-in renderer consumes Position for every draw, Normal for Lit
+materials, and optional Color for either material model; a missing vertex color
+contributes white. It selects a compatible pipeline from the material model,
+layout stride and consumed attribute offsets. UV and Tangent layouts are
+validated but are not consumed by the current shader. Texture maps will require
+UVs, and only a normal map will require tangents; a missing normal remains a
+clear preflight error for Lit materials. Keep unused attributes out of vertex
+data. The current Unlit material uses base color without lighting. Emissive
+lighting, procedural clouds without a vertex binding and instance-driven data
+remain outside this implementation slice.
+
+Current material parameters use one 16-byte std430 storage-buffer record per
+draw: metallic, roughness, the Lit flag and padding. Records are tightly packed
+per frame slot; the direct draw's `firstInstance` supplies the flat material
+index to the fragment shader. Keep this host/shader record layout synchronized.
 
 ### Materials, faces, and output
 

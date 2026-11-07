@@ -29,7 +29,7 @@ public:
 private:
     MeshResource(std::shared_ptr<BufferResource> vertexBuffer,
                  std::shared_ptr<BufferResource> indexBuffer,
-                 const mesh_resources::MeshLayout& layout);
+                 mesh_resources::MeshLayout layout);
 
     std::shared_ptr<BufferResource> _vertexBuffer;
     std::shared_ptr<BufferResource> _indexBuffer;

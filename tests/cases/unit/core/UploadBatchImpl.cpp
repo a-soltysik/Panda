@@ -158,13 +158,13 @@ protected:
         const auto description = panda::MeshDesc {
             .vertexCount = 3,
             .vertexStride = 4,
-            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16}
+            .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16},
+            .attributes = {}
         };
         meshVertexBuffer = makeBuffer(12);
         meshIndexBuffer = makeBuffer(6);
         EXPECT_CALL(layouts, create(_))
-            .WillOnce(
-                Return(panda::test::MeshLayoutPlan {.description = description, .vertexSize = 12, .indexSize = 6}));
+            .WillOnce(Return(panda::test::MeshLayoutPlan {.vertexSize = 12, .indexSize = 6}));
         auto layout = MeshLayout::create(description);
         EXPECT_TRUE(layout);
         if (!layout)

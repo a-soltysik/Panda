@@ -13,7 +13,7 @@
 #include <glm/geometric.hpp>
 #include <glm/matrix.hpp>
 #include <panda/Error.hpp>
-#include <panda/Geometry.hpp>
+#include <panda/Mesh.hpp>
 #include <panda/RenderView.hpp>
 
 #include "Math.hpp"
@@ -49,6 +49,22 @@ auto isRenderableModel(const glm::mat4& model) -> bool
     const auto normalMatrix = glm::transpose(glm::inverse(linear));
     return isFinite(normalMatrix);
 }
+
+auto hasAttribute(const Mesh& mesh, VertexAttributeSemantic semantic) -> bool
+{
+    const auto attributes = mesh.getVertexAttributes();
+    return std::ranges::find(attributes, semantic, &VertexAttribute::semantic) != attributes.end();
+}
+
+auto isCompatibleMeshDraw(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+{
+    if (!draw.mesh.isValid() || !::panda::detail::MeshResource::getResource(draw.mesh)->belongsTo(pool))
+    {
+        return false;
+    }
+    return hasAttribute(draw.mesh, VertexAttributeSemantic::Position) &&
+           (draw.material.model != MaterialModel::Lit || hasAttribute(draw.mesh, VertexAttributeSemantic::Normal));
+}
 }
 
 auto validateRenderViewData(const RenderView& view) -> Result<void>
@@ -68,11 +84,18 @@ auto validateRenderViewData(const RenderView& view) -> Result<void>
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Directional light is invalid")};
     }
     if (std::ranges::any_of(view.meshes, [](const auto& draw) {
+            const auto validMaterial =
+                (draw.material.model == MaterialModel::Lit || draw.material.model == MaterialModel::Unlit) &&
+                isFinite(draw.material.baseColor) && draw.material.baseColor.r >= 0.0F &&
+                draw.material.baseColor.g >= 0.0F && draw.material.baseColor.b >= 0.0F &&
+                draw.material.baseColor.a >= 0.0F && std::isfinite(draw.material.metallic) &&
+                std::isfinite(draw.material.roughness);
             return !isRenderableModel(draw.modelMatrix) || !isFinite(draw.tint) || draw.tint.r < 0.0F ||
-                   draw.tint.g < 0.0F || draw.tint.b < 0.0F || draw.tint.a < 0.0F;
+                   draw.tint.g < 0.0F || draw.tint.b < 0.0F || draw.tint.a < 0.0F || !validMaterial;
         }))
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Mesh draw contains invalid transform or tint")};
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Mesh draw contains invalid transform or material")};
     }
     return {};
 }
@@ -80,12 +103,11 @@ auto validateRenderViewData(const RenderView& view) -> Result<void>
 auto validateRenderViewMeshes(const RenderView& view, const resources::MemoryPool& pool) -> Result<void>
 {
     if (std::ranges::any_of(view.meshes, [&pool](const auto& draw) {
-            return !draw.mesh.isValid() || draw.mesh.getVertexStride() != standardMeshVertexStrideBytes ||
-                   !::panda::detail::MeshResource::getResource(draw.mesh)->belongsTo(pool);
+            return !isCompatibleMeshDraw(draw, pool);
         }))
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Mesh draw requires a standard mesh created by this Context")};
+            makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Context")};
     }
     return {};
 }

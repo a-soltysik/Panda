@@ -11,6 +11,8 @@ layout(set = 0, binding = 0) uniform FrameData
 layout(push_constant) uniform DrawData
 {
     mat4 modelMatrix;
+    mat3x4 normalColumns;
+    vec4 tint;
 } drawData;
 
 void main()

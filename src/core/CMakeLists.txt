@@ -102,46 +102,8 @@ panda_add_component(panda_core
         vulkan/renderer/ShadowView.hpp
     LIBRARIES PUBLIC panda_common Vulkan::Headers glm::glm PRIVATE Vulkan::Vulkan)
 target_include_directories(panda_core PRIVATE "${PROJECT_SOURCE_DIR}/src/core")
-
-find_program(PANDA_GLSLC_EXECUTABLE NAMES glslc REQUIRED)
-find_program(PANDA_SPIRV_VAL_EXECUTABLE NAMES spirv-val REQUIRED)
-
-set(PANDA_BUILTIN_SHADER_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
-set(PANDA_BUILTIN_SHADER_HEADER "${PANDA_BUILTIN_SHADER_DIRECTORY}/BuiltinShaders.hpp")
-set(PANDA_BUILTIN_SHADER_NAMES mesh.vert mesh.frag shadow.vert)
-set(PANDA_BUILTIN_SHADER_SOURCES)
-set(PANDA_BUILTIN_SHADER_SPIRV_FILES)
-set(PANDA_BUILTIN_SHADER_COMMANDS)
-foreach(shader IN LISTS PANDA_BUILTIN_SHADER_NAMES)
-    set(shader_source "${PROJECT_SOURCE_DIR}/shaders/builtin/${shader}")
-    set(shader_spirv "${PANDA_BUILTIN_SHADER_DIRECTORY}/${shader}.spv")
-    list(APPEND PANDA_BUILTIN_SHADER_SOURCES "${shader_source}")
-    list(APPEND PANDA_BUILTIN_SHADER_SPIRV_FILES "${shader_spirv}")
-    list(APPEND PANDA_BUILTIN_SHADER_COMMANDS
-         COMMAND "${PANDA_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 "${shader_source}" -o "${shader_spirv}"
-         COMMAND "${PANDA_SPIRV_VAL_EXECUTABLE}" --target-env vulkan1.3 "${shader_spirv}")
-endforeach()
-add_custom_command(
-    OUTPUT "${PANDA_BUILTIN_SHADER_HEADER}" ${PANDA_BUILTIN_SHADER_SPIRV_FILES}
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${PANDA_BUILTIN_SHADER_DIRECTORY}"
-    ${PANDA_BUILTIN_SHADER_COMMANDS}
-    COMMAND "${CMAKE_COMMAND}"
-            "-DOUTPUT_FILE=${PANDA_BUILTIN_SHADER_HEADER}"
-            "-DSHADER_SPIRV_FILES=${PANDA_BUILTIN_SHADER_SPIRV_FILES}"
-            -P "${PROJECT_SOURCE_DIR}/cmake/EmbedSpirv.cmake"
-    DEPENDS
-        ${PANDA_BUILTIN_SHADER_SOURCES}
-        "${PROJECT_SOURCE_DIR}/cmake/EmbedSpirv.cmake"
-    VERBATIM)
-add_custom_target(panda_builtin_shaders DEPENDS "${PANDA_BUILTIN_SHADER_HEADER}")
-add_dependencies(panda_core panda_builtin_shaders)
-target_include_directories(panda_core PRIVATE "${PANDA_BUILTIN_SHADER_DIRECTORY}")
+panda_add_builtin_shaders(panda_core)
 
 set_target_properties(panda_core PROPERTIES OUTPUT_NAME panda)
 target_compile_definitions(panda_core PRIVATE PANDA_VERSION_TEXT="${PROJECT_VERSION}")
 panda_configure_vulkan_internal(panda_core)
-if(TARGET panda_static_analysis)
-    string(SHA256 mesh_renderer_analysis_id
-        "${CMAKE_CURRENT_SOURCE_DIR}/vulkan/renderer/MeshRenderer.cpp")
-    add_dependencies(panda_analysis_${mesh_renderer_analysis_id} panda_builtin_shaders)
-endif()

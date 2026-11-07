@@ -7,13 +7,16 @@
 #include <optional>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
+#include <utility>
+#include <vector>
 
 TEST(MeshLayout, ComputesVertexAndSixteenBitIndexStorage)
 {
     const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = 3,
         .vertexStride = 20,
-        .indices = panda::MeshIndexDesc {.count = 6, .type = panda::MeshIndexType::UInt16}
+        .indices = panda::MeshIndexDesc {.count = 6, .type = panda::MeshIndexType::UInt16},
+        .attributes = {}
     });
 
     ASSERT_TRUE(layout);
@@ -32,7 +35,8 @@ TEST(MeshLayout, ComputesThirtyTwoBitIndexStorage)
     const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = 4,
         .vertexStride = 12,
-        .indices = panda::MeshIndexDesc {.count = 9, .type = panda::MeshIndexType::UInt32}
+        .indices = panda::MeshIndexDesc {.count = 9, .type = panda::MeshIndexType::UInt32},
+        .attributes = {}
     });
 
     ASSERT_TRUE(layout);
@@ -49,7 +53,7 @@ TEST(MeshLayout, ComputesThirtyTwoBitIndexStorage)
 TEST(MeshLayout, NonIndexedMeshHasNoIndexStorage)
 {
     const auto layout = panda::core::vulkan::resources::MeshLayout::create(
-        {.vertexCount = 3, .vertexStride = 16, .indices = std::nullopt});
+        {.vertexCount = 3, .vertexStride = 16, .indices = std::nullopt, .attributes = {}});
 
     ASSERT_TRUE(layout);
     EXPECT_EQ(layout->getVertexCount(), 3);
@@ -65,7 +69,8 @@ TEST(MeshLayout, MaximumPublicCountsProduceExact64BitStorageSizes)
     const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = maximum,
         .vertexStride = maximum,
-        .indices = panda::MeshIndexDesc {.count = maximum, .type = panda::MeshIndexType::UInt32}
+        .indices = panda::MeshIndexDesc {.count = maximum, .type = panda::MeshIndexType::UInt32},
+        .attributes = {}
     });
 
     ASSERT_TRUE(layout);
@@ -76,9 +81,9 @@ TEST(MeshLayout, MaximumPublicCountsProduceExact64BitStorageSizes)
 TEST(MeshLayout, RejectsMissingVertexCountOrStride)
 {
     const auto noVertices = panda::core::vulkan::resources::MeshLayout::create(
-        {.vertexCount = 0, .vertexStride = 12, .indices = std::nullopt});
+        {.vertexCount = 0, .vertexStride = 12, .indices = std::nullopt, .attributes = {}});
     const auto noStride = panda::core::vulkan::resources::MeshLayout::create(
-        {.vertexCount = 3, .vertexStride = 0, .indices = std::nullopt});
+        {.vertexCount = 3, .vertexStride = 0, .indices = std::nullopt, .attributes = {}});
 
     ASSERT_FALSE(noVertices);
     ASSERT_FALSE(noStride);
@@ -91,7 +96,8 @@ TEST(MeshLayout, RejectsEmptyIndexDescription)
     const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = 3,
         .vertexStride = 12,
-        .indices = panda::MeshIndexDesc {.count = 0, .type = panda::MeshIndexType::UInt16}
+        .indices = panda::MeshIndexDesc {.count = 0, .type = panda::MeshIndexType::UInt16},
+        .attributes = {}
     });
 
     ASSERT_FALSE(layout);
@@ -105,9 +111,62 @@ TEST(MeshLayout, RejectsUnknownIndexType)
     const auto layout = panda::core::vulkan::resources::MeshLayout::create({
         .vertexCount = 3,
         .vertexStride = 12,
-        .indices = panda::MeshIndexDesc {.count = 3, .type = invalidType}
+        .indices = panda::MeshIndexDesc {.count = 3, .type = invalidType},
+        .attributes = {}
     });
 
     ASSERT_FALSE(layout);
     EXPECT_EQ(layout.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST(MeshLayout, RetainsPositionColorLayoutForCompactUnlitMesh)
+{
+    const auto attributes = std::vector {
+        panda::VertexAttribute {.semantic = panda::VertexAttributeSemantic::Position,
+                                .format = panda::VertexAttributeFormat::Float3,
+                                .offset = 0 },
+        panda::VertexAttribute {.semantic = panda::VertexAttributeSemantic::Color,
+                                .format = panda::VertexAttributeFormat::Float4,
+                                .offset = 12}
+    };
+    const auto layout = panda::core::vulkan::resources::MeshLayout::create(
+        {.vertexCount = 3, .vertexStride = 28, .indices = std::nullopt, .attributes = attributes});
+
+    ASSERT_TRUE(layout);
+    EXPECT_EQ(layout->getVertexAttributes(), attributes);
+}
+
+TEST(MeshLayout, RejectsInvalidAttributeSemanticsFormatsBoundsAndOverlap)
+{
+    using panda::VertexAttribute;
+    using panda::VertexAttributeFormat;
+    using panda::VertexAttributeSemantic;
+    const auto position = VertexAttribute {.semantic = VertexAttributeSemantic::Position,
+                                           .format = VertexAttributeFormat::Float3,
+                                           .offset = 0};
+    const auto color = VertexAttribute {.semantic = VertexAttributeSemantic::Color,
+                                        .format = VertexAttributeFormat::Float4,
+                                        .offset = 12};
+    const auto expectInvalid = [](std::vector<VertexAttribute> attributes, std::uint32_t stride) {
+        const auto layout = panda::core::vulkan::resources::MeshLayout::create(
+            {.vertexCount = 3, .vertexStride = stride, .indices = std::nullopt, .attributes = std::move(attributes)});
+        ASSERT_FALSE(layout);
+        EXPECT_EQ(layout.error().code, panda::ErrorCode::InvalidArgument);
+    };
+
+    expectInvalid({color}, 28);
+    expectInvalid({position, color}, 27);
+    expectInvalid(
+        {
+            position,
+            {.semantic = VertexAttributeSemantic::Normal, .format = VertexAttributeFormat::Float4, .offset = 12}
+    },
+        28);
+    expectInvalid({position, position}, 28);
+    expectInvalid(
+        {
+            position,
+            {.semantic = VertexAttributeSemantic::Color, .format = VertexAttributeFormat::Float4, .offset = 8}
+    },
+        24);
 }

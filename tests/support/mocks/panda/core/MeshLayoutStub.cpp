@@ -28,7 +28,7 @@ auto invokeNoexcept(Function&& function) noexcept -> decltype(std::forward<Funct
 }
 }
 
-auto MeshLayout::create(const MeshDesc& description) -> Result<MeshLayout>
+auto MeshLayout::create(MeshDesc description) -> Result<MeshLayout>
 {
     auto plan = test::ScopedMock<test::MeshLayoutMock>::getActiveMock().create(description);
     if (!plan)
@@ -36,7 +36,7 @@ auto MeshLayout::create(const MeshDesc& description) -> Result<MeshLayout>
         return std::unexpected {plan.error()};
     }
     auto layout = MeshLayout {};
-    layout._description = plan->description;
+    layout._description = std::move(description);
     layout._vertexSize = plan->vertexSize;
     layout._indexSize = plan->indexSize;
     return layout;

@@ -19,7 +19,8 @@ before requesting replacement acceptance.
 
 ## Acceptance
 
-Three-run baseline reports, visual/interop/physics evidence, ordinary+unity builds and full external consumer. Record
-skips and environment.
+Three-run baseline reports, visual/interop/physics evidence, ordinary+unity builds
+and a full external application combining graphics, assets, scene tools and compute.
+Record skips and environment.
 
 Learning: Reproduce one baseline and explain one measured bottleneck.

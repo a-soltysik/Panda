@@ -10,6 +10,7 @@ TEST(Mesh, EmptyHandleReportsNoStorage)
     EXPECT_FALSE(mesh.isValid());
     EXPECT_EQ(mesh.getVertexCount(), 0);
     EXPECT_EQ(mesh.getVertexStride(), 0);
+    EXPECT_TRUE(mesh.getVertexAttributes().empty());
     EXPECT_EQ(mesh.getVertexSize(), 0);
     EXPECT_EQ(mesh.getIndexCount(), 0);
     EXPECT_FALSE(mesh.getIndexType());

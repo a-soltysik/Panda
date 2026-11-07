@@ -1,8 +1,13 @@
 # Vulkan window example
 
-`simple_scene` opens a window, creates a unit cube and unit plane, uploads both
-meshes, then renders the cube on a scaled ground plane with the built-in directional
-light, depth-map shadows and lit material.
+`simple_scene` opens a window, creates a unit cube and unit plane with the standard
+geometry helper, then creates a compact position-and-color triangle with
+`Context::createMesh(MeshDesc)`. One upload batch initializes all three meshes.
+The view renders the cube and ground with the built-in directional light,
+depth-map shadows and lit material, plus the triangle with an unlit material.
+The custom triangle shows how a mesh can use its own vertex stride and attribute
+offsets instead of the standard 64-byte geometry layout; its vertex data and draw
+setup are in [main.cpp](main.cpp).
 `panda::createPerspectiveCamera` builds the camera values from Core, and the
 application supplies the mesh draw; no scene or ECS library is involved.
 Requires a display, Vulkan 1.3 with swapchain maintenance1, and the Khronos validation

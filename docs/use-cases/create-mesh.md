@@ -8,17 +8,18 @@ device-local buffers for the requested layout. A copyable `Mesh` is returned
 only after every required buffer is ready. Initial bytes are **undefined**;
 creation submits no GPU work and does not upload a mesh payload.
 
-This flow creates storage, not a renderable scene object. The application
-defines vertex attributes and supplies valid index values when it later uploads
-data. The implemented scope follows
+This flow creates storage, not a renderable scene object. The application may
+declare its vertex attributes here and supplies vertex/index bytes when it later
+uploads data. An empty attribute list leaves upload-only storage. The implemented
+scope follows
 [Allocation, uploads and resource lifetimes](../development/tasks/resource-lifetimes.md).
 
 | Boundary          | Meaning                                                                                               |
 |-------------------|-------------------------------------------------------------------------------------------------------|
-| Trigger and input | Application calls `Context::createMesh` with vertex count/stride and optional index count/type        |
+| Trigger and input | Application calls `Context::createMesh` with vertex count/stride, optional attributes and optional indices |
 | Successful end    | `Result<Mesh>` owns fixed vertex storage and, when requested, index storage                           |
 | Failure end       | An `Error` is returned with no published `Mesh`, or a fatal caller-contract violation                 |
-| Outside this flow | Vertex/index bytes, attribute interpretation, index-value validation, drawing and GPU synchronization |
+| Outside this flow | Vertex/index bytes, index-value validation, drawing and GPU synchronization                          |
 
 ## Preconditions
 
@@ -33,10 +34,12 @@ data. The implemented scope follows
    calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
    explains which packets can be released; without an `UploadManager`, this is a no-op.
 3. **Validate and derive storage sizes.** `MeshLayout::create` requires a
-   nonzero vertex count and stride. If indices are present, their count must be
-   nonzero and their type must be `UInt16` or `UInt32`. It derives vertex bytes
-   from count and stride, and index bytes from count and element width. Omitting
-   the index description creates a non-indexed mesh.
+   nonzero vertex count and stride. When attributes are declared, Position is
+   required, semantics must be unique, formats must match their semantics, and
+   attribute byte ranges must fit inside the stride without overlap. If indices
+   are present, their count must be nonzero and their type must be `UInt16` or
+   `UInt32`. It derives vertex bytes from count and stride, and index bytes from
+   count and element width. Omitting the index description creates a non-indexed mesh.
 4. **Create vertex storage.** `MeshResource` creates an unpublished
    `BufferResource` sized for all vertices, with transfer-destination and
    vertex-buffer usage. The allocation and binding path in
@@ -100,8 +103,8 @@ sequenceDiagram
 
 **Storage contract.** Vertex storage is `vertexCount * vertexStride` bytes.
 Index storage is `indexCount * 2` or `indexCount * 4` bytes according to the
-index type. These sizes describe storage only; Panda does not infer vertex
-attributes or inspect index values.
+index type. Attribute declarations describe how the renderer interprets vertex
+bytes; Panda does not inspect vertex values or index values.
 
 **Shared buffer path.** Each mesh buffer is a device-local `BufferResource`.
 The buffer-creation flow owns native creation, compatible memory selection and

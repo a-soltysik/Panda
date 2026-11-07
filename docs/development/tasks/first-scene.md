@@ -35,12 +35,13 @@ geometry are available without a scene. The shared CPU Geometry owns the standar
 64-byte vertex format and optional 16- or 32-bit indices. Context creates matching
 mesh storage; UploadBatch copies Geometry into upload staging. `Context::render(view)`
 accepts application camera, directional-light and mesh-draw values, validates mesh
-ownership and standard stride, and retains mesh handles through GPU completion. The
+ownership and each draw's required attributes, and retains mesh handles through GPU completion. The
 first built-in renderer draws uploaded meshes with a directional lit material and a
 depth attachment. An empty view presents the background. `simple_scene` uploads and
-draws its cube and 10 m ground plane without a scene or ECS dependency. Both meshes
-use one upload batch; the plane is an ordinary application-supplied draw using the
-public unit-plane geometry helper and `panda::createModelMatrix()` for its TRS transform.
+draws its cube and 10 m ground plane plus a compact Position/Color triangle, without
+a scene or ECS dependency. All three meshes use one upload batch; the plane is an
+ordinary application-supplied draw using the public unit-plane geometry helper and
+`panda::createModelMatrix()` for its TRS transform.
 The renderer records a depth-only directional-light
 pass, then a camera color/depth pass that samples a per-frame-slot 2048 by 2048 depth
 map with 3x3 PCF. The shadow view is camera-centered with a 30 m orthographic width
@@ -57,7 +58,7 @@ For mesh draws, the renderer chooses the highest common color/depth sample count
 by the actual output formats and device limits (4x, 2x, then 1x); `FrameResult` and smoke
 benchmark reports expose the effective count.
 
-The system test runs both passes for cube and ground under Vulkan validation and checks
+The system test runs both passes for cube, ground and a compact Position/Color triangle under Vulkan validation and checks
 that the reported count is 1x, 2x or 4x. The maintainer confirms the current `simple_scene`
 renders correctly with its symmetric 3x3 PCF kernel. The screenshot shared during filter
 tuning showed the cube, ground and shadow, but is not stored in the repository. No RenderDoc

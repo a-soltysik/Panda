@@ -6,7 +6,8 @@ first-scene phases are accepted. A C++23 static library, shared logger/checked
 diagnostics, direct application-supplied mesh rendering with a built-in lit
 material and directional shadows, an optional Scene module, GLFW window tools,
 and CUDA external-buffer import and handoff exist. Broader renderer features,
-application-driven compute integration and application modules remain planned.
+graphics-only consumer integration is planned before application-driven compute;
+full application modules and replacement acceptance follow afterward.
 See [the plan](development/PLAN.md) for current work and approvals.
 
 ## Where to start

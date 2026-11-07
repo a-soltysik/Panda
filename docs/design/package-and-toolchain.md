@@ -183,9 +183,9 @@ It also requires `glslc` and `spirv-val` to compile the built-in Vulkan 1.3 shad
 validate their SPIR-V, and embed the result in Core. `Panda::Panda` exposes Vulkan-Hpp
 headers for public Vulkan values, flags and borrowed handles, including
 `WindowSurface` and `BufferDesc`. Runtime consumers need the Vulkan loader and driver,
-not the shader tools. The implemented renderer draws standard meshes to a window
-surface; offscreen rendering and image encoding remain unimplemented. No common
-application-lifetime interface is imposed.
+not the shader tools. The implemented renderer draws application-described mesh
+layouts to a window surface; offscreen rendering and image encoding remain
+unimplemented. It imposes no common application-lifetime interface.
 
 ### Window wrapper
 

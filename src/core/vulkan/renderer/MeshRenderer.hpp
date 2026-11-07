@@ -5,9 +5,11 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <map>
 #include <memory>
 #include <optional>
 #include <panda/Error.hpp>
@@ -35,6 +37,14 @@ struct MeshRendererCreateInfo
     std::size_t frameCount;
 };
 
+struct alignas(16) MaterialRecord
+{
+    float metallic;
+    float roughness;
+    std::uint32_t isLit;
+    std::uint32_t padding;
+};
+
 class MeshRenderer final
 {
 public:
@@ -57,6 +67,8 @@ private:
     struct FrameResources
     {
         std::shared_ptr<::panda::detail::BufferResource> uniformBuffer;
+        std::shared_ptr<::panda::detail::BufferResource> materialBuffer;
+        std::uint64_t materialBufferCapacity {0};
         std::shared_ptr<::panda::detail::TextureResource> colorAttachment;
         std::shared_ptr<::panda::detail::TextureResource> depthAttachment;
         std::shared_ptr<::panda::detail::TextureResource> shadowMap;
@@ -70,7 +82,24 @@ private:
     {
         std::vector<std::shared_ptr<::panda::detail::TextureResource>> colorAttachments;
         std::vector<std::shared_ptr<::panda::detail::TextureResource>> depthAttachments;
-        std::optional<vk::raii::Pipeline> pipeline;
+    };
+
+    struct MeshPipelineKey
+    {
+        bool lit {false};
+        bool hasColor {false};
+        std::uint32_t vertexStride {0};
+        std::uint32_t positionOffset {0};
+        std::uint32_t normalOffset {0};
+        std::uint32_t colorOffset {0};
+        friend auto operator<=>(const MeshPipelineKey&, const MeshPipelineKey&) = default;
+    };
+
+    struct ShadowPipelineKey
+    {
+        std::uint32_t vertexStride {0};
+        std::uint32_t positionOffset {0};
+        friend auto operator<=>(const ShadowPipelineKey&, const ShadowPipelineKey&) = default;
     };
 
     struct ResizeRequest
@@ -109,29 +138,37 @@ private:
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
     [[nodiscard]] auto createColorAttachmentsForResize(const ResizeRequest& request)
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
-    [[nodiscard]] auto createPipelineForResize(const ResizeRequest& request)
-        -> std::expected<std::optional<vk::raii::Pipeline>, Error>;
     [[nodiscard]] auto chooseDepthFormat() const -> std::expected<vk::Format, Error>;
     [[nodiscard]] auto chooseSampleCount(vk::Format colorFormat) const -> std::expected<vk::SampleCountFlagBits, Error>;
-    [[nodiscard]] auto createPipeline(vk::Format colorFormat, vk::SampleCountFlagBits samples) const
+    [[nodiscard]] auto createPipeline(const MeshPipelineKey& key) const -> std::expected<vk::raii::Pipeline, Error>;
+    [[nodiscard]] auto createShadowPipeline(const ShadowPipelineKey& key) const
         -> std::expected<vk::raii::Pipeline, Error>;
-    [[nodiscard]] auto createShadowPipeline() const -> std::expected<vk::raii::Pipeline, Error>;
-    [[nodiscard]] auto createGraphicsPipeline(vk::Format colorFormat,
-                                              vk::SampleCountFlagBits samples,
-                                              vk::ShaderModule vertex,
-                                              vk::ShaderModule fragment) const
+    [[nodiscard]] auto createGraphicsPipeline(vk::ShaderModule vertex,
+                                              vk::ShaderModule fragment,
+                                              const MeshPipelineKey& key) const
         -> std::expected<vk::raii::Pipeline, Error>;
-    [[nodiscard]] auto makeGraphicsPipelineCreateInfo(std::span<const vk::PipelineShaderStageCreateInfo> stages,
-                                                      const vk::PipelineRenderingCreateInfo& rendering,
-                                                      const vk::PipelineMultisampleStateCreateInfo& multisampling,
-                                                      const vk::PipelineColorBlendStateCreateInfo& colorBlend) const
-        -> vk::GraphicsPipelineCreateInfo;
+    [[nodiscard]] static auto makeVertexAttributeDescriptions(const MeshPipelineKey& key)
+        -> std::vector<vk::VertexInputAttributeDescription>;
     [[nodiscard]] auto createShaderModule(std::span<const std::uint32_t> words) const
         -> std::expected<vk::raii::ShaderModule, Error>;
+    [[nodiscard]] static auto writeFrameUniform(FrameResources& frame, const RenderView& view)
+        -> std::expected<void, Error>;
+    [[nodiscard]] auto ensureMaterialBuffer(FrameResources& frame, std::size_t drawCount) -> std::expected<void, Error>;
+    [[nodiscard]] auto writeMaterialRecords(FrameResources& frame, const RenderView& view)
+        -> std::expected<void, Error>;
+    [[nodiscard]] auto prepareDrawPipeline(const MeshDraw& draw) -> std::expected<void, Error>;
+    [[nodiscard]] auto prepareDrawPipelines(const RenderView& view) -> std::expected<void, Error>;
+    [[nodiscard]] static auto getMeshPipelineKey(const MeshDraw& draw) -> MeshPipelineKey;
+    [[nodiscard]] static auto getShadowPipelineKey(const MeshDraw& draw) -> ShadowPipelineKey;
     void publishResize(const ResizeRequest& request, ResizeResources resources);
     void publishDepthAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments);
     void publishColorAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments);
     void transitionColor(vk::CommandBuffer command, FrameResources& frame);
+    void recordShadowPass(vk::CommandBuffer command, FrameResources& frame, const RenderView& view);
+    void recordColorPass(vk::CommandBuffer command,
+                         vk::ImageView colorView,
+                         FrameResources& frame,
+                         const RenderView& view);
     static void transitionDepth(vk::CommandBuffer command, FrameResources& frame);
     static void transitionShadowForAttachment(vk::CommandBuffer command, FrameResources& frame);
     static void transitionShadowForSampling(vk::CommandBuffer command, FrameResources& frame);
@@ -140,12 +177,14 @@ private:
                            const FrameResources& frame,
                            vk::ImageView depthView) const;
     static void recordShadowAttachment(vk::CommandBuffer command, vk::ImageView depthView);
-    void setDrawState(vk::CommandBuffer command,
-                      const FrameResources& frame,
-                      vk::Pipeline pipeline,
-                      vk::Extent2D extent) const;
-    void recordDraw(vk::CommandBuffer command, const MeshDraw& draw) const;
-    static void recordMeshDraw(vk::CommandBuffer command, const ::panda::detail::MeshResource& mesh);
+    void setDrawState(vk::CommandBuffer command, const FrameResources& frame, vk::Extent2D extent) const;
+    void recordDraw(vk::CommandBuffer command,
+                    const MeshDraw& draw,
+                    bool shadowPass,
+                    std::uint32_t materialIndex) const;
+    static void recordMeshDraw(vk::CommandBuffer command,
+                               const ::panda::detail::MeshResource& mesh,
+                               std::uint32_t materialIndex);
 
     vk::PhysicalDevice _physicalDevice;
     const vk::raii::Device& _device;
@@ -155,8 +194,9 @@ private:
     vk::raii::DescriptorPool _descriptorPool {nullptr};
     vk::raii::Sampler _shadowSampler {nullptr};
     std::vector<FrameResources> _frames;
-    vk::raii::Pipeline _pipeline {nullptr};
-    vk::raii::Pipeline _shadowPipeline {nullptr};
+    std::vector<MaterialRecord> _materialRecords;
+    std::map<MeshPipelineKey, vk::raii::Pipeline> _pipelines;
+    std::map<ShadowPipelineKey, vk::raii::Pipeline> _shadowPipelines;
     vk::Format _colorFormat {vk::Format::eUndefined};
     vk::Format _depthFormat {vk::Format::eUndefined};
     vk::SampleCountFlagBits _sampleCount {vk::SampleCountFlagBits::e1};

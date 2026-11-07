@@ -41,10 +41,10 @@ auto MeshResource::create(const vk::raii::Device& device, mesh_resources::Memory
 
 MeshResource::MeshResource(std::shared_ptr<BufferResource> vertexBuffer,
                            std::shared_ptr<BufferResource> indexBuffer,
-                           const mesh_resources::MeshLayout& layout)
+                           mesh_resources::MeshLayout layout)
     : _vertexBuffer {std::move(vertexBuffer)},
       _indexBuffer {std::move(indexBuffer)},
-      _layout {layout}
+      _layout {std::move(layout)}
 {
 }
 

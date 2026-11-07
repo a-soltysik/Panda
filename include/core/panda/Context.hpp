@@ -214,9 +214,9 @@ public:
     [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>;
 
     /// @brief Renders and presents one application-supplied view.
-    /// @param view Camera, directional light and standard-mesh draws; an empty mesh list presents the background.
-    /// Meshes must belong to this Context and use the standard vertex format.
-    /// Upload each mesh before drawing it.
+    /// @param view Camera, directional light and mesh draws; an empty mesh list presents the background.
+    /// Meshes must belong to this Context, be uploaded, and declare a valid vertex layout.
+    /// Lit materials require Position and Normal; unlit materials require Position. Color is optional and defaults to white.
     /// @return Checked frame result or a validation/backend/window error. A valid
     /// completion token means submitted work, not completed presentation. Meshes
     /// are retained through their submitted GPU use.
