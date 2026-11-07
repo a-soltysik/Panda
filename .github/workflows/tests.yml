@@ -34,7 +34,7 @@ jobs:
           compiler: gcc
           cache-key: gcc-coverage
       - name: Install software Vulkan and headless display
-        run: sudo apt-get install -y mesa-vulkan-drivers xvfb xauth
+        run: sudo apt-get install -y mesa-vulkan-drivers vulkan-validationlayers=1.4.341.0-1 xvfb xauth
       - name: Install report generator
         run: sudo apt-get install -y gcovr=7.2+really-2
       - name: Configure
