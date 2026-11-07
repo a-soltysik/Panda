@@ -128,4 +128,13 @@ TEST(RenderViewValidation, RejectsNonFiniteMaterialValuesAndUnknownModel)
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     view.meshes.back().material.model = static_cast<panda::MaterialModel>(255);
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    view.meshes.back().material.model = panda::MaterialModel::Lit;
+    view.meshes.back().material.renderFace = panda::RenderFace::Both;
+    EXPECT_TRUE(validateRenderViewData(view));
+
+    // Exercise rejection of an out-of-range enum supplied by malformed application data.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    view.meshes.back().material.renderFace = static_cast<panda::RenderFace>(255);
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }

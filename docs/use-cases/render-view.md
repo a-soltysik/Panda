@@ -44,8 +44,9 @@ handles through GPU use, and owns frame-slot and swapchain synchronization. A re
    background. Otherwise, `Presentation` creates or resizes the internal `MeshRenderer`,
    updates frame data and that slot's tightly packed per-draw material storage buffer,
    then records a depth-only pass into its directional shadow map. It records camera color/depth
-   rendering, selecting pipelines from each material model and consumed vertex
-   attributes while sampling the shadow map for Lit draws.
+   rendering, selecting pipelines from each material model, consumed vertex
+   attributes, face mode and transform handedness while sampling the shadow map
+   for Lit draws. The shadow pass uses the same selected face and handedness.
 6. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
    Context timeline. Successful submission commits its timeline value, stores it on
@@ -81,8 +82,8 @@ sequenceDiagram
         P->>V: Clear background with dynamic rendering
     else View contains meshes
         P->>R: Create/resize renderer and update frame and material data
-        R->>V: Record light-depth pass for mesh draws
-        R->>V: Select material/layout pipelines and record camera pass
+        R->>V: Record face-aware light-depth pass for mesh draws
+        R->>V: Select material/layout/face pipelines and record camera pass
         R->>V: Sample shadow map for Lit draws
     end
     P->>Q: Submit commands and signal timeline
@@ -110,8 +111,11 @@ light with a Cook-Torrance microfacet specular term: GGX normal distribution,
 Schlick-GGX geometry and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is
 combined with that specular term. Each Lit material supplies metallic and roughness,
 clamped to the supported range. Unlit materials skip light evaluation and shadow
-lookup while shading, but still cast shadows in the current depth pass. They use
-base color, not emissive lighting. A constant ambient term contributes
+lookup while shading, but still cast shadows in the current depth pass. The
+material's `RenderFace` selects front sides, back sides or both; transforms with
+a negative determinant reverse pipeline winding in both passes. Lit shading
+orients back-facing normals consistently when rendering `Back` or `Both`. They
+use base color, not emissive lighting. A constant ambient term contributes
 0.06 times base color to Lit materials. The shader applies the ACES fitted tone curve and
 outputs sRGB, using hardware conversion for sRGB swapchain formats or shader encoding
 for UNORM formats. Direct directional light is shadowed with one 2048² depth map per

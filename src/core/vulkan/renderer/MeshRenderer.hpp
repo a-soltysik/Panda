@@ -42,7 +42,7 @@ struct alignas(16) MaterialRecord
     float metallic;
     float roughness;
     std::uint32_t isLit;
-    std::uint32_t padding;
+    std::uint32_t renderFace;
 };
 
 class MeshRenderer final
@@ -92,6 +92,8 @@ private:
         std::uint32_t positionOffset {0};
         std::uint32_t normalOffset {0};
         std::uint32_t colorOffset {0};
+        RenderFace renderFace {RenderFace::Front};
+        bool mirrored {false};
         friend auto operator<=>(const MeshPipelineKey&, const MeshPipelineKey&) = default;
     };
 
@@ -99,6 +101,8 @@ private:
     {
         std::uint32_t vertexStride {0};
         std::uint32_t positionOffset {0};
+        RenderFace renderFace {RenderFace::Front};
+        bool mirrored {false};
         friend auto operator<=>(const ShadowPipelineKey&, const ShadowPipelineKey&) = default;
     };
 
