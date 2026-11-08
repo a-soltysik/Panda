@@ -26,7 +26,7 @@ falls back to the first compatible device in Vulkan enumeration order.
 
 ## Main flow
 
-1. **Enumerate physical devices.** `Context::Impl` passes `selectDevice()`
+1. **Enumerate physical devices.** The Context resource factory passes `selectDevice()`
    the live instance, optional surface and resolved `InstanceExtensions`, then the
    selection asks the Vulkan instance for its physical devices. For a windowed
    Context, setup resolves and enables `VK_KHR_surface`, the provider's platform
@@ -47,11 +47,11 @@ falls back to the first compatible device in Vulkan enumeration order.
 4. **Choose and report one candidate.** Among compatible candidates, Panda
    chooses the first discrete GPU if present, otherwise the first candidate. It
    returns driver/device details, queue families, timestamp properties and the
-   selected maintenance variant to `Context::Impl`.
+   selected maintenance variant to the Context resource factory.
 
 ```mermaid
 sequenceDiagram
-    participant C as Context::Impl
+    participant C as context::createResources
     participant S as Device selection
     participant I as Vulkan instance
     participant D as Physical device
@@ -117,10 +117,10 @@ later adapter qualifies, the first remembered error does not prevent its use.
 
 ## Outcomes
 
-On success, `Context::Impl` receives one candidate whose required features were
-queried and whose work/presentation queues meet the selected path. The following
-logical-device creation step enables the queried features and creates the returned
-queues.
+On success, the Context resource factory receives one candidate whose required
+features were queried and whose work/presentation queues meet the selected path.
+The following logical-device creation step enables the queried features and
+creates the returned queues.
 
 On failure, no physical-device candidate is published to the public API and the
 Context creation flow returns an error. Selection does not silently fall back to an

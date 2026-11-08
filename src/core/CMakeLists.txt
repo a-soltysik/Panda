@@ -23,6 +23,9 @@ panda_add_component(panda_core
         CompletionPoint.cpp
         UploadBatch.cpp
         vulkan/Context.cpp
+        vulkan/ContextCreation.cpp
+        vulkan/ContextResources.cpp
+        vulkan/InstanceCreation.cpp
         vulkan/DeviceSelection.cpp
         vulkan/external/ExternalContext.cpp
         vulkan/performance/PerformanceManager.cpp
@@ -72,7 +75,10 @@ panda_add_component(panda_core
         panda/RenderView.hpp
     PRIVATE_HEADERS
         Math.hpp
+        vulkan/ContextCreation.hpp
+        vulkan/ContextResources.hpp
         vulkan/DeviceSelection.hpp
+        vulkan/InstanceCreation.hpp
         vulkan/external/ExternalContext.hpp
         vulkan/external/ExternalSemaphoreResource.hpp
         vulkan/external/ExternalBufferOwnershipTransferCommand.hpp
