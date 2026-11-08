@@ -15,13 +15,13 @@
 #include <panda/RenderView.hpp>
 #include <vector>
 
+#include "renderer/FrameBindings.hpp"
 #include "renderer/MeshPipelineCache.hpp"
 #include "renderer/ShaderData.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace panda::detail
 {
-class BufferResource;
 class TextureResource;
 }
 
@@ -58,18 +58,12 @@ public:
 private:
     struct FrameResources
     {
-        std::shared_ptr<::panda::detail::BufferResource> uniformBuffer;
-        std::shared_ptr<::panda::detail::BufferResource> materialBuffer;
-        std::uint64_t materialBufferCapacity {0};
+        std::shared_ptr<::panda::detail::TextureResource> shadowMap;
         std::shared_ptr<::panda::detail::TextureResource> colorAttachment;
         std::shared_ptr<::panda::detail::TextureResource> depthAttachment;
-        std::shared_ptr<::panda::detail::TextureResource> shadowMap;
         bool colorInitialized {false};
         bool depthInitialized {false};
         bool shadowInitialized {false};
-        vk::raii::DescriptorSet descriptorSet {nullptr};
-        vk::raii::DescriptorPool textureDescriptorPool {nullptr};
-        std::vector<vk::raii::DescriptorSet> textureDescriptorSets;
     };
 
     struct ResizeResources
@@ -106,20 +100,11 @@ private:
     [[nodiscard]] auto pipelineCache() -> MeshPipelineCache&;
     [[nodiscard]] auto pipelineCache() const -> const MeshPipelineCache&;
     [[nodiscard]] auto initialize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeDescriptorState() -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeDescriptorSetLayout() -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeTextureDescriptorSetLayout() -> std::expected<void, Error>;
-    [[nodiscard]] auto initializePipelineLayout() -> std::expected<void, Error>;
-    [[nodiscard]] auto createDescriptorPool() -> std::expected<void, Error>;
-    [[nodiscard]] auto allocateDescriptorSets() -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeFrameBuffers() -> std::expected<void, Error>;
-    void updateDescriptorSet(const FrameResources& frame);
     [[nodiscard]] auto initializeDepthAndPipeline(vk::Extent2D extent, vk::Format colorFormat)
         -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeShadowResources() -> std::expected<void, Error>;
+    [[nodiscard]] auto initializeAttachments(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
+    [[nodiscard]] auto initializeBindingsAndPipeline() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeShadowMaps() -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeShadowSampler() -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeTextureSampler() -> std::expected<void, Error>;
     [[nodiscard]] auto createDepthAttachments(vk::Extent2D extent, vk::SampleCountFlagBits samples)
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
     [[nodiscard]] auto createColorAttachments(vk::Extent2D extent, vk::Format format, vk::SampleCountFlagBits samples)
@@ -133,34 +118,30 @@ private:
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
     [[nodiscard]] auto chooseDepthFormat() const -> std::expected<vk::Format, Error>;
     [[nodiscard]] auto chooseSampleCount(vk::Format colorFormat) const -> std::expected<vk::SampleCountFlagBits, Error>;
-    [[nodiscard]] static auto writeFrameUniform(FrameResources& frame, const RenderView& view)
-        -> std::expected<void, Error>;
-    [[nodiscard]] auto ensureMaterialBuffer(FrameResources& frame, std::size_t drawCount) -> std::expected<void, Error>;
-    [[nodiscard]] auto ensureTextureDescriptorSets(FrameResources& frame, std::size_t drawCount)
-        -> std::expected<void, Error>;
-    [[nodiscard]] auto writeMaterialRecords(FrameResources& frame, const RenderView& view)
-        -> std::expected<void, Error>;
-    void writeTextureDescriptors(FrameResources& frame, const RenderView& view);
     void publishResize(const ResizeRequest& request, ResizeResources resources);
     void publishDepthAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments);
     void publishColorAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments);
     void transitionColor(vk::CommandBuffer command, FrameResources& frame);
-    void recordShadowPass(vk::CommandBuffer command, FrameResources& frame, const RenderView& view);
-    void recordColorPass(vk::CommandBuffer command,
-                         vk::ImageView colorView,
-                         FrameResources& frame,
-                         const RenderView& view);
+    void recordShadowPass(vk::CommandBuffer command,
+                          FrameResources& frame,
+                          std::size_t frameIndex,
+                          const RenderView& view);
+    void recordColorPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
     static void transitionDepth(vk::CommandBuffer command, FrameResources& frame);
     static void transitionShadowForAttachment(vk::CommandBuffer command, FrameResources& frame);
     static void transitionShadowForSampling(vk::CommandBuffer command, FrameResources& frame);
-    void recordBlendedDraws(vk::CommandBuffer command, const FrameResources& frame);
+    void recordBlendedDraws(vk::CommandBuffer command, std::size_t frameIndex);
     void recordAttachments(vk::CommandBuffer command,
                            vk::ImageView swapchainView,
                            const FrameResources& frame,
                            vk::ImageView depthView) const;
     static void recordShadowAttachment(vk::CommandBuffer command, vk::ImageView depthView);
-    void setDrawState(vk::CommandBuffer command, const FrameResources& frame, vk::Extent2D extent) const;
-    void recordDraw(vk::CommandBuffer command, const FrameResources& frame, const MeshDraw& draw, DrawPass pass) const;
+    void setDrawState(vk::CommandBuffer command, std::size_t frameIndex, vk::Extent2D extent) const;
+    void bindTextureDescriptors(vk::CommandBuffer command,
+                                std::size_t frameIndex,
+                                const MeshDraw& draw,
+                                DrawPass pass) const;
+    void recordDraw(vk::CommandBuffer command, std::size_t frameIndex, const MeshDraw& draw, DrawPass pass) const;
     static void recordMeshDraw(vk::CommandBuffer command,
                                const ::panda::detail::MeshResource& mesh,
                                std::uint32_t materialIndex);
@@ -168,15 +149,9 @@ private:
     vk::PhysicalDevice _physicalDevice;
     const vk::raii::Device& _device;
     resources::MemoryPool& _pool;
-    vk::raii::DescriptorSetLayout _descriptorSetLayout {nullptr};
-    vk::raii::DescriptorSetLayout _textureDescriptorSetLayout {nullptr};
-    vk::raii::PipelineLayout _pipelineLayout {nullptr};
-    std::optional<MeshPipelineCache> _pipelineCache;
-    vk::raii::DescriptorPool _descriptorPool {nullptr};
-    vk::raii::Sampler _shadowSampler {nullptr};
-    vk::raii::Sampler _textureSampler {nullptr};
     std::vector<FrameResources> _frames;
-    std::vector<MaterialRecord> _materialRecords;
+    std::unique_ptr<FrameBindings> _bindings;
+    std::optional<MeshPipelineCache> _pipelineCache;
     std::vector<BlendDraw> _blendDraws;
     vk::Format _colorFormat {vk::Format::eUndefined};
     vk::Format _depthFormat {vk::Format::eUndefined};

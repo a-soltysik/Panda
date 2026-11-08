@@ -7,9 +7,11 @@
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/RenderView.hpp>
+#include <panda/Texture.hpp>
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
 #include <utility>
+#include <vulkan/vulkan.hpp>
 
 namespace
 {
@@ -177,6 +179,34 @@ TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherContextBeforeSubmission)
     EXPECT_EQ(rendered.error().code, panda::ErrorCode::InvalidArgument);
     ASSERT_TRUE(scene->setVisible(*object, false));
     EXPECT_TRUE(scene->createRenderView(1.0F));
+}
+
+TEST_F(SceneRenderingSystem, RejectsTexturesFromAnotherContextBeforeSubmission)
+{
+    auto other = panda::Context::create();
+    ASSERT_TRUE(other);
+    auto texture = other->createTexture({
+        .extent = vk::Extent2D {1, 1},
+        .format = vk::Format::eR8G8B8A8Srgb,
+        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    });
+    ASSERT_TRUE(texture);
+
+    auto scene = panda::scene::Scene::create(activeContext());
+    ASSERT_TRUE(scene);
+    selectCamera(*scene);
+    const auto object = scene->createEntity();
+    ASSERT_TRUE(object);
+    auto mesh = activeContext().createMeshFromGeometry(panda::createCubeGeometry());
+    ASSERT_TRUE(mesh);
+    ASSERT_TRUE(scene->setMesh(*object, panda::scene::MeshInstance {.mesh = *mesh}));
+    auto view = scene->createRenderView(1.0F);
+    ASSERT_TRUE(view);
+    view->meshes.front().material.baseColorTexture = *texture;
+
+    const auto rendered = activeContext().render(*view);
+    ASSERT_FALSE(rendered);
+    EXPECT_EQ(rendered.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST_F(SceneRenderingSystem, RejectsMovedFromSceneOperationsAndPreservesMovedIdentity)
