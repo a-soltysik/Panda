@@ -128,6 +128,7 @@ struct SceneMeshes
     panda::Mesh ground;
     panda::Mesh triangle;
     panda::Texture baseColorMap;
+    panda::Texture metallicRoughnessMap;
 };
 
 auto createCompactTriangle(const panda::Context& context) -> panda::Result<panda::Mesh>
@@ -142,6 +143,15 @@ auto createCompactTriangle(const panda::Context& context) -> panda::Result<panda
                        {.semantic = panda::VertexAttributeSemantic::Color,
                         .format = panda::VertexAttributeFormat::Float4,
                         .offset = 12}}
+    });
+}
+
+auto createSceneTexture(const panda::Context& context, vk::Format format) -> panda::Result<panda::Texture>
+{
+    return context.createTexture({
+        .extent = vk::Extent2D {2, 2},
+        .format = format,
+        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
     });
 }
 
@@ -160,6 +170,51 @@ auto finishSceneMeshUpload(const panda::Context& context, panda::UploadBatch& ba
     if (*waited != panda::WaitStatus::Completed)
     {
         return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Scene mesh upload did not complete")};
+    }
+    return {};
+}
+
+auto writeSceneTextureMaps(panda::UploadBatch& batch, const SceneMeshes& meshes) -> panda::Result<void>
+{
+    static constexpr auto baseColorPixels = std::array {std::byte {0xff},
+                                                        std::byte {0x20},
+                                                        std::byte {0x20},
+                                                        std::byte {0xff},
+                                                        std::byte {0x20},
+                                                        std::byte {0xff},
+                                                        std::byte {0x20},
+                                                        std::byte {0x00},
+                                                        std::byte {0x20},
+                                                        std::byte {0x20},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0x00}};
+    if (const auto written = batch.write(meshes.baseColorMap, baseColorPixels); !written)
+    {
+        return std::unexpected {written.error()};
+    }
+    static constexpr auto metallicRoughnessPixels = std::array {std::byte {0xff},
+                                                                std::byte {0x80},
+                                                                std::byte {0x40},
+                                                                std::byte {0xff},
+                                                                std::byte {0xff},
+                                                                std::byte {0x40},
+                                                                std::byte {0xc0},
+                                                                std::byte {0xff},
+                                                                std::byte {0xff},
+                                                                std::byte {0x80},
+                                                                std::byte {0x80},
+                                                                std::byte {0xff},
+                                                                std::byte {0xff},
+                                                                std::byte {0xff},
+                                                                std::byte {0xff},
+                                                                std::byte {0xff}};
+    if (const auto written = batch.write(meshes.metallicRoughnessMap, metallicRoughnessPixels); !written)
+    {
+        return std::unexpected {written.error()};
     }
     return {};
 }
@@ -189,23 +244,7 @@ auto uploadSceneMeshes(const panda::Context& context,
     {
         return std::unexpected {written.error()};
     }
-    static constexpr auto baseColorPixels = std::array {std::byte {0xff},
-                                                        std::byte {0x20},
-                                                        std::byte {0x20},
-                                                        std::byte {0xff},
-                                                        std::byte {0x20},
-                                                        std::byte {0xff},
-                                                        std::byte {0x20},
-                                                        std::byte {0x00},
-                                                        std::byte {0x20},
-                                                        std::byte {0x20},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0x00}};
-    if (const auto written = batch->write(meshes.baseColorMap, baseColorPixels); !written)
+    if (const auto written = writeSceneTextureMaps(*batch, meshes); !written)
     {
         return std::unexpected {written.error()};
     }
@@ -231,19 +270,21 @@ auto createUploadedCubeGroundAndCompactTriangle(const panda::Context& context) -
     {
         return std::unexpected {triangle.error()};
     }
-    auto baseColorMap = context.createTexture({
-        .extent = vk::Extent2D {2, 2},
-        .format = vk::Format::eR8G8B8A8Srgb,
-        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
-    });
+    auto baseColorMap = createSceneTexture(context, vk::Format::eR8G8B8A8Srgb);
     if (!baseColorMap)
     {
         return std::unexpected {baseColorMap.error()};
     }
+    auto metallicRoughnessMap = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
+    if (!metallicRoughnessMap)
+    {
+        return std::unexpected {metallicRoughnessMap.error()};
+    }
     auto meshes = SceneMeshes {.cube = std::move(*cube),
                                .ground = std::move(*ground),
                                .triangle = std::move(*triangle),
-                               .baseColorMap = std::move(*baseColorMap)};
+                               .baseColorMap = std::move(*baseColorMap),
+                               .metallicRoughnessMap = std::move(*metallicRoughnessMap)};
     if (const auto uploaded = uploadSceneMeshes(context, meshes, cubeGeometry, groundGeometry); !uploaded)
     {
         return std::unexpected {uploaded.error()};
@@ -272,11 +313,13 @@ auto makeBlendDraws(const SceneMeshes& meshes) -> std::vector<panda::MeshDraw>
                          .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.5F}),
                          .material = {.baseColor = {1.0F, 1.0F, 1.0F, 0.5F},
                                       .baseColorTexture = {},
+                                      .metallicRoughnessTexture = {},
                                       .alphaMode = panda::AlphaMode::Blend}},
         panda::MeshDraw {.mesh = meshes.cube,
                          .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.2F}),
                          .material = {.baseColor = {0.8F, 0.5F, 1.0F, 0.5F},
                                       .baseColorTexture = {},
+                                      .metallicRoughnessTexture = {},
                                       .alphaMode = panda::AlphaMode::Blend}}
     };
 }
@@ -287,15 +330,21 @@ auto makeFaceDraws(const SceneMeshes& meshes) -> std::vector<panda::MeshDraw>
     return {
         panda::MeshDraw {.mesh = meshes.cube,
                          .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, 0.0F, 0.0F}),
-                         .material = {.baseColorTexture = {}, .renderFace = panda::RenderFace::Back}},
+                         .material = {.baseColorTexture = {},
+                                      .metallicRoughnessTexture = {},
+                                      .renderFace = panda::RenderFace::Back}},
         panda::MeshDraw {.mesh = meshes.cube,
                          .modelMatrix = glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, 0.0F}),
                          glm::vec3 {-1.0F, 1.0F, 1.0F}),
-                         .material = {.baseColorTexture = {}, .renderFace = panda::RenderFace::Both}},
+                         .material = {.baseColorTexture = {},
+                                      .metallicRoughnessTexture = {},
+                                      .renderFace = panda::RenderFace::Both}},
         panda::MeshDraw {.mesh = meshes.cube, .modelMatrix = reflectedModel},
         panda::MeshDraw {.mesh = meshes.cube,
                          .modelMatrix = glm::translate(reflectedModel, glm::vec3 {0.0F, 0.0F, -1.5F}),
-                         .material = {.baseColorTexture = {}, .renderFace = panda::RenderFace::Back}}
+                         .material = {.baseColorTexture = {},
+                                      .metallicRoughnessTexture = {},
+                                      .renderFace = panda::RenderFace::Back}}
     };
 }
 
@@ -307,6 +356,9 @@ auto makeTexturedMaskDraw(const SceneMeshes& meshes) -> panda::MeshDraw
            glm::vec3 {1.5F, 0.0F, -1.5F}
            ),
         .material = {.baseColorTexture = meshes.baseColorMap,
+                                                 .metallicRoughnessTexture = meshes.metallicRoughnessMap,
+                                                 .metallic = 0.75F,
+                                                 .roughness = 0.8F,
                                                  .renderFace = panda::RenderFace::Both,
                                                  .alphaMode = panda::AlphaMode::Mask}
     };
@@ -321,6 +373,7 @@ auto makeUnlitMaskDraw(const SceneMeshes& meshes) -> panda::MeshDraw
            ),
         .material = {.model = panda::MaterialModel::Unlit,
                                                  .baseColorTexture = {},
+                                                 .metallicRoughnessTexture = {},
                                                  .alphaMode = panda::AlphaMode::Mask}
     };
 }
@@ -459,14 +512,59 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_TRUE(extent.has_value()) << extent.error().message;
         auto view = makeCubeAndGroundView(*extent, *meshes);
         ASSERT_TRUE(view.has_value()) << view.error().message;
+        view->meshes.push_back({
+            .mesh = meshes->cube,
+            .material = {.baseColorTexture = meshes->baseColorMap, .metallicRoughnessTexture = {}}
+        });
+        view->meshes.push_back({
+            .mesh = meshes->cube,
+            .material = {.baseColorTexture = {},
+                         .metallicRoughnessTexture = meshes->metallicRoughnessMap,
+                         .metallic = 0.75F,
+                         .roughness = 0.8F}
+        });
         auto missingUvView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
         missingUvView.meshes.push_back({
             .mesh = meshes->triangle,
-            .material = {.model = panda::MaterialModel::Unlit, .baseColorTexture = meshes->baseColorMap}
+            .material = {.model = panda::MaterialModel::Unlit,
+                         .baseColorTexture = meshes->baseColorMap,
+                         .metallicRoughnessTexture = {}}
         });
         const auto missingUvResult = context.render(missingUvView);
         ASSERT_FALSE(missingUvResult.has_value());
         EXPECT_EQ(missingUvResult.error().code, panda::ErrorCode::InvalidArgument);
+
+        auto uvlessLitMesh = context.createMesh({
+            .vertexCount = 3,
+            .vertexStride = 24,
+            .indices = std::nullopt,
+            .attributes = {{.semantic = panda::VertexAttributeSemantic::Position,
+                            .format = panda::VertexAttributeFormat::Float3,
+                            .offset = 0},
+                           {.semantic = panda::VertexAttributeSemantic::Normal,
+                            .format = panda::VertexAttributeFormat::Float3,
+                            .offset = 12}}
+        });
+        ASSERT_TRUE(uvlessLitMesh.has_value()) << uvlessLitMesh.error().message;
+        auto missingUvMrView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
+        missingUvMrView.meshes.push_back({
+            .mesh = *uvlessLitMesh,
+            .material = {.baseColorTexture = {}, .metallicRoughnessTexture = meshes->metallicRoughnessMap}
+        });
+        const auto missingUvMrResult = context.render(missingUvMrView);
+        ASSERT_FALSE(missingUvMrResult.has_value());
+        EXPECT_EQ(missingUvMrResult.error().code, panda::ErrorCode::InvalidArgument);
+
+        auto unlitMrView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
+        unlitMrView.meshes.push_back({
+            .mesh = meshes->cube,
+            .material = {.model = panda::MaterialModel::Unlit,
+                         .baseColorTexture = {},
+                         .metallicRoughnessTexture = meshes->metallicRoughnessMap}
+        });
+        const auto unlitMrResult = context.render(unlitMrView);
+        ASSERT_FALSE(unlitMrResult.has_value());
+        EXPECT_EQ(unlitMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
         auto linearMap = context.createTexture({
             .extent = vk::Extent2D {1, 1},
@@ -475,10 +573,43 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         });
         ASSERT_TRUE(linearMap.has_value()) << linearMap.error().message;
         auto linearMapView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
-        linearMapView.meshes.push_back({.mesh = meshes->cube, .material = {.baseColorTexture = *linearMap}});
+        linearMapView.meshes.push_back({
+            .mesh = meshes->cube,
+            .material = {.baseColorTexture = *linearMap, .metallicRoughnessTexture = {}}
+        });
         const auto linearMapResult = context.render(linearMapView);
         ASSERT_FALSE(linearMapResult.has_value());
         EXPECT_EQ(linearMapResult.error().code, panda::ErrorCode::InvalidArgument);
+
+        auto srgbMetallicRoughnessMap = context.createTexture({
+            .extent = vk::Extent2D {1, 1},
+            .format = vk::Format::eR8G8B8A8Srgb,
+            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        });
+        ASSERT_TRUE(srgbMetallicRoughnessMap.has_value()) << srgbMetallicRoughnessMap.error().message;
+        auto srgbMrView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
+        srgbMrView.meshes.push_back({
+            .mesh = meshes->cube,
+            .material = {.baseColorTexture = {}, .metallicRoughnessTexture = *srgbMetallicRoughnessMap}
+        });
+        const auto srgbMrResult = context.render(srgbMrView);
+        ASSERT_FALSE(srgbMrResult.has_value());
+        EXPECT_EQ(srgbMrResult.error().code, panda::ErrorCode::InvalidArgument);
+
+        auto unsampledMetallicRoughnessMap = context.createTexture({
+            .extent = vk::Extent2D {1, 1},
+            .format = vk::Format::eR8G8B8A8Unorm,
+            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment
+        });
+        ASSERT_TRUE(unsampledMetallicRoughnessMap.has_value()) << unsampledMetallicRoughnessMap.error().message;
+        auto unsampledMrView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
+        unsampledMrView.meshes.push_back({
+            .mesh = meshes->cube,
+            .material = {.baseColorTexture = {}, .metallicRoughnessTexture = *unsampledMetallicRoughnessMap}
+        });
+        const auto unsampledMrResult = context.render(unsampledMrView);
+        ASSERT_FALSE(unsampledMrResult.has_value());
+        EXPECT_EQ(unsampledMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
         auto unuploadedMap = context.createTexture({
             .extent = vk::Extent2D {1, 1},
@@ -487,10 +618,28 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         });
         ASSERT_TRUE(unuploadedMap.has_value()) << unuploadedMap.error().message;
         auto unuploadedMapView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
-        unuploadedMapView.meshes.push_back({.mesh = meshes->cube, .material = {.baseColorTexture = *unuploadedMap}});
+        unuploadedMapView.meshes.push_back({
+            .mesh = meshes->cube,
+            .material = {.baseColorTexture = *unuploadedMap, .metallicRoughnessTexture = {}}
+        });
         const auto unuploadedMapResult = context.render(unuploadedMapView);
         ASSERT_FALSE(unuploadedMapResult.has_value());
         EXPECT_EQ(unuploadedMapResult.error().code, panda::ErrorCode::InvalidArgument);
+
+        auto unuploadedMrMap = context.createTexture({
+            .extent = vk::Extent2D {1, 1},
+            .format = vk::Format::eR8G8B8A8Unorm,
+            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        });
+        ASSERT_TRUE(unuploadedMrMap.has_value()) << unuploadedMrMap.error().message;
+        auto unuploadedMrView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
+        unuploadedMrView.meshes.push_back({
+            .mesh = meshes->cube,
+            .material = {.baseColorTexture = {}, .metallicRoughnessTexture = *unuploadedMrMap}
+        });
+        const auto unuploadedMrResult = context.render(unuploadedMrView);
+        ASSERT_FALSE(unuploadedMrResult.has_value());
+        EXPECT_EQ(unuploadedMrResult.error().code, panda::ErrorCode::InvalidArgument);
         const auto frame = context.render(*view);
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
         EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);

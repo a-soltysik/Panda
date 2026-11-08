@@ -6,6 +6,7 @@
 #include "RenderViewValidation.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <expected>
 #include <glm/ext/matrix_float3x3.hpp>
@@ -16,6 +17,7 @@
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/RenderView.hpp>
+#include <panda/Texture.hpp>
 
 #include "Math.hpp"
 #include "resources/MeshResource.hpp"
@@ -81,16 +83,33 @@ auto isCompatibleMeshDraw(const MeshDraw& draw, const resources::MemoryPool& poo
            (draw.material.model != MaterialModel::Lit || hasAttribute(draw.mesh, VertexAttributeSemantic::Normal));
 }
 
-auto isCompatibleBaseColorTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+auto isCompatibleTexture(const MeshDraw& draw,
+                         const Texture& handle,
+                         const resources::MemoryPool& pool,
+                         const std::array<vk::Format, 2>& formats) -> bool
 {
-    if (!draw.material.baseColorTexture.isValid())
+    if (!handle.isValid())
     {
         return true;
     }
-    const auto& texture = *::panda::detail::TextureResource::getResource(draw.material.baseColorTexture);
+    const auto& texture = *::panda::detail::TextureResource::getResource(handle);
     return hasAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0) && texture.belongsTo(pool) &&
            (texture.getUsage() & vk::ImageUsageFlagBits::eSampled) &&
-           (texture.getFormat() == vk::Format::eR8G8B8A8Srgb || texture.getFormat() == vk::Format::eB8G8R8A8Srgb);
+           std::ranges::find(formats, texture.getFormat()) != formats.end();
+}
+
+auto isCompatibleBaseColorTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+{
+    static constexpr auto formats = std::array {vk::Format::eR8G8B8A8Srgb, vk::Format::eB8G8R8A8Srgb};
+    return isCompatibleTexture(draw, draw.material.baseColorTexture, pool, formats);
+}
+
+auto isCompatibleMetallicRoughnessTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+{
+    static constexpr auto formats = std::array {vk::Format::eR8G8B8A8Unorm, vk::Format::eB8G8R8A8Unorm};
+    return !draw.material.metallicRoughnessTexture.isValid() ||
+           (draw.material.model == MaterialModel::Lit &&
+            isCompatibleTexture(draw, draw.material.metallicRoughnessTexture, pool, formats));
 }
 }
 
@@ -138,17 +157,28 @@ auto validateRenderViewMeshes(const RenderView& view, const resources::MemoryPoo
                                           "Base-color map requires UVs and a sampled RGBA8 sRGB texture from this "
                                           "Context")};
     }
+    if (std::ranges::any_of(view.meshes, [&pool](const auto& draw) {
+            return !isCompatibleMetallicRoughnessTexture(draw, pool);
+        }))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                          "Metallic-roughness map requires UVs and a sampled RGBA8 UNORM texture for "
+                                          "a Lit material from this Context")};
+    }
     return {};
 }
 
 auto validateRenderViewTextures(const RenderView& view) -> Result<void>
 {
     if (std::ranges::any_of(view.meshes, [](const auto& draw) {
-            return draw.material.baseColorTexture.isValid() &&
-                   !::panda::detail::TextureResource::getResource(draw.material.baseColorTexture)->isUploaded();
+            return (draw.material.baseColorTexture.isValid() &&
+                    !::panda::detail::TextureResource::getResource(draw.material.baseColorTexture)->isUploaded()) ||
+                   (draw.material.metallicRoughnessTexture.isValid() &&
+                    !::panda::detail::TextureResource::getResource(draw.material.metallicRoughnessTexture)
+                         ->isUploaded());
         }))
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Base-color texture has not been uploaded")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Material texture has not been uploaded")};
     }
     return {};
 }

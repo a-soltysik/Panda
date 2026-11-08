@@ -54,6 +54,10 @@ struct Material
     /// Optional base-color map. If set, it must be uploaded RGBA8 sRGB, sampled, and from the rendered Context;
     /// the mesh must declare TexCoord0. An empty handle contributes white.
     Texture baseColorTexture;
+    /// Optional Lit-only linear metallic-roughness map. If set, it must be uploaded RGBA8 UNORM, sampled, and from
+    /// the rendered Context; the mesh must declare TexCoord0. Blue scales metallic and green scales roughness.
+    /// An empty handle contributes white.
+    Texture metallicRoughnessTexture;
     /// Metallic response, clamped to [0,1] when uploaded.
     float metallic {0.0F};
     /// Perceptual roughness, clamped to [0,1] when uploaded.

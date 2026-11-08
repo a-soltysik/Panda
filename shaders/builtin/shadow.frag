@@ -13,7 +13,8 @@ struct MaterialRecord
     uint renderFace;
     float alphaCutoff;
     uint hasBaseColorTexture;
-    uint padding[2];
+    uint hasMetallicRoughnessTexture;
+    uint padding;
 };
 
 layout(set = 0, binding = 2, std430) readonly buffer MaterialData

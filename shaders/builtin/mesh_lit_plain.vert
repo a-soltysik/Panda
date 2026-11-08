@@ -4,7 +4,7 @@
 
 layout(location = PANDA_VERTEX_ATTRIBUTE_POSITION_LOCATION) in vec3 vertexPosition;
 layout(location = PANDA_VERTEX_ATTRIBUTE_NORMAL_LOCATION) in vec3 vertexNormal;
-#ifdef HAS_BASE_COLOR_TEXTURE
+#ifdef HAS_TEXTURE_COORDINATES
 layout(location = PANDA_VERTEX_ATTRIBUTE_TEX_COORD_0_LOCATION) in vec2 vertexTextureCoordinates;
 #define BASE_COLOR_TEXTURE_COORDINATES vertexTextureCoordinates
 #else

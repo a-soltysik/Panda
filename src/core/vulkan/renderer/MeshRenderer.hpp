@@ -46,7 +46,8 @@ struct alignas(16) MaterialRecord
     std::uint32_t renderFace {};
     float alphaCutoff {};
     std::uint32_t hasBaseColorTexture {};
-    std::array<std::uint32_t, 2> padding {};
+    std::uint32_t hasMetallicRoughnessTexture {};
+    std::uint32_t padding {};
 };
 
 class MeshRenderer final
@@ -94,7 +95,7 @@ private:
     {
         bool lit {false};
         bool hasColor {false};
-        bool hasBaseColorTexture {false};
+        bool hasTextureCoordinates {false};
         std::uint32_t vertexStride {0};
         std::uint32_t positionOffset {0};
         std::uint32_t normalOffset {0};

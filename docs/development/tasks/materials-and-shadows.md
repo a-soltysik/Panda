@@ -26,7 +26,9 @@ require Position and Normal. An optional, uploaded same-Context RGBA8 sRGB base-
 map requires sampled usage and `TexCoord0`; filtering is linear with repeat addressing.
 Its color multiplies material and draw tint and optional vertex color, and its alpha
 is used by Blend and by the matching Mask camera/shadow cutoff. Per-frame slots retain
-the texture through GPU completion. Shader locations share one preprocessor
+both maps through GPU completion. The Lit metallic-roughness map requires sampled
+usage and `TexCoord0`; blue multiplies metallic and green multiplies roughness. It
+does not affect alpha or shadow passes. Shader locations share one preprocessor
 definition file consumed by C++ and GLSL, with C++ static assertions against
 `VertexAttributeSemantic`. Material values use a named 32-byte record packed
 contiguously in a per-frame storage buffer with one mapped write per frame. `Material`
@@ -40,7 +42,7 @@ rendered back faces. `simple_scene` shows the compact layout, an optional
 base-color map on the cube, and an untextured Unlit triangle; `scene_demo` puts
 an upright, vertex-colored triangle into the existing animated object grid.
 
-Emissive, normal, metallic-roughness and occlusion maps, multiple lights, spot/point
+Emissive, normal and occlusion maps, multiple lights, spot/point
 shadows, normal-map fallback, and the required shadow-quality captures remain incomplete.
 This task is not accepted.
 
