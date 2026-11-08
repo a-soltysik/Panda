@@ -224,7 +224,6 @@ public:
     [[nodiscard]] auto render(const RenderView& view) const -> Result<FrameResult>;
 
 private:
-    struct InstanceServices;
     class Impl;
 
     [[nodiscard]] static auto createInternal(const WindowSurface* surface, const ContextOptions& options)

@@ -42,9 +42,11 @@ error or promise general recovery from device loss.
    This means all resource allocation owners are gone after internal upload
    packets have released their references. [UC Return a resource memory range](release-memory-range.md)
    explains how final owners return their ranges.
-6. **Release Context services.** After `drain()` returns, normal RAII destruction
-   releases the Context-owned presentation, upload, queue, pool, device and
-   instance services. The application still owns its `WindowSurface`.
+6. **Release Context services.** After `drain()` returns, `Context::Impl` releases
+   its `ContextResources` owner. Its members destruct in reverse declaration
+   order, releasing performance, external, upload, queue, pool, device and
+   instance services. Presentation was reset before the live-allocation check.
+   The application still owns its `WindowSurface`.
 
 ```mermaid
 sequenceDiagram
@@ -52,6 +54,7 @@ sequenceDiagram
     participant H as Resource handles and upload batches
     participant C as Context
     participant I as Context::Impl
+    participant R as ContextResources
     participant U as UploadManager
     participant P as Presentation
     participant M as MemoryPool
@@ -73,7 +76,9 @@ sequenceDiagram
     end
     I->>M: Step 5 - require liveBytes == 0
     M-->>I: No live allocation ranges
-    I->>C: Step 6 - allow RAII teardown
+    I->>R: Step 6 - release resource bundle
+    R->>R: Destruct in reverse declaration order
+    R-->>C: RAII teardown complete
     C-->>A: Destructor returns
 ```
 

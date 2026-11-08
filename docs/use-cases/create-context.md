@@ -26,11 +26,11 @@ upload work.
 1. **Choose the Context path.** The application supplies options and, for the
    windowed path, a live `WindowSurface` whose required instance extensions include
    `VK_KHR_surface` and the platform surface extension.
-2. **Build instance services.** Panda verifies Vulkan 1.3 support from the
-   loader, checks the validation layer when requested, resolves the required
-   instance extensions, and creates the Vulkan instance. It then creates the
-   optional debug messenger and, for a windowed Context, creates and owns the
-   native `VkSurfaceKHR` returned by `WindowSurface`.
+2. **Build instance services.** `instance::createResources()` verifies Vulkan
+   1.3 support from the loader, checks the validation layer when requested,
+   resolves the required instance extensions, and creates the Vulkan instance.
+   It also creates the optional debug messenger and, for a windowed Context, owns
+   the native `VkSurfaceKHR` returned by `WindowSurface`.
 3. **Select a compatible device.** Panda calls the
    [UC Select a compatible Vulkan device](select-vulkan-device.md), which returns a physical
    device, queue families and the capabilities needed by this Context.
@@ -48,14 +48,15 @@ upload work.
    When the platform external-memory extension is available, it enables that
    extension and enables the external-semaphore extension only if timeline-semaphore
    export is supported.
-6. **Initialize Context services.** Panda creates the memory pool and
-   performance manager, and creates `ExternalContext` when external-memory export
-   is available. For a windowed Context it also initializes presentation frame
-   resources and reads the framebuffer extent. A nonzero extent creates the
-   initial swapchain generation; a zero extent records that presentation must be
-   prepared later.
-7. **Publish the owner.** Only after initialization succeeds does
-   `createInternal()` construct and return the public `Context`.
+6. **Initialize the resource bundle.** `context::createResources()` initializes
+   one stable `ContextResources` owner in place. It creates the memory pool and
+   performance manager, creates `ExternalContext` when external-memory export is
+   available, and initializes presentation for a windowed Context. A nonzero
+   framebuffer extent creates the initial swapchain generation; a zero extent
+   records that presentation must be prepared later.
+7. **Publish the owner.** Only after the complete bundle is returned does
+   `createInternal()` construct `Context::Impl` to own it and return the public
+   `Context`.
 
 The paths share the same creation steps but differ in instance and presentation
 setup, so each entry point has its own sequence.
@@ -66,27 +67,35 @@ setup, so each entry point has its own sequence.
 sequenceDiagram
     participant A as Application
     participant C as Context
+    participant F as context::createResources
+    participant X as instance::createResources
+    participant R as ContextResources
     participant I as Context::Impl
     participant V as Vulkan instance and device
     participant D as Device selection
     A->>C: Step 1 - create(options)
-    C->>I: Initialize without a surface
-    I->>V: Step 2 - Verify loader and optional validation layer
-    I->>V: Create instance and optional debug messenger
-    I->>D: Step 3 - Select headless-compatible physical device and queue
-    Note over I,D: Step 3 - UC Select a compatible Vulkan device
-    D-->>I: Selected device, capabilities and queue families
+    C->>F: Create resources without a surface
+    F->>R: Allocate stable bundle once
+    F->>X: Step 2 - createResources(loader, no surface, options)
+    X->>V: Verify loader and optional validation layer
+    X->>V: Create instance and optional debug messenger
+    X-->>F: InstanceResources
+    F->>R: Store instance resources
+    F->>D: Step 3 - Select headless-compatible physical device and queue
+    Note over F,D: Step 3 - UC Select a compatible Vulkan device
+    D-->>F: Selected device, capabilities and queue families
     opt External-buffer support requested
-        I->>V: Step 4 - Check platform external-memory extension
-        V-->>I: External-memory extension availability
+        F->>V: Step 4 - Check platform external-memory extension
+        V-->>F: External-memory extension availability
         opt External-memory extension available
-            I->>V: Query optional timeline-semaphore export
-            V-->>I: Timeline-semaphore export availability
+            F->>V: Query optional timeline-semaphore export
+            V-->>F: Timeline-semaphore export availability
         end
     end
-    I->>V: Step 5 - Create logical device with selected features, queues and supported extensions
-    I->>I: Step 6 - Create memory pool, optional ExternalContext and performance manager
-    I->>C: Step 7 - Publish fully initialized Context
+    F->>V: Step 5 - Create logical device with selected features, queues and supported extensions
+    F->>R: Step 6 - Initialize pool, optional ExternalContext and performance manager
+    F-->>C: Complete ContextResources
+    C->>I: Step 7 - Construct Impl with owned bundle
     C-->>A: Result containing Context
 ```
 
@@ -96,33 +105,40 @@ sequenceDiagram
 sequenceDiagram
     participant A as Application
     participant C as Context
+    participant F as context::createResources
+    participant X as instance::createResources
+    participant R as ContextResources
     participant I as Context::Impl
     participant W as WindowSurface
     participant V as Vulkan instance and device
     participant D as Device selection
     participant P as Presentation
     A->>C: Step 1 - createWithSurface(window, options)
-    C->>I: Initialize with borrowed WindowSurface
-    I->>V: Step 2 - Verify loader and optional validation layer
-    I->>W: Get required instance extensions
-    W-->>I: Platform and surface extension names
-    I->>V: Create instance and optional debug messenger
-    I->>W: Create native Vulkan surface
-    W-->>I: Transfer native surface ownership to Context
-    I->>D: Step 3 - Select surface-compatible physical device and queues
-    Note over I,D: Step 3 - UC Select a compatible Vulkan device
-    D-->>I: Selected device, capabilities and queue families
+    C->>F: Create resources with borrowed WindowSurface
+    F->>R: Allocate stable bundle once
+    F->>X: Step 2 - createResources(loader, surface, options)
+    X->>V: Verify loader and optional validation layer
+    X->>W: Get required instance extensions
+    W-->>X: Platform and surface extension names
+    X->>V: Create instance and optional debug messenger
+    X->>W: Create native Vulkan surface
+    W-->>X: Transfer native surface ownership to ContextResources
+    X-->>F: InstanceResources
+    F->>R: Store instance resources
+    F->>D: Step 3 - Select surface-compatible physical device and queues
+    Note over F,D: Step 3 - UC Select a compatible Vulkan device
+    D-->>F: Selected device, capabilities and queue families
     opt External-buffer support requested
-        I->>V: Step 4 - Check platform external-memory extension
-        V-->>I: External-memory extension availability
+        F->>V: Step 4 - Check platform external-memory extension
+        V-->>F: External-memory extension availability
         opt External-memory extension available
-            I->>V: Query optional timeline-semaphore export
-            V-->>I: Timeline-semaphore export availability
+            F->>V: Query optional timeline-semaphore export
+            V-->>F: Timeline-semaphore export availability
         end
     end
-    I->>V: Step 5 - Create logical device with selected features, queues and supported extensions
-    I->>I: Step 6 - Create memory pool, optional ExternalContext and performance manager
-    I->>P: Initialize frame resources and initial presentation
+    F->>V: Step 5 - Create logical device with selected features, queues and supported extensions
+    F->>R: Step 6 - Create pool, optional ExternalContext and performance manager
+    F->>P: Initialize frame resources and initial presentation
     P->>W: Query framebuffer extent
     W-->>P: Pixel extent
     alt Nonzero framebuffer extent
@@ -130,8 +146,9 @@ sequenceDiagram
     else Zero framebuffer extent
         P->>P: Leave generation pending
     end
-    P-->>I: Initial generation or zero-extent pending state
-    I->>C: Step 7 - Publish fully initialized Context
+    P-->>F: Initial generation or zero-extent pending state
+    F-->>C: Complete ContextResources
+    C->>I: Step 7 - Construct Impl with owned bundle
     C-->>A: Result containing Context
 ```
 
@@ -148,10 +165,13 @@ the requested buffer usage is checked later when the buffer is created. The full
 core-device rules live in [UC Select a compatible Vulkan device](select-vulkan-device.md).
 
 **Ownership.** `WindowSurface` is borrowed, while the native surface it creates is
-owned by the Context. Partial initialization never publishes a facade: if a later
-step fails, the local implementation and its already-created RAII owners unwind,
-releasing device-side objects before the surface and instance. The caller still
-owns the window and must keep it alive until Context teardown.
+owned by `ContextResources`. The factory allocates this bundle once; `Context::Impl`
+owns it after successful initialization. If any stage fails, the local bundle
+unwinds its RAII owners in reverse declaration order. No `Impl` exists yet, so the
+failure path does not call the successful-Context drain. The caller still owns the
+window and must keep it alive until Context teardown. `ExternalContext` borrows the
+optional uploads member itself, so the bundle stays at a stable address through
+lazy upload creation and Context moves.
 
 **Windowed readiness.** A successful windowed Context has presentation frame
 resources. If the framebuffer is minimized and reports zero pixels, creation
@@ -179,28 +199,31 @@ presentation. Upload support is initialized when an upload batch is first reques
 
 ### Error 7 - Release partial presentation state
 
-**Entry state.** Steps 1–5 completed. The private implementation owns instance services,
-the selected physical device wrapper, the logical device, memory pool and initialized
-performance manager. Presentation setup may have created frame resources or attempted
-the initial swapchain generation. No public Context has been published and this
-flow has submitted no GPU work.
+**Entry state.** Steps 1-5 completed. The local `ContextResources` bundle owns
+instance resources, the selected physical-device wrapper, the logical device,
+memory pool and initialized performance manager. Presentation setup may have
+created frame resources or attempted the initial swapchain generation. No
+`Context::Impl` or public `Context` has been published, and this flow has submitted
+no GPU work.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
     participant C as Context::createInternal
-    participant I as Context::Impl
+    participant F as context::createResources
+    participant R as ContextResources
     participant P as Presentation::create
     participant D as Logical device and Context services
     participant S as Owned surface and instance services
-    C->>I: Step 6 - Initialize Context services
-    I->>P: Create frame resources and initial generation
-    P-->>I: Error 7 - Initialization error
+    C->>F: Step 6 - Create resource bundle
+    F->>R: Own initialized services
+    F->>P: Create frame resources and initial generation
+    P-->>F: Error 7 - Initialization error
     Note over P: The unpublished Presentation owner releases its partial state
-    I-->>C: Propagate Error, no Context facade exists
-    Note over C,I: The unpublished Impl releases its remaining RAII owners
-    I->>D: Release services and logical device
-    I->>S: Release owned surface, messenger and instance
+    F-->>C: Propagate Error, no Context facade exists
+    Note over F,R: The unpublished bundle releases its RAII owners
+    R->>D: Release services and logical device
+    R->>S: Release owned surface, messenger and instance
     C-->>A: Result containing Error
 ```
 
