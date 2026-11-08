@@ -9,4 +9,5 @@ namespace panda::core::vulkan::renderer
 {
 [[nodiscard]] auto validateRenderViewData(const RenderView& view) -> Result<void>;
 [[nodiscard]] auto validateRenderViewMeshes(const RenderView& view, const resources::MemoryPool& pool) -> Result<void>;
+[[nodiscard]] auto validateRenderViewTextures(const RenderView& view) -> Result<void>;
 }

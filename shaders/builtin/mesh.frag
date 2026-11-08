@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "ShaderLocations.inc"
 
 layout(constant_id = 0) const uint outputIsSrgb = 1u;
 layout(constant_id = 1) const uint alphaMode = 0u;
@@ -14,6 +17,7 @@ layout(set = 0, binding = 0) uniform FrameData
 } frameData;
 
 layout(set = 0, binding = 1) uniform sampler2D shadowMap;
+layout(set = 1, binding = 0) uniform sampler2D baseColorMap;
 struct MaterialRecord
 {
     float metallic;
@@ -21,7 +25,8 @@ struct MaterialRecord
     uint isLit;
     uint renderFace;
     float alphaCutoff;
-    uint padding[3];
+    uint hasBaseColorTexture;
+    uint padding[2];
 };
 
 layout(set = 0, binding = 2, std430) readonly buffer MaterialData
@@ -29,10 +34,11 @@ layout(set = 0, binding = 2, std430) readonly buffer MaterialData
     MaterialRecord records[];
 } materialData;
 
-layout(location = 0) in vec3 worldPosition;
-layout(location = 1) in vec3 worldNormal;
-layout(location = 2) in vec4 baseColor;
-layout(location = 3) flat in uint materialIndex;
+layout(location = PANDA_MESH_VARYING_WORLD_POSITION_LOCATION) in vec3 worldPosition;
+layout(location = PANDA_MESH_VARYING_WORLD_NORMAL_LOCATION) in vec3 worldNormal;
+layout(location = PANDA_MESH_VARYING_BASE_COLOR_LOCATION) in vec4 baseColor;
+layout(location = PANDA_MESH_VARYING_MATERIAL_INDEX_LOCATION) flat in uint materialIndex;
+layout(location = PANDA_MESH_VARYING_TEXTURE_COORDINATES_LOCATION) in vec2 textureCoordinates;
 layout(location = 0) out vec4 fragmentColor;
 
 const float pi = 3.14159265359;
@@ -100,14 +106,16 @@ float shadowVisibility(vec3 normal)
 void main()
 {
     const MaterialRecord material = materialData.records[materialIndex];
-    if (alphaMode == 1u && baseColor.a < material.alphaCutoff)
+    const vec4 mappedBaseColor = baseColor *
+        (material.hasBaseColorTexture != 0u ? texture(baseColorMap, textureCoordinates) : vec4(1.0));
+    if (alphaMode == 1u && mappedBaseColor.a < material.alphaCutoff)
     {
         discard;
     }
-    const float opacity = alphaMode == 2u ? clamp(baseColor.a, 0.0, 1.0) : baseColor.a;
+    const float opacity = alphaMode == 2u ? clamp(mappedBaseColor.a, 0.0, 1.0) : mappedBaseColor.a;
     if (material.isLit == 0u)
     {
-        const vec3 mapped = toneMapAces(baseColor.rgb);
+        const vec3 mapped = toneMapAces(mappedBaseColor.rgb);
         const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
         fragmentColor = vec4(outputColor, opacity);
         return;
@@ -133,10 +141,10 @@ void main()
     const float distribution = distributionGgx(normalHalf, alphaSquared);
     const float geometry = geometrySchlick(normalView, geometryK) * geometrySchlick(normalLight, geometryK);
     const vec3 specular = (distribution * geometry * fresnel) / max(4.0 * normalView * normalLight, 0.001);
-    const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * baseColor.rgb / pi;
+    const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * mappedBaseColor.rgb / pi;
     const vec3 direct = (diffuse + specular) * frameData.lightColorIntensity.rgb *
     frameData.lightColorIntensity.w * normalLight * shadowVisibility(normal);
-    const vec3 ambient = baseColor.rgb * frameData.ambient.rgb * frameData.ambient.w;
+    const vec3 ambient = mappedBaseColor.rgb * frameData.ambient.rgb * frameData.ambient.w;
     const vec3 mapped = toneMapAces(ambient + direct);
     const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
     fragmentColor = vec4(outputColor, opacity);

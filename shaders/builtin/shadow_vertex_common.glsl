@@ -11,12 +11,14 @@ layout(push_constant) uniform DrawData
     vec4 tint;
 } drawData;
 
-layout(location = 0) out float vertexAlpha;
-layout(location = 1) flat out uint materialIndex;
+layout(location = PANDA_SHADOW_VARYING_ALPHA_LOCATION) out float vertexAlpha;
+layout(location = PANDA_SHADOW_VARYING_MATERIAL_INDEX_LOCATION) flat out uint materialIndex;
+layout(location = PANDA_SHADOW_VARYING_TEXTURE_COORDINATES_LOCATION) out vec2 textureCoordinates;
 
-void writeShadowVertex(vec3 position, float alpha)
+void writeShadowVertex(vec3 position, float alpha, vec2 vertexTextureCoordinates)
 {
     gl_Position = frameData.lightViewProjection * drawData.modelMatrix * vec4(position, 1.0);
     vertexAlpha = alpha * drawData.tint.a;
     materialIndex = uint(gl_InstanceIndex);
+    textureCoordinates = vertexTextureCoordinates;
 }

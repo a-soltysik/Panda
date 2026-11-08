@@ -295,6 +295,11 @@ auto TextureResource::belongsTo(const MemoryPool& pool) const -> bool
     return &_pool == &pool;
 }
 
+auto TextureResource::isUploaded() const -> bool
+{
+    return _uploaded;
+}
+
 auto TextureResource::reserveUpload(UploadBatchId batchId) -> Result<void>
 {
     if (_samples != vk::SampleCountFlagBits::e1)

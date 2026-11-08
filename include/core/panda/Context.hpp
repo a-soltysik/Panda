@@ -217,9 +217,10 @@ public:
     /// @param view Camera, directional light and mesh draws; an empty mesh list presents the background.
     /// Meshes must belong to this Context, be uploaded, and declare a valid vertex layout.
     /// Lit materials require Position and Normal; unlit materials require Position. Color is optional and defaults to white.
+    /// If a base-color texture is set, it must be uploaded, sampled, RGBA8 sRGB, and from this Context; its mesh must declare TexCoord0.
     /// @return Checked frame result or a validation/backend/window error. A valid
     /// completion token means submitted work, not completed presentation. Meshes
-    /// are retained through their submitted GPU use.
+    /// Meshes and selected textures are retained through their submitted GPU use.
     [[nodiscard]] auto render(const RenderView& view) const -> Result<FrameResult>;
 
 private:

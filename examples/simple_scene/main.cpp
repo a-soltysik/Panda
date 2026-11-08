@@ -16,15 +16,18 @@
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Cube.hpp>
+#include <panda/Geometry.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/Plane.hpp>
 #include <panda/RenderView.hpp>
+#include <panda/Texture.hpp>
 #include <panda/Transform.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <span>
 #include <tuple>
+#include <vulkan/vulkan.hpp>
 
 namespace
 {
@@ -39,6 +42,14 @@ struct SceneMeshes
     panda::Mesh cube;
     panda::Mesh ground;
     panda::Mesh triangle;
+    panda::Texture baseColorMap;
+};
+
+struct SceneGeometry
+{
+    panda::Geometry cube;
+    panda::Geometry ground;
+    std::array<ColoredVertex, 3> triangle {};
 };
 
 auto createColoredTriangleVertices() -> std::array<ColoredVertex, 3>
@@ -48,6 +59,62 @@ auto createColoredTriangleVertices() -> std::array<ColoredVertex, 3>
         ColoredVertex {.position = {0.4F, 0.0F, 0.0F},  .color = {0.1F, 1.0F, 0.2F, 1.0F}},
         ColoredVertex {.position = {0.0F, 0.8F, 0.0F},  .color = {0.2F, 0.3F, 1.0F, 1.0F}}
     };
+}
+
+auto createColoredTriangleMesh(const panda::Context& context, const std::array<ColoredVertex, 3>& vertices)
+    -> panda::Mesh
+{
+    return panda::expect(context.createMesh({
+                             .vertexCount = static_cast<std::uint32_t>(vertices.size()),
+                             .vertexStride = static_cast<std::uint32_t>(sizeof(ColoredVertex)),
+                             .indices = std::nullopt,
+                             .attributes = {{.semantic = panda::VertexAttributeSemantic::Position,
+                                             .format = panda::VertexAttributeFormat::Float3,
+                                             .offset = static_cast<std::uint32_t>(offsetof(ColoredVertex, position))},
+                                            {.semantic = panda::VertexAttributeSemantic::Color,
+                                             .format = panda::VertexAttributeFormat::Float4,
+                                             .offset = static_cast<std::uint32_t>(offsetof(ColoredVertex, color))}}
+    }),
+                         "Create the unlit triangle mesh");
+}
+
+auto createBaseColorMap(const panda::Context& context) -> panda::Texture
+{
+    return panda::expect(context.createTexture({
+                             .extent = {2, 2},
+                             .format = vk::Format::eR8G8B8A8Srgb,
+                             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    }),
+                         "Create the cube base-color map");
+}
+
+void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes, const SceneGeometry& geometry)
+{
+    auto batch = panda::expect(context.createUploadBatch(), "Create the upload batch");
+    panda::expect(batch.write(meshes.cube, geometry.cube), "Stage the cube geometry");
+    panda::expect(batch.write(meshes.ground, geometry.ground), "Stage the ground geometry");
+    panda::expect(batch.write(meshes.triangle, std::as_bytes(std::span {geometry.triangle})),
+                  "Stage the triangle vertices");
+    static constexpr auto baseColorPixels = std::array {std::byte {0xff},
+                                                        std::byte {0x30},
+                                                        std::byte {0x30},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0x30},
+                                                        std::byte {0x50},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff}};
+    panda::expect(batch.write(meshes.baseColorMap, baseColorPixels), "Stage the cube base-color map");
+    const auto completion = panda::expect(batch.submit(), "Submit the scene upload");
+    const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for the scene upload");
+    panda::expect(status == panda::WaitStatus::Completed, "Scene upload did not finish in time");
 }
 
 auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
@@ -66,41 +133,26 @@ auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
         .directionalLight = {.direction = {0.55F, -0.6F, 0.58F}},
         .meshes = {
                    panda::MeshDraw {.mesh = meshes.ground, .modelMatrix = groundTransform, .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
-                   panda::MeshDraw {.mesh = meshes.cube},
+                   panda::MeshDraw {.mesh = meshes.cube, .material = {.baseColorTexture = meshes.baseColorMap}},
                    panda::MeshDraw {.mesh = meshes.triangle,
                              .modelMatrix = triangleTransform,
-                             .material = {.model = panda::MaterialModel::Unlit}}}
+                             .material = {.model = panda::MaterialModel::Unlit, .baseColorTexture = {}}}}
     };
 }
 
 auto createSceneMeshes(const panda::Context& context) -> SceneMeshes
 {
-    const auto geometry = panda::createCubeGeometry();
-    const auto cube = panda::expect(context.createMeshFromGeometry(geometry), "Create the cube mesh");
-    const auto groundGeometry = panda::createPlaneGeometry();
-    const auto ground = panda::expect(context.createMeshFromGeometry(groundGeometry), "Create the ground mesh");
-    const auto triangleVertices = createColoredTriangleVertices();
-    const auto triangle =
-        panda::expect(context.createMesh({
-                          .vertexCount = static_cast<std::uint32_t>(triangleVertices.size()),
-                          .vertexStride = static_cast<std::uint32_t>(sizeof(ColoredVertex)),
-                          .indices = std::nullopt,
-                          .attributes = {{.semantic = panda::VertexAttributeSemantic::Position,
-                                          .format = panda::VertexAttributeFormat::Float3,
-                                          .offset = static_cast<std::uint32_t>(offsetof(ColoredVertex, position))},
-                                         {.semantic = panda::VertexAttributeSemantic::Color,
-                                          .format = panda::VertexAttributeFormat::Float4,
-                                          .offset = static_cast<std::uint32_t>(offsetof(ColoredVertex, color))}}
-    }),
-                      "Create the unlit triangle mesh");
-    auto batch = panda::expect(context.createUploadBatch(), "Create the upload batch");
-    panda::expect(batch.write(cube, geometry), "Stage the cube geometry");
-    panda::expect(batch.write(ground, groundGeometry), "Stage the ground geometry");
-    panda::expect(batch.write(triangle, std::as_bytes(std::span {triangleVertices})), "Stage the triangle vertices");
-    const auto completion = panda::expect(batch.submit(), "Submit the cube upload");
-    const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for the cube upload");
-    panda::expect(status == panda::WaitStatus::Completed, "Cube upload did not finish in time");
-    return {.cube = cube, .ground = ground, .triangle = triangle};
+    const auto geometry = SceneGeometry {.cube = panda::createCubeGeometry(),
+                                         .ground = panda::createPlaneGeometry(),
+                                         .triangle = createColoredTriangleVertices()};
+    const auto cube = panda::expect(context.createMeshFromGeometry(geometry.cube), "Create the cube mesh");
+    const auto ground = panda::expect(context.createMeshFromGeometry(geometry.ground), "Create the ground mesh");
+    auto meshes = SceneMeshes {.cube = cube,
+                               .ground = ground,
+                               .triangle = createColoredTriangleMesh(context, geometry.triangle),
+                               .baseColorMap = createBaseColorMap(context)};
+    uploadSceneMeshes(context, meshes, geometry);
+    return meshes;
 }
 
 void run(const panda::tools::Window& window, const panda::Context& context, const SceneMeshes& meshes)

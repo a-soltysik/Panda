@@ -1,5 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
+#include <vulkan/vulkan.hpp>
 // clang-format on
 
 #include "RenderViewValidation.hpp"
@@ -18,6 +19,7 @@
 
 #include "Math.hpp"
 #include "resources/MeshResource.hpp"
+#include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace panda::core::vulkan::renderer
@@ -78,6 +80,18 @@ auto isCompatibleMeshDraw(const MeshDraw& draw, const resources::MemoryPool& poo
     return hasAttribute(draw.mesh, VertexAttributeSemantic::Position) &&
            (draw.material.model != MaterialModel::Lit || hasAttribute(draw.mesh, VertexAttributeSemantic::Normal));
 }
+
+auto isCompatibleBaseColorTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+{
+    if (!draw.material.baseColorTexture.isValid())
+    {
+        return true;
+    }
+    const auto& texture = *::panda::detail::TextureResource::getResource(draw.material.baseColorTexture);
+    return hasAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0) && texture.belongsTo(pool) &&
+           (texture.getUsage() & vk::ImageUsageFlagBits::eSampled) &&
+           (texture.getFormat() == vk::Format::eR8G8B8A8Srgb || texture.getFormat() == vk::Format::eB8G8R8A8Srgb);
+}
 }
 
 auto validateRenderViewData(const RenderView& view) -> Result<void>
@@ -115,6 +129,26 @@ auto validateRenderViewMeshes(const RenderView& view, const resources::MemoryPoo
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Context")};
+    }
+    if (std::ranges::any_of(view.meshes, [&pool](const auto& draw) {
+            return !isCompatibleBaseColorTexture(draw, pool);
+        }))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                          "Base-color map requires UVs and a sampled RGBA8 sRGB texture from this "
+                                          "Context")};
+    }
+    return {};
+}
+
+auto validateRenderViewTextures(const RenderView& view) -> Result<void>
+{
+    if (std::ranges::any_of(view.meshes, [](const auto& draw) {
+            return draw.material.baseColorTexture.isValid() &&
+                   !::panda::detail::TextureResource::getResource(draw.material.baseColorTexture)->isUploaded();
+        }))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Base-color texture has not been uploaded")};
     }
     return {};
 }

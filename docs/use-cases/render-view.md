@@ -9,7 +9,7 @@ This flow ends with a `FrameResult` or an `Error`.
 
 **The application** owns scene data, transforms and the lifetime of its `Context`.
 **Panda** validates the view, records the built-in mesh rendering path, retains mesh
-handles through GPU use, and owns frame-slot and swapchain synchronization. A returned
+and selected texture handles through GPU use, and owns frame-slot and swapchain synchronization. A returned
 `CompletionPoint` identifies submitted GPU work; it does not mean the image has been displayed.
 
 ## Preconditions
@@ -17,7 +17,9 @@ handles through GPU use, and owns frame-slot and swapchain synchronization. A re
 1. A live windowed `Context` exists. Calls to it are serialized on its execution thread.
 2. Every mesh draw refers to a valid, uploaded mesh from that Context and declares a
    layout compatible with its material. All draws require Position; Lit also requires
-   Normal. Color is optional and defaults to white.
+   Normal. Color is optional and defaults to white. A base-color map is optional; if
+   set, it must be a sampled RGBA8 sRGB texture from the same Context, its upload must
+   have been submitted, and the mesh must declare TexCoord0.
 3. Camera, light, transform, tint and material values are finite and valid for the
    built-in renderer. A zero-sized framebuffer is allowed and returns `Suspended`.
 
@@ -31,27 +33,31 @@ handles through GPU use, and owns frame-slot and swapchain synchronization. A re
    object-to-world matrix; applications may also supply a matrix directly.
 2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, light,
    tint, material alpha mode and cutoff, then verifies each mesh's Context and required attributes.
-   It collects completed upload packets before delegating to `Presentation`.
+   If a base-color map is set, it also checks the texture's Context, sampled usage,
+   sRGB format and the mesh's TexCoord0. It polls and reclaims completed upload packets,
+   then rejects a texture whose upload was never submitted. Rendering remains queued
+   after any in-flight upload on the Context submission queue.
 3. **Prepare the window frame.** `Presentation::prepareWindowFrame()` checks the
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
    without acquiring an image. See [UC Suspend presentation and recreate the
    swapchain](recreate-swapchain.md).
-4. **Retain mesh handles and acquire.** `Presentation` waits for the selected frame
-   slot's prior GPU completion, then retains the view's mesh handles in that slot. It
+4. **Retain resources and acquire.** `Presentation` waits for the selected frame
+   slot's prior GPU completion, then retains the view's mesh and selected texture handles in that slot. It
    checks submission capacity, acquires an image and waits for that image's pending
    presentation fence before reuse.
 5. **Record the view.** An empty mesh list clears the acquired image to the configured
    background. Otherwise, `Presentation` creates or resizes the internal `MeshRenderer`,
-   updates frame data and that slot's tightly packed per-draw material storage buffer,
-   then records the directional shadow depth pass. Opaque draws cast a full silhouette;
-   Mask draws use material alpha, draw tint alpha and vertex alpha with the material's
-   cutoff. The camera pass applies the same cutoff, selecting pipelines from each
-   material model, alpha mode, consumed vertex attributes, face mode and transform
-   handedness while sampling the shadow map for Lit draws.
+   updates frame data, per-draw material records and texture descriptors, then records
+   the directional shadow depth pass. A base-color sample multiplies material and
+   draw tint and optional vertex color; an absent map contributes white. Opaque draws
+   cast a full silhouette. Mask draws multiply texture, material, draw and vertex alpha
+   and apply the material cutoff in both shadow and camera passes. The camera pass
+   selects pipelines from each material model, alpha mode, consumed vertex attributes,
+   face mode and transform handedness while sampling the shadow map for Lit draws.
 6. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
    Context timeline. Successful submission commits its timeline value, stores it on
-   the frame slot and advances the slot. Mesh handles remain retained until that slot
+   the frame slot and advances the slot. Mesh and texture handles remain retained until that slot
    is reused after completion. See [UC Commit work to the Context submission
    timeline](commit-context-submission.md).
 7. **Queue presentation.** `Presentation::presentFrame()` queues the image with its
@@ -70,20 +76,21 @@ sequenceDiagram
     participant Q as SubmissionQueue
     participant V as Vulkan
     A->>C: render(view)
-    C->>C: Validate camera, light, materials, layouts and Context ownership
+    C->>C: Validate camera, light, mesh layouts and texture requirements
     opt UploadManager exists
         C->>U: Collect completed upload packets
         U-->>C: Collection result
     end
+    C->>C: Reject base maps without a submitted upload
     C->>P: Render validated view
     P->>V: Check framebuffer and swapchain generation
-    P->>P: Wait for frame slot and retain mesh handles
+    P->>P: Wait for frame slot and retain mesh and selected texture handles
     P->>V: Acquire image and wait for presentation reuse
     alt View has no meshes
         P->>V: Clear background with dynamic rendering
     else View contains meshes
-        P->>R: Create/resize renderer and update frame and material data
-        R->>V: Record shadow pass with matching Mask cutouts and skip Blend meshes
+        P->>R: Create/resize renderer and update frame, material and texture data
+        R->>V: Record Mask shadow cutouts using the same base-color alpha as the camera
         R->>V: Record Opaque and Mask draws, then back-to-front Blend draws
         R->>V: Sample shadow map for Lit draws
     end
@@ -106,8 +113,9 @@ does not depend on that library.
 checked perspective projection with right-handed look-at vectors and returns a
 `RenderCamera` for the view.
 
-**Current shading model.** Built-in materials multiply linear `baseColor`, draw tint
-and optional vertex color (white when absent). Lit materials evaluate one directional
+**Current shading model.** Built-in materials multiply linear `baseColor`, an
+optional sRGB base-color map, draw tint and optional vertex color (white when absent).
+Mapped draws require TexCoord0; a missing map contributes white. Lit materials evaluate one directional
 light with a Cook-Torrance microfacet specular term: GGX normal distribution,
 Schlick-GGX geometry and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is
 combined with that specular term. Each Lit material supplies metallic and roughness,
@@ -133,8 +141,8 @@ the current visual result. The first mesh draw selects the highest common color/
 attachment sample count supported by the active formats and device limits (4x, then
 2x, then 1x); `FrameResult::effectiveSampleCount` reports it.
 
-`AlphaMode::Blend` uses the combined material, draw and optional vertex alpha for
-straight-alpha compositing. It runs after Opaque and Mask with depth testing enabled
+`AlphaMode::Blend` uses the combined texture, material, draw and optional vertex alpha
+for straight-alpha compositing. It runs after Opaque and Mask with depth testing enabled
 and depth writes disabled; mesh origins are sorted back-to-front. Blended meshes do
 not cast shadows. Intersecting transparent meshes can still sort incorrectly.
 
@@ -160,7 +168,7 @@ already submitted work was rolled back.
 | Acquire returns timeout or not-ready                             | Return `Skipped` without a completion point.                                                 |
 | Acquire reports out-of-date                                      | Return `RecreatePending` without a completion point; the next call attempts recreation.      |
 | Acquire or present is suboptimal, or present reports out-of-date | Return `RecreatePending`; keep the accepted submission's completion point.                   |
-| Invalid view/material data, foreign mesh or incompatible layout | Return `InvalidArgument` before acquiring an image. |
+| Invalid view/material data, foreign mesh/texture, incompatible layout, or invalid base-color map | Return `InvalidArgument` before acquiring an image. |
 | Context has no window presentation service                       | Return `Unsupported`.                                                                        |
 | Recording, submission or cleanup fails after acquire             | Return the relevant error; retire the acquired image. Failed retirement faults presentation. |
 | Surface or device is lost                                        | Return the Vulkan error and fault presentation; Context teardown still attempts its drain.   |
@@ -171,6 +179,8 @@ already submitted work was rolled back.
   and its supported inputs.
 - [Resources and frames](../design/contracts/resources.md#frame-and-window-state)
   defines frame results, recreation and presentation state.
+- [UC Upload texture contents or regions](upload-texture.md) explains how a base-color
+  map receives its image data before rendering.
 - [UC Collect paired CPU and GPU frame timings](collect-frame-timings.md) describes
   optional timing markers around submitted view work.
 - [UC Observe or wait for submitted GPU work](observe-completion.md) explains how an
