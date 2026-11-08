@@ -19,6 +19,7 @@ layout(set = 0, binding = 0) uniform FrameData
 layout(set = 0, binding = 1) uniform sampler2D shadowMap;
 layout(set = 1, binding = 0) uniform sampler2D baseColorMap;
 layout(set = 1, binding = 1) uniform sampler2D metallicRoughnessMap;
+layout(set = 1, binding = 2) uniform sampler2D emissiveMap;
 struct MaterialRecord
 {
     float metallic;
@@ -28,7 +29,8 @@ struct MaterialRecord
     float alphaCutoff;
     uint hasBaseColorTexture;
     uint hasMetallicRoughnessTexture;
-    uint padding;
+    uint hasEmissiveTexture;
+    vec4 emissive;
 };
 
 layout(set = 0, binding = 2, std430) readonly buffer MaterialData
@@ -108,6 +110,8 @@ float shadowVisibility(vec3 normal)
 void main()
 {
     const MaterialRecord material = materialData.records[materialIndex];
+    const vec3 emissive = material.emissive.rgb *
+        (material.hasEmissiveTexture != 0u ? texture(emissiveMap, textureCoordinates).rgb : vec3(1.0));
     const vec4 mappedBaseColor = baseColor *
         (material.hasBaseColorTexture != 0u ? texture(baseColorMap, textureCoordinates) : vec4(1.0));
     if (alphaMode == 1u && mappedBaseColor.a < material.alphaCutoff)
@@ -117,7 +121,7 @@ void main()
     const float opacity = alphaMode == 2u ? clamp(mappedBaseColor.a, 0.0, 1.0) : mappedBaseColor.a;
     if (material.isLit == 0u)
     {
-        const vec3 mapped = toneMapAces(mappedBaseColor.rgb);
+        const vec3 mapped = toneMapAces(mappedBaseColor.rgb + emissive);
         const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
         fragmentColor = vec4(outputColor, opacity);
         return;
@@ -149,7 +153,7 @@ void main()
     const vec3 direct = (diffuse + specular) * frameData.lightColorIntensity.rgb *
     frameData.lightColorIntensity.w * normalLight * shadowVisibility(normal);
     const vec3 ambient = mappedBaseColor.rgb * frameData.ambient.rgb * frameData.ambient.w;
-    const vec3 mapped = toneMapAces(ambient + direct);
+    const vec3 mapped = toneMapAces(ambient + direct + emissive);
     const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
     fragmentColor = vec4(outputColor, opacity);
 }
