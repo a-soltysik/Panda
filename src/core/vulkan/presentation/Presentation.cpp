@@ -56,7 +56,7 @@ struct ImageTransition
     ImageAccessScope destination;
 };
 
-void retainBaseColorTextures(std::vector<Texture>& retained, const RenderView& view)
+void retainMaterialTextures(std::vector<Texture>& retained, const RenderView& view)
 {
     retained.reserve(view.meshes.size());
     for (const auto& draw : view.meshes)
@@ -64,6 +64,10 @@ void retainBaseColorTextures(std::vector<Texture>& retained, const RenderView& v
         if (draw.material.baseColorTexture.isValid())
         {
             retained.push_back(draw.material.baseColorTexture);
+        }
+        if (draw.material.metallicRoughnessTexture.isValid())
+        {
+            retained.push_back(draw.material.metallicRoughnessTexture);
         }
     }
 }
@@ -251,7 +255,7 @@ auto Presentation::retainViewResources(FrameSlot& slot, const RenderView& view) 
         {
             slot.retainedMeshes.push_back(draw.mesh);
         }
-        retainBaseColorTextures(slot.retainedTextures, view);
+        retainMaterialTextures(slot.retainedTextures, view);
     }
     catch (const std::bad_alloc&)
     {

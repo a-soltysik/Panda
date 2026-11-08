@@ -18,6 +18,7 @@ layout(set = 0, binding = 0) uniform FrameData
 
 layout(set = 0, binding = 1) uniform sampler2D shadowMap;
 layout(set = 1, binding = 0) uniform sampler2D baseColorMap;
+layout(set = 1, binding = 1) uniform sampler2D metallicRoughnessMap;
 struct MaterialRecord
 {
     float metallic;
@@ -26,7 +27,8 @@ struct MaterialRecord
     uint renderFace;
     float alphaCutoff;
     uint hasBaseColorTexture;
-    uint padding[2];
+    uint hasMetallicRoughnessTexture;
+    uint padding;
 };
 
 layout(set = 0, binding = 2, std430) readonly buffer MaterialData
@@ -125,8 +127,10 @@ void main()
     {
         normal = -normal;
     }
-    const float metallic = material.metallic;
-    const float roughness = clamp(material.roughness, 0.045, 1.0);
+    const vec4 mappedMetallicRoughness =
+        material.hasMetallicRoughnessTexture != 0u ? texture(metallicRoughnessMap, textureCoordinates) : vec4(1.0);
+    const float metallic = clamp(material.metallic * mappedMetallicRoughness.b, 0.0, 1.0);
+    const float roughness = clamp(material.roughness * mappedMetallicRoughness.g, 0.045, 1.0);
     const vec3 viewDirection = normalize(frameData.cameraPosition.xyz - worldPosition);
     const vec3 lightDirection = normalize(-frameData.lightDirection.xyz);
     const vec3 halfDirection = normalize(viewDirection + lightDirection);
@@ -137,7 +141,7 @@ void main()
     const float alpha = roughness * roughness;
     const float alphaSquared = alpha * alpha;
     const float geometryK = (roughness + 1.0) * (roughness + 1.0) / 8.0;
-    const vec3 fresnel = fresnelSchlick(viewHalf, dielectricF0);
+    const vec3 fresnel = fresnelSchlick(viewHalf, mix(dielectricF0, mappedBaseColor.rgb, metallic));
     const float distribution = distributionGgx(normalHalf, alphaSquared);
     const float geometry = geometrySchlick(normalView, geometryK) * geometrySchlick(normalLight, geometryK);
     const vec3 specular = (distribution * geometry * fresnel) / max(4.0 * normalView * normalLight, 0.001);

@@ -43,6 +43,7 @@ struct SceneMeshes
     panda::Mesh ground;
     panda::Mesh triangle;
     panda::Texture baseColorMap;
+    panda::Texture metallicRoughnessMap;
 };
 
 struct SceneGeometry
@@ -88,6 +89,16 @@ auto createBaseColorMap(const panda::Context& context) -> panda::Texture
                          "Create the cube base-color map");
 }
 
+auto createMetallicRoughnessMap(const panda::Context& context) -> panda::Texture
+{
+    return panda::expect(context.createTexture({
+                             .extent = {1, 1},
+                             .format = vk::Format::eR8G8B8A8Unorm,
+                             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    }),
+                         "Create the cube metallic-roughness map");
+}
+
 void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes, const SceneGeometry& geometry)
 {
     auto batch = panda::expect(context.createUploadBatch(), "Create the upload batch");
@@ -112,6 +123,10 @@ void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes,
                                                         std::byte {0xff},
                                                         std::byte {0xff}};
     panda::expect(batch.write(meshes.baseColorMap, baseColorPixels), "Stage the cube base-color map");
+    static constexpr auto metallicRoughnessPixels =
+        std::array {std::byte {0xff}, std::byte {0xff}, std::byte {0xff}, std::byte {0xff}};
+    panda::expect(batch.write(meshes.metallicRoughnessMap, metallicRoughnessPixels),
+                  "Stage the cube metallic-roughness map");
     const auto completion = panda::expect(batch.submit(), "Submit the scene upload");
     const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for the scene upload");
     panda::expect(status == panda::WaitStatus::Completed, "Scene upload did not finish in time");
@@ -133,10 +148,14 @@ auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
         .directionalLight = {.direction = {0.55F, -0.6F, 0.58F}},
         .meshes = {
                    panda::MeshDraw {.mesh = meshes.ground, .modelMatrix = groundTransform, .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
-                   panda::MeshDraw {.mesh = meshes.cube, .material = {.baseColorTexture = meshes.baseColorMap}},
+                   panda::MeshDraw {.mesh = meshes.cube,
+                             .material = {.baseColorTexture = meshes.baseColorMap,
+                                          .metallicRoughnessTexture = meshes.metallicRoughnessMap}},
                    panda::MeshDraw {.mesh = meshes.triangle,
                              .modelMatrix = triangleTransform,
-                             .material = {.model = panda::MaterialModel::Unlit, .baseColorTexture = {}}}}
+                             .material = {.model = panda::MaterialModel::Unlit,
+                                          .baseColorTexture = {},
+                                          .metallicRoughnessTexture = {}}}}
     };
 }
 
@@ -150,7 +169,8 @@ auto createSceneMeshes(const panda::Context& context) -> SceneMeshes
     auto meshes = SceneMeshes {.cube = cube,
                                .ground = ground,
                                .triangle = createColoredTriangleMesh(context, geometry.triangle),
-                               .baseColorMap = createBaseColorMap(context)};
+                               .baseColorMap = createBaseColorMap(context),
+                               .metallicRoughnessMap = createMetallicRoughnessMap(context)};
     uploadSceneMeshes(context, meshes, geometry);
     return meshes;
 }

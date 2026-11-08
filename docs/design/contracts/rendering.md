@@ -40,9 +40,11 @@ Sampling uses linear filtering and repeat addressing. `TextureDesc` currently pr
 formats decode color channels to linear values while alpha remains linear. The sampled alpha participates in Mask and
 Blend with material, draw, and vertex alpha.
 
-Plan normal, metallic-roughness, occlusion, and emissive maps. Color and emissive textures use sRGB decoding where
-appropriate; numeric data maps remain linear. The channel convention, tangent requirements, and missing-tangent behavior
-are specified in the material/import sections below.
+The optional Lit metallic-roughness map must be an uploaded, sampled `R8G8B8A8Unorm` or `B8G8R8A8Unorm` texture from
+the same Context, and its mesh must declare `TexCoord0`. Its blue channel multiplies the material metallic value and its
+green channel multiplies roughness; a missing map contributes white. Numeric channels remain linear. Normal, occlusion,
+and emissive maps remain planned. Their channel convention, tangent requirements, and missing-tangent behavior are
+specified in the material/import sections below.
 
 Shader program, material parameters, and pipeline/render state are separate concepts. Editing a color is not a reason to
 compile a pipeline. Sharing a material shares its parameters; cloning is explicit.
@@ -375,8 +377,8 @@ layout stride, consumed attribute offsets, face mode and model determinant sign.
 `RenderFace::Front`, `Back` and `Both` select the visible side(s); negative
 determinants reverse the pipeline's front-face winding in both camera and shadow
 passes. Lit shading flips the normal for rendered back faces in `Back` and `Both`
-modes. Base-color maps consume `TexCoord0`; without a map, UV data is not
-required. Tangent layouts are validated but are not consumed yet. Normal maps
+modes. Base-color and metallic-roughness maps consume `TexCoord0`; without either
+map, UV data is not required. Tangent layouts are validated but are not consumed yet. Normal maps
 will also require tangents; a missing normal remains a clear preflight error for Lit materials.
 Keep unused attributes out of vertex data. The current Unlit material uses base
 color without lighting. Emissive lighting, procedural clouds without a vertex
@@ -384,7 +386,8 @@ binding and instance-driven data remain outside this implementation slice.
 
 Current material parameters use one 32-byte std430 storage-buffer record per
 draw: metallic at offset 0, roughness at 4, the Lit flag at 8, `RenderFace` at
-12, alpha cutoff at 16, the base-color-map flag at 20, and two padding uints at 24. Records are tightly
+12, alpha cutoff at 16, the base-color-map flag at 20, and the metallic-roughness-map flag at 24. One padding uint
+remains at 28. Records are tightly
 packed per frame slot; the direct draw's `firstInstance` supplies the flat
 material index to the fragment shader. Keep this host/shader record layout
 synchronized.
