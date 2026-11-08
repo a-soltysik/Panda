@@ -41,7 +41,7 @@ function(panda_add_builtin_shaders target)
     list(REMOVE_DUPLICATES PANDA_BUILTIN_SHADER_SOURCES)
     list(APPEND PANDA_BUILTIN_SHADER_SOURCES "${PROJECT_SOURCE_DIR}/shaders/builtin/mesh_vertex_common.glsl")
     list(APPEND PANDA_BUILTIN_SHADER_SOURCES "${PROJECT_SOURCE_DIR}/shaders/builtin/shadow_vertex_common.glsl")
-    list(APPEND PANDA_BUILTIN_SHADER_SOURCES "${PROJECT_SOURCE_DIR}/src/core/vulkan/renderer/ShaderLocations.inc")
+    list(APPEND PANDA_BUILTIN_SHADER_SOURCES "${PROJECT_SOURCE_DIR}/src/core/vulkan/renderer/ShaderInterface.inc")
     add_custom_command(
         OUTPUT "${PANDA_BUILTIN_SHADER_HEADER}" ${PANDA_BUILTIN_SHADER_SPIRV_FILES}
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${PANDA_BUILTIN_SHADER_DIRECTORY}"

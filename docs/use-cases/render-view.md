@@ -52,7 +52,9 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 5. **Record the view.** An empty mesh list clears the acquired image to the configured
    background. Otherwise, `Presentation` creates or resizes the internal `MeshRenderer`,
    updates frame data, per-draw material records and texture descriptors, then records
-   the directional shadow depth pass. A base-color sample multiplies material and
+   the directional shadow depth pass. `MeshPipelineCache` prepares missing color and
+   shadow variants before recording; draw recording then looks up those prepared
+   pipelines without creating them. A base-color sample multiplies material and
    draw tint and optional vertex color; a metallic-roughness sample scales Lit
    material values with its blue and green channels respectively. The emissive
    sample multiplies the linear emissive factor and is added before tone mapping
@@ -80,6 +82,7 @@ sequenceDiagram
     participant U as UploadManager
     participant P as Presentation
     participant R as MeshRenderer
+    participant K as MeshPipelineCache
     participant Q as SubmissionQueue
     participant V as Vulkan
     A->>C: render(view)
@@ -97,6 +100,9 @@ sequenceDiagram
         P->>V: Clear background with dynamic rendering
     else View contains meshes
         P->>R: Create/resize renderer and update frame, material and texture data
+        R->>K: Prepare needed color and shadow variants
+        K->>V: Create missing pipeline variants
+        R->>K: Look up prepared pipelines during draw recording
         R->>V: Record Mask shadow cutouts using the same base-color alpha as the camera
         R->>V: Record Opaque and Mask draws, then back-to-front Blend draws
         R->>V: Sample enabled material maps and shadows for Lit shading

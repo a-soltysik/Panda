@@ -1,4 +1,4 @@
-layout(set = 0, binding = 0) uniform FrameData
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) uniform FrameData
 {
     mat4 viewProjection;
     mat4 lightViewProjection;

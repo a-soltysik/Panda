@@ -32,6 +32,7 @@ panda_add_component(panda_core
         vulkan/performance/PerformanceManagerImpl.cpp
         vulkan/presentation/Presentation.cpp
         vulkan/renderer/MeshRenderer.cpp
+        vulkan/renderer/MeshPipelineCache.cpp
         vulkan/renderer/RenderViewValidation.cpp
         vulkan/renderer/ShadowView.cpp
         vulkan/SubmissionQueue.cpp
@@ -104,6 +105,8 @@ panda_add_component(panda_core
         vulkan/resources/memory/RangeAllocator.hpp
         vulkan/resources/TextureResource.hpp
         vulkan/renderer/MeshRenderer.hpp
+        vulkan/renderer/MeshPipelineCache.hpp
+        vulkan/renderer/ShaderData.hpp
         vulkan/renderer/RenderViewValidation.hpp
         vulkan/renderer/ShadowView.hpp
     LIBRARIES PUBLIC panda_common Vulkan::Headers glm::glm PRIVATE Vulkan::Vulkan)

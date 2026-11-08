@@ -1,12 +1,12 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 
-#include "ShaderLocations.inc"
+#include "ShaderInterface.inc"
 
-layout(constant_id = 0) const uint outputIsSrgb = 1u;
-layout(constant_id = 1) const uint alphaMode = 0u;
+layout(constant_id = PANDA_MESH_OUTPUT_SRGB_SPECIALIZATION_ID) const uint outputIsSrgb = 1u;
+layout(constant_id = PANDA_MESH_ALPHA_MODE_SPECIALIZATION_ID) const uint alphaMode = 0u;
 
-layout(set = 0, binding = 0) uniform FrameData
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) uniform FrameData
 {
     mat4 viewProjection;
     mat4 lightViewProjection;
@@ -16,10 +16,11 @@ layout(set = 0, binding = 0) uniform FrameData
     vec4 ambient;
 } frameData;
 
-layout(set = 0, binding = 1) uniform sampler2D shadowMap;
-layout(set = 1, binding = 0) uniform sampler2D baseColorMap;
-layout(set = 1, binding = 1) uniform sampler2D metallicRoughnessMap;
-layout(set = 1, binding = 2) uniform sampler2D emissiveMap;
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SHADOW_MAP_BINDING) uniform sampler2D shadowMap;
+layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_BASE_COLOR_BINDING) uniform sampler2D baseColorMap;
+layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING) uniform sampler2D
+    metallicRoughnessMap;
+layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_EMISSIVE_BINDING) uniform sampler2D emissiveMap;
 struct MaterialRecord
 {
     float metallic;
@@ -33,7 +34,7 @@ struct MaterialRecord
     vec4 emissive;
 };
 
-layout(set = 0, binding = 2, std430) readonly buffer MaterialData
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_MATERIAL_DATA_BINDING, std430) readonly buffer MaterialData
 {
     MaterialRecord records[];
 } materialData;
@@ -43,7 +44,7 @@ layout(location = PANDA_MESH_VARYING_WORLD_NORMAL_LOCATION) in vec3 worldNormal;
 layout(location = PANDA_MESH_VARYING_BASE_COLOR_LOCATION) in vec4 baseColor;
 layout(location = PANDA_MESH_VARYING_MATERIAL_INDEX_LOCATION) flat in uint materialIndex;
 layout(location = PANDA_MESH_VARYING_TEXTURE_COORDINATES_LOCATION) in vec2 textureCoordinates;
-layout(location = 0) out vec4 fragmentColor;
+layout(location = PANDA_MESH_FRAGMENT_COLOR_LOCATION) out vec4 fragmentColor;
 
 const float pi = 3.14159265359;
 const vec3 dielectricF0 = vec3(0.04);
