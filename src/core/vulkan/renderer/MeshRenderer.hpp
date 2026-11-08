@@ -6,18 +6,17 @@
 // clang-format on
 
 #include <array>
-#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <map>
 #include <memory>
 #include <optional>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
-#include <span>
 #include <vector>
 
+#include "renderer/MeshPipelineCache.hpp"
+#include "renderer/ShaderData.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace panda::detail
@@ -36,19 +35,6 @@ struct MeshRendererCreateInfo
     vk::Extent2D extent;
     vk::Format colorFormat;
     std::size_t frameCount;
-};
-
-struct alignas(16) MaterialRecord
-{
-    float metallic {};
-    float roughness {};
-    std::uint32_t isLit {};
-    std::uint32_t renderFace {};
-    float alphaCutoff {};
-    std::uint32_t hasBaseColorTexture {};
-    std::uint32_t hasMetallicRoughnessTexture {};
-    std::uint32_t hasEmissiveTexture {};
-    glm::vec4 emissive {};
 };
 
 class MeshRenderer final
@@ -92,36 +78,6 @@ private:
         std::vector<std::shared_ptr<::panda::detail::TextureResource>> depthAttachments;
     };
 
-    struct MeshPipelineKey
-    {
-        bool lit {false};
-        bool hasColor {false};
-        bool hasTextureCoordinates {false};
-        std::uint32_t vertexStride {0};
-        std::uint32_t positionOffset {0};
-        std::uint32_t normalOffset {0};
-        std::uint32_t texCoordOffset {0};
-        std::uint32_t colorOffset {0};
-        RenderFace renderFace {RenderFace::Front};
-        AlphaMode alphaMode {AlphaMode::Opaque};
-        bool mirrored {false};
-        friend auto operator<=>(const MeshPipelineKey&, const MeshPipelineKey&) = default;
-    };
-
-    struct ShadowPipelineKey
-    {
-        std::uint32_t vertexStride {0};
-        std::uint32_t positionOffset {0};
-        std::uint32_t texCoordOffset {0};
-        std::uint32_t colorOffset {0};
-        bool hasColor {false};
-        bool hasBaseColorTexture {false};
-        RenderFace renderFace {RenderFace::Front};
-        AlphaMode alphaMode {AlphaMode::Opaque};
-        bool mirrored {false};
-        friend auto operator<=>(const ShadowPipelineKey&, const ShadowPipelineKey&) = default;
-    };
-
     struct ResizeRequest
     {
         vk::Extent2D extent {};
@@ -147,6 +103,8 @@ private:
 
     explicit MeshRenderer(const MeshRendererCreateInfo& info);
 
+    [[nodiscard]] auto pipelineCache() -> MeshPipelineCache&;
+    [[nodiscard]] auto pipelineCache() const -> const MeshPipelineCache&;
     [[nodiscard]] auto initialize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
     [[nodiscard]] auto initializeDescriptorState() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeDescriptorSetLayout() -> std::expected<void, Error>;
@@ -175,15 +133,6 @@ private:
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
     [[nodiscard]] auto chooseDepthFormat() const -> std::expected<vk::Format, Error>;
     [[nodiscard]] auto chooseSampleCount(vk::Format colorFormat) const -> std::expected<vk::SampleCountFlagBits, Error>;
-    [[nodiscard]] auto createPipeline(const MeshPipelineKey& key) const -> std::expected<vk::raii::Pipeline, Error>;
-    [[nodiscard]] auto createShadowPipeline(const ShadowPipelineKey& key) const
-        -> std::expected<vk::raii::Pipeline, Error>;
-    [[nodiscard]] auto createGraphicsPipeline(vk::ShaderModule vertex,
-                                              vk::ShaderModule fragment,
-                                              const MeshPipelineKey& key) const
-        -> std::expected<vk::raii::Pipeline, Error>;
-    [[nodiscard]] static auto makeVertexAttributeDescriptions(const MeshPipelineKey& key)
-        -> std::vector<vk::VertexInputAttributeDescription>;
     [[nodiscard]] static auto writeFrameUniform(FrameResources& frame, const RenderView& view)
         -> std::expected<void, Error>;
     [[nodiscard]] auto ensureMaterialBuffer(FrameResources& frame, std::size_t drawCount) -> std::expected<void, Error>;
@@ -192,10 +141,6 @@ private:
     [[nodiscard]] auto writeMaterialRecords(FrameResources& frame, const RenderView& view)
         -> std::expected<void, Error>;
     void writeTextureDescriptors(FrameResources& frame, const RenderView& view);
-    [[nodiscard]] auto prepareDrawPipeline(const MeshDraw& draw) -> std::expected<void, Error>;
-    [[nodiscard]] auto prepareDrawPipelines(const RenderView& view) -> std::expected<void, Error>;
-    [[nodiscard]] static auto getMeshPipelineKey(const MeshDraw& draw) -> MeshPipelineKey;
-    [[nodiscard]] static auto getShadowPipelineKey(const MeshDraw& draw) -> ShadowPipelineKey;
     void publishResize(const ResizeRequest& request, ResizeResources resources);
     void publishDepthAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments);
     void publishColorAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments);
@@ -226,14 +171,13 @@ private:
     vk::raii::DescriptorSetLayout _descriptorSetLayout {nullptr};
     vk::raii::DescriptorSetLayout _textureDescriptorSetLayout {nullptr};
     vk::raii::PipelineLayout _pipelineLayout {nullptr};
+    std::optional<MeshPipelineCache> _pipelineCache;
     vk::raii::DescriptorPool _descriptorPool {nullptr};
     vk::raii::Sampler _shadowSampler {nullptr};
     vk::raii::Sampler _textureSampler {nullptr};
     std::vector<FrameResources> _frames;
     std::vector<MaterialRecord> _materialRecords;
     std::vector<BlendDraw> _blendDraws;
-    std::map<MeshPipelineKey, vk::raii::Pipeline> _pipelines;
-    std::map<ShadowPipelineKey, vk::raii::Pipeline> _shadowPipelines;
     vk::Format _colorFormat {vk::Format::eUndefined};
     vk::Format _depthFormat {vk::Format::eUndefined};
     vk::SampleCountFlagBits _sampleCount {vk::SampleCountFlagBits::e1};

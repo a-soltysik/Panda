@@ -102,6 +102,21 @@ public:
                 ());
     MOCK_METHOD(VkResult, vkBindImageMemory2, (VkDevice, std::uint32_t, const VkBindImageMemoryInfo*), ());
     MOCK_METHOD(VkResult,
+                vkCreateShaderModule,
+                (VkDevice, const VkShaderModuleCreateInfo*, const VkAllocationCallbacks*, VkShaderModule*),
+                ());
+    MOCK_METHOD(void, vkDestroyShaderModule, (VkDevice, VkShaderModule, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(VkResult,
+                vkCreateGraphicsPipelines,
+                (VkDevice,
+                 VkPipelineCache,
+                 std::uint32_t,
+                 const VkGraphicsPipelineCreateInfo*,
+                 const VkAllocationCallbacks*,
+                 VkPipeline*),
+                ());
+    MOCK_METHOD(void, vkDestroyPipeline, (VkDevice, VkPipeline, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(VkResult,
                 vkAllocateMemory,
                 (VkDevice, const VkMemoryAllocateInfo*, const VkAllocationCallbacks*, VkDeviceMemory*),
                 ());

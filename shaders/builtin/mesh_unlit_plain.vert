@@ -1,6 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
-#include "ShaderLocations.inc"
+#include "ShaderInterface.inc"
 
 layout(location = PANDA_VERTEX_ATTRIBUTE_POSITION_LOCATION) in vec3 vertexPosition;
 #ifdef HAS_TEXTURE_COORDINATES

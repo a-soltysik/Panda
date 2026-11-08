@@ -148,3 +148,10 @@ panda_add_test(panda_unit_presentation unit
     SOURCES Presentation.cpp
     LIBRARIES Panda::Panda PandaTest::Support
     MOCKS PandaTest::VulkanMock PandaTest::SwapchainGenerationMock PandaTest::SubmissionQueueMock)
+
+panda_add_test(panda_unit_mesh_pipeline_cache unit
+    VULKAN_INTERNAL
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core"
+    SOURCES MeshPipelineCache.cpp
+    LIBRARIES Panda::Panda PandaTest::Support
+    MOCKS PandaTest::VulkanMock)

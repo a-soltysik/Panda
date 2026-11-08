@@ -64,6 +64,44 @@ VKAPI_ATTR auto VKAPI_CALL vkBindBufferMemory2(VkDevice device,
                                                                                                  pBindInfos);
 }
 
+VKAPI_ATTR auto VKAPI_CALL vkCreateShaderModule(VkDevice device,
+                                                const VkShaderModuleCreateInfo* pCreateInfo,
+                                                const VkAllocationCallbacks* pAllocator,
+                                                VkShaderModule* pShaderModule) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateShaderModule(device,
+                                                                                                  pCreateInfo,
+                                                                                                  pAllocator,
+                                                                                                  pShaderModule);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyShaderModule(VkDevice device,
+                                                 VkShaderModule shaderModule,
+                                                 const VkAllocationCallbacks* pAllocator)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyShaderModule(device,
+                                                                                            shaderModule,
+                                                                                            pAllocator);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkCreateGraphicsPipelines(VkDevice device,
+                                                     VkPipelineCache pipelineCache,
+                                                     std::uint32_t createInfoCount,
+                                                     const VkGraphicsPipelineCreateInfo* pCreateInfos,
+                                                     const VkAllocationCallbacks* pAllocator,
+                                                     VkPipeline* pPipelines) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock()
+        .vkCreateGraphicsPipelines(device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyPipeline(VkDevice device,
+                                             VkPipeline pipeline,
+                                             const VkAllocationCallbacks* pAllocator)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyPipeline(device, pipeline, pAllocator);
+}
+
 VKAPI_ATTR auto VKAPI_CALL vkCreateImage(VkDevice device,
                                          const VkImageCreateInfo* pCreateInfo,
                                          const VkAllocationCallbacks* pAllocator,
@@ -698,6 +736,10 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkGetSemaphoreCounterValue",                     .function = genericVulkanProc(&vkGetSemaphoreCounterValue)   },
     EntryPoint {.name = "vkCreateBuffer",                                 .function = genericVulkanProc(&vkCreateBuffer)               },
     EntryPoint {.name = "vkDestroyBuffer",                                .function = genericVulkanProc(&vkDestroyBuffer)              },
+    EntryPoint {.name = "vkCreateShaderModule",                           .function = genericVulkanProc(&vkCreateShaderModule)         },
+    EntryPoint {.name = "vkDestroyShaderModule",                          .function = genericVulkanProc(&vkDestroyShaderModule)        },
+    EntryPoint {.name = "vkCreateGraphicsPipelines",                      .function = genericVulkanProc(&vkCreateGraphicsPipelines)    },
+    EntryPoint {.name = "vkDestroyPipeline",                              .function = genericVulkanProc(&vkDestroyPipeline)            },
     EntryPoint {.name = "vkGetBufferMemoryRequirements2",
                 .function = genericVulkanProc(&vkGetBufferMemoryRequirements2)                                                         },
     EntryPoint {.name = "vkBindBufferMemory2",                            .function = genericVulkanProc(&vkBindBufferMemory2)          },

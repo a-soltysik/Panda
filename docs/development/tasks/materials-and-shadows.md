@@ -89,6 +89,11 @@ map behavior in Lit and Unlit materials, blend compositing and draw order, missi
 tangent with normal-map fallback, 65 lights, mask shadows, negative scale, tangent
 sign, spot/point shadows and format fallback.
 
+CPU performance evidence: profile render-view preparation and command recording in
+an optimized build for the 65-light case and representative spot/point shadow
+casters. Disable validation and external graphics hooks for timing, record the
+measured hotspots, and optimize only costs confirmed in those workloads.
+
 The first-scene shadow uses a fixed 2048 by 2048 map over 30 m and 3x3 PCF, which
 visibly aliases at its edges. This task must tune or replace that filtering and
 coverage strategy. GPU captures at representative camera distances must show a
