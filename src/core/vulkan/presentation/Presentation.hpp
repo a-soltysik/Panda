@@ -66,6 +66,7 @@ private:
         vk::raii::Semaphore acquire {nullptr};
         std::uint64_t lastCompletion {0};
         std::vector<Mesh> retainedMeshes;
+        std::vector<Texture> retainedTextures;
     };
 
     struct AcquiredImage
@@ -103,7 +104,8 @@ private:
     [[nodiscard]] auto verifyReleaseFunction() const -> std::expected<void, Error>;
     [[nodiscard]] auto initializeSlot(FrameSlot& slot) const -> std::expected<void, Error>;
     [[nodiscard]] auto recreate(FramebufferExtent requested) -> std::expected<void, Error>;
-    [[nodiscard]] static auto retainViewMeshes(FrameSlot& slot, const RenderView& view) -> std::expected<void, Error>;
+    [[nodiscard]] static auto retainViewResources(FrameSlot& slot, const RenderView& view)
+        -> std::expected<void, Error>;
     [[nodiscard]] auto createOrResizeMeshRenderer() -> std::expected<void, Error>;
     [[nodiscard]] auto recordPerformanceStart(std::size_t slotIndex, vk::CommandBuffer command)
         -> std::expected<void, Error>;

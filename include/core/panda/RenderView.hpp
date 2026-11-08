@@ -8,6 +8,7 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/Texture.hpp>
 #include <vector>
 
 namespace panda
@@ -48,8 +49,11 @@ struct Material
 {
     /// Direct GGX lighting or tone-mapped base color without lighting.
     MaterialModel model {MaterialModel::Lit};
-    /// Linear RGBA material color multiplied by draw tint and vertex color.
+    /// Linear RGBA material color multiplied by base-color texture, draw tint and vertex color.
     glm::vec4 baseColor {1.0F, 1.0F, 1.0F, 1.0F};
+    /// Optional base-color map. If set, it must be uploaded RGBA8 sRGB, sampled, and from the rendered Context;
+    /// the mesh must declare TexCoord0. An empty handle contributes white.
+    Texture baseColorTexture;
     /// Metallic response, clamped to [0,1] when uploaded.
     float metallic {0.0F};
     /// Perceptual roughness, clamped to [0,1] when uploaded.
@@ -96,7 +100,7 @@ struct MeshDraw
 };
 
 /// @brief Transient application-owned inputs for one renderer frame.
-/// The renderer copies draw values and retains mesh handles through GPU completion.
+/// The renderer copies draw values and retains mesh and texture handles through GPU completion.
 struct RenderView
 {
     /// Camera used for mesh projection and view-dependent lighting.

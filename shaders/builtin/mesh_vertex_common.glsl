@@ -15,12 +15,13 @@ layout(push_constant) uniform DrawData
     vec4 tint;
 } drawData;
 
-layout(location = 0) out vec3 worldPosition;
-layout(location = 1) out vec3 worldNormal;
-layout(location = 2) out vec4 baseColor;
-layout(location = 3) flat out uint materialIndex;
+layout(location = PANDA_MESH_VARYING_WORLD_POSITION_LOCATION) out vec3 worldPosition;
+layout(location = PANDA_MESH_VARYING_WORLD_NORMAL_LOCATION) out vec3 worldNormal;
+layout(location = PANDA_MESH_VARYING_BASE_COLOR_LOCATION) out vec4 baseColor;
+layout(location = PANDA_MESH_VARYING_MATERIAL_INDEX_LOCATION) flat out uint materialIndex;
+layout(location = PANDA_MESH_VARYING_TEXTURE_COORDINATES_LOCATION) out vec2 textureCoordinates;
 
-void writeVertex(vec3 vertexPosition, vec3 vertexNormal, vec4 vertexColor)
+void writeVertex(vec3 vertexPosition, vec3 vertexNormal, vec4 vertexColor, vec2 vertexTextureCoordinates)
 {
     const vec4 position = drawData.modelMatrix * vec4(vertexPosition, 1.0);
     gl_Position = frameData.viewProjection * position;
@@ -28,4 +29,5 @@ void writeVertex(vec3 vertexPosition, vec3 vertexNormal, vec4 vertexColor)
     worldNormal = normalize(mat3(drawData.normalColumns) * vertexNormal);
     baseColor = vertexColor * drawData.tint;
     materialIndex = uint(gl_InstanceIndex);
+    textureCoordinates = vertexTextureCoordinates;
 }

@@ -22,7 +22,13 @@ behavior. Each slice needs its relevant visual or ABI evidence.
 
 `MeshDesc` declares per-mesh stride and standard semantic attributes; the renderer
 selects Lit or Unlit pipelines and accepts compact Position/Color meshes. Lit draws
-require Position and Normal. Material values use a named 32-byte record packed
+require Position and Normal. An optional, uploaded same-Context RGBA8 sRGB base-color
+map requires sampled usage and `TexCoord0`; filtering is linear with repeat addressing.
+Its color multiplies material and draw tint and optional vertex color, and its alpha
+is used by Blend and by the matching Mask camera/shadow cutoff. Per-frame slots retain
+the texture through GPU completion. Shader locations share one preprocessor
+definition file consumed by C++ and GLSL, with C++ static assertions against
+`VertexAttributeSemantic`. Material values use a named 32-byte record packed
 contiguously in a per-frame storage buffer with one mapped write per frame. `Material`
 selects front, back or both faces and Opaque, Mask or Blend alpha handling. Mask uses
 the product of material alpha, draw tint alpha and vertex alpha (one when Color is
@@ -30,36 +36,42 @@ absent), with one cutoff in camera and shadow passes. Blend uses that product fo
 source-over compositing, draws after Opaque/Mask in mesh-origin back-to-front order
 with depth writes disabled, and is skipped by the shadow pass. Camera and shadow
 pipelines account for negative determinants, and Lit shading flips normals on
-rendered back faces. `simple_scene` shows the compact layout and an Unlit draw;
-`scene_demo` puts an upright, vertex-colored triangle into the existing
-animated object grid.
+rendered back faces. `simple_scene` shows the compact layout, an optional
+base-color map on the cube, and an untextured Unlit triangle; `scene_demo` puts
+an upright, vertex-colored triangle into the existing animated object grid.
 
-Material maps, multiple lights, spot/point shadows, normal-map fallback, and the
-required shadow-quality captures remain incomplete.
+Emissive, normal, metallic-roughness and occlusion maps, multiple lights, spot/point
+shadows, normal-map fallback, and the required shadow-quality captures remain incomplete.
 This task is not accepted.
 
 ## Current verification
 
-- Windows 11: `msvc-quality`, isolated public headers, format checks and
-  `clang-cuda-analysis-windows` passed. `msvc-fast` full build passed; CTest
-  passed 533/533 with 4 skips (one benchmark and three noncoherent-memory
-  variants). Tool versions: CMake 4.4.2, Ninja 1.13.2, ccache 4.13.6.
-- WSL Ubuntu 26.04, synchronized with
-  `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1`: `gcc-quality`,
-  isolated public headers, format checks, `clang-cuda-analysis` and `gcc-docs`
-  passed. `gcc-fast` full build passed; CTest passed 533/533 with 8 skips (five
-  CUDA capability cases and three noncoherent-memory variants). Tool versions:
-  CMake 4.2.3, GCC 16.0.1, Ninja 1.13.2, ccache 4.12.3.
-- Captures of the running Windows `simple_scene` and `scene_demo` windows after
-  the front-face correction show the ground and colored triangle again. This is
-  a visual smoke check, not an automated pixel comparison or shadow-quality
-  assessment; the windowed system test checks presentation and Vulkan validation.
-- The windowed system test runs Blend through the color pass and Mask draws with
-  and without a Color vertex attribute through camera and shadow passes, then
-  checks presentation and absence of Vulkan validation errors. It does not
-  compare pixels or prove transparent draw ordering.
-  `check_docs.py` checked 80 Markdown files; `docs-checks` accepted 42 Mermaid
-  diagrams in 83 files. No RenderDoc shadow-quality capture was made.
+- Windows 11: `cmake --preset msvc-quality` and its full build passed, as did
+  `all_verify_interface_header_sets panda_format_checks`. The
+  `clang-cuda-analysis-windows` configure/build passed. The `msvc-fast`
+  configure/build and full CTest passed: 533 cases, four skipped (one benchmark
+  and three noncoherent-memory variants). Tool versions: CMake 4.4.2, Ninja
+  1.13.2, ccache 4.13.6.
+- WSL Ubuntu 26.04: after synchronization with
+  `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -SyncOnly`,
+  `gcc-quality` and the `all_verify_interface_header_sets panda_format_checks`
+  targets passed. The `clang-cuda-analysis` configure/build passed. The
+  `gcc-fast` configure/build and full CTest passed: 533 cases, eight skipped
+  (five CUDA capability cases and three noncoherent-memory variants). Tool
+  versions: CMake 4.2.3, GCC 16.0.1, Ninja 1.13.2, ccache 4.12.3.
+- Clang CUDA analysis on both platforms reports that the installed CUDA version
+  is newer than Clang's latest partially supported version 12.9; the configured
+  analysis targets still pass.
+- `git diff --check` passed. `check_docs.py` checked 80 Markdown files and the
+  task queue with no structural errors; `docs-checks` validated 42 Mermaid
+  diagrams in 83 files; the Linux `gcc-docs` preset generated the public API
+  documentation successfully.
+- The uniquely titled Windows `Panda - Simple scene` window was inspected: its
+  cube displays the base-color map and its UV-less triangle remains untextured.
+  This is a visual smoke check, not a pixel comparison or shadow-quality
+  assessment. The windowed system test validates rendering and Vulkan state but
+  does not compare pixels or prove transparent draw ordering.
+- No RenderDoc shadow-quality capture was made; the task remains in progress.
 
 ## Acceptance
 

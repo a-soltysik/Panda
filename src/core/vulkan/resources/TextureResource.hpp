@@ -34,6 +34,7 @@ public:
     [[nodiscard]] auto getNative() const -> vk::Image;
     [[nodiscard]] auto getNativeView() const -> vk::ImageView;
     [[nodiscard]] auto belongsTo(const texture_resources::MemoryPool& pool) const -> bool;
+    [[nodiscard]] auto isUploaded() const -> bool;
     [[nodiscard]] auto reserveUpload(texture_upload::UploadBatchId batchId) -> Result<void>;
     void cancelUpload(texture_upload::UploadBatchId batchId);
     void commitUpload(texture_upload::UploadBatchId batchId);

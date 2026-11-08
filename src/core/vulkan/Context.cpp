@@ -632,7 +632,11 @@ auto Context::Impl::render(const RenderView& view, std::optional<std::size_t>& s
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to present a frame")};
     }
-    return collectUploads().and_then([&] {
+    return collectUploads().and_then([&]() -> Result<FrameResult> {
+        if (const auto valid = vulkan::renderer::validateRenderViewTextures(view); !valid)
+        {
+            return std::unexpected {valid.error()};
+        }
         return _presentation->render(view, submittedPerformanceSlot);
     });
 }

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <expected>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -18,6 +19,7 @@
 #include <panda/Mesh.hpp>
 #include <panda/Plane.hpp>
 #include <panda/RenderView.hpp>
+#include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
 #include <panda/tools/gui/Window.hpp>
@@ -125,6 +127,7 @@ struct SceneMeshes
     panda::Mesh cube;
     panda::Mesh ground;
     panda::Mesh triangle;
+    panda::Texture baseColorMap;
 };
 
 auto createCompactTriangle(const panda::Context& context) -> panda::Result<panda::Mesh>
@@ -186,6 +189,26 @@ auto uploadSceneMeshes(const panda::Context& context,
     {
         return std::unexpected {written.error()};
     }
+    static constexpr auto baseColorPixels = std::array {std::byte {0xff},
+                                                        std::byte {0x20},
+                                                        std::byte {0x20},
+                                                        std::byte {0xff},
+                                                        std::byte {0x20},
+                                                        std::byte {0xff},
+                                                        std::byte {0x20},
+                                                        std::byte {0x00},
+                                                        std::byte {0x20},
+                                                        std::byte {0x20},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0xff},
+                                                        std::byte {0x00}};
+    if (const auto written = batch->write(meshes.baseColorMap, baseColorPixels); !written)
+    {
+        return std::unexpected {written.error()};
+    }
     return finishSceneMeshUpload(context, *batch);
 }
 
@@ -208,8 +231,19 @@ auto createUploadedCubeGroundAndCompactTriangle(const panda::Context& context) -
     {
         return std::unexpected {triangle.error()};
     }
-    auto meshes =
-        SceneMeshes {.cube = std::move(*cube), .ground = std::move(*ground), .triangle = std::move(*triangle)};
+    auto baseColorMap = context.createTexture({
+        .extent = vk::Extent2D {2, 2},
+        .format = vk::Format::eR8G8B8A8Srgb,
+        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    });
+    if (!baseColorMap)
+    {
+        return std::unexpected {baseColorMap.error()};
+    }
+    auto meshes = SceneMeshes {.cube = std::move(*cube),
+                               .ground = std::move(*ground),
+                               .triangle = std::move(*triangle),
+                               .baseColorMap = std::move(*baseColorMap)};
     if (const auto uploaded = uploadSceneMeshes(context, meshes, cubeGeometry, groundGeometry); !uploaded)
     {
         return std::unexpected {uploaded.error()};
@@ -231,48 +265,88 @@ auto makeTestCamera(panda::FramebufferExtent extent) -> panda::Result<panda::Ren
     });
 }
 
-auto makeCubeAndGroundView(panda::FramebufferExtent extent, SceneMeshes meshes) -> panda::Result<panda::RenderView>
+auto makeBlendDraws(const SceneMeshes& meshes) -> std::vector<panda::MeshDraw>
+{
+    return {
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.5F}),
+                         .material = {.baseColor = {1.0F, 1.0F, 1.0F, 0.5F},
+                                      .baseColorTexture = {},
+                                      .alphaMode = panda::AlphaMode::Blend}},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.2F}),
+                         .material = {.baseColor = {0.8F, 0.5F, 1.0F, 0.5F},
+                                      .baseColorTexture = {},
+                                      .alphaMode = panda::AlphaMode::Blend}}
+    };
+}
+
+auto makeFaceDraws(const SceneMeshes& meshes) -> std::vector<panda::MeshDraw>
+{
+    const auto reflectedModel = glm::scale(glm::mat4 {1.0F}, glm::vec3 {-1.0F, 1.0F, 1.0F});
+    return {
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, 0.0F, 0.0F}),
+                         .material = {.baseColorTexture = {}, .renderFace = panda::RenderFace::Back}},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, 0.0F}),
+                         glm::vec3 {-1.0F, 1.0F, 1.0F}),
+                         .material = {.baseColorTexture = {}, .renderFace = panda::RenderFace::Both}},
+        panda::MeshDraw {.mesh = meshes.cube, .modelMatrix = reflectedModel},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .modelMatrix = glm::translate(reflectedModel, glm::vec3 {0.0F, 0.0F, -1.5F}),
+                         .material = {.baseColorTexture = {}, .renderFace = panda::RenderFace::Back}}
+    };
+}
+
+auto makeTexturedMaskDraw(const SceneMeshes& meshes) -> panda::MeshDraw
+{
+    return {
+        .mesh = meshes.cube,
+        .modelMatrix = glm::translate(glm::mat4 {1.0F},
+           glm::vec3 {1.5F, 0.0F, -1.5F}
+           ),
+        .material = {.baseColorTexture = meshes.baseColorMap,
+                                                 .renderFace = panda::RenderFace::Both,
+                                                 .alphaMode = panda::AlphaMode::Mask}
+    };
+}
+
+auto makeUnlitMaskDraw(const SceneMeshes& meshes) -> panda::MeshDraw
+{
+    return {
+        .mesh = meshes.triangle,
+        .modelMatrix = glm::translate(glm::mat4 {1.0F},
+           glm::vec3 {-1.5F, -0.25F, 0.0F}
+           ),
+        .material = {.model = panda::MaterialModel::Unlit,
+                                                 .baseColorTexture = {},
+                                                 .alphaMode = panda::AlphaMode::Mask}
+    };
+}
+
+auto makeCubeAndGroundView(panda::FramebufferExtent extent, const SceneMeshes& meshes)
+    -> panda::Result<panda::RenderView>
 {
     const auto camera = makeTestCamera(extent);
     if (!camera)
     {
         return std::unexpected {camera.error()};
     }
-    auto view = panda::RenderView {.camera = *camera, .directionalLight = {}, .meshes = {}};
     const auto groundTransform =
         glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, -0.5F, 0.0F}), glm::vec3 {10.0F, 1.0F, 10.0F});
-    const auto reflectedModel = glm::scale(glm::mat4 {1.0F}, glm::vec3 {-1.0F, 1.0F, 1.0F});
+    auto view = panda::RenderView {};
+    view.camera = *camera;
     view.meshes = {
-        panda::MeshDraw {.mesh = std::move(meshes.ground),
-                         .modelMatrix = groundTransform,
-                         .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
-        panda::MeshDraw {.mesh = meshes.cube},
-        panda::MeshDraw {.mesh = meshes.cube,
-                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.5F}),
-                         .material = {.baseColor = {1.0F, 1.0F, 1.0F, 0.5F}, .alphaMode = panda::AlphaMode::Blend}},
-        panda::MeshDraw {.mesh = meshes.cube,
-                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.2F}),
-                         .material = {.baseColor = {0.8F, 0.5F, 1.0F, 0.5F}, .alphaMode = panda::AlphaMode::Blend}},
-        panda::MeshDraw {.mesh = meshes.cube,
-                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, 0.0F, 0.0F}),
-                         .material = {.renderFace = panda::RenderFace::Back}},
-        panda::MeshDraw {.mesh = meshes.cube,
-                         .modelMatrix = glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, 0.0F}),
-                         glm::vec3 {-1.0F, 1.0F, 1.0F}),
-                         .material = {.renderFace = panda::RenderFace::Both}},
-        panda::MeshDraw {.mesh = meshes.cube,
-                         .modelMatrix = reflectedModel,
-                         .material = {.renderFace = panda::RenderFace::Front}},
-        panda::MeshDraw {.mesh = meshes.cube,
-                         .modelMatrix = glm::translate(reflectedModel, glm::vec3 {0.0F, 0.0F, -1.5F}),
-                         .material = {.renderFace = panda::RenderFace::Back}},
-        panda::MeshDraw {.mesh = meshes.cube,
-                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, -1.5F}),
-                         .material = {.renderFace = panda::RenderFace::Both, .alphaMode = panda::AlphaMode::Mask}},
-        panda::MeshDraw {.mesh = std::move(meshes.triangle),
-                         .modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, -0.25F, 0.0F}),
-                         .material = {.model = panda::MaterialModel::Unlit, .alphaMode = panda::AlphaMode::Mask}}
+        panda::MeshDraw {.mesh = meshes.ground, .modelMatrix = groundTransform, .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
+        panda::MeshDraw {.mesh = meshes.cube}
     };
+    auto blendDraws = makeBlendDraws(meshes);
+    view.meshes.insert(view.meshes.end(), blendDraws.begin(), blendDraws.end());
+    auto faceDraws = makeFaceDraws(meshes);
+    view.meshes.insert(view.meshes.end(), faceDraws.begin(), faceDraws.end());
+    view.meshes.push_back(makeTexturedMaskDraw(meshes));
+    view.meshes.push_back(makeUnlitMaskDraw(meshes));
     return view;
 }
 
@@ -376,11 +450,47 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_TRUE(created.has_value()) << created.error().message;
         auto context = std::move(*created);
         auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
+        if (!meshes && meshes.error().code == panda::ErrorCode::Unsupported)
+        {
+            GTEST_SKIP() << meshes.error().message;
+        }
         ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
         const auto extent = window->getFramebufferExtent();
         ASSERT_TRUE(extent.has_value()) << extent.error().message;
-        auto view = makeCubeAndGroundView(*extent, std::move(*meshes));
+        auto view = makeCubeAndGroundView(*extent, *meshes);
         ASSERT_TRUE(view.has_value()) << view.error().message;
+        auto missingUvView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
+        missingUvView.meshes.push_back({
+            .mesh = meshes->triangle,
+            .material = {.model = panda::MaterialModel::Unlit, .baseColorTexture = meshes->baseColorMap}
+        });
+        const auto missingUvResult = context.render(missingUvView);
+        ASSERT_FALSE(missingUvResult.has_value());
+        EXPECT_EQ(missingUvResult.error().code, panda::ErrorCode::InvalidArgument);
+
+        auto linearMap = context.createTexture({
+            .extent = vk::Extent2D {1, 1},
+            .format = vk::Format::eR8G8B8A8Unorm,
+            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        });
+        ASSERT_TRUE(linearMap.has_value()) << linearMap.error().message;
+        auto linearMapView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
+        linearMapView.meshes.push_back({.mesh = meshes->cube, .material = {.baseColorTexture = *linearMap}});
+        const auto linearMapResult = context.render(linearMapView);
+        ASSERT_FALSE(linearMapResult.has_value());
+        EXPECT_EQ(linearMapResult.error().code, panda::ErrorCode::InvalidArgument);
+
+        auto unuploadedMap = context.createTexture({
+            .extent = vk::Extent2D {1, 1},
+            .format = vk::Format::eR8G8B8A8Srgb,
+            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        });
+        ASSERT_TRUE(unuploadedMap.has_value()) << unuploadedMap.error().message;
+        auto unuploadedMapView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
+        unuploadedMapView.meshes.push_back({.mesh = meshes->cube, .material = {.baseColorTexture = *unuploadedMap}});
+        const auto unuploadedMapResult = context.render(unuploadedMapView);
+        ASSERT_FALSE(unuploadedMapResult.has_value());
+        EXPECT_EQ(unuploadedMapResult.error().code, panda::ErrorCode::InvalidArgument);
         const auto frame = context.render(*view);
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
         EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);

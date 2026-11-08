@@ -17,9 +17,11 @@
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
+#include <panda/Texture.hpp>
 #include <panda/WindowSurface.hpp>
 #include <string>
 #include <utility>
+#include <vector>
 #include <vulkan/vulkan.hpp>
 
 #include "SubmissionQueue.hpp"
@@ -53,6 +55,18 @@ struct ImageTransition
     ImageAccessScope source;
     ImageAccessScope destination;
 };
+
+void retainBaseColorTextures(std::vector<Texture>& retained, const RenderView& view)
+{
+    retained.reserve(view.meshes.size());
+    for (const auto& draw : view.meshes)
+    {
+        if (draw.material.baseColorTexture.isValid())
+        {
+            retained.push_back(draw.material.baseColorTexture);
+        }
+    }
+}
 
 auto createFrameCommands(const vk::raii::Device& device, std::uint32_t queueFamily)
     -> std::expected<FrameCommands, Error>
@@ -226,9 +240,10 @@ auto Presentation::recreate(FramebufferExtent requested) -> std::expected<void, 
     return {};
 }
 
-auto Presentation::retainViewMeshes(FrameSlot& slot, const RenderView& view) -> std::expected<void, Error>
+auto Presentation::retainViewResources(FrameSlot& slot, const RenderView& view) -> std::expected<void, Error>
 {
     slot.retainedMeshes.clear();
+    slot.retainedTextures.clear();
     try
     {
         slot.retainedMeshes.reserve(view.meshes.size());
@@ -236,11 +251,13 @@ auto Presentation::retainViewMeshes(FrameSlot& slot, const RenderView& view) -> 
         {
             slot.retainedMeshes.push_back(draw.mesh);
         }
+        retainBaseColorTextures(slot.retainedTextures, view);
     }
     catch (const std::bad_alloc&)
     {
         slot.retainedMeshes.clear();
-        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Unable to retain render view meshes")};
+        slot.retainedTextures.clear();
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Unable to retain render view resources")};
     }
     return {};
 }
@@ -271,7 +288,7 @@ auto Presentation::render(const RenderView& view, std::optional<std::size_t>& su
     {
         return std::unexpected {waited.error()};
     }
-    if (const auto retained = retainViewMeshes(slot, view); !retained)
+    if (const auto retained = retainViewResources(slot, view); !retained)
     {
         return std::unexpected {retained.error()};
     }
@@ -287,11 +304,13 @@ auto Presentation::executeAcquiredFrame(const RenderView& view, std::optional<st
     if (!acquired)
     {
         slot.retainedMeshes.clear();
+        slot.retainedTextures.clear();
         return std::unexpected {acquired.error()};
     }
     if (const auto nonReady = nonReadyFrameResult(acquired->status); nonReady)
     {
         slot.retainedMeshes.clear();
+        slot.retainedTextures.clear();
         return *nonReady;
     }
     return submitAcquiredFrame(*acquired, slotIndex, view, submittedPerformanceSlot);
@@ -308,6 +327,7 @@ auto Presentation::submitAcquiredFrame(const AcquiredImage& acquired,
     if (const auto waited = waitImage(slot, acquired.index); !waited)
     {
         slot.retainedMeshes.clear();
+        slot.retainedTextures.clear();
         return std::unexpected {waited.error()};
     }
     const auto selection = FrameSelection {.slotIndex = slotIndex, .imageIndex = acquired.index};
@@ -315,6 +335,7 @@ auto Presentation::submitAcquiredFrame(const AcquiredImage& acquired,
     if (!completion)
     {
         slot.retainedMeshes.clear();
+        slot.retainedTextures.clear();
         return std::unexpected {completion.error()};
     }
     if (_performance != nullptr && _performance->getCapabilities().isGpuTimestampSamplingEnabled)
@@ -864,6 +885,7 @@ auto Presentation::drain() -> std::expected<void, Error>
     for (auto& slot : _slots)
     {
         slot.retainedMeshes.clear();
+        slot.retainedTextures.clear();
     }
     if (const auto recovered = finishPendingImageRecovery(); !recovered)
     {
