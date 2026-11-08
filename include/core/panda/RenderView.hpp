@@ -58,6 +58,11 @@ struct Material
     /// the rendered Context; the mesh must declare TexCoord0. Blue scales metallic and green scales roughness.
     /// An empty handle contributes white.
     Texture metallicRoughnessTexture;
+    /// Optional emissive map. If set, it must be uploaded RGBA8 sRGB, sampled, and from the rendered Context; the
+    /// mesh must declare TexCoord0. Its RGB multiplies emissive; alpha is ignored. An empty handle contributes white.
+    Texture emissiveTexture;
+    /// Linear RGB emissive multiplier, multiplied by emissiveTexture and added before tone mapping; defaults to black.
+    glm::vec3 emissive {};
     /// Metallic response, clamped to [0,1] when uploaded.
     float metallic {0.0F};
     /// Perceptual roughness, clamped to [0,1] when uploaded.

@@ -44,6 +44,7 @@ struct SceneMeshes
     panda::Mesh triangle;
     panda::Texture baseColorMap;
     panda::Texture metallicRoughnessMap;
+    panda::Texture emissiveMap;
 };
 
 struct SceneGeometry
@@ -52,6 +53,41 @@ struct SceneGeometry
     panda::Geometry ground;
     std::array<ColoredVertex, 3> triangle {};
 };
+
+constexpr auto baseColorPixels = std::array {std::byte {0xff},
+                                             std::byte {0x30},
+                                             std::byte {0x30},
+                                             std::byte {0xff},
+                                             std::byte {0xff},
+                                             std::byte {0xff},
+                                             std::byte {0xff},
+                                             std::byte {0xff},
+                                             std::byte {0x30},
+                                             std::byte {0x50},
+                                             std::byte {0xff},
+                                             std::byte {0xff},
+                                             std::byte {0xff},
+                                             std::byte {0xff},
+                                             std::byte {0xff},
+                                             std::byte {0xff}};
+constexpr auto metallicRoughnessPixels =
+    std::array {std::byte {0xff}, std::byte {0xff}, std::byte {0xff}, std::byte {0xff}};
+constexpr auto emissivePixels = std::array {std::byte {0xff},
+                                            std::byte {0xa0},
+                                            std::byte {0x20},
+                                            std::byte {0xff},
+                                            std::byte {0x00},
+                                            std::byte {0x00},
+                                            std::byte {0x00},
+                                            std::byte {0xff},
+                                            std::byte {0x00},
+                                            std::byte {0x00},
+                                            std::byte {0x00},
+                                            std::byte {0xff},
+                                            std::byte {0xff},
+                                            std::byte {0xa0},
+                                            std::byte {0x20},
+                                            std::byte {0xff}};
 
 auto createColoredTriangleVertices() -> std::array<ColoredVertex, 3>
 {
@@ -99,6 +135,16 @@ auto createMetallicRoughnessMap(const panda::Context& context) -> panda::Texture
                          "Create the cube metallic-roughness map");
 }
 
+auto createEmissiveMap(const panda::Context& context) -> panda::Texture
+{
+    return panda::expect(context.createTexture({
+                             .extent = {2, 2},
+                             .format = vk::Format::eR8G8B8A8Srgb,
+                             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    }),
+                         "Create the cube emissive map");
+}
+
 void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes, const SceneGeometry& geometry)
 {
     auto batch = panda::expect(context.createUploadBatch(), "Create the upload batch");
@@ -106,27 +152,10 @@ void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes,
     panda::expect(batch.write(meshes.ground, geometry.ground), "Stage the ground geometry");
     panda::expect(batch.write(meshes.triangle, std::as_bytes(std::span {geometry.triangle})),
                   "Stage the triangle vertices");
-    static constexpr auto baseColorPixels = std::array {std::byte {0xff},
-                                                        std::byte {0x30},
-                                                        std::byte {0x30},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0x30},
-                                                        std::byte {0x50},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff},
-                                                        std::byte {0xff}};
     panda::expect(batch.write(meshes.baseColorMap, baseColorPixels), "Stage the cube base-color map");
-    static constexpr auto metallicRoughnessPixels =
-        std::array {std::byte {0xff}, std::byte {0xff}, std::byte {0xff}, std::byte {0xff}};
     panda::expect(batch.write(meshes.metallicRoughnessMap, metallicRoughnessPixels),
                   "Stage the cube metallic-roughness map");
+    panda::expect(batch.write(meshes.emissiveMap, emissivePixels), "Stage the cube emissive map");
     const auto completion = panda::expect(batch.submit(), "Submit the scene upload");
     const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for the scene upload");
     panda::expect(status == panda::WaitStatus::Completed, "Scene upload did not finish in time");
@@ -143,6 +172,8 @@ auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
                                                      .position = {-1.3F, -0.49F, 0.0F}
     }),
                                                  "Create triangle transform");
+    auto triangleDraw = panda::MeshDraw {.mesh = meshes.triangle, .modelMatrix = triangleTransform};
+    triangleDraw.material.model = panda::MaterialModel::Unlit;
     return panda::RenderView {
         .camera = {},
         .directionalLight = {.direction = {0.55F, -0.6F, 0.58F}},
@@ -150,12 +181,10 @@ auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
                    panda::MeshDraw {.mesh = meshes.ground, .modelMatrix = groundTransform, .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
                    panda::MeshDraw {.mesh = meshes.cube,
                              .material = {.baseColorTexture = meshes.baseColorMap,
-                                          .metallicRoughnessTexture = meshes.metallicRoughnessMap}},
-                   panda::MeshDraw {.mesh = meshes.triangle,
-                             .modelMatrix = triangleTransform,
-                             .material = {.model = panda::MaterialModel::Unlit,
-                                          .baseColorTexture = {},
-                                          .metallicRoughnessTexture = {}}}}
+                                          .metallicRoughnessTexture = meshes.metallicRoughnessMap,
+                                          .emissiveTexture = meshes.emissiveMap,
+                                          .emissive = {1.0F, 0.8F, 0.3F}}},
+                   triangleDraw}
     };
 }
 
@@ -170,7 +199,8 @@ auto createSceneMeshes(const panda::Context& context) -> SceneMeshes
                                .ground = ground,
                                .triangle = createColoredTriangleMesh(context, geometry.triangle),
                                .baseColorMap = createBaseColorMap(context),
-                               .metallicRoughnessMap = createMetallicRoughnessMap(context)};
+                               .metallicRoughnessMap = createMetallicRoughnessMap(context),
+                               .emissiveMap = createEmissiveMap(context)};
     uploadSceneMeshes(context, meshes, geometry);
     return meshes;
 }

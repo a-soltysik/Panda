@@ -14,7 +14,8 @@ struct MaterialRecord
     float alphaCutoff;
     uint hasBaseColorTexture;
     uint hasMetallicRoughnessTexture;
-    uint padding;
+    uint hasEmissiveTexture;
+    vec4 emissive;
 };
 
 layout(set = 0, binding = 2, std430) readonly buffer MaterialData

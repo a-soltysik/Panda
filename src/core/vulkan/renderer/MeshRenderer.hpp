@@ -47,7 +47,8 @@ struct alignas(16) MaterialRecord
     float alphaCutoff {};
     std::uint32_t hasBaseColorTexture {};
     std::uint32_t hasMetallicRoughnessTexture {};
-    std::uint32_t padding {};
+    std::uint32_t hasEmissiveTexture {};
+    glm::vec4 emissive {};
 };
 
 class MeshRenderer final

@@ -45,7 +45,7 @@ using detail::checkedCreation;
 
 namespace
 {
-constexpr auto textureDescriptorsPerDraw = std::uint32_t {2};
+constexpr auto textureDescriptorsPerDraw = std::uint32_t {3};
 
 struct alignas(16) FrameUniform
 {
@@ -78,11 +78,12 @@ static_assert(offsetof(MaterialRecord, metallic) == 0);
 static_assert(offsetof(MaterialRecord, roughness) == 4);
 static_assert(offsetof(MaterialRecord, isLit) == 8);
 static_assert(offsetof(MaterialRecord, renderFace) == 12);
-static_assert(sizeof(MaterialRecord) == 32);
+static_assert(sizeof(MaterialRecord) == 48);
 static_assert(offsetof(MaterialRecord, alphaCutoff) == 16);
 static_assert(offsetof(MaterialRecord, hasBaseColorTexture) == 20);
 static_assert(offsetof(MaterialRecord, hasMetallicRoughnessTexture) == 24);
-static_assert(offsetof(MaterialRecord, padding) == 28);
+static_assert(offsetof(MaterialRecord, hasEmissiveTexture) == 28);
+static_assert(offsetof(MaterialRecord, emissive) == 32);
 static_assert(static_cast<std::uint32_t>(VertexAttributeSemantic::Position) ==
               PANDA_VERTEX_ATTRIBUTE_POSITION_LOCATION);
 static_assert(static_cast<std::uint32_t>(VertexAttributeSemantic::Normal) == PANDA_VERTEX_ATTRIBUTE_NORMAL_LOCATION);
@@ -182,13 +183,17 @@ auto makeDrawConstants(const MeshDraw& draw) -> DrawConstants
 
 auto makeMaterialRecord(const Material& material) -> MaterialRecord
 {
-    return MaterialRecord {.metallic = std::clamp(material.metallic, 0.0F, 1.0F),
-                           .roughness = std::clamp(material.roughness, 0.0F, 1.0F),
-                           .isLit = material.model == MaterialModel::Lit ? 1U : 0U,
-                           .renderFace = static_cast<std::uint32_t>(material.renderFace),
-                           .alphaCutoff = material.alphaCutoff,
-                           .hasBaseColorTexture = material.baseColorTexture.isValid() ? 1U : 0U,
-                           .hasMetallicRoughnessTexture = material.metallicRoughnessTexture.isValid() ? 1U : 0U};
+    return MaterialRecord {
+        .metallic = std::clamp(material.metallic, 0.0F, 1.0F),
+        .roughness = std::clamp(material.roughness, 0.0F, 1.0F),
+        .isLit = material.model == MaterialModel::Lit ? 1U : 0U,
+        .renderFace = static_cast<std::uint32_t>(material.renderFace),
+        .alphaCutoff = material.alphaCutoff,
+        .hasBaseColorTexture = material.baseColorTexture.isValid() ? 1U : 0U,
+        .hasMetallicRoughnessTexture = material.metallicRoughnessTexture.isValid() ? 1U : 0U,
+        .hasEmissiveTexture = material.emissiveTexture.isValid() ? 1U : 0U,
+        .emissive = glm::vec4 {material.emissive, 0.0F}
+    };
 }
 
 auto cameraDepthForMesh(const glm::mat4& viewProjection, const glm::mat4& modelMatrix) -> float
@@ -633,6 +638,10 @@ auto MeshRenderer::initializeTextureDescriptorSetLayout() -> std::expected<void,
                                         .descriptorCount = 1,
                                         .stageFlags = vk::ShaderStageFlagBits::eFragment},
         vk::DescriptorSetLayoutBinding {.binding = 1,
+                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                                        .descriptorCount = 1,
+                                        .stageFlags = vk::ShaderStageFlagBits::eFragment},
+        vk::DescriptorSetLayoutBinding {.binding = 2,
                                         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
                                         .descriptorCount = 1,
                                         .stageFlags = vk::ShaderStageFlagBits::eFragment}
@@ -1085,8 +1094,9 @@ auto MeshRenderer::getMeshPipelineKey(const MeshDraw& draw) -> MeshPipelineKey
     const auto hasColor = std::ranges::any_of(attributes, [](const auto& attribute) {
         return attribute.semantic == VertexAttributeSemantic::Color;
     });
-    const auto hasTextureCoordinates =
-        draw.material.baseColorTexture.isValid() || draw.material.metallicRoughnessTexture.isValid();
+    const auto hasTextureCoordinates = draw.material.baseColorTexture.isValid() ||
+                                       draw.material.metallicRoughnessTexture.isValid() ||
+                                       draw.material.emissiveTexture.isValid();
     return {.lit = lit,
             .hasColor = hasColor,
             .hasTextureCoordinates = hasTextureCoordinates,
@@ -1305,22 +1315,20 @@ void MeshRenderer::writeTextureDescriptors(FrameResources& frame, const RenderVi
     for (auto index = std::size_t {}; index < view.meshes.size(); ++index)
     {
         const auto& material = view.meshes.at(index).material;
+        const auto textures =
+            std::array {&material.baseColorTexture, &material.metallicRoughnessTexture, &material.emissiveTexture};
         const auto descriptorSet = *frame.textureDescriptorSets.at(index);
-        const auto imageInfoIndex = index * textureDescriptorsPerDraw;
-        imageInfos.at(imageInfoIndex) =
-            makeTextureDescriptorInfo(material.baseColorTexture, *_textureSampler, shadowView);
-        writes.push_back({.dstSet = descriptorSet,
-                          .dstBinding = 0,
-                          .descriptorCount = 1,
-                          .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                          .pImageInfo = &imageInfos.at(imageInfoIndex)});
-        imageInfos.at(imageInfoIndex + 1) =
-            makeTextureDescriptorInfo(material.metallicRoughnessTexture, *_textureSampler, shadowView);
-        writes.push_back({.dstSet = descriptorSet,
-                          .dstBinding = 1,
-                          .descriptorCount = 1,
-                          .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                          .pImageInfo = &imageInfos.at(imageInfoIndex + 1)});
+        for (auto binding = std::size_t {}; binding < textures.size(); ++binding)
+        {
+            const auto imageInfoIndex = (index * textureDescriptorsPerDraw) + binding;
+            imageInfos.at(imageInfoIndex) =
+                makeTextureDescriptorInfo(*textures.at(binding), *_textureSampler, shadowView);
+            writes.push_back({.dstSet = descriptorSet,
+                              .dstBinding = static_cast<std::uint32_t>(binding),
+                              .descriptorCount = 1,
+                              .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                              .pImageInfo = &imageInfos.at(imageInfoIndex)});
+        }
     }
     _device.updateDescriptorSets(writes, {});
 }

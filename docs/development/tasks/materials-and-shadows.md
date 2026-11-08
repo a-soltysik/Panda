@@ -26,11 +26,14 @@ require Position and Normal. An optional, uploaded same-Context RGBA8 sRGB base-
 map requires sampled usage and `TexCoord0`; filtering is linear with repeat addressing.
 Its color multiplies material and draw tint and optional vertex color, and its alpha
 is used by Blend and by the matching Mask camera/shadow cutoff. Per-frame slots retain
-both maps through GPU completion. The Lit metallic-roughness map requires sampled
-usage and `TexCoord0`; blue multiplies metallic and green multiplies roughness. It
-does not affect alpha or shadow passes. Shader locations share one preprocessor
-definition file consumed by C++ and GLSL, with C++ static assertions against
-`VertexAttributeSemantic`. Material values use a named 32-byte record packed
+all material maps through GPU completion. The Lit metallic-roughness map requires
+sampled usage and `TexCoord0`; blue multiplies metallic and green multiplies roughness. It
+does not affect alpha or shadow passes. A linear emissive factor defaults to black
+and multiplies an optional sampled RGBA8 sRGB emissive map requiring `TexCoord0`;
+emission is added before tone mapping for Lit and Unlit shading. It changes only
+the object's visible color, not other surfaces, shadows or bloom. Shader locations
+share one preprocessor definition file consumed by C++ and GLSL, with C++ static assertions against
+`VertexAttributeSemantic`. Material values use a named 48-byte record packed
 contiguously in a per-frame storage buffer with one mapped write per frame. `Material`
 selects front, back or both faces and Opaque, Mask or Blend alpha handling. Mask uses
 the product of material alpha, draw tint alpha and vertex alpha (one when Color is
@@ -38,11 +41,12 @@ absent), with one cutoff in camera and shadow passes. Blend uses that product fo
 source-over compositing, draws after Opaque/Mask in mesh-origin back-to-front order
 with depth writes disabled, and is skipped by the shadow pass. Camera and shadow
 pipelines account for negative determinants, and Lit shading flips normals on
-rendered back faces. `simple_scene` shows the compact layout, an optional
-base-color map on the cube, and an untextured Unlit triangle; `scene_demo` puts
-an upright, vertex-colored triangle into the existing animated object grid.
+rendered back faces. `simple_scene` shows the compact layout, the cube's
+base-color, metallic-roughness and emissive maps, and an untextured Unlit triangle;
+`scene_demo` puts an upright, vertex-colored triangle into the existing animated
+object grid.
 
-Emissive, normal and occlusion maps, multiple lights, spot/point
+Normal and occlusion maps, multiple lights, spot/point
 shadows, normal-map fallback, and the required shadow-quality captures remain incomplete.
 This task is not accepted.
 
@@ -59,27 +63,31 @@ This task is not accepted.
   `gcc-quality` and the `all_verify_interface_header_sets panda_format_checks`
   targets passed. The `clang-cuda-analysis` configure/build passed. The
   `gcc-fast` configure/build and full CTest passed: 533 cases, eight skipped
-  (five CUDA capability cases and three noncoherent-memory variants). Tool
+  (five CUDA capability cases and three noncoherent-memory variants). The
+  `gcc-docs` configure/build generated the public API documentation. Tool
   versions: CMake 4.2.3, GCC 16.0.1, Ninja 1.13.2, ccache 4.12.3.
 - Clang CUDA analysis on both platforms reports that the installed CUDA version
   is newer than Clang's latest partially supported version 12.9; the configured
   analysis targets still pass.
 - `git diff --check` passed. `check_docs.py` checked 80 Markdown files and the
   task queue with no structural errors; `docs-checks` validated 42 Mermaid
-  diagrams in 83 files; the Linux `gcc-docs` preset generated the public API
-  documentation successfully.
-- The uniquely titled Windows `Panda - Simple scene` window was inspected: its
-  cube displays the base-color map and its UV-less triangle remains untextured.
-  This is a visual smoke check, not a pixel comparison or shadow-quality
-  assessment. The windowed system test validates rendering and Vulkan state but
-  does not compare pixels or prove transparent draw ordering.
-- No RenderDoc shadow-quality capture was made; the task remains in progress.
+  diagrams in 83 files. SPIR-V disassembly confirms a 48-byte `MaterialRecord`
+  array stride in both
+  mesh and shadow fragment shaders.
+- Windows and Linux windowed Vulkan system cases submit Lit and Unlit emissive
+  draws and pass, but they do not compare pixels. An attempt to inspect the
+  launched `simple_scene` window did not expose it through the available window
+  inventory, so the emissive appearance has not been visually confirmed in this
+  run.
+- No RenderDoc shadow-quality capture or pixel comparison was made; the task
+  remains in progress.
 
 ## Acceptance
 
-ABI/visual cases for position/color-only and lit mesh layouts, blend compositing and
-draw order, missing tangent with normal-map fallback, 65 lights, mask shadows,
-negative scale, tangent sign, spot/point shadows and format fallback.
+ABI/visual cases for position/color-only and lit mesh layouts, emissive factor and
+map behavior in Lit and Unlit materials, blend compositing and draw order, missing
+tangent with normal-map fallback, 65 lights, mask shadows, negative scale, tangent
+sign, spot/point shadows and format fallback.
 
 The first-scene shadow uses a fixed 2048 by 2048 map over 30 m and 3x3 PCF, which
 visibly aliases at its edges. This task must tune or replace that filtering and

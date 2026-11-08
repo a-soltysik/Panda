@@ -3,8 +3,10 @@
 `simple_scene` opens a window, creates a unit cube and unit plane with the standard
 geometry helper, then creates a compact position-and-color triangle with
 `Context::createMesh(MeshDesc)`. One upload batch initializes all three meshes,
-the cube's optional 2x2 sRGB base-color map and neutral 1x1 linear
-metallic-roughness map. The cube uses standard UVs; the
+the cube's optional 2x2 sRGB base-color and emissive maps, and neutral 1x1 linear
+metallic-roughness map. The emissive map adds orange emission to part of the
+cube's surface; it does not illuminate other objects or produce a bloom halo.
+The cube uses standard UVs; the
 custom triangle has no UVs and renders without a map. The view renders the cube
 and ground with the built-in directional light,
 depth-map shadows and lit material, plus the triangle with an unlit material.

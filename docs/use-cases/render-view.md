@@ -18,9 +18,10 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 2. Every mesh draw refers to a valid, uploaded mesh from that Context and declares a
    layout compatible with its material. All draws require Position; Lit also requires
    Normal. Color is optional and defaults to white. A base-color map is optional; if
-   set, it must be a sampled RGBA8 sRGB texture from the same Context. A Lit
-   metallic-roughness map is also optional; if set, it must be a sampled RGBA8 UNORM
-   texture from the same Context. Both maps require TexCoord0 and a submitted upload.
+   set, it must be a sampled RGBA8 sRGB texture from the same Context. Lit
+   metallic-roughness and emissive maps are also optional; they require sampled
+   RGBA8 UNORM and RGBA8 sRGB respectively. All maps must be from the same Context,
+   require TexCoord0, and need a submitted upload.
 3. Camera, light, transform, tint and material values are finite and valid for the
    built-in renderer. A zero-sized framebuffer is allowed and returns `Suspended`.
 
@@ -34,8 +35,8 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    object-to-world matrix; applications may also supply a matrix directly.
 2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, light,
    tint, material alpha mode and cutoff, then verifies each mesh's Context and required attributes.
-   If a base-color or Lit metallic-roughness map is set, it checks the texture's
-   Context, sampled usage, required format and the mesh's TexCoord0. It polls and
+   If a base-color, Lit metallic-roughness or emissive map is set, it checks the
+   texture's Context, sampled usage, required format and the mesh's TexCoord0. It polls and
    reclaims completed upload packets, then rejects a texture whose upload was never
    submitted. Rendering remains queued
    after any in-flight upload on the Context submission queue.
@@ -53,7 +54,9 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    updates frame data, per-draw material records and texture descriptors, then records
    the directional shadow depth pass. A base-color sample multiplies material and
    draw tint and optional vertex color; a metallic-roughness sample scales Lit
-   material values with its blue and green channels respectively. An absent map contributes white. Opaque draws
+   material values with its blue and green channels respectively. The emissive
+   sample multiplies the linear emissive factor and is added before tone mapping
+   for Lit and Unlit draws. An absent map contributes white. Opaque draws
    cast a full silhouette. Mask draws multiply texture, material, draw and vertex alpha
    and apply the material cutoff in both shadow and camera passes. The camera pass
    selects pipelines from each material model, alpha mode, consumed vertex attributes,
@@ -96,7 +99,8 @@ sequenceDiagram
         P->>R: Create/resize renderer and update frame, material and texture data
         R->>V: Record Mask shadow cutouts using the same base-color alpha as the camera
         R->>V: Record Opaque and Mask draws, then back-to-front Blend draws
-    R->>V: Sample material maps and shadow map for Lit draws
+        R->>V: Sample enabled material maps and shadows for Lit shading
+        R->>V: Add emission before tone mapping for Lit and Unlit shading
     end
     P->>Q: Submit commands and signal timeline
     Q-)V: Queue accepts frame work
@@ -120,7 +124,10 @@ checked perspective projection with right-handed look-at vectors and returns a
 **Current shading model.** Built-in materials multiply linear `baseColor`, an
 optional sRGB base-color map, draw tint and optional vertex color (white when absent).
 Lit materials can also sample a linear UNORM metallic-roughness map; blue scales
-metallic and green scales roughness. Mapped draws require TexCoord0; a missing map contributes white. Lit materials evaluate one directional
+metallic and green scales roughness. Both material models can use an sRGB emissive
+map, whose RGB multiplies the linear emissive factor; alpha is ignored. Emission is
+added before tone mapping and changes only the object's color: it does not light
+other objects or create a bloom halo. Mapped draws require TexCoord0; a missing map contributes white. Lit materials evaluate one directional
 light with a Cook-Torrance microfacet specular term: GGX normal distribution,
 Schlick-GGX geometry and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is
 combined with that specular term. Each Lit material supplies metallic and roughness,
@@ -131,15 +138,16 @@ lookup while shading, but still cast shadows in the current depth pass.
 discarded, and the rest render fully opaque. The same cutoff controls the shadow
 silhouette. The material's `RenderFace` selects front sides, back sides or both; transforms with
 a negative determinant reverse pipeline winding in both passes. Lit shading
-orients back-facing normals consistently when rendering `Back` or `Both`. They
-use base color, not emissive lighting. A constant ambient term contributes
+orients back-facing normals consistently when rendering `Back` or `Both`. A
+constant ambient term contributes
 0.06 times base color to Lit materials. The shader applies the ACES fitted tone curve and
 outputs sRGB, using hardware conversion for sRGB swapchain formats or shader encoding
 for UNORM formats. Direct directional light is shadowed with one 2048² depth map per
 frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
 orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
-Points outside that fixed camera-centered region receive no shadow. Material textures,
-multiple lights, spot/point shadows and improved shadow coverage and filtering remain work in
+Points outside that fixed camera-centered region receive no shadow. Normal and
+occlusion maps, multiple lights, spot/point shadows and improved shadow coverage
+and filtering remain work in
 [Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
 current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and
 the current visual result. The first mesh draw selects the highest common color/depth

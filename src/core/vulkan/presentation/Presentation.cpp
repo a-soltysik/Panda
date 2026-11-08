@@ -58,7 +58,7 @@ struct ImageTransition
 
 void retainMaterialTextures(std::vector<Texture>& retained, const RenderView& view)
 {
-    retained.reserve(view.meshes.size());
+    retained.reserve(view.meshes.size() * 3);
     for (const auto& draw : view.meshes)
     {
         if (draw.material.baseColorTexture.isValid())
@@ -68,6 +68,10 @@ void retainMaterialTextures(std::vector<Texture>& retained, const RenderView& vi
         if (draw.material.metallicRoughnessTexture.isValid())
         {
             retained.push_back(draw.material.metallicRoughnessTexture);
+        }
+        if (draw.material.emissiveTexture.isValid())
+        {
+            retained.push_back(draw.material.emissiveTexture);
         }
     }
 }

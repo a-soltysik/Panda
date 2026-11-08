@@ -62,9 +62,10 @@ auto isValidMaterial(const Material& material) -> bool
            (material.alphaMode == AlphaMode::Opaque || material.alphaMode == AlphaMode::Mask ||
             material.alphaMode == AlphaMode::Blend) &&
            isFinite(material.baseColor) && material.baseColor.r >= 0.0F && material.baseColor.g >= 0.0F &&
-           material.baseColor.b >= 0.0F && material.baseColor.a >= 0.0F && std::isfinite(material.metallic) &&
-           std::isfinite(material.roughness) && std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0F &&
-           material.alphaCutoff <= 1.0F;
+           material.baseColor.b >= 0.0F && material.baseColor.a >= 0.0F && isFinite(material.emissive) &&
+           material.emissive.r >= 0.0F && material.emissive.g >= 0.0F && material.emissive.b >= 0.0F &&
+           std::isfinite(material.metallic) && std::isfinite(material.roughness) &&
+           std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0F && material.alphaCutoff <= 1.0F;
 }
 
 auto hasAttribute(const Mesh& mesh, VertexAttributeSemantic semantic) -> bool
@@ -98,10 +99,11 @@ auto isCompatibleTexture(const MeshDraw& draw,
            std::ranges::find(formats, texture.getFormat()) != formats.end();
 }
 
-auto isCompatibleBaseColorTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+auto areCompatibleSrgbMaps(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
 {
     static constexpr auto formats = std::array {vk::Format::eR8G8B8A8Srgb, vk::Format::eB8G8R8A8Srgb};
-    return isCompatibleTexture(draw, draw.material.baseColorTexture, pool, formats);
+    return isCompatibleTexture(draw, draw.material.baseColorTexture, pool, formats) &&
+           isCompatibleTexture(draw, draw.material.emissiveTexture, pool, formats);
 }
 
 auto isCompatibleMetallicRoughnessTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
@@ -111,6 +113,7 @@ auto isCompatibleMetallicRoughnessTexture(const MeshDraw& draw, const resources:
            (draw.material.model == MaterialModel::Lit &&
             isCompatibleTexture(draw, draw.material.metallicRoughnessTexture, pool, formats));
 }
+
 }
 
 auto validateRenderViewData(const RenderView& view) -> Result<void>
@@ -150,12 +153,12 @@ auto validateRenderViewMeshes(const RenderView& view, const resources::MemoryPoo
             makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Context")};
     }
     if (std::ranges::any_of(view.meshes, [&pool](const auto& draw) {
-            return !isCompatibleBaseColorTexture(draw, pool);
+            return !areCompatibleSrgbMaps(draw, pool);
         }))
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument,
-                                          "Base-color map requires UVs and a sampled RGBA8 sRGB texture from this "
-                                          "Context")};
+                                          "Base-color and emissive maps require UVs and a sampled RGBA8 sRGB texture "
+                                          "from this Context")};
     }
     if (std::ranges::any_of(view.meshes, [&pool](const auto& draw) {
             return !isCompatibleMetallicRoughnessTexture(draw, pool);
@@ -175,7 +178,9 @@ auto validateRenderViewTextures(const RenderView& view) -> Result<void>
                     !::panda::detail::TextureResource::getResource(draw.material.baseColorTexture)->isUploaded()) ||
                    (draw.material.metallicRoughnessTexture.isValid() &&
                     !::panda::detail::TextureResource::getResource(draw.material.metallicRoughnessTexture)
-                         ->isUploaded());
+                         ->isUploaded()) ||
+                   (draw.material.emissiveTexture.isValid() &&
+                    !::panda::detail::TextureResource::getResource(draw.material.emissiveTexture)->isUploaded());
         }))
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Material texture has not been uploaded")};
