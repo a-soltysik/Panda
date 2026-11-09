@@ -72,7 +72,6 @@ public:
         -> std::expected<void, Error>;
     [[nodiscard]] auto endCommands(std::size_t index) -> std::expected<void, Error>;
     [[nodiscard]] auto command(std::size_t index) const -> vk::CommandBuffer;
-    [[nodiscard]] auto lastCompletion(std::size_t index) const -> std::uint64_t;
     void setLastCompletion(std::size_t index, std::uint64_t value);
     void markSubmitted(std::size_t index, std::uint64_t value, bool hadMeshDraws);
     void discardUnsubmittedInputs(std::size_t index);

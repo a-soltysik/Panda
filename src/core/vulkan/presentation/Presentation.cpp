@@ -712,7 +712,7 @@ auto Presentation::activeGeneration() const -> const SwapchainGeneration&
 
 auto Presentation::effectiveSampleCount() const noexcept -> vk::SampleCountFlagBits
 {
-    return _execution ? _execution->getSampleCount() : vk::SampleCountFlagBits::e1;
+    return _execution->getSampleCount();
 }
 
 }

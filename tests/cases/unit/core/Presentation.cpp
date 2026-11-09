@@ -88,14 +88,25 @@ protected:
             });
     }
 
-    void expectWindowFrame()
+    void expectWindowFrame(std::size_t extentReads = 2)
     {
         expectQueueLookup();
         expectReleaseEntryPoint();
         expectFrameResources(3);
         expectResourceDestruction(ResourceDestructionCounts {.semaphores = 4, .swapchains = 1});
-        expectExtentReads(2);
+        expectExtentReads(extentReads);
         expectInitialGeneration(700);
+    }
+
+    void expectPresentedFrame(Sequence& flow, vk::ImageLayout oldLayout = vk::ImageLayout::eUndefined)
+    {
+        expectAcquiredImage(flow, vk::Result::eSuccess);
+        expectCommandRecording(flow, oldLayout);
+        expectFrameSubmit(flow);
+        EXPECT_CALL(vulkan, vkQueuePresentKHR(_, NotNull()))
+            .InSequence(flow)
+            .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+        expectCompletionPoint(flow);
     }
 
     void expectRetirementSubmit(Sequence& flow, vk::Result result = vk::Result::eSuccess)
@@ -296,14 +307,27 @@ protected:
         });
     }
 
-    auto createFrameExecution()
+    auto createFrameExecution(bool enableFramePerformanceSampling = false)
         -> std::expected<std::unique_ptr<panda::core::vulkan::presentation::FrameExecution>, panda::Error>
     {
-        return panda::core::vulkan::presentation::FrameExecution::create(
-            {.physicalDevice = vk::PhysicalDevice {},
-             .device = getDevice(),
-             .queueFamily = 0,
-             .submissions = _submissions.emplace(getDevice(), 0)});
+        auto& submissionQueue = _submissions.emplace(getDevice(), 0);
+        if (enableFramePerformanceSampling)
+        {
+            _performance = std::make_unique<panda::detail::PerformanceManagerImpl>(
+                getDevice(),
+                &submissionQueue,
+                panda::detail::TimestampProperties {.validBits = 64, .periodNanoseconds = 2.5F},
+                true);
+            if (const auto initialized = _performance->initialize(); !initialized)
+            {
+                return std::unexpected {initialized.error()};
+            }
+        }
+        return panda::core::vulkan::presentation::FrameExecution::create({.physicalDevice = vk::PhysicalDevice {},
+                                                                          .device = getDevice(),
+                                                                          .queueFamily = 0,
+                                                                          .submissions = submissionQueue,
+                                                                          .performance = _performance.get()});
     }
 
     auto performance() -> panda::detail::PerformanceManagerImpl&
@@ -356,6 +380,176 @@ TEST_F(PresentationTest, FrameExecutionRecordsPlainFrameOutputWithoutWindowServi
     EXPECT_TRUE(frameExecution.endCommands(0));
 }
 
+TEST_F(PresentationTest, FrameExecutionPropagatesCommandBufferAllocationFailure)
+{
+    EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
+        .WillOnce([](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* output) {
+            *output = fakeVulkanHandle<VkCommandPool>(901);
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
+    EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
+    EXPECT_CALL(vulkan, vkDestroyCommandPool(_, fakeVulkanHandle<VkCommandPool>(901), _));
+
+    const auto execution = createFrameExecution();
+
+    ASSERT_FALSE(execution);
+    ASSERT_TRUE(execution.error().native.has_value());
+    const auto native = execution.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory));
+}
+
+TEST_F(PresentationTest, FrameExecutionPropagatesCommandBeginAndEndFailures)
+{
+    expectNativeFrameResources(0);
+    expectNativeResourceDestruction({});
+    EXPECT_CALL(vulkan, vkResetCommandPool(_, _, _)).WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    EXPECT_CALL(vulkan, vkBeginCommandBuffer(_, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
+    EXPECT_CALL(vulkan, vkEndCommandBuffer(_)).WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorDeviceLost)));
+
+    auto execution = createFrameExecution();
+    ASSERT_TRUE(execution);
+
+    const auto begun = (*execution)->beginCommands(0);
+    ASSERT_FALSE(begun);
+    ASSERT_TRUE(begun.error().native.has_value());
+    const auto beginError = begun.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(beginError.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
+
+    const auto ended = (*execution)->endCommands(0);
+    ASSERT_FALSE(ended);
+    ASSERT_TRUE(ended.error().native.has_value());
+    const auto endError = ended.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(endError.code, static_cast<VkResult>(vk::Result::eErrorDeviceLost));
+}
+
+TEST_F(PresentationTest, FrameExecutionPropagatesSlotWaitTimeout)
+{
+    expectNativeFrameResources(0);
+    expectNativeResourceDestruction({});
+    EXPECT_CALL(submissions, waitValue(1, 10'000'000'000))
+        .Times(2)
+        .WillRepeatedly(Return(panda::Result<panda::WaitStatus> {panda::WaitStatus::Timeout}));
+
+    auto execution = createFrameExecution();
+    ASSERT_TRUE(execution);
+    (*execution)->setLastCompletion(0, 1);
+
+    const auto prepared = (*execution)->prepareSlot(0, panda::RenderView {});
+    ASSERT_FALSE(prepared);
+    EXPECT_EQ(prepared.error().code, panda::ErrorCode::Timeout);
+
+    const auto drained = (*execution)->drain();
+    ASSERT_FALSE(drained);
+    EXPECT_EQ(drained.error().code, panda::ErrorCode::Timeout);
+}
+
+TEST_F(PresentationTest, FrameExecutionPropagatesTimestampCollectionFailure)
+{
+    expectNativeFrameResources(0);
+    expectNativeResourceDestruction({});
+    expectPerformancePools();
+    EXPECT_CALL(submissions, getPoint(1)).WillOnce(Return(panda::CompletionPoint {}));
+    EXPECT_CALL(submissions, poll(_))
+        .WillOnce(Return(panda::Result<bool> {std::unexpected {panda::makeVulkanError(vk::Result::eErrorDeviceLost)}}));
+
+    auto execution = createFrameExecution(true);
+    ASSERT_TRUE(execution);
+    (*execution)->markSubmitted(0, 1, false);
+
+    const auto recorded = (*execution)->recordContent(0, {}, panda::RenderView {});
+    ASSERT_FALSE(recorded);
+    EXPECT_EQ(recorded.error().code, panda::ErrorCode::DeviceLost);
+}
+
+TEST_F(PresentationTest, ReportsSlotWaitTimeoutBeforeAcquiringAnImage)
+{
+    expectWindowFrame(4);
+    auto flow = Sequence {};
+    expectPresentedFrame(flow);
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    EXPECT_CALL(vulkan, vkWaitForFences(_, 1, NotNull(), _, _))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    EXPECT_CALL(vulkan, vkResetFences(_, 1, NotNull()))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    expectCommandRecording(flow, vk::ImageLayout::ePresentSrcKHR);
+    expectFrameSubmit(flow);
+    EXPECT_CALL(vulkan, vkQueuePresentKHR(_, NotNull()))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    expectCompletionPoint(flow);
+    EXPECT_CALL(submissions, waitValue(1, 10'000'000'000))
+        .InSequence(flow)
+        .WillOnce(Return(panda::Result<panda::WaitStatus> {panda::WaitStatus::Timeout}));
+
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    ASSERT_TRUE(presentation->get()->render(panda::RenderView {}));
+    ASSERT_TRUE(presentation->get()->render(panda::RenderView {}));
+
+    const auto timedOut = presentation->get()->render(panda::RenderView {});
+    ASSERT_FALSE(timedOut);
+    EXPECT_EQ(timedOut.error().code, panda::ErrorCode::Timeout);
+}
+
+TEST_F(PresentationTest, RecoversAcquireWhenPresentFenceWaitOrResetFails)
+{
+    expectWindowFrame(4);
+    auto flow = Sequence {};
+    expectPresentedFrame(flow);
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    EXPECT_CALL(vulkan, vkWaitForFences(_, 1, NotNull(), _, _))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
+    expectRetirementSubmit(flow);
+    expectTimelineWait(flow);
+    expectImageRelease(flow);
+    expectTimelineWait(flow);
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    EXPECT_CALL(vulkan, vkWaitForFences(_, 1, NotNull(), _, _))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    EXPECT_CALL(vulkan, vkResetFences(_, 1, NotNull()))
+        .InSequence(flow)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
+    expectRetirementSubmit(flow);
+    expectTimelineWait(flow);
+    expectImageRelease(flow);
+
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    ASSERT_TRUE(presentation->get()->render(panda::RenderView {}));
+
+    const auto waitFailure = presentation->get()->render(panda::RenderView {});
+    ASSERT_FALSE(waitFailure);
+    ASSERT_TRUE(waitFailure.error().native.has_value());
+    const auto waitError = waitFailure.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(waitError.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
+
+    const auto resetFailure = presentation->get()->render(panda::RenderView {});
+    ASSERT_FALSE(resetFailure);
+    ASSERT_TRUE(resetFailure.error().native.has_value());
+    const auto resetError = resetFailure.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(resetError.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
+}
+
+TEST_F(PresentationTest, PropagatesExecutionDrainTimeout)
+{
+    expectWindowFrame(1);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    EXPECT_CALL(submissions, waitValue(0, 10'000'000'000))
+        .WillOnce(Return(panda::Result<panda::WaitStatus> {panda::WaitStatus::Timeout}));
+
+    const auto drained = presentation->get()->drain();
+
+    ASSERT_FALSE(drained);
+    EXPECT_EQ(drained.error().code, panda::ErrorCode::Timeout);
+}
+
 TEST_F(PresentationTest, ReportsUnavailableKhrReleaseFunction)
 {
     expectQueueLookup();
@@ -391,6 +585,31 @@ TEST_F(PresentationTest, PreservesSubmissionInitializationFailure)
     const auto native = presentation.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
     EXPECT_EQ(native.api, "Vulkan");
     EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
+}
+
+TEST_F(PresentationTest, PropagatesAcquireSemaphoreInitializationFailure)
+{
+    expectQueueLookup();
+    expectReleaseEntryPoint();
+    EXPECT_CALL(submissions, initialize(_)).WillOnce(Return(panda::Result<void> {}));
+    expectNativeCommandResources();
+    const auto semaphore = fakeVulkanHandle<VkSemaphore>(1001);
+    EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
+        .Times(2)
+        .WillOnce([semaphore](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* out) {
+            *out = semaphore;
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        })
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory)));
+    EXPECT_CALL(vulkan, vkDestroySemaphore(_, semaphore, _));
+    EXPECT_CALL(vulkan, vkDestroyCommandPool(_, _, _)).Times(2);
+
+    const auto presentation = createPresentation();
+
+    ASSERT_FALSE(presentation);
+    ASSERT_TRUE(presentation.error().native.has_value());
+    const auto native = presentation.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
+    EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory));
 }
 
 TEST_F(PresentationTest, FailedCommandPoolCreationKeepsBorrowedSubmissionService)

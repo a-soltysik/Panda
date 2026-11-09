@@ -265,11 +265,6 @@ auto FrameExecution::command(std::size_t index) const -> vk::CommandBuffer
     return _slots.at(index).command;
 }
 
-auto FrameExecution::lastCompletion(std::size_t index) const -> std::uint64_t
-{
-    return _slots.at(index).lastCompletion;
-}
-
 void FrameExecution::setLastCompletion(std::size_t index, std::uint64_t value)
 {
     _slots.at(index).lastCompletion = value;

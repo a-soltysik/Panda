@@ -48,9 +48,10 @@ inline void expectColorAttachmentStages(const VkImageMemoryBarrier2& barrier)
     EXPECT_EQ(barrier.dstAccessMask, static_cast<VkAccessFlags2>(vk::AccessFlagBits2::eColorAttachmentWrite));
 }
 
-inline void expectColorAttachmentLayouts(const VkImageMemoryBarrier2& barrier)
+inline void expectColorAttachmentLayouts(const VkImageMemoryBarrier2& barrier,
+                                         vk::ImageLayout oldLayout = vk::ImageLayout::eUndefined)
 {
-    EXPECT_EQ(barrier.oldLayout, static_cast<VkImageLayout>(vk::ImageLayout::eUndefined));
+    EXPECT_EQ(barrier.oldLayout, static_cast<VkImageLayout>(oldLayout));
     EXPECT_EQ(barrier.newLayout, static_cast<VkImageLayout>(vk::ImageLayout::eColorAttachmentOptimal));
 }
 
@@ -69,12 +70,13 @@ inline void expectPresentLayouts(const VkImageMemoryBarrier2& barrier)
     EXPECT_EQ(barrier.newLayout, static_cast<VkImageLayout>(vk::ImageLayout::ePresentSrcKHR));
 }
 
-inline void expectTransitionToColorAttachment(const VkDependencyInfo* dependency)
+inline void expectTransitionToColorAttachment(const VkDependencyInfo* dependency,
+                                              vk::ImageLayout oldLayout = vk::ImageLayout::eUndefined)
 {
     ASSERT_EQ(dependency->imageMemoryBarrierCount, 1U);
     ASSERT_NE(dependency->pImageMemoryBarriers, nullptr);
     expectColorAttachmentStages(*dependency->pImageMemoryBarriers);
-    expectColorAttachmentLayouts(*dependency->pImageMemoryBarriers);
+    expectColorAttachmentLayouts(*dependency->pImageMemoryBarriers, oldLayout);
 }
 
 inline void expectTransitionToPresent(const VkDependencyInfo* dependency)
@@ -151,6 +153,11 @@ protected:
                     *out = fakeVulkanHandle<VkSemaphore>(_nextHandle++);
                     return static_cast<VkResult>(vk::Result::eSuccess);
                 });
+        expectNativeCommandResources();
+    }
+
+    void expectNativeCommandResources()
+    {
         EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
             .Times(2)
             .WillRepeatedly(
@@ -218,7 +225,7 @@ protected:
             .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
     }
 
-    void expectCommandRecording(Sequence& flow)
+    void expectCommandRecording(Sequence& flow, vk::ImageLayout oldLayout = vk::ImageLayout::eUndefined)
     {
         EXPECT_CALL(vulkan, vkResetCommandPool(_, _, _))
             .InSequence(flow)
@@ -229,8 +236,8 @@ protected:
         EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull()))
             .InSequence(flow)
             .WillOnce(testing::Action<decltype(vkCmdPipelineBarrier2)> {
-                [](VkCommandBuffer, const VkDependencyInfo* dependency) {
-                    expectTransitionToColorAttachment(dependency);
+                [oldLayout](VkCommandBuffer, const VkDependencyInfo* dependency) {
+                    expectTransitionToColorAttachment(dependency, oldLayout);
                 }});
         EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull())).InSequence(flow);
         EXPECT_CALL(vulkan, vkCmdEndRendering(_)).InSequence(flow);
