@@ -487,6 +487,78 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     EXPECT_NE(empty.error().message.find("null Vulkan surface"), std::string::npos);
 }
 
+TEST(WindowedContextSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCompletion)
+{
+    auto records = panda::test::LogRecords {};
+    auto capture = panda::test::ProcessSinkRegistration {records};
+    auto window = panda::tools::Window::create({160, 120}, "Panda texture retention smoke");
+    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
+    {
+        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
+    }
+    ASSERT_TRUE(window.has_value());
+    auto surface = SuspensibleSurface {*window};
+    {
+        auto created = panda::Context::createWithSurface(
+            surface,
+            {.applicationName = "Panda texture retention smoke", .enableValidation = true});
+        if (!created && created.error().code == panda::ErrorCode::Unsupported)
+        {
+            GTEST_SKIP() << created.error().message;
+        }
+        ASSERT_TRUE(created.has_value()) << created.error().message;
+        auto context = std::move(*created);
+        auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
+        if (!meshes && meshes.error().code == panda::ErrorCode::Unsupported)
+        {
+            GTEST_SKIP() << meshes.error().message;
+        }
+        ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
+        auto texture = createSceneTexture(context, vk::Format::eR8G8B8A8Srgb);
+        ASSERT_TRUE(texture.has_value()) << texture.error().message;
+        auto batch = context.createUploadBatch();
+        ASSERT_TRUE(batch.has_value()) << batch.error().message;
+        static constexpr auto pixels = std::array {std::byte {0xff},
+                                                   std::byte {0x80},
+                                                   std::byte {0x40},
+                                                   std::byte {0xff},
+                                                   std::byte {0xff},
+                                                   std::byte {0x80},
+                                                   std::byte {0x40},
+                                                   std::byte {0xff},
+                                                   std::byte {0xff},
+                                                   std::byte {0x80},
+                                                   std::byte {0x40},
+                                                   std::byte {0xff},
+                                                   std::byte {0xff},
+                                                   std::byte {0x80},
+                                                   std::byte {0x40},
+                                                   std::byte {0xff}};
+        ASSERT_TRUE(batch->write(*texture, pixels));
+        ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
+
+        const auto extent = window->getFramebufferExtent();
+        ASSERT_TRUE(extent.has_value()) << extent.error().message;
+        const auto camera = makeTestCamera(*extent);
+        ASSERT_TRUE(camera.has_value()) << camera.error().message;
+        auto view = panda::RenderView {.camera = *camera, .directionalLight = {}, .meshes = {}};
+        auto draw = panda::MeshDraw {.mesh = meshes->cube};
+        draw.material.baseColorTexture = *texture;
+        view.meshes.push_back(draw);
+
+        const auto frame = context.render(view);
+        ASSERT_TRUE(frame.has_value()) << frame.error().message;
+        texture->reset();
+        view.meshes.clear();
+        verifyCompletion(context, frame->completion);
+    }
+    const auto validationError = std::ranges::find_if(records.entries, [](const auto& entry) {
+        return entry.level == panda::log::Level::Error;
+    });
+    EXPECT_EQ(validationError, records.entries.end())
+        << (validationError == records.entries.end() ? "" : validationError->message);
+}
+
 TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMeshesWithoutValidationErrors)
 {
     auto records = panda::test::LogRecords {};

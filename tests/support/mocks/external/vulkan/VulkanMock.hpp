@@ -106,6 +106,42 @@ public:
                 (VkDevice, const VkShaderModuleCreateInfo*, const VkAllocationCallbacks*, VkShaderModule*),
                 ());
     MOCK_METHOD(void, vkDestroyShaderModule, (VkDevice, VkShaderModule, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(
+        VkResult,
+        vkCreateDescriptorSetLayout,
+        (VkDevice, const VkDescriptorSetLayoutCreateInfo*, const VkAllocationCallbacks*, VkDescriptorSetLayout*),
+        ());
+    MOCK_METHOD(void,
+                vkDestroyDescriptorSetLayout,
+                (VkDevice, VkDescriptorSetLayout, const VkAllocationCallbacks*),
+                ());
+    MOCK_METHOD(VkResult,
+                vkCreatePipelineLayout,
+                (VkDevice, const VkPipelineLayoutCreateInfo*, const VkAllocationCallbacks*, VkPipelineLayout*),
+                ());
+    MOCK_METHOD(void, vkDestroyPipelineLayout, (VkDevice, VkPipelineLayout, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(VkResult,
+                vkCreateDescriptorPool,
+                (VkDevice, const VkDescriptorPoolCreateInfo*, const VkAllocationCallbacks*, VkDescriptorPool*),
+                ());
+    MOCK_METHOD(void, vkDestroyDescriptorPool, (VkDevice, VkDescriptorPool, const VkAllocationCallbacks*), ());
+    MOCK_METHOD(VkResult,
+                vkAllocateDescriptorSets,
+                (VkDevice, const VkDescriptorSetAllocateInfo*, VkDescriptorSet*),
+                ());
+    MOCK_METHOD(VkResult,
+                vkFreeDescriptorSets,
+                (VkDevice, VkDescriptorPool, std::uint32_t, const VkDescriptorSet*),
+                ());
+    MOCK_METHOD(void,
+                vkUpdateDescriptorSets,
+                (VkDevice, std::uint32_t, const VkWriteDescriptorSet*, std::uint32_t, const VkCopyDescriptorSet*),
+                ());
+    MOCK_METHOD(VkResult,
+                vkCreateSampler,
+                (VkDevice, const VkSamplerCreateInfo*, const VkAllocationCallbacks*, VkSampler*),
+                ());
+    MOCK_METHOD(void, vkDestroySampler, (VkDevice, VkSampler, const VkAllocationCallbacks*), ());
     MOCK_METHOD(VkResult,
                 vkCreateGraphicsPipelines,
                 (VkDevice,

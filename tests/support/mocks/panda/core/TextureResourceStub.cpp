@@ -78,6 +78,11 @@ auto TextureResource::getNative() const -> vk::Image
     return test::ScopedMock<test::TextureResourceMock>::getActiveMock().getNative(*this);
 }
 
+auto TextureResource::getNativeView() const -> vk::ImageView
+{
+    return test::ScopedMock<test::TextureResourceMock>::getActiveMock().getNativeView(*this);
+}
+
 auto TextureResource::belongsTo(const texture_resources::MemoryPool& pool) const -> bool
 {
     return test::ScopedMock<test::TextureResourceMock>::getActiveMock().belongsTo(*this, pool);

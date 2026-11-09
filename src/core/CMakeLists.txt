@@ -31,6 +31,7 @@ panda_add_component(panda_core
         vulkan/performance/PerformanceManager.cpp
         vulkan/performance/PerformanceManagerImpl.cpp
         vulkan/presentation/Presentation.cpp
+        vulkan/renderer/FrameBindings.cpp
         vulkan/renderer/MeshRenderer.cpp
         vulkan/renderer/MeshPipelineCache.cpp
         vulkan/renderer/RenderViewValidation.cpp
@@ -105,6 +106,7 @@ panda_add_component(panda_core
         vulkan/resources/memory/RangeAllocator.hpp
         vulkan/resources/TextureResource.hpp
         vulkan/renderer/MeshRenderer.hpp
+        vulkan/renderer/FrameBindings.hpp
         vulkan/renderer/MeshPipelineCache.hpp
         vulkan/renderer/ShaderData.hpp
         vulkan/renderer/RenderViewValidation.hpp

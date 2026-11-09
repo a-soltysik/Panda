@@ -155,3 +155,10 @@ panda_add_test(panda_unit_mesh_pipeline_cache unit
     SOURCES MeshPipelineCache.cpp
     LIBRARIES Panda::Panda PandaTest::Support
     MOCKS PandaTest::VulkanMock)
+
+panda_add_test(panda_unit_frame_bindings unit
+    VULKAN_INTERNAL
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core" "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"
+    SOURCES FrameBindings.cpp
+    LIBRARIES Panda::Panda PandaTest::Support
+    MOCKS PandaTest::VulkanMock PandaTest::BufferResourceMock PandaTest::TextureResourceMock)

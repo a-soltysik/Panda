@@ -84,6 +84,115 @@ VKAPI_ATTR void VKAPI_CALL vkDestroyShaderModule(VkDevice device,
                                                                                             pAllocator);
 }
 
+VKAPI_ATTR auto VKAPI_CALL vkCreateDescriptorSetLayout(VkDevice device,
+                                                       const VkDescriptorSetLayoutCreateInfo* pCreateInfo,
+                                                       const VkAllocationCallbacks* pAllocator,
+                                                       VkDescriptorSetLayout* pSetLayout) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateDescriptorSetLayout(device,
+                                                                                                         pCreateInfo,
+                                                                                                         pAllocator,
+                                                                                                         pSetLayout);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyDescriptorSetLayout(VkDevice device,
+                                                        VkDescriptorSetLayout setLayout,
+                                                        const VkAllocationCallbacks* pAllocator)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyDescriptorSetLayout(device,
+                                                                                                   setLayout,
+                                                                                                   pAllocator);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkCreatePipelineLayout(VkDevice device,
+                                                  const VkPipelineLayoutCreateInfo* pCreateInfo,
+                                                  const VkAllocationCallbacks* pAllocator,
+                                                  VkPipelineLayout* pPipelineLayout) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreatePipelineLayout(device,
+                                                                                                    pCreateInfo,
+                                                                                                    pAllocator,
+                                                                                                    pPipelineLayout);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyPipelineLayout(VkDevice device,
+                                                   VkPipelineLayout pipelineLayout,
+                                                   const VkAllocationCallbacks* pAllocator)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyPipelineLayout(device,
+                                                                                              pipelineLayout,
+                                                                                              pAllocator);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkCreateDescriptorPool(VkDevice device,
+                                                  const VkDescriptorPoolCreateInfo* pCreateInfo,
+                                                  const VkAllocationCallbacks* pAllocator,
+                                                  VkDescriptorPool* pDescriptorPool) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateDescriptorPool(device,
+                                                                                                    pCreateInfo,
+                                                                                                    pAllocator,
+                                                                                                    pDescriptorPool);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyDescriptorPool(VkDevice device,
+                                                   VkDescriptorPool descriptorPool,
+                                                   const VkAllocationCallbacks* pAllocator)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroyDescriptorPool(device,
+                                                                                              descriptorPool,
+                                                                                              pAllocator);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkAllocateDescriptorSets(VkDevice device,
+                                                    const VkDescriptorSetAllocateInfo* pAllocateInfo,
+                                                    VkDescriptorSet* pDescriptorSets) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkAllocateDescriptorSets(device,
+                                                                                                      pAllocateInfo,
+                                                                                                      pDescriptorSets);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkFreeDescriptorSets(VkDevice device,
+                                                VkDescriptorPool descriptorPool,
+                                                std::uint32_t descriptorSetCount,
+                                                const VkDescriptorSet* pDescriptorSets) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkFreeDescriptorSets(device,
+                                                                                                  descriptorPool,
+                                                                                                  descriptorSetCount,
+                                                                                                  pDescriptorSets);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkUpdateDescriptorSets(VkDevice device,
+                                                  std::uint32_t descriptorWriteCount,
+                                                  const VkWriteDescriptorSet* pDescriptorWrites,
+                                                  std::uint32_t descriptorCopyCount,
+                                                  const VkCopyDescriptorSet* pDescriptorCopies)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkUpdateDescriptorSets(device,
+                                                                                             descriptorWriteCount,
+                                                                                             pDescriptorWrites,
+                                                                                             descriptorCopyCount,
+                                                                                             pDescriptorCopies);
+}
+
+VKAPI_ATTR auto VKAPI_CALL vkCreateSampler(VkDevice device,
+                                           const VkSamplerCreateInfo* pCreateInfo,
+                                           const VkAllocationCallbacks* pAllocator,
+                                           VkSampler* pSampler) -> VkResult
+{
+    return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCreateSampler(device,
+                                                                                             pCreateInfo,
+                                                                                             pAllocator,
+                                                                                             pSampler);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroySampler(VkDevice device, VkSampler sampler, const VkAllocationCallbacks* pAllocator)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkDestroySampler(device, sampler, pAllocator);
+}
+
 VKAPI_ATTR auto VKAPI_CALL vkCreateGraphicsPipelines(VkDevice device,
                                                      VkPipelineCache pipelineCache,
                                                      std::uint32_t createInfoCount,
@@ -738,6 +847,17 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkDestroyBuffer",                                .function = genericVulkanProc(&vkDestroyBuffer)              },
     EntryPoint {.name = "vkCreateShaderModule",                           .function = genericVulkanProc(&vkCreateShaderModule)         },
     EntryPoint {.name = "vkDestroyShaderModule",                          .function = genericVulkanProc(&vkDestroyShaderModule)        },
+    EntryPoint {.name = "vkCreateDescriptorSetLayout",                    .function = genericVulkanProc(&vkCreateDescriptorSetLayout)  },
+    EntryPoint {.name = "vkDestroyDescriptorSetLayout",                   .function = genericVulkanProc(&vkDestroyDescriptorSetLayout) },
+    EntryPoint {.name = "vkCreatePipelineLayout",                         .function = genericVulkanProc(&vkCreatePipelineLayout)       },
+    EntryPoint {.name = "vkDestroyPipelineLayout",                        .function = genericVulkanProc(&vkDestroyPipelineLayout)      },
+    EntryPoint {.name = "vkCreateDescriptorPool",                         .function = genericVulkanProc(&vkCreateDescriptorPool)       },
+    EntryPoint {.name = "vkDestroyDescriptorPool",                        .function = genericVulkanProc(&vkDestroyDescriptorPool)      },
+    EntryPoint {.name = "vkAllocateDescriptorSets",                       .function = genericVulkanProc(&vkAllocateDescriptorSets)     },
+    EntryPoint {.name = "vkFreeDescriptorSets",                           .function = genericVulkanProc(&vkFreeDescriptorSets)         },
+    EntryPoint {.name = "vkUpdateDescriptorSets",                         .function = genericVulkanProc(&vkUpdateDescriptorSets)       },
+    EntryPoint {.name = "vkCreateSampler",                                .function = genericVulkanProc(&vkCreateSampler)              },
+    EntryPoint {.name = "vkDestroySampler",                               .function = genericVulkanProc(&vkDestroySampler)             },
     EntryPoint {.name = "vkCreateGraphicsPipelines",                      .function = genericVulkanProc(&vkCreateGraphicsPipelines)    },
     EntryPoint {.name = "vkDestroyPipeline",                              .function = genericVulkanProc(&vkDestroyPipeline)            },
     EntryPoint {.name = "vkGetBufferMemoryRequirements2",
