@@ -13,10 +13,11 @@ error prevents safe teardown.
 1. **Reject an uncommitted acquire retirement.** If a cleanup submission after
    acquire never committed, `drain()` returns `BackendFailure`; it cannot prove
    that the binary acquire semaphore or image was retired.
-2. **Wait for submitted GPU work.** Otherwise, `drain()` finds the maximum
-   `lastCompletion` value stored in any frame slot. If the timeline's known
-   completed value is at least that maximum, the wait returns immediately;
-   otherwise, it waits for the maximum value.
+2. **Wait for submitted GPU work.** Otherwise, `Presentation::drain()` asks
+   `FrameExecution::drain()` to find the maximum `lastCompletion` value stored in
+   any execution slot. If the timeline's known completed value is at least that
+   maximum, the wait returns immediately; otherwise, it waits for the maximum
+   value. The executor releases retained view handles only after the wait succeeds.
 3. **Finish acquired-image recovery.** If a cleanup submission or a non-enqueued
    present failure left pending recovery, `drain()` completes its remaining
    semaphore replacement and image release after the timeline wait.
@@ -31,15 +32,18 @@ error prevents safe teardown.
 sequenceDiagram
     participant R as Recreation or Context teardown
     participant P as Presentation
+    participant E as FrameExecution
     participant Q as SubmissionQueue
     participant V as Vulkan
     R->>P: Step 1 - drain()
     alt Acquire retirement never committed
         P-->>R: BackendFailure, unsafe drain refused
     else Retirement submissions are committed
-        P->>Q: Step 2 - check/wait until completed value reaches or exceeds max slot value
+        P->>E: Step 2 - drain execution slots
+        E->>Q: Check/wait until completed value reaches or exceeds max slot value
         Q->>V: Host waits for the already-submitted queue value
         V-->>Q: GPU signals after reaching that value
+        E-->>P: Retained view handles released
         opt Pending acquired-image recovery
             P->>V: Step 3 - replace unused render-finished semaphore if needed
             P->>V: Step 3 - release acquired image
@@ -80,7 +84,7 @@ as fatal rather than destroying state under uncertain submitted work.
 
 |                    | Point and condition                                                                                                            | Response                                               | Resulting state and next action                                                              |
 |--------------------|--------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|----------------------------------------------------------------------------------------------|
-| **Variant&nbsp;1** | Step 2: the timeline's known completed value is greater than or equal to the maximum `lastCompletion` stored in any frame slot | Continue immediately without a GPU wait                | Pending acquired-image recovery and present fences still need their own checks               |
+| **Variant&nbsp;1** | Step 2: the timeline's known completed value is greater than or equal to the maximum `lastCompletion` stored in any execution slot | Continue immediately without a GPU wait                | Pending acquired-image recovery and present fences still need their own checks               |
 | **Error&nbsp;1**   | Step 1: acquire retirement did not commit                                                                                      | Return `BackendFailure` before waiting                 | No safe retirement is claimed; Context teardown treats the failure as fatal                  |
 | **Error&nbsp;2**   | Step 2: timeline wait fails or times out                                                                                       | Return the wait error and preserve pending recovery    | Do not release the generation; a later drain may retry the wait if the device remains usable |
 | **Error&nbsp;3**   | Step 3: acquired-image recovery or release fails                                                                               | Return the cleanup error and preserve unresolved state | Do not claim successful drain; a release error is not repeated                               |

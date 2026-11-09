@@ -14,4 +14,5 @@ namespace panda::detail
 [[nodiscard]] auto isFinite(const glm::mat3& value) -> bool;
 [[nodiscard]] auto isFinite(const glm::mat4& value) -> bool;
 [[nodiscard]] auto isRepresentableAsNonzeroFloat(double value) -> bool;
+[[nodiscard]] auto linearToSrgb(float value) -> float;
 }

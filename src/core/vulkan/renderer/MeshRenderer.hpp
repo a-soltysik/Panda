@@ -27,6 +27,8 @@ class TextureResource;
 
 namespace panda::core::vulkan::renderer
 {
+[[nodiscard]] auto makeClearColor(vk::Format format) -> vk::ClearColorValue;
+
 struct MeshRendererCreateInfo
 {
     vk::PhysicalDevice physicalDevice;

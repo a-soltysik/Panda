@@ -100,16 +100,3 @@ TEST(SwapchainGeneration, RejectsZeroFixedFramebufferExtent)
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::Unsupported);
 }
-
-TEST(SwapchainGeneration, EncodesLinearClearColorExactlyOnce)
-{
-    const auto srgb = panda::core::vulkan::encodedClear(vk::Format::eB8G8R8A8Srgb);
-    const auto unorm = panda::core::vulkan::encodedClear(vk::Format::eB8G8R8A8Unorm);
-    EXPECT_NEAR(srgb.float32.at(0), 0.025F, 0.0001F);
-    EXPECT_NEAR(srgb.float32.at(1), 0.035F, 0.0001F);
-    EXPECT_NEAR(srgb.float32.at(2), 0.05F, 0.0001F);
-    EXPECT_GT(unorm.float32.at(0), srgb.float32.at(0));
-    EXPECT_LT(unorm.float32.at(0), 0.2F);
-    EXPECT_EQ(srgb.float32.at(3), 1.0F);
-    EXPECT_EQ(unorm.float32.at(3), 1.0F);
-}

@@ -6,6 +6,7 @@
 #include "renderer/MeshRenderer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -24,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-#include "presentation/SwapchainGeneration.hpp"
+#include "Math.hpp"
 #include "renderer/FrameBindings.hpp"
 #include "renderer/MeshPipelineCache.hpp"
 #include "renderer/RenderAttachments.hpp"
@@ -60,6 +61,20 @@ auto cameraDepthForMesh(const glm::mat4& viewProjection, const glm::mat4& modelM
     const auto depth = clipPosition.z / clipPosition.w;
     return std::isfinite(depth) ? depth : std::numeric_limits<float>::infinity();
 }
+}
+
+auto makeClearColor(vk::Format format) -> vk::ClearColorValue
+{
+    static constexpr auto clearRed = 0.025F;
+    static constexpr auto clearGreen = 0.035F;
+    static constexpr auto clearBlue = 0.05F;
+    const auto isSrgb = format == vk::Format::eB8G8R8A8Srgb || format == vk::Format::eR8G8B8A8Srgb;
+    return vk::ClearColorValue {
+        std::array {isSrgb ? clearRed : ::panda::detail::linearToSrgb(clearRed),
+                    isSrgb ? clearGreen : ::panda::detail::linearToSrgb(clearGreen),
+                    isSrgb ? clearBlue : ::panda::detail::linearToSrgb(clearBlue),
+                    1.0F}
+    };
 }
 
 MeshRenderer::MeshRenderer(const MeshRendererCreateInfo& info)
@@ -259,7 +274,7 @@ void MeshRenderer::recordAttachments(vk::CommandBuffer command,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = multisampled ? vk::AttachmentStoreOp::eDontCare : vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue {.color = encodedClear(output.colorFormat)}};
+        .clearValue = vk::ClearValue {.color = makeClearColor(output.colorFormat)}};
     if (multisampled)
     {
         color.resolveMode = vk::ResolveModeFlagBits::eAverage;

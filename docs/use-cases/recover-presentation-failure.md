@@ -15,8 +15,9 @@ not rolled back.
    suboptimal, out-of-date and surface-lost outcomes (which the implementation
    treats as enqueued) from other errors.
 2. **Retain recovery and wait for the producer.** For a non-enqueued present
-   failure, `recoverPresentFailure()` records the image index; its frame slot
-   retains the committed value used to wait for the producer.
+   failure, `recoverPresentFailure()` records the image index and waits for the
+   submitted completion value. `FrameExecution` keeps that value on its slot until
+   later slot reuse or drain also confirms completion.
 3. **Replace the unused signal semaphore.** After the producer completes,
    `recoverPresentFailure()` creates a new render-finished semaphore. Replacing
    the old owner retires the binary semaphore that rendering signaled but
@@ -63,8 +64,8 @@ attempted. The timeline wait only makes its producer complete; it cannot undo th
 clear or recover a lost surface.
 
 **Retained cleanup.** Pending recovery keeps the image index and next cleanup
-action; the frame slot retains the completion value. If waiting or creating a
-replacement semaphore fails, `drain()` resumes after the producer completes. If
+action; `FrameExecution` retains the slot's completion value. If waiting or creating
+a replacement semaphore fails, `drain()` resumes after the producer completes. If
 image release returns an error, the result is unconfirmed; `drain()` reports
 failure rather than repeating the release or claiming that the generation is safe
 to destroy.

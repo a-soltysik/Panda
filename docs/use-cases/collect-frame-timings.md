@@ -27,14 +27,14 @@ samples are owned by the Context; the borrowed manager must not outlive it.
    separately reports support on the selected graphics queue.
 2. **Submit a marked frame.** The application calls `Context::render(view)`.
    `Context` starts its CPU wall clock. In the frame command buffer,
-   `Presentation` records two `vkCmdWriteTimestamp2` queries at the
+   `FrameExecution` records two `vkCmdWriteTimestamp2` queries at the
    `eColorAttachmentOutput` stage: the start immediately before view rendering and
    the end immediately after it. For an empty view this brackets the background clear;
    for a populated view it brackets the built-in mesh rendering commands. The GPU writes their device-clock tick values
    when it executes the submitted command buffer; recording these commands on the
    CPU does not itself measure GPU time. After the queue accepts the command buffer,
-   the manager associates that slot's query pool with the committed `CompletionPoint`
-   and assigns a frame index.
+   `FrameExecution` then associates that slot's query pool with the committed
+   `CompletionPoint` through the performance manager, which assigns a frame index.
 3. **Pair the CPU duration.** After the presentation operation returns, `Context`
    records the elapsed wall duration for the submitted slot and returns the frame
    result. The duration covers the whole Panda frame call, including CPU waits and
@@ -61,6 +61,7 @@ sequenceDiagram
     participant A as Application
     participant C as Context
     participant P as Presentation
+    participant E as FrameExecution
     participant M as PerformanceManager
     participant Q as SubmissionQueue
     participant V as Vulkan
@@ -70,12 +71,14 @@ sequenceDiagram
     M -->> A: Timestamp support and sampling state
     A ->> C: Step 2 - render(view)
     C ->> P: Step 2 - start CPU clock and render view
-    P ->> M: Step 2 - record start and end GPU timestamp markers
+    P ->> E: Step 2 - record view content
+    E ->> M: Step 2 - record start and end GPU timestamp markers
     M ->> V: Record vkCmdWriteTimestamp2 at color-attachment output stage
     P ->> Q: Step 2 - submit marked command buffer
     Q -) V: Queue accepts frame work and timeline signal
     Q -->> P: Committed completion point
-    P ->> M: Associate slot queries with completion point and frame index
+    P ->> E: Commit slot completion after successful submit
+    E ->> M: Associate slot queries with completion point and frame index
     P -->> C: Frame result or post-submit presentation error
     C ->> M: Step 3 - record CPU frame duration
     C -->> A: Step 3 - return frame result or error
@@ -127,7 +130,7 @@ recovery outcomes.
 | **Variant&nbsp;1** | Step 1: sampling was not requested, or the graphics queue has no timestamp support                                                      | Capabilities report sampling disabled; no timestamp pools or paired samples are produced                                                                                                  | Enable sampling when creating a new Context; unsupported hardware needs a queue with timestamp support                 |
 | **Variant&nbsp;2** | Step 2: the frame is suspended, skipped or fails before queue submission                                                                | No submitted slot is associated with a frame index and no paired sample is produced                                                                                                       | Follow [UC Render and present an application view](render-view.md); submit a later frame when presentation can proceed |
 | **Variant&nbsp;3** | Step 4: the submitted point is pending, or either query is not yet available                                                            | Return an empty optional/vector without waiting                                                                                                                                           | Keep running and query again later; the sample remains pending                                                         |
-| **Error&nbsp;1**   | Step 2: the previous slot submission is complete, but a timestamp remains unavailable when `Presentation` tries to reuse its query pool | Frame recording returns `BackendFailure`; after image acquisition, presentation retires that image through [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | The query pool is not reset over the pending result; inspect the error and Context state before continuing             |
+| **Error&nbsp;1**   | Step 2: the previous slot submission is complete, but a timestamp remains unavailable when `FrameExecution` tries to reuse its query pool | Frame recording returns `BackendFailure`; after image acquisition, presentation retires that image through [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | The query pool is not reset over the pending result; inspect the error and Context state before continuing             |
 | **Error&nbsp;2**   | Step 4: completion polling, query readback or duration conversion fails                                                                 | Return the backend error rather than a fabricated timing                                                                                                                                  | No new sample is returned; device loss has no general recovery path                                                    |
 
 ## Outcomes

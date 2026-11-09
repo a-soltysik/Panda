@@ -14,7 +14,8 @@ acquisition and ends with cleanup success or a faulted presentation state.
 2. **Consume acquire and commit retirement.** An empty `SubmissionQueue` submission
    waits on the slot's acquire semaphore and signals the Context timeline. On
    queue acceptance, `Presentation` stores the image index as pending recovery
-   and records the returned value as the slot's last completion.
+   and asks `FrameExecution` to record the returned value as the slot's last
+   completion. The value is a cleanup dependency, not a submitted frame sample.
    [UC Commit work to the Context submission timeline](commit-context-submission.md)
    defines when that value is committed.
 3. **Wait for the retirement submission.** `Presentation::waitCompletion()` waits
@@ -27,6 +28,7 @@ acquisition and ends with cleanup success or a faulted presentation state.
 ```mermaid
 sequenceDiagram
     participant P as Presentation
+    participant E as FrameExecution
     participant Q as SubmissionQueue
     participant V as Vulkan
     Note over P: Image acquired and normal frame submission did not happen
@@ -36,6 +38,7 @@ sequenceDiagram
     Q->>V: vkQueueSubmit2(signals Context timeline)
     V-->>Q: Accepted and committed value
     Q-->>P: Retirement value
+    P->>E: Store slot completion without publishing frame state
     P->>Q: Step 3 - wait for retirement value
     Q->>V: Host waits for the committed retirement value
     V-->>Q: GPU signals after completing retirement work
@@ -52,9 +55,9 @@ image retirement was committed. `Presentation::drain()` then refuses to claim
 safe cleanup.
 
 **Retained recovery.** Once Step 2 commits, `Presentation` keeps the acquired
-index while the frame slot retains its completion value until Step 4 succeeds. If
-Step 3 times out or fails, `drain()` waits for the committed work and then performs
-Step 4 before it can report success. This preserves the
+index while `FrameExecution` retains its slot completion value until Step 4 succeeds.
+If Step 3 times out or fails, `drain()` waits for the committed work and then
+performs Step 4 before it can report success. This preserves the
 [resource contract](../design/contracts/resources.md#frame-and-window-state)
 across a retry.
 

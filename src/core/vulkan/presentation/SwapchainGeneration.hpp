@@ -58,6 +58,4 @@ struct SwapchainGenerationRequest
 [[nodiscard]] auto createSwapchainGeneration(const SwapchainGenerationRequest& request)
     -> std::expected<SwapchainGeneration, Error>;
 
-[[nodiscard]] auto encodedClear(vk::Format format) -> vk::ClearColorValue;
-
 }

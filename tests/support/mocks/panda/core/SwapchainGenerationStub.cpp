@@ -1,6 +1,5 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
-#include <vulkan/vulkan.hpp>
 // clang-format on
 
 #include <expected>
@@ -17,8 +16,4 @@ auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std
     return test::ScopedMock<test::SwapchainGenerationMock>::getActiveMock().createSwapchainGeneration(request);
 }
 
-auto encodedClear(vk::Format format) -> vk::ClearColorValue
-{
-    return test::ScopedMock<test::SwapchainGenerationMock>::getActiveMock().encodedClear(format);
-}
 }

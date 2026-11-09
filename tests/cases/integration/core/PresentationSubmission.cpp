@@ -272,7 +272,6 @@ TEST_F(PresentationSubmissionIntegration, PresentAndRecreationFailuresReleaseThe
     expectResourceDestruction(ResourceDestructionCounts {.semaphores = 6, .swapchains = 2});
     expectExtentReads(4);
     expectInitialGeneration(700);
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
 
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
@@ -307,7 +306,6 @@ TEST_F(PresentationSubmissionIntegration, TimelineLimitRejectsFrameBeforeAcquiri
     expectResourceDestruction(ResourceDestructionCounts {.semaphores = 4, .swapchains = 1});
     expectExtentReads(3);
     expectInitialGeneration(700);
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
     expectCommandRecording(flow);
@@ -333,7 +331,6 @@ TEST_F(PresentationSubmissionIntegration, TimelineLimitRejectsFrameBeforeAcquiri
 TEST_F(PresentationSubmissionIntegration, FailedFrameSubmitRetiresAcquireWithoutConsumingTheCandidateValue)
 {
     expectWindowFrame();
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
     expectCommandRecording(flow);
@@ -351,7 +348,6 @@ TEST_F(PresentationSubmissionIntegration, FailedFrameSubmitRetiresAcquireWithout
 TEST_F(PresentationSubmissionIntegration, DeviceLostSubmitDoesNotRetryAcquireRetirement)
 {
     expectWindowFrame();
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
     expectCommandRecording(flow);
@@ -414,9 +410,9 @@ TEST_F(PresentationSubmissionIntegration, OutOfDateAcquireReturnsNoCompletionPoi
 TEST_F(PresentationSubmissionIntegration, SuboptimalPresentReturnsTheCommittedCompletionPoint)
 {
     expectWindowFrame();
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks) -- gMock owns the one-shot actions registered by this helper.
     expectCommandRecording(flow);
     expectFrameSubmit(flow);
     expectPresentFailure(flow, vk::Result::eSuboptimalKHR);

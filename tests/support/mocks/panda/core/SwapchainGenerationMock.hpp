@@ -23,7 +23,6 @@ public:
                 (const panda::core::vulkan::SwapchainGenerationRequest&),
                 ());
 
-    MOCK_METHOD(vk::ClearColorValue, encodedClear, (vk::Format), ());
     // NOLINTEND(modernize-use-trailing-return-type)
 };
 }

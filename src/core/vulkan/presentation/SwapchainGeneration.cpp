@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <expected>
 #include <limits>
@@ -205,29 +204,6 @@ auto populateImages(const vk::raii::Device& device, SwapchainGeneration& generat
     }
     return {};
 }
-}
-
-auto encodedClear(vk::Format format) -> vk::ClearColorValue
-{
-    static constexpr auto transferThreshold = 0.0031308F;
-    static constexpr auto linearScale = 12.92F;
-    static constexpr auto gammaScale = 1.055F;
-    static constexpr auto inverseGamma = 1.0F / 2.4F;
-    static constexpr auto gammaOffset = 0.055F;
-    static constexpr auto clearRed = 0.025F;
-    static constexpr auto clearGreen = 0.035F;
-    static constexpr auto clearBlue = 0.05F;
-    const auto encode = [](float linear) {
-        return linear <= transferThreshold ? linear * linearScale
-                                           : (gammaScale * std::pow(linear, inverseGamma)) - gammaOffset;
-    };
-    const auto srgb = format == vk::Format::eB8G8R8A8Srgb || format == vk::Format::eR8G8B8A8Srgb;
-    return vk::ClearColorValue {
-        std::array {srgb ? clearRed : encode(clearRed),
-                    srgb ? clearGreen : encode(clearGreen),
-                    srgb ? clearBlue : encode(clearBlue),
-                    1.0F}
-    };
 }
 
 auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std::expected<SwapchainGeneration, Error>
