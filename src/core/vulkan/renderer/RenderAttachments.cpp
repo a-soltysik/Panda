@@ -285,7 +285,7 @@ auto RenderAttachments::prepareResize(vk::Extent2D extent, vk::Format colorForma
     const auto formatChanged = colorFormat != _description.colorFormat;
     if (!extentChanged && !formatChanged)
     {
-        return PendingResize {.description = _description};
+        return PendingResize {.description = _description, .colorAttachments = {}, .depthAttachments = {}};
     }
     const auto sampleCount = chooseSampleCount(colorFormat);
     if (!sampleCount)
