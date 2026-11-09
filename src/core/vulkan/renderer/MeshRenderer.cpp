@@ -27,17 +27,15 @@
 #include "presentation/SwapchainGeneration.hpp"
 #include "renderer/FrameBindings.hpp"
 #include "renderer/MeshPipelineCache.hpp"
+#include "renderer/RenderAttachments.hpp"
 #include "renderer/ShaderData.hpp"
 #include "renderer/ShaderInterface.inc"
 #include "resources/MeshResource.hpp"
-#include "resources/TextureResource.hpp"
 
 namespace panda::core::vulkan::renderer
 {
 namespace
 {
-constexpr auto shadowExtent = vk::Extent2D {.width = 2048, .height = 2048};
-
 auto makeDrawConstants(const MeshDraw& draw) -> DrawConstants
 {
     const auto normalMatrix = glm::transpose(glm::inverse(glm::mat3 {draw.modelMatrix}));
@@ -62,49 +60,13 @@ auto cameraDepthForMesh(const glm::mat4& viewProjection, const glm::mat4& modelM
     const auto depth = clipPosition.z / clipPosition.w;
     return std::isfinite(depth) ? depth : std::numeric_limits<float>::infinity();
 }
-
-auto createDepthFormatSupport(vk::PhysicalDevice physicalDevice, vk::Format format) -> std::expected<bool, Error>
-{
-    constexpr auto usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled;
-    const auto support =
-        physicalDevice.getImageFormatProperties(format, vk::ImageType::e2D, vk::ImageTiling::eOptimal, usage, {});
-    if (support.result == vk::Result::eErrorFormatNotSupported)
-    {
-        return false;
-    }
-    if (support.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(support.result)};
-    }
-    return (support.value.sampleCounts & vk::SampleCountFlagBits::e1) != vk::SampleCountFlags {} &&
-           support.value.maxExtent.width >= shadowExtent.width && support.value.maxExtent.height >= shadowExtent.height;
-}
-
-auto querySampleCounts(vk::PhysicalDevice physicalDevice,
-                       vk::Format format,
-                       vk::ImageUsageFlags usage,
-                       const char* unsupportedMessage) -> std::expected<vk::SampleCountFlags, Error>
-{
-    const auto support =
-        physicalDevice.getImageFormatProperties(format, vk::ImageType::e2D, vk::ImageTiling::eOptimal, usage, {});
-    if (support.result == vk::Result::eErrorFormatNotSupported)
-    {
-        return std::unexpected {makeError(ErrorCode::Unsupported, unsupportedMessage)};
-    }
-    if (support.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(support.result)};
-    }
-    return support.value.sampleCounts;
-}
-
 }
 
 MeshRenderer::MeshRenderer(const MeshRendererCreateInfo& info)
     : _physicalDevice {info.physicalDevice},
       _device {info.device},
       _pool {info.pool},
-      _frames(info.frameCount)
+      _frameCount {info.frameCount}
 {
 }
 
@@ -155,11 +117,6 @@ auto MeshRenderer::initialize(vk::Extent2D extent, vk::Format colorFormat) -> st
     {
         return supported;
     }
-    return initializeDepthAndPipeline(extent, colorFormat);
-}
-
-auto MeshRenderer::initializeDepthAndPipeline(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>
-{
     if (const auto attachments = initializeAttachments(extent, colorFormat); !attachments)
     {
         return attachments;
@@ -169,277 +126,52 @@ auto MeshRenderer::initializeDepthAndPipeline(vk::Extent2D extent, vk::Format co
 
 auto MeshRenderer::initializeAttachments(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>
 {
-    const auto selectedDepthFormat = chooseDepthFormat();
-    if (!selectedDepthFormat)
-    {
-        return std::unexpected {selectedDepthFormat.error()};
-    }
-    _depthFormat = *selectedDepthFormat;
-    if (const auto shadowMaps = initializeShadowMaps(); !shadowMaps)
-    {
-        return shadowMaps;
-    }
-    if (const auto resized = resize(extent, colorFormat); !resized)
-    {
-        return resized;
-    }
-    return {};
+    return RenderAttachments::create({.physicalDevice = _physicalDevice,
+                                      .device = _device,
+                                      .pool = _pool,
+                                      .extent = extent,
+                                      .colorFormat = colorFormat,
+                                      .frameCount = _frameCount})
+        .transform([this](std::unique_ptr<RenderAttachments> attachments) {
+            _attachments = std::move(attachments);
+        });
 }
 
 auto MeshRenderer::initializeBindingsAndPipeline() -> std::expected<void, Error>
 {
-    auto bindings = FrameBindings::create(_physicalDevice, _device, _pool, _frames.size());
+    auto bindings = FrameBindings::create(_physicalDevice, _device, _pool, _frameCount);
     if (!bindings)
     {
         return std::unexpected {bindings.error()};
     }
     _bindings = std::move(*bindings);
     _pipelineCache.emplace(_device, _bindings->getPipelineLayout());
-    pipelineCache().setOutputCompatibility(
-        {.colorFormat = _colorFormat, .depthFormat = _depthFormat, .sampleCount = _sampleCount});
+    const auto& description = _attachments->getOutputDescription();
+    pipelineCache().setOutputCompatibility({.colorFormat = description.colorFormat,
+                                            .depthFormat = description.depthFormat,
+                                            .sampleCount = description.sampleCount});
     return {};
-}
-
-auto MeshRenderer::initializeShadowMaps() -> std::expected<void, Error>
-{
-    auto shadowMaps = createShadowMaps();
-    if (!shadowMaps)
-    {
-        return std::unexpected {shadowMaps.error()};
-    }
-    for (auto index = std::size_t {}; index < _frames.size(); ++index)
-    {
-        _frames[index].shadowMap = std::move((*shadowMaps)[index]);
-    }
-    return {};
-}
-
-auto MeshRenderer::createDepthAttachments(vk::Extent2D extent, vk::SampleCountFlagBits samples)
-    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
-{
-    auto attachments = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
-    attachments.reserve(_frames.size());
-    for (auto index = std::size_t {}; index < _frames.size(); ++index)
-    {
-        auto attachment = ::panda::detail::TextureResource::create(
-            _device,
-            _pool,
-            {.extent = extent, .format = _depthFormat, .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment},
-            samples);
-        if (!attachment)
-        {
-            return std::unexpected {attachment.error()};
-        }
-        attachments.push_back(std::move(*attachment));
-    }
-    return attachments;
-}
-
-auto MeshRenderer::createColorAttachments(vk::Extent2D extent, vk::Format format, vk::SampleCountFlagBits samples)
-    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
-{
-    auto attachments = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
-    if (samples == vk::SampleCountFlagBits::e1)
-    {
-        return attachments;
-    }
-    attachments.reserve(_frames.size());
-    for (auto index = std::size_t {}; index < _frames.size(); ++index)
-    {
-        auto attachment = ::panda::detail::TextureResource::create(
-            _device,
-            _pool,
-            {.extent = extent, .format = format, .usage = vk::ImageUsageFlagBits::eColorAttachment},
-            samples);
-        if (!attachment)
-        {
-            return std::unexpected {attachment.error()};
-        }
-        attachments.push_back(std::move(*attachment));
-    }
-    return attachments;
-}
-
-auto MeshRenderer::createShadowMaps()
-    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
-{
-    auto maps = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
-    maps.reserve(_frames.size());
-    for (auto index = std::size_t {}; index < _frames.size(); ++index)
-    {
-        auto map = ::panda::detail::TextureResource::create(
-            _device,
-            _pool,
-            {.extent = shadowExtent,
-             .format = _depthFormat,
-             .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled});
-        if (!map)
-        {
-            return std::unexpected {map.error()};
-        }
-        maps.push_back(std::move(*map));
-    }
-    return maps;
-}
-
-auto MeshRenderer::chooseDepthFormat() const -> std::expected<vk::Format, Error>
-{
-    for (const auto format : {vk::Format::eD32Sfloat, vk::Format::eD16Unorm})
-    {
-        const auto supported = createDepthFormatSupport(_physicalDevice, format);
-        if (!supported)
-        {
-            return std::unexpected {supported.error()};
-        }
-        if (*supported)
-        {
-            return format;
-        }
-    }
-    return std::unexpected {makeError(ErrorCode::Unsupported, "Device has no supported depth attachment format")};
-}
-
-auto MeshRenderer::chooseSampleCount(vk::Format colorFormat) const -> std::expected<vk::SampleCountFlagBits, Error>
-{
-    const auto colorSamples = querySampleCounts(_physicalDevice,
-                                                colorFormat,
-                                                vk::ImageUsageFlagBits::eColorAttachment,
-                                                "Swapchain format cannot be multisampled");
-    if (!colorSamples)
-    {
-        return std::unexpected {colorSamples.error()};
-    }
-    const auto depthSamples = querySampleCounts(_physicalDevice,
-                                                _depthFormat,
-                                                vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                                                "Depth format cannot be multisampled");
-    if (!depthSamples)
-    {
-        return std::unexpected {depthSamples.error()};
-    }
-    const auto limits = _physicalDevice.getProperties().limits;
-    const auto framebufferSamples = limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
-    const auto supportedSamples = *colorSamples & *depthSamples & framebufferSamples;
-    for (const auto samples : {vk::SampleCountFlagBits::e4, vk::SampleCountFlagBits::e2, vk::SampleCountFlagBits::e1})
-    {
-        if ((supportedSamples & samples) != vk::SampleCountFlags {})
-        {
-            return samples;
-        }
-    }
-    return std::unexpected {makeError(ErrorCode::Unsupported, "No common color and depth sample count is supported")};
 }
 
 auto MeshRenderer::resize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>
 {
-    if (extent.width == 0 || extent.height == 0 || colorFormat == vk::Format::eUndefined)
+    auto pending = _attachments->prepareResize(extent, colorFormat);
+    if (!pending)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid renderer output extent or format")};
+        return std::unexpected {pending.error()};
     }
-    if (extent.width == _extent.width && extent.height == _extent.height && colorFormat == _colorFormat)
-    {
-        return {};
-    }
-    const auto extentChanged = extent.width != _extent.width || extent.height != _extent.height;
-    const auto formatChanged = colorFormat != _colorFormat;
-    const auto sampleCount = chooseSampleCount(colorFormat);
-    if (!sampleCount)
-    {
-        return std::unexpected {sampleCount.error()};
-    }
-    const auto request = ResizeRequest {.extent = extent,
-                                        .colorFormat = colorFormat,
-                                        .sampleCount = *sampleCount,
-                                        .extentChanged = extentChanged,
-                                        .formatChanged = formatChanged,
-                                        .sampleCountChanged = *sampleCount != _sampleCount};
-    auto resources = createResizeResources(request);
-    if (!resources)
-    {
-        return std::unexpected {resources.error()};
-    }
-    publishResize(request, std::move(*resources));
+    const auto& description = pending->description;
+    pipelineCache().setOutputCompatibility({.colorFormat = description.colorFormat,
+                                            .depthFormat = description.depthFormat,
+                                            .sampleCount = description.sampleCount});
+    _attachments->publishResize(std::move(*pending));
     return {};
-}
-
-auto MeshRenderer::createResizeResources(const ResizeRequest& request) -> std::expected<ResizeResources, Error>
-{
-    auto depthAttachments = createDepthAttachmentsForResize(request);
-    if (!depthAttachments)
-    {
-        return std::unexpected {depthAttachments.error()};
-    }
-    auto colorAttachments = createColorAttachmentsForResize(request);
-    if (!colorAttachments)
-    {
-        return std::unexpected {colorAttachments.error()};
-    }
-    return ResizeResources {.colorAttachments = std::move(*colorAttachments),
-                            .depthAttachments = std::move(*depthAttachments)};
-}
-
-auto MeshRenderer::createDepthAttachmentsForResize(const ResizeRequest& request)
-    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
-{
-    if (request.extentChanged || request.sampleCountChanged)
-    {
-        return createDepthAttachments(request.extent, request.sampleCount);
-    }
-    return std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
-}
-
-auto MeshRenderer::createColorAttachmentsForResize(const ResizeRequest& request)
-    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
-{
-    if (request.extentChanged || request.formatChanged || request.sampleCountChanged)
-    {
-        return createColorAttachments(request.extent, request.colorFormat, request.sampleCount);
-    }
-    return std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
-}
-
-void MeshRenderer::publishResize(const ResizeRequest& request, ResizeResources resources)
-{
-    if (request.extentChanged || request.sampleCountChanged)
-    {
-        publishDepthAttachments(std::move(resources.depthAttachments));
-    }
-    if (request.extentChanged || request.formatChanged || request.sampleCountChanged)
-    {
-        publishColorAttachments(std::move(resources.colorAttachments));
-    }
-    _colorFormat = request.colorFormat;
-    _sampleCount = request.sampleCount;
-    _extent = request.extent;
-    if (_pipelineCache)
-    {
-        pipelineCache().setOutputCompatibility(
-            {.colorFormat = _colorFormat, .depthFormat = _depthFormat, .sampleCount = _sampleCount});
-    }
-}
-
-void MeshRenderer::publishDepthAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments)
-{
-    for (auto index = std::size_t {}; index < _frames.size(); ++index)
-    {
-        _frames[index].depthAttachment = std::move(attachments[index]);
-        _frames[index].depthInitialized = false;
-    }
-}
-
-void MeshRenderer::publishColorAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> attachments)
-{
-    for (auto index = std::size_t {}; index < _frames.size(); ++index)
-    {
-        _frames[index].colorAttachment = attachments.empty() ? nullptr : std::move(attachments[index]);
-        _frames[index].colorInitialized = false;
-    }
 }
 
 auto MeshRenderer::updateFrame(std::size_t frameIndex, const RenderView& view) -> std::expected<void, Error>
 {
-    auto& frame = _frames.at(frameIndex);
-    if (const auto updated = _bindings->updateFrame(frameIndex, view, frame.shadowMap->getNativeView()); !updated)
+    if (const auto updated = _bindings->updateFrame(frameIndex, view, _attachments->getShadowView(frameIndex));
+        !updated)
     {
         return updated;
     }
@@ -448,7 +180,7 @@ auto MeshRenderer::updateFrame(std::size_t frameIndex, const RenderView& view) -
 
 auto MeshRenderer::getSampleCount() const noexcept -> vk::SampleCountFlagBits
 {
-    return _sampleCount;
+    return _attachments->getOutputDescription().sampleCount;
 }
 
 void MeshRenderer::record(vk::CommandBuffer command,
@@ -456,21 +188,17 @@ void MeshRenderer::record(vk::CommandBuffer command,
                           std::size_t frameIndex,
                           const RenderView& view)
 {
-    auto& frame = _frames.at(frameIndex);
-    recordShadowPass(command, frame, frameIndex, view);
-    transitionColor(command, frame);
-    transitionDepth(command, frame);
-    recordAttachments(command, colorView, frame, frame.depthAttachment->getNativeView());
+    recordShadowPass(command, frameIndex, view);
+    _attachments->transitionColor(command, frameIndex);
+    _attachments->transitionDepth(command, frameIndex);
+    recordAttachments(command, colorView, frameIndex);
     recordColorPass(command, frameIndex, view);
 }
 
-void MeshRenderer::recordShadowPass(vk::CommandBuffer command,
-                                    FrameResources& frame,
-                                    std::size_t frameIndex,
-                                    const RenderView& view)
+void MeshRenderer::recordShadowPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view)
 {
-    transitionShadowForAttachment(command, frame);
-    recordShadowAttachment(command, frame.shadowMap->getNativeView());
+    _attachments->transitionShadowForAttachment(command, frameIndex);
+    recordShadowAttachment(command, _attachments->getShadowView(frameIndex));
     setDrawState(command, frameIndex, shadowExtent);
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
@@ -482,12 +210,12 @@ void MeshRenderer::recordShadowPass(vk::CommandBuffer command,
         ++materialIndex;
     }
     command.endRendering();
-    transitionShadowForSampling(command, frame);
+    _attachments->transitionShadowForSampling(command, frameIndex);
 }
 
 void MeshRenderer::recordColorPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view)
 {
-    setDrawState(command, frameIndex, _extent);
+    setDrawState(command, frameIndex, _attachments->getOutputDescription().extent);
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
     {
@@ -520,122 +248,31 @@ void MeshRenderer::recordBlendedDraws(vk::CommandBuffer command, std::size_t fra
     _blendDraws.clear();
 }
 
-void MeshRenderer::transitionColor(vk::CommandBuffer command, FrameResources& frame)
-{
-    if (_sampleCount == vk::SampleCountFlagBits::e1)
-    {
-        return;
-    }
-    const auto barrier = vk::ImageMemoryBarrier2 {
-        .srcStageMask = frame.colorInitialized ? vk::PipelineStageFlagBits2::eColorAttachmentOutput
-                                               : vk::PipelineStageFlagBits2::eNone,
-        .srcAccessMask = frame.colorInitialized ? vk::AccessFlagBits2::eColorAttachmentWrite : vk::AccessFlags2 {},
-        .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
-        .oldLayout = frame.colorInitialized ? vk::ImageLayout::eColorAttachmentOptimal : vk::ImageLayout::eUndefined,
-        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
-        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .image = frame.colorAttachment->getNative(),
-        .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eColor,
-                                                                                                                 .levelCount = 1,
-                                                                                                                 .layerCount = 1}
-    };
-    command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
-}
-
-void MeshRenderer::transitionDepth(vk::CommandBuffer command, FrameResources& frame)
-{
-    const auto barrier = vk::ImageMemoryBarrier2 {
-        .srcStageMask = frame.depthInitialized ? vk::PipelineStageFlagBits2::eEarlyFragmentTests |
-                                                     vk::PipelineStageFlagBits2::eLateFragmentTests
-                                               : vk::PipelineStageFlagBits2::eNone,
-        .srcAccessMask =
-            frame.depthInitialized ? vk::AccessFlagBits2::eDepthStencilAttachmentWrite : vk::AccessFlags2 {},
-        .dstStageMask =
-            vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
-        .dstAccessMask =
-            vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-        .oldLayout = frame.depthInitialized ? vk::ImageLayout::eDepthAttachmentOptimal : vk::ImageLayout::eUndefined,
-        .newLayout = vk::ImageLayout::eDepthAttachmentOptimal,
-        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .image = frame.depthAttachment->getNative(),
-        .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eDepth,
-                                                                                                           .levelCount = 1,
-                                                                                                           .layerCount = 1}
-    };
-    command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
-}
-
-void MeshRenderer::transitionShadowForAttachment(vk::CommandBuffer command, FrameResources& frame)
-{
-    const auto barrier = vk::ImageMemoryBarrier2 {
-        .srcStageMask =
-            frame.shadowInitialized ? vk::PipelineStageFlagBits2::eFragmentShader : vk::PipelineStageFlagBits2::eNone,
-        .srcAccessMask = frame.shadowInitialized ? vk::AccessFlagBits2::eShaderSampledRead : vk::AccessFlags2 {},
-        .dstStageMask =
-            vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
-        .dstAccessMask =
-            vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-        .oldLayout = frame.shadowInitialized ? vk::ImageLayout::eDepthReadOnlyOptimal : vk::ImageLayout::eUndefined,
-        .newLayout = vk::ImageLayout::eDepthAttachmentOptimal,
-        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .image = frame.shadowMap->getNative(),
-        .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eDepth,
-                                                                                                               .levelCount = 1,
-                                                                                                               .layerCount = 1}
-    };
-    command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
-}
-
-void MeshRenderer::transitionShadowForSampling(vk::CommandBuffer command, FrameResources& frame)
-{
-    const auto barrier = vk::ImageMemoryBarrier2 {
-        .srcStageMask =
-            vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
-        .srcAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-        .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
-        .dstAccessMask = vk::AccessFlagBits2::eShaderSampledRead,
-        .oldLayout = vk::ImageLayout::eDepthAttachmentOptimal,
-        .newLayout = vk::ImageLayout::eDepthReadOnlyOptimal,
-        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .image = frame.shadowMap->getNative(),
-        .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eDepth,
-                                                       .levelCount = 1,
-                                                       .layerCount = 1}
-    };
-    command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
-}
-
 void MeshRenderer::recordAttachments(vk::CommandBuffer command,
                                      vk::ImageView swapchainView,
-                                     const FrameResources& frame,
-                                     vk::ImageView depthView) const
+                                     std::size_t frameIndex) const
 {
+    const auto& output = _attachments->getOutputDescription();
+    const auto multisampled = output.sampleCount != vk::SampleCountFlagBits::e1;
     auto color = vk::RenderingAttachmentInfo {
-        .imageView =
-            _sampleCount == vk::SampleCountFlagBits::e1 ? swapchainView : frame.colorAttachment->getNativeView(),
+        .imageView = multisampled ? _attachments->getColorView(frameIndex) : swapchainView,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
-        .storeOp = _sampleCount == vk::SampleCountFlagBits::e1 ? vk::AttachmentStoreOp::eStore
-                                                               : vk::AttachmentStoreOp::eDontCare,
-        .clearValue = vk::ClearValue {.color = encodedClear(_colorFormat)}};
-    if (_sampleCount != vk::SampleCountFlagBits::e1)
+        .storeOp = multisampled ? vk::AttachmentStoreOp::eDontCare : vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue {.color = encodedClear(output.colorFormat)}};
+    if (multisampled)
     {
         color.resolveMode = vk::ResolveModeFlagBits::eAverage;
         color.resolveImageView = swapchainView;
         color.resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal;
     }
     const auto depth = vk::RenderingAttachmentInfo {
-        .imageView = depthView,
+        .imageView = _attachments->getDepthView(frameIndex),
         .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eDontCare,
         .clearValue = vk::ClearValue {.depthStencil = vk::ClearDepthStencilValue {.depth = 1.0F, .stencil = 0}}};
-    const auto info = vk::RenderingInfo {.renderArea = vk::Rect2D {.extent = _extent},
+    const auto info = vk::RenderingInfo {.renderArea = vk::Rect2D {.extent = output.extent},
                                          .layerCount = 1,
                                          .colorAttachmentCount = 1,
                                          .pColorAttachments = &color,
@@ -738,8 +375,6 @@ void MeshRenderer::recordMeshDraw(vk::CommandBuffer command,
 
 void MeshRenderer::markSubmitted(std::size_t frameIndex) noexcept
 {
-    _frames[frameIndex].colorInitialized = _sampleCount != vk::SampleCountFlagBits::e1;
-    _frames[frameIndex].depthInitialized = true;
-    _frames[frameIndex].shadowInitialized = true;
+    _attachments->markSubmitted(frameIndex);
 }
 }

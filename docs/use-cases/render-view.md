@@ -50,9 +50,13 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    checks submission capacity, acquires an image and waits for that image's pending
    presentation fence before reuse.
 5. **Record the view.** An empty mesh list clears the acquired image to the configured
-   background. Otherwise, `Presentation` creates or resizes the internal `MeshRenderer`,
-   which updates frame data, per-draw material records and texture descriptors through
-   `FrameBindings` before recording the directional shadow depth pass.
+   background. Otherwise, `Presentation` creates or resizes the internal `MeshRenderer`.
+   On first creation, it builds `RenderAttachments` before `FrameBindings` and
+   `MeshPipelineCache`. On a resize, `RenderAttachments` prepares output-sized depth
+   and optional MSAA replacements; after preparation succeeds, the renderer updates
+   pipeline compatibility and publishes them. The renderer then updates frame data,
+   per-draw material records and texture descriptors through `FrameBindings` before
+   recording the directional shadow depth pass.
    `MeshPipelineCache` prepares missing color and shadow variants before recording;
    draw recording then looks up those prepared pipelines without creating them. A base-color sample multiplies material and
    draw tint and optional vertex color; a metallic-roughness sample scales Lit
@@ -82,6 +86,7 @@ sequenceDiagram
     participant U as UploadManager
     participant P as Presentation
     participant R as MeshRenderer
+    participant RA as RenderAttachments
     participant B as FrameBindings
     participant K as MeshPipelineCache
     participant Q as SubmissionQueue
@@ -101,6 +106,18 @@ sequenceDiagram
         P->>V: Clear background with dynamic rendering
     else View contains meshes
         P->>R: Create/resize renderer
+        alt First mesh draw
+            R->>RA: Create depth, MSAA and shadow attachments
+            RA-->>R: Ready attachments and output description
+            R->>B: Create frame bindings after shadow views exist
+            B-->>R: Pipeline layout
+            R->>K: Create cache with output compatibility
+        else Existing renderer resize or no-op
+            R->>RA: Prepare output attachment replacements
+            RA-->>R: Pending replacements and output description
+            R->>K: Set compatibility after preparation succeeds
+            R->>RA: Publish replacements and reset replaced history
+        end
         R->>B: Update frame data, material records and texture descriptors
         B->>V: Write frame buffers and descriptor sets
         R->>K: Prepare needed color and shadow variants
@@ -171,6 +188,11 @@ not cast shadows. Intersecting transparent meshes can still sort incorrectly.
 **Slot and image lifetimes differ.** Panda has two reusable frame slots while the
 swapchain supplies its own image count. Command buffers and retained mesh handles
 belong to slots; render-finished semaphores and presentation fences belong to images.
+
+**Attachment publication.** `RenderAttachments` owns per-slot color, depth and shadow
+images with their committed layout history. A failed replacement leaves the renderer's
+current attachments and pipeline compatibility unchanged. Shadow images keep their
+fixed extent across window resize, so `FrameBindings` can keep using the same shadow views.
 
 **Completion meanings.** The timeline point covers submitted GPU work. The per-image
 present fence separately tracks presentation-resource retirement; it does not promise
