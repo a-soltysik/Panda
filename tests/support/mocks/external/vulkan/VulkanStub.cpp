@@ -501,6 +501,49 @@ VKAPI_ATTR void VKAPI_CALL vkCmdEndRendering(VkCommandBuffer commandBuffer)
     panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdEndRendering(commandBuffer);
 }
 
+VKAPI_ATTR void VKAPI_CALL vkCmdSetViewport(VkCommandBuffer commandBuffer,
+                                            std::uint32_t firstViewport,
+                                            std::uint32_t viewportCount,
+                                            const VkViewport* viewports)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdSetViewport(commandBuffer,
+                                                                                       firstViewport,
+                                                                                       viewportCount,
+                                                                                       viewports);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdSetScissor(VkCommandBuffer commandBuffer,
+                                           std::uint32_t firstScissor,
+                                           std::uint32_t scissorCount,
+                                           const VkRect2D* scissors)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdSetScissor(commandBuffer,
+                                                                                      firstScissor,
+                                                                                      scissorCount,
+                                                                                      scissors);
+}
+
+// NOLINTNEXTLINE(readability-function-size) -- Vulkan's command ABI requires this signature.
+VKAPI_ATTR void VKAPI_CALL vkCmdBindDescriptorSets(VkCommandBuffer commandBuffer,
+                                                   VkPipelineBindPoint pipelineBindPoint,
+                                                   VkPipelineLayout layout,
+                                                   std::uint32_t firstSet,
+                                                   std::uint32_t descriptorSetCount,
+                                                   const VkDescriptorSet* descriptorSets,
+                                                   std::uint32_t dynamicOffsetCount,
+                                                   const std::uint32_t* dynamicOffsets)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdBindDescriptorSets(
+        {.commandBuffer = commandBuffer,
+         .pipelineBindPoint = pipelineBindPoint,
+         .layout = layout,
+         .firstSet = firstSet,
+         .descriptorSetCount = descriptorSetCount,
+         .descriptorSets = descriptorSets,
+         .dynamicOffsetCount = dynamicOffsetCount,
+         .dynamicOffsets = dynamicOffsets});
+}
+
 VKAPI_ATTR auto VKAPI_CALL vkEndCommandBuffer(VkCommandBuffer commandBuffer) -> VkResult
 {
     return panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkEndCommandBuffer(commandBuffer);
@@ -919,6 +962,9 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkCmdCopyBufferToImage",                         .function = genericVulkanProc(&vkCmdCopyBufferToImage)       },
     EntryPoint {.name = "vkCmdBeginRendering",                            .function = genericVulkanProc(&vkCmdBeginRendering)          },
     EntryPoint {.name = "vkCmdEndRendering",                              .function = genericVulkanProc(&vkCmdEndRendering)            },
+    EntryPoint {.name = "vkCmdSetViewport",                               .function = genericVulkanProc(&vkCmdSetViewport)             },
+    EntryPoint {.name = "vkCmdSetScissor",                                .function = genericVulkanProc(&vkCmdSetScissor)              },
+    EntryPoint {.name = "vkCmdBindDescriptorSets",                        .function = genericVulkanProc(&vkCmdBindDescriptorSets)      },
     EntryPoint {.name = "vkEndCommandBuffer",                             .function = genericVulkanProc(&vkEndCommandBuffer)           },
     EntryPoint {.name = "vkQueueSubmit2",                                 .function = genericVulkanProc(&vkQueueSubmit2)               },
     EntryPoint {.name = "vkQueuePresentKHR",                              .function = genericVulkanProc(&vkQueuePresentKHR)            },

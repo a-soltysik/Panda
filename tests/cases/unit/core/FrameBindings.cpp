@@ -36,6 +36,10 @@
 
 namespace
 {
+constexpr auto allSampleCounts = static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_1_BIT) |
+                                 static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_2_BIT) |
+                                 static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_4_BIT);
+
 using panda::core::vulkan::renderer::FrameBindings;
 using panda::core::vulkan::renderer::MaterialRecord;
 using panda::core::vulkan::resources::MemoryPool;
@@ -75,10 +79,8 @@ protected:
             .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
                 properties->limits.maxPushConstantsSize = 4096;
                 properties->limits.maxStorageBufferRange = 4096;
-                properties->limits.framebufferColorSampleCounts =
-                    VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
-                properties->limits.framebufferDepthSampleCounts =
-                    VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
+                properties->limits.framebufferColorSampleCounts = allSampleCounts;
+                properties->limits.framebufferDepthSampleCounts = allSampleCounts;
             });
         installDescriptorDefaults();
         EXPECT_CALL(buffers, create(_, Ref(*pool), _))
@@ -108,7 +110,7 @@ protected:
             .physicalDevice = physical,
             .device = device,
             .pool = *pool,
-            .extent = {64, 64},
+            .extent = {.width = 64, .height = 64},
             .colorFormat = vk::Format::eR8G8B8A8Unorm,
             .frameCount = 1
         };
@@ -117,24 +119,31 @@ protected:
     auto createMeshRenderer()
         -> std::expected<std::unique_ptr<panda::core::vulkan::renderer::MeshRenderer>, panda::Error>
     {
+        return createMeshRenderer(allSampleCounts);
+    }
+
+    auto createMeshRenderer(VkSampleCountFlags supportedSamples)
+        -> std::expected<std::unique_ptr<panda::core::vulkan::renderer::MeshRenderer>, panda::Error>
+    {
         EXPECT_CALL(vulkan,
                     vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
             .Times(AnyNumber())
-            .WillRepeatedly([](VkPhysicalDevice,
-                               VkFormat,
-                               VkImageType,
-                               VkImageTiling,
-                               VkImageUsageFlags,
-                               VkImageCreateFlags,
-                               VkImageFormatProperties* properties) {
+            .WillRepeatedly([supportedSamples](VkPhysicalDevice,
+                                               VkFormat,
+                                               VkImageType,
+                                               VkImageTiling,
+                                               VkImageUsageFlags,
+                                               VkImageCreateFlags,
+                                               VkImageFormatProperties* properties) {
                 *properties = VkImageFormatProperties {};
-                properties->maxExtent = {4096, 4096, 1};
-                properties->sampleCounts = VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
+                properties->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                properties->sampleCounts = supportedSamples;
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
         EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
             .Times(AnyNumber())
             .WillRepeatedly(Return(panda::Result<void> {}));
+        EXPECT_CALL(textures, getNative(_)).Times(AnyNumber()).WillRepeatedly(Return(fakeVulkanHandle<VkImage>(91)));
         EXPECT_CALL(textures, getNativeView(_))
             .Times(AnyNumber())
             .WillRepeatedly(Return(fakeVulkanHandle<VkImageView>(90)));
@@ -630,7 +639,7 @@ TEST_F(FrameBindingsTest, PropagatesMeshRendererDepthQueryAndShadowCreationFailu
                      VkImageCreateFlags,
                      VkImageFormatProperties* properties) {
             *properties = VkImageFormatProperties {};
-            properties->maxExtent = {4096, 4096, 1};
+            properties->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
             properties->sampleCounts = VK_SAMPLE_COUNT_1_BIT;
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
@@ -647,13 +656,13 @@ TEST_F(FrameBindingsTest, MeshRendererResizeFailureKeepsPreviousSampleCount)
     auto renderer = createMeshRenderer();
     ASSERT_TRUE(renderer);
     ASSERT_EQ((*renderer)->getSampleCount(), vk::SampleCountFlagBits::e4);
-    EXPECT_TRUE((*renderer)->resize({64, 64}, vk::Format::eR8G8B8A8Unorm));
-    EXPECT_FALSE((*renderer)->resize({0, 64}, vk::Format::eR8G8B8A8Unorm));
+    EXPECT_TRUE((*renderer)->resize({.width = 64, .height = 64}, vk::Format::eR8G8B8A8Unorm));
+    EXPECT_FALSE((*renderer)->resize({.width = 0, .height = 64}, vk::Format::eR8G8B8A8Unorm));
 
     EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
         .WillOnce(Return(panda::Result<void> {
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "depth allocation failed")}}));
-    const auto resized = (*renderer)->resize({128, 64}, vk::Format::eR8G8B8A8Unorm);
+    const auto resized = (*renderer)->resize({.width = 128, .height = 64}, vk::Format::eR8G8B8A8Unorm);
 
     ASSERT_FALSE(resized);
     EXPECT_EQ(resized.error().code, panda::ErrorCode::ResourceExhausted);
@@ -673,15 +682,46 @@ TEST_F(FrameBindingsTest, MeshRendererUpdatePropagatesBindingFailure)
     EXPECT_EQ(updated.error().code, panda::ErrorCode::InvalidArgument);
 }
 
+TEST_F(FrameBindingsTest, OneSampleColorPassClearsTheSwapchainWithoutResolveAttachment)
+{
+    auto renderer = createMeshRenderer(VK_SAMPLE_COUNT_1_BIT);
+    ASSERT_TRUE(renderer);
+    EXPECT_EQ((*renderer)->getSampleCount(), vk::SampleCountFlagBits::e1);
+
+    auto* const swapchainImageView = fakeVulkanHandle<VkImageView>(900);
+    auto colorPassCount = 0;
+    EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull()))
+        .Times(2)
+        .WillRepeatedly([&](VkCommandBuffer, const VkRenderingInfo* rendering) {
+            if (++colorPassCount == 2)
+            {
+                ASSERT_EQ(rendering->colorAttachmentCount, 1U);
+                const auto& attachment = *rendering->pColorAttachments;
+                EXPECT_EQ(attachment.imageView, swapchainImageView);
+                EXPECT_EQ(attachment.loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR);
+                EXPECT_EQ(attachment.storeOp, VK_ATTACHMENT_STORE_OP_STORE);
+                EXPECT_EQ(attachment.resolveImageView, VK_NULL_HANDLE);
+                EXPECT_EQ(attachment.resolveMode, VK_RESOLVE_MODE_NONE);
+            }
+        });
+    EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull())).Times(AnyNumber());
+    EXPECT_CALL(vulkan, vkCmdSetViewport(_, _, _, NotNull())).Times(2);
+    EXPECT_CALL(vulkan, vkCmdSetScissor(_, _, _, NotNull())).Times(2);
+    EXPECT_CALL(vulkan, vkCmdBindDescriptorSets(_)).Times(2);
+    EXPECT_CALL(vulkan, vkCmdEndRendering(_)).Times(2);
+    const auto command = vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(901)};
+    const auto view = panda::RenderView {};
+
+    (*renderer)->record(command, vk::ImageView {swapchainImageView}, 0, view);
+}
+
 TEST_F(FrameBindingsTest, PropagatesFrameBindingsInitializationFailure)
 {
     const auto supportedLimits = [](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
         properties->limits.maxPushConstantsSize = 4096;
         properties->limits.maxStorageBufferRange = 4096;
-        properties->limits.framebufferColorSampleCounts =
-            VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
-        properties->limits.framebufferDepthSampleCounts =
-            VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
+        properties->limits.framebufferColorSampleCounts = allSampleCounts;
+        properties->limits.framebufferDepthSampleCounts = allSampleCounts;
     };
     EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
         .Times(4)
@@ -702,8 +742,8 @@ TEST_F(FrameBindingsTest, PropagatesFrameBindingsInitializationFailure)
                            VkImageCreateFlags,
                            VkImageFormatProperties* properties) {
             *properties = VkImageFormatProperties {};
-            properties->maxExtent = {4096, 4096, 1};
-            properties->sampleCounts = VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
+            properties->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+            properties->sampleCounts = allSampleCounts;
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
     EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))

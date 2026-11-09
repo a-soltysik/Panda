@@ -15,6 +15,18 @@
 
 namespace panda::test
 {
+struct DescriptorSetBindCall
+{
+    VkCommandBuffer commandBuffer;
+    VkPipelineBindPoint pipelineBindPoint;
+    VkPipelineLayout layout;
+    std::uint32_t firstSet;
+    std::uint32_t descriptorSetCount;
+    const VkDescriptorSet* descriptorSets;
+    std::uint32_t dynamicOffsetCount;
+    const std::uint32_t* dynamicOffsets;
+};
+
 class VulkanMock
 {
 public:
@@ -282,6 +294,12 @@ public:
     MOCK_METHOD(void, vkCmdBeginRendering, (VkCommandBuffer, const VkRenderingInfo*), ());
 
     MOCK_METHOD(void, vkCmdEndRendering, (VkCommandBuffer), ());
+
+    MOCK_METHOD(void, vkCmdSetViewport, (VkCommandBuffer, std::uint32_t, std::uint32_t, const VkViewport*), ());
+
+    MOCK_METHOD(void, vkCmdSetScissor, (VkCommandBuffer, std::uint32_t, std::uint32_t, const VkRect2D*), ());
+
+    MOCK_METHOD(void, vkCmdBindDescriptorSets, (const DescriptorSetBindCall&), ());
 
     MOCK_METHOD(VkResult, vkEndCommandBuffer, (VkCommandBuffer), ());
 

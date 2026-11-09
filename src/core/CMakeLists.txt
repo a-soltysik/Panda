@@ -34,6 +34,7 @@ panda_add_component(panda_core
         vulkan/renderer/FrameBindings.cpp
         vulkan/renderer/MeshRenderer.cpp
         vulkan/renderer/MeshPipelineCache.cpp
+        vulkan/renderer/RenderAttachments.cpp
         vulkan/renderer/RenderViewValidation.cpp
         vulkan/renderer/ShadowView.cpp
         vulkan/SubmissionQueue.cpp
@@ -108,6 +109,7 @@ panda_add_component(panda_core
         vulkan/renderer/MeshRenderer.hpp
         vulkan/renderer/FrameBindings.hpp
         vulkan/renderer/MeshPipelineCache.hpp
+        vulkan/renderer/RenderAttachments.hpp
         vulkan/renderer/ShaderData.hpp
         vulkan/renderer/RenderViewValidation.hpp
         vulkan/renderer/ShadowView.hpp
