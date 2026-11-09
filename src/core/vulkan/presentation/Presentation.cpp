@@ -2,33 +2,27 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <limits>
 #include <memory>
-#include <new>
-#include <numeric>
 #include <optional>
 #include <panda/Assert.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
-#include <panda/Texture.hpp>
 #include <panda/WindowSurface.hpp>
 #include <string>
 #include <utility>
-#include <vector>
 #include <vulkan/vulkan.hpp>
 
 #include "SubmissionQueue.hpp"
 #include "VulkanError.hpp"
 #include "VulkanHpp.hpp"  // IWYU pragma: keep
+#include "presentation/FrameExecution.hpp"
 #include "presentation/SwapchainGeneration.hpp"
-#include "renderer/MeshRenderer.hpp"
 
 namespace panda::core::vulkan
 {
@@ -36,12 +30,6 @@ using detail::checkedCreation;
 
 namespace
 {
-struct FrameCommands
-{
-    vk::raii::CommandPool pool;
-    vk::CommandBuffer command;
-};
-
 struct ImageAccessScope
 {
     vk::PipelineStageFlags2 stage;
@@ -55,47 +43,6 @@ struct ImageTransition
     ImageAccessScope source;
     ImageAccessScope destination;
 };
-
-void retainMaterialTextures(std::vector<Texture>& retained, const RenderView& view)
-{
-    retained.reserve(view.meshes.size() * 3);
-    for (const auto& draw : view.meshes)
-    {
-        if (draw.material.baseColorTexture.isValid())
-        {
-            retained.push_back(draw.material.baseColorTexture);
-        }
-        if (draw.material.metallicRoughnessTexture.isValid())
-        {
-            retained.push_back(draw.material.metallicRoughnessTexture);
-        }
-        if (draw.material.emissiveTexture.isValid())
-        {
-            retained.push_back(draw.material.emissiveTexture);
-        }
-    }
-}
-
-auto createFrameCommands(const vk::raii::Device& device, std::uint32_t queueFamily)
-    -> std::expected<FrameCommands, Error>
-{
-    const auto poolInfo = vk::CommandPoolCreateInfo {.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-                                                     .queueFamilyIndex = queueFamily};
-    auto pool = checkedCreation(device.createCommandPool(poolInfo));
-    if (!pool)
-    {
-        return std::unexpected {std::move(pool.error())};
-    }
-    const auto allocateInfo = vk::CommandBufferAllocateInfo {.commandPool = **pool,
-                                                             .level = vk::CommandBufferLevel::ePrimary,
-                                                             .commandBufferCount = 1};
-    auto commands = (*device).allocateCommandBuffers(allocateInfo, *device.getDispatcher());
-    if (commands.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(commands.result)};
-    }
-    return FrameCommands {.pool = std::move(*pool), .command = commands.value.front()};
-}
 
 auto makeImageBarrier(const SwapchainImage& image, ImageTransition transition) -> vk::ImageMemoryBarrier2
 {
@@ -133,24 +80,6 @@ void transitionToColorAttachment(vk::CommandBuffer command, const SwapchainImage
     recordImageBarrier(command, barrier);
 }
 
-void recordClearRendering(vk::CommandBuffer command,
-                          const SwapchainImage& image,
-                          vk::Format format,
-                          vk::Extent2D extent)
-{
-    const auto attachment = vk::RenderingAttachmentInfo {.imageView = *image.view,
-                                                         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-                                                         .loadOp = vk::AttachmentLoadOp::eClear,
-                                                         .storeOp = vk::AttachmentStoreOp::eStore,
-                                                         .clearValue = vk::ClearValue {.color = encodedClear(format)}};
-    const auto rendering = vk::RenderingInfo {.renderArea = vk::Rect2D {.extent = extent},
-                                              .layerCount = 1,
-                                              .colorAttachmentCount = 1,
-                                              .pColorAttachments = &attachment};
-    command.beginRendering(rendering);
-    command.endRendering();
-}
-
 void transitionToPresent(vk::CommandBuffer command, const SwapchainImage& image)
 {
     static constexpr auto transition = ImageTransition {
@@ -173,9 +102,7 @@ Presentation::Presentation(const PresentationCreateInfo& info)
       _surface {info.surface},
       _window {info.window},
       _deviceInfo {info.deviceInfo},
-      _submissions {info.submissions},
-      _pool {info.pool},
-      _performance {info.performance}
+      _submissions {info.submissions}
 {
 }
 
@@ -184,7 +111,7 @@ Presentation::~Presentation() = default;
 auto Presentation::create(const PresentationCreateInfo& info) -> std::expected<std::unique_ptr<Presentation>, Error>
 {
     auto result = std::unique_ptr<Presentation> {new Presentation {info}};
-    if (const auto initialized = result->initialize(); !initialized)
+    if (const auto initialized = result->initialize(info); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
@@ -248,28 +175,6 @@ auto Presentation::recreate(FramebufferExtent requested) -> std::expected<void, 
     return {};
 }
 
-auto Presentation::retainViewResources(FrameSlot& slot, const RenderView& view) -> std::expected<void, Error>
-{
-    slot.retainedMeshes.clear();
-    slot.retainedTextures.clear();
-    try
-    {
-        slot.retainedMeshes.reserve(view.meshes.size());
-        for (const auto& draw : view.meshes)
-        {
-            slot.retainedMeshes.push_back(draw.mesh);
-        }
-        retainMaterialTextures(slot.retainedTextures, view);
-    }
-    catch (const std::bad_alloc&)
-    {
-        slot.retainedMeshes.clear();
-        slot.retainedTextures.clear();
-        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Unable to retain render view resources")};
-    }
-    return {};
-}
-
 auto Presentation::render(const RenderView& view) -> std::expected<FrameResult, Error>
 {
     auto submittedPerformanceSlot = std::optional<std::size_t> {};
@@ -291,34 +196,28 @@ auto Presentation::render(const RenderView& view, std::optional<std::size_t>& su
                             .completion = {},
                             .effectiveSampleCount = effectiveSampleCount()};
     }
-    auto& slot = _slots.at(_nextSlot);
-    if (const auto waited = waitCompletion(slot.lastCompletion); !waited)
+    const auto slotIndex = _nextSlot;
+    if (const auto prepared = _execution->prepareSlot(slotIndex, view); !prepared)
     {
-        return std::unexpected {waited.error()};
+        return std::unexpected {prepared.error()};
     }
-    if (const auto retained = retainViewResources(slot, view); !retained)
-    {
-        return std::unexpected {retained.error()};
-    }
-    return executeAcquiredFrame(view, submittedPerformanceSlot);
+    return executeAcquiredFrame(slotIndex, view, submittedPerformanceSlot);
 }
 
-auto Presentation::executeAcquiredFrame(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
+auto Presentation::executeAcquiredFrame(std::size_t slotIndex,
+                                        const RenderView& view,
+                                        std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
-    const auto slotIndex = _nextSlot;
-    auto& slot = _slots.at(slotIndex);
-    const auto acquired = acquireFrame(slot);
+    const auto acquired = acquireFrame(slotIndex);
     if (!acquired)
     {
-        slot.retainedMeshes.clear();
-        slot.retainedTextures.clear();
+        _execution->discardUnsubmittedInputs(slotIndex);
         return std::unexpected {acquired.error()};
     }
     if (const auto nonReady = nonReadyFrameResult(acquired->status); nonReady)
     {
-        slot.retainedMeshes.clear();
-        slot.retainedTextures.clear();
+        _execution->discardUnsubmittedInputs(slotIndex);
         return *nonReady;
     }
     return submitAcquiredFrame(*acquired, slotIndex, view, submittedPerformanceSlot);
@@ -330,23 +229,20 @@ auto Presentation::submitAcquiredFrame(const AcquiredImage& acquired,
                                        std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
-    auto& slot = _slots.at(slotIndex);
     auto& image = activeGeneration().images.at(acquired.index);
-    if (const auto waited = waitImage(slot, acquired.index); !waited)
+    if (const auto waited = waitImage(slotIndex, acquired.index); !waited)
     {
-        slot.retainedMeshes.clear();
-        slot.retainedTextures.clear();
+        _execution->discardUnsubmittedInputs(slotIndex);
         return std::unexpected {waited.error()};
     }
     const auto selection = FrameSelection {.slotIndex = slotIndex, .imageIndex = acquired.index};
-    const auto completion = submitFrame(slot, image, selection, view);
+    const auto completion = submitFrame(slotIndex, image, selection, view);
     if (!completion)
     {
-        slot.retainedMeshes.clear();
-        slot.retainedTextures.clear();
+        _execution->discardUnsubmittedInputs(slotIndex);
         return std::unexpected {completion.error()};
     }
-    if (_performance != nullptr && _performance->getCapabilities().isGpuTimestampSamplingEnabled)
+    if (_execution->isGpuTimestampSamplingEnabled())
     {
         submittedPerformanceSlot = slotIndex;
     }
@@ -370,127 +266,25 @@ auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) const -> st
     return std::nullopt;
 }
 
-auto Presentation::recordView(FrameSlot& slot,
-                              const SwapchainImage& image,
-                              std::size_t slotIndex,
-                              const RenderView& view) -> std::expected<void, Error>
-{
-    if (const auto commands = recordFrameCommands(slot); !commands)
-    {
-        return std::unexpected {commands.error()};
-    }
-    return recordFrameWork(slot, image, slotIndex, view);
-}
-
-auto Presentation::recordFrameCommands(FrameSlot& slot) -> std::expected<void, Error>
-{
-    const auto reset = slot.pool.reset();
-    if (reset != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(reset)};
-    }
-    const auto begun = slot.command.begin(vk::CommandBufferBeginInfo {});
-    if (begun != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(begun)};
-    }
-    return {};
-}
-
-auto Presentation::createOrResizeMeshRenderer() -> std::expected<void, Error>
-{
-    if (_pool == nullptr)
-    {
-        return std::unexpected {makeError(ErrorCode::BackendFailure, "Mesh rendering requires a Context memory pool")};
-    }
-    if (!_renderer)
-    {
-        auto renderer = renderer::MeshRenderer::create({.physicalDevice = _physicalDevice,
-                                                        .device = _device,
-                                                        .pool = *_pool,
-                                                        .extent = activeGeneration().extent,
-                                                        .colorFormat = activeGeneration().format,
-                                                        .frameCount = _slots.size()});
-        if (!renderer)
-        {
-            return std::unexpected {renderer.error()};
-        }
-        _renderer = std::move(*renderer);
-        return {};
-    }
-    return _renderer->resize(activeGeneration().extent, activeGeneration().format);
-}
-
-auto Presentation::recordFrameContent(FrameSlot& slot,
-                                      const SwapchainImage& image,
-                                      std::size_t slotIndex,
-                                      const RenderView& view) -> std::expected<void, Error>
-{
-    if (view.meshes.empty())
-    {
-        recordClearRendering(slot.command, image, activeGeneration().format, activeGeneration().extent);
-        return {};
-    }
-    return recordMeshDraws(slot, image, slotIndex, view);
-}
-
-auto Presentation::recordMeshDraws(FrameSlot& slot,
-                                   const SwapchainImage& image,
-                                   std::size_t slotIndex,
-                                   const RenderView& view) -> std::expected<void, Error>
-{
-    if (const auto ready = createOrResizeMeshRenderer(); !ready)
-    {
-        return std::unexpected {ready.error()};
-    }
-    if (const auto updated = _renderer->updateFrame(slotIndex, view); !updated)
-    {
-        return std::unexpected {updated.error()};
-    }
-    _renderer->record(slot.command, *image.view, slotIndex, view);
-    return {};
-}
-
-auto Presentation::recordPerformanceStart(std::size_t slotIndex, vk::CommandBuffer command)
+auto Presentation::recordFrame(std::size_t slotIndex, const SwapchainImage& image, const RenderView& view)
     -> std::expected<void, Error>
 {
-    if (_performance == nullptr)
+    if (const auto begun = _execution->beginCommands(slotIndex); !begun)
     {
-        return {};
+        return std::unexpected {begun.error()};
     }
-    return _performance->recordStart(slotIndex, command);
-}
-
-void Presentation::recordPerformanceEnd(std::size_t slotIndex, vk::CommandBuffer command)
-{
-    if (_performance != nullptr)
-    {
-        _performance->recordEnd(slotIndex, command);
-    }
-}
-
-auto Presentation::recordFrameWork(FrameSlot& slot,
-                                   const SwapchainImage& image,
-                                   std::size_t slotIndex,
-                                   const RenderView& view) -> std::expected<void, Error>
-{
-    transitionToColorAttachment(slot.command, image);
-    if (const auto timestamp = recordPerformanceStart(slotIndex, slot.command); !timestamp)
-    {
-        return std::unexpected {timestamp.error()};
-    }
-    if (const auto content = recordFrameContent(slot, image, slotIndex, view); !content)
+    const auto commandBuffer = _execution->command(slotIndex);
+    transitionToColorAttachment(commandBuffer, image);
+    const auto& generation = activeGeneration();
+    const auto output = presentation::FrameOutput {.imageView = *image.view,
+                                                   .extent = generation.extent,
+                                                   .colorFormat = generation.format};
+    if (const auto content = _execution->recordContent(slotIndex, output, view); !content)
     {
         return std::unexpected {content.error()};
     }
-    recordPerformanceEnd(slotIndex, slot.command);
-    transitionToPresent(slot.command, image);
-    const auto ended = slot.command.end();
-    if (ended != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(ended)};
-    }
-    return {};
+    transitionToPresent(commandBuffer, image);
+    return _execution->endCommands(slotIndex);
 }
 
 auto Presentation::releaseImage(std::uint32_t index) const -> std::expected<void, Error>
@@ -508,9 +302,9 @@ auto Presentation::releaseImage(std::uint32_t index) const -> std::expected<void
     return {};
 }
 
-auto Presentation::abortAcquire(FrameSlot& slot, std::uint32_t index) -> std::expected<void, Error>
+auto Presentation::abortAcquire(FrameSelection selection) -> std::expected<void, Error>
 {
-    const auto submitted = _submissions.submit({}, *slot.acquire, {});
+    const auto submitted = _submissions.submit({}, *_acquireSemaphores.at(selection.slotIndex), {});
     if (!submitted)
     {
         _faulted = true;
@@ -518,8 +312,8 @@ auto Presentation::abortAcquire(FrameSlot& slot, std::uint32_t index) -> std::ex
         return std::unexpected {submitted.error()};
     }
     const auto completion = *submitted;
-    slot.lastCompletion = completion;
-    _pendingImageRecovery = PendingImageRecovery {.index = index, .replaceRenderFinished = false};
+    _execution->setLastCompletion(selection.slotIndex, completion);
+    _pendingImageRecovery = PendingImageRecovery {.index = selection.imageIndex, .replaceRenderFinished = false};
     if (const auto waited = waitCompletion(completion); !waited)
     {
         _faulted = true;
@@ -533,7 +327,7 @@ auto Presentation::abortAcquire(FrameSlot& slot, std::uint32_t index) -> std::ex
     return {};
 }
 
-auto Presentation::acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage, Error>
+auto Presentation::acquireFrame(std::size_t slotIndex) -> std::expected<AcquiredImage, Error>
 {
     if (const auto ready = _submissions.prepareSubmit(); !ready)
     {
@@ -545,7 +339,7 @@ auto Presentation::acquireFrame(FrameSlot& slot) -> std::expected<AcquiredImage,
         _device.getDispatcher()->vkAcquireNextImageKHR(static_cast<VkDevice>(*_device),
                                                        static_cast<VkSwapchainKHR>(*activeGeneration().swapchain),
                                                        timeoutNanoseconds,
-                                                       static_cast<VkSemaphore>(*slot.acquire),
+                                                       static_cast<VkSemaphore>(*_acquireSemaphores.at(slotIndex)),
                                                        VkFence {},
                                                        &index);
     return interpretAcquiredImage(static_cast<vk::Result>(result), index);
@@ -578,7 +372,7 @@ auto Presentation::interpretAcquiredImage(vk::Result result, std::uint32_t index
                           .suboptimal = result == vk::Result::eSuboptimalKHR};
 }
 
-auto Presentation::waitImage(FrameSlot& slot, std::uint32_t index) -> std::expected<void, Error>
+auto Presentation::waitImage(std::size_t slotIndex, std::uint32_t index) -> std::expected<void, Error>
 {
     auto& image = activeGeneration().images.at(index);
     if (!image.presentPending)
@@ -590,59 +384,55 @@ auto Presentation::waitImage(FrameSlot& slot, std::uint32_t index) -> std::expec
     const auto waited = _device.waitForFences(fence, vk::True, timeoutNanoseconds);
     if (waited != vk::Result::eSuccess)
     {
-        const auto cleanup = abortAcquire(slot, index);
+        const auto cleanup = abortAcquire({.slotIndex = slotIndex, .imageIndex = index});
         return std::unexpected {cleanup ? makeVulkanError(waited) : cleanup.error()};
     }
     const auto reset = _device.resetFences(fence);
     if (reset != vk::Result::eSuccess)
     {
-        const auto cleanup = abortAcquire(slot, index);
+        const auto cleanup = abortAcquire({.slotIndex = slotIndex, .imageIndex = index});
         return std::unexpected {cleanup ? makeVulkanError(reset) : cleanup.error()};
     }
     image.presentPending = false;
     return {};
 }
 
-auto Presentation::submitRecordedFrame(const FrameSlot& slot, const SwapchainImage& image) -> Result<std::uint64_t>
+auto Presentation::submitRecordedFrame(std::size_t slotIndex, const SwapchainImage& image) -> Result<std::uint64_t>
 {
-    return _submissions.submit(slot.command, *slot.acquire, *image.renderFinished);
+    return _submissions.submit(_execution->command(slotIndex),
+                               *_acquireSemaphores.at(slotIndex),
+                               *image.renderFinished);
 }
 
-auto Presentation::submitFrame(FrameSlot& slot, SwapchainImage& image, FrameSelection selection, const RenderView& view)
-    -> std::expected<std::uint64_t, Error>
+auto Presentation::submitFrame(std::size_t slotIndex,
+                               SwapchainImage& image,
+                               FrameSelection selection,
+                               const RenderView& view) -> std::expected<std::uint64_t, Error>
 {
-    if (const auto recorded = recordView(slot, image, selection.slotIndex, view); !recorded)
+    if (const auto recorded = recordFrame(slotIndex, image, view); !recorded)
     {
-        return abortFrame(slot, selection.imageIndex, recorded.error());
+        return abortFrame(slotIndex, selection.imageIndex, recorded.error());
     }
-    const auto submitted = submitRecordedFrame(slot, image);
+    const auto submitted = submitRecordedFrame(slotIndex, image);
     if (!submitted)
     {
-        return handleSubmitFailure(slot, selection, submitted.error());
+        return handleSubmitFailure(selection, submitted.error());
     }
     const auto completion = *submitted;
-    slot.lastCompletion = completion;
-    if (_renderer && !view.meshes.empty())
-    {
-        _renderer->markSubmitted(selection.slotIndex);
-    }
-    if (_performance != nullptr)
-    {
-        _performance->markSubmitted(selection.slotIndex, _submissions.getPoint(completion));
-    }
+    _execution->markSubmitted(slotIndex, completion, !view.meshes.empty());
     image.initialized = true;
-    _nextSlot = (_nextSlot + 1) % _slots.size();
+    _nextSlot = (_nextSlot + 1) % _acquireSemaphores.size();
     return completion;
 }
 
-auto Presentation::abortFrame(FrameSlot& slot, std::uint32_t imageIndex, const Error& cause)
+auto Presentation::abortFrame(std::size_t slotIndex, std::uint32_t imageIndex, const Error& cause)
     -> std::expected<std::uint64_t, Error>
 {
-    const auto cleanup = abortAcquire(slot, imageIndex);
+    const auto cleanup = abortAcquire({.slotIndex = slotIndex, .imageIndex = imageIndex});
     return std::unexpected {cleanup ? cause : cleanup.error()};
 }
 
-auto Presentation::handleSubmitFailure(FrameSlot& slot, FrameSelection selection, const Error& cause)
+auto Presentation::handleSubmitFailure(FrameSelection selection, const Error& cause)
     -> std::expected<std::uint64_t, Error>
 {
     if (cause.code == ErrorCode::DeviceLost)
@@ -650,7 +440,7 @@ auto Presentation::handleSubmitFailure(FrameSlot& slot, FrameSelection selection
         _faulted = true;
         return std::unexpected {cause};
     }
-    return abortFrame(slot, selection.imageIndex, cause);
+    return abortFrame(selection.slotIndex, selection.imageIndex, cause);
 }
 
 auto Presentation::recoverPresentFailure(std::uint32_t index, vk::Result result, std::uint64_t completion)
@@ -777,35 +567,28 @@ auto Presentation::verifyReleaseFunction() const -> std::expected<void, Error>
     return {};
 }
 
-auto Presentation::initializeSlot(FrameSlot& slot) const -> std::expected<void, Error>
+auto Presentation::initializeAcquireSemaphore(vk::raii::Semaphore& semaphore) const -> std::expected<void, Error>
 {
-    auto commands = createFrameCommands(_device, _deviceInfo.queueFamily);
-    if (!commands)
-    {
-        return std::unexpected {commands.error()};
-    }
-    slot.pool = std::move(commands->pool);
-    slot.command = commands->command;
     static constexpr auto acquireInfo = vk::SemaphoreCreateInfo {};
     auto acquire = checkedCreation(_device.createSemaphore(acquireInfo));
     if (!acquire)
     {
         return std::unexpected {acquire.error()};
     }
-    slot.acquire = std::move(*acquire);
+    semaphore = std::move(*acquire);
     return {};
 }
 
-auto Presentation::initialize() -> std::expected<void, Error>
+auto Presentation::initialize(const PresentationCreateInfo& info) -> std::expected<void, Error>
 {
-    if (const auto initialized = initializeFrameResources(); !initialized)
+    if (const auto initialized = initializeFrameResources(info); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
     return initializeWindowPresentation();
 }
 
-auto Presentation::initializeFrameResources() -> std::expected<void, Error>
+auto Presentation::initializeFrameResources(const PresentationCreateInfo& info) -> std::expected<void, Error>
 {
     if (const auto resolved = verifyReleaseFunction(); !resolved)
     {
@@ -815,9 +598,25 @@ auto Presentation::initializeFrameResources() -> std::expected<void, Error>
     {
         return initialized;
     }
-    for (auto& slot : _slots)
+    auto execution = presentation::FrameExecution::create({.physicalDevice = _physicalDevice,
+                                                           .device = _device,
+                                                           .queueFamily = _deviceInfo.queueFamily,
+                                                           .submissions = _submissions,
+                                                           .pool = info.pool,
+                                                           .performance = info.performance});
+    if (!execution)
     {
-        if (const auto initialized = initializeSlot(slot); !initialized)
+        return std::unexpected {execution.error()};
+    }
+    _execution = std::move(*execution);
+    return initializeAcquireSemaphores();
+}
+
+auto Presentation::initializeAcquireSemaphores() -> std::expected<void, Error>
+{
+    for (auto& semaphore : _acquireSemaphores)
+    {
+        if (const auto initialized = initializeAcquireSemaphore(semaphore); !initialized)
         {
             return std::unexpected {initialized.error()};
         }
@@ -882,18 +681,9 @@ auto Presentation::drain() -> std::expected<void, Error>
     {
         return std::unexpected {makeError(ErrorCode::BackendFailure, "Acquired image has no committed retirement")};
     }
-    const auto lastCompletion =
-        std::accumulate(_slots.begin(), _slots.end(), std::uint64_t {0}, [](std::uint64_t last, const FrameSlot& slot) {
-            return std::max(last, slot.lastCompletion);
-        });
-    if (const auto waited = waitCompletion(lastCompletion); !waited)
+    if (const auto drained = _execution->drain(); !drained)
     {
-        return std::unexpected {waited.error()};
-    }
-    for (auto& slot : _slots)
-    {
-        slot.retainedMeshes.clear();
-        slot.retainedTextures.clear();
+        return std::unexpected {drained.error()};
     }
     if (const auto recovered = finishPendingImageRecovery(); !recovered)
     {
@@ -922,7 +712,7 @@ auto Presentation::activeGeneration() const -> const SwapchainGeneration&
 
 auto Presentation::effectiveSampleCount() const noexcept -> vk::SampleCountFlagBits
 {
-    return _renderer ? _renderer->getSampleCount() : vk::SampleCountFlagBits::e1;
+    return _execution ? _execution->getSampleCount() : vk::SampleCountFlagBits::e1;
 }
 
 }

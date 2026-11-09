@@ -44,13 +44,16 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
    without acquiring an image. See [UC Suspend presentation and recreate the
    swapchain](recreate-swapchain.md).
-4. **Retain resources and acquire.** `Presentation` waits for the selected frame
-   slot's prior GPU completion, then retains the view's mesh and selected material
-   texture handles in that slot. It
-   checks submission capacity, acquires an image and waits for that image's pending
+4. **Retain resources and acquire.** `Presentation` asks `FrameExecution::prepareSlot()`
+   to wait for the selected slot's prior GPU completion, then retain the view's mesh
+   and selected material texture handles in that slot. It checks submission capacity,
+   acquires an image with its slot-owned semaphore and waits for that image's pending
    presentation fence before reuse.
-5. **Record the view.** An empty mesh list clears the acquired image to the configured
-   background. Otherwise, `Presentation` creates or resizes the internal `MeshRenderer`.
+5. **Record the view.** `Presentation` begins the command buffer and transitions the
+   acquired image to color-attachment layout. It passes `FrameExecution` a borrowed
+   `FrameOutput` containing that image view, extent and color format. An empty mesh
+   list clears the output to the configured background. Otherwise, `FrameExecution`
+   creates or resizes the internal `MeshRenderer`.
    On first creation, it builds `RenderAttachments` before `FrameBindings` and
    `MeshPipelineCache`. On a resize, `RenderAttachments` prepares output-sized depth
    and optional MSAA replacements; after preparation succeeds, the renderer updates
@@ -67,12 +70,16 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    and apply the material cutoff in both shadow and camera passes. The camera pass
    selects pipelines from each material model, alpha mode, consumed vertex attributes,
    face mode and transform handedness while sampling the shadow map for Lit draws.
+   `FrameExecution` records content and its timing markers; it does not acquire or
+   present images, or transition the output image. `Presentation` records the final
+   transition to present layout and ends the command buffer.
 6. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
-   Context timeline. Successful submission commits its timeline value, stores it on
-   the frame slot and advances the slot. Mesh and texture handles remain retained until that slot
-   is reused after completion. See [UC Commit work to the Context submission
-   timeline](commit-context-submission.md).
+   Context timeline. Only after submission succeeds does `FrameExecution` store the
+   completion value and commit renderer and performance state. `Presentation` then
+   marks the image initialized and advances its slot. Mesh and texture handles remain
+   retained in the execution slot until reuse after completion. See
+   [UC Commit work to the Context submission timeline](commit-context-submission.md).
 7. **Queue presentation.** `Presentation::presentFrame()` queues the image with its
    per-image presentation fence. Normal presentation returns `Presented`; a
    suboptimal/out-of-date result returns `RecreatePending` with the accepted submission's
@@ -85,6 +92,7 @@ sequenceDiagram
     participant C as Context / Impl
     participant U as UploadManager
     participant P as Presentation
+    participant E as FrameExecution
     participant R as MeshRenderer
     participant RA as RenderAttachments
     participant B as FrameBindings
@@ -100,12 +108,14 @@ sequenceDiagram
     C->>C: Reject material maps without a submitted upload
     C->>P: Render validated view
     P->>V: Check framebuffer and swapchain generation
-    P->>P: Wait for frame slot and retain mesh and selected material texture handles
+    P->>E: Wait for frame slot and retain mesh and selected material texture handles
     P->>V: Acquire image and wait for presentation reuse
+    P->>E: Begin command buffer
+    P->>V: Transition output image to color attachment
     alt View has no meshes
-        P->>V: Clear background with dynamic rendering
+        E->>V: Clear FrameOutput with encoded background color
     else View contains meshes
-        P->>R: Create/resize renderer
+        E->>R: Create/resize renderer
         alt First mesh draw
             R->>RA: Create depth, MSAA and shadow attachments
             RA-->>R: Ready attachments and output description
@@ -128,9 +138,12 @@ sequenceDiagram
         R->>V: Sample enabled material maps and shadows for Lit shading
         R->>V: Add emission before tone mapping for Lit and Unlit shading
     end
+    P->>V: Transition output image to present layout
+    P->>E: End command buffer
     P->>Q: Submit commands and signal timeline
     Q-)V: Queue accepts frame work
     Q-->>P: Completion value
+    P->>E: Commit frame completion and renderer/performance state
     P->>V: Present image and signal its present fence
     V-->>P: Present outcome
     P-->>C: FrameResult or Error
@@ -185,9 +198,14 @@ for straight-alpha compositing. It runs after Opaque and Mask with depth testing
 and depth writes disabled; mesh origins are sorted back-to-front. Blended meshes do
 not cast shadows. Intersecting transparent meshes can still sort incorrectly.
 
-**Slot and image lifetimes differ.** Panda has two reusable frame slots while the
-swapchain supplies its own image count. Command buffers and retained mesh handles
-belong to slots; render-finished semaphores and presentation fences belong to images.
+**Slot and image lifetimes differ.** `FrameExecution` owns two reusable execution
+slots, including command buffers and retained mesh and texture handles.
+`Presentation` owns their acquire semaphores and the independently sized set of
+swapchain images, render-finished semaphores and presentation fences.
+
+**Output boundary.** `FrameOutput` is borrowed for one recording operation.
+`FrameExecution` uses its image view, extent and format to record clear or mesh
+content; `Presentation` alone owns the output-layout transitions and presentation.
 
 **Attachment publication.** `RenderAttachments` owns per-slot color, depth and shadow
 images with their committed layout history. A failed replacement leaves the renderer's
@@ -200,9 +218,10 @@ that display has finished. See the
 [presentation-fence reference](https://docs.vulkan.org/refpages/latest/refpages/source/VkSwapchainPresentFenceInfoKHR.html).
 
 **Pre-submit failures.** After acquire succeeds, a recording or submit failure must
-consume the acquire semaphore and retire the image. See [UC Retire an acquired image
-after frame work fails](retire-acquired-image.md). A frame error does not imply that
-already submitted work was rolled back.
+consume the acquire semaphore and retire the image. `FrameExecution` discards the
+unsubmitted view handles after `Presentation` performs that recovery. See
+[UC Retire an acquired image after frame work fails](retire-acquired-image.md).
+A frame error does not imply that already submitted work was rolled back.
 
 ## Variants and errors
 

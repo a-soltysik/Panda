@@ -30,6 +30,7 @@ panda_add_component(panda_core
         vulkan/external/ExternalContext.cpp
         vulkan/performance/PerformanceManager.cpp
         vulkan/performance/PerformanceManagerImpl.cpp
+        vulkan/presentation/FrameExecution.cpp
         vulkan/presentation/Presentation.cpp
         vulkan/renderer/FrameBindings.cpp
         vulkan/renderer/MeshRenderer.cpp
@@ -88,6 +89,7 @@ panda_add_component(panda_core
         vulkan/external/ScopedExternalHandle.hpp
         vulkan/performance/PerformanceManagerImpl.hpp
         vulkan/presentation/Presentation.hpp
+        vulkan/presentation/FrameExecution.hpp
         vulkan/SubmissionQueue.hpp
         vulkan/presentation/SwapchainGeneration.hpp
         vulkan/upload/UploadBatchId.hpp

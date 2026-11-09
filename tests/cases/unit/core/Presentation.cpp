@@ -22,6 +22,7 @@
 #include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <panda/RenderView.hpp>
+#include <span>
 #include <string>
 #include <thread>
 
@@ -31,6 +32,7 @@
 #include "VulkanTestSupport.hpp"
 #include "panda/core/SubmissionQueueMock.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
+#include "presentation/FrameExecution.hpp"
 
 namespace
 {
@@ -294,6 +296,16 @@ protected:
         });
     }
 
+    auto createFrameExecution()
+        -> std::expected<std::unique_ptr<panda::core::vulkan::presentation::FrameExecution>, panda::Error>
+    {
+        return panda::core::vulkan::presentation::FrameExecution::create(
+            {.physicalDevice = vk::PhysicalDevice {},
+             .device = getDevice(),
+             .queueFamily = 0,
+             .submissions = _submissions.emplace(getDevice(), 0)});
+    }
+
     auto performance() -> panda::detail::PerformanceManagerImpl&
     {
         return *_performance;
@@ -305,6 +317,43 @@ private:
     std::optional<panda::detail::SubmissionQueue> _submissions;
     std::unique_ptr<panda::detail::PerformanceManagerImpl> _performance;
 };
+}
+
+TEST_F(PresentationTest, FrameExecutionRecordsPlainFrameOutputWithoutWindowServices)
+{
+    expectNativeFrameResources(0);
+    expectNativeResourceDestruction({});
+    const auto imageView = vk::ImageView {fakeVulkanHandle<VkImageView>(900)};
+    EXPECT_CALL(vulkan, vkResetCommandPool(_, _, _)).WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    EXPECT_CALL(vulkan, vkBeginCommandBuffer(_, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull()))
+        .WillOnce([imageView](VkCommandBuffer, const VkRenderingInfo* rendering) {
+            ASSERT_EQ(rendering->colorAttachmentCount, 1U);
+            ASSERT_NE(rendering->pColorAttachments, nullptr);
+            const auto& attachment = std::span {rendering->pColorAttachments, rendering->colorAttachmentCount}.front();
+            EXPECT_EQ(attachment.imageView, static_cast<VkImageView>(imageView));
+            EXPECT_NEAR(std::span {attachment.clearValue.color.float32}.front(), 0.1718F, 0.0001F);
+            EXPECT_EQ(rendering->renderArea.extent.width, 320U);
+            EXPECT_EQ(rendering->renderArea.extent.height, 200U);
+        });
+    EXPECT_CALL(vulkan, vkCmdEndRendering(_));
+    EXPECT_CALL(vulkan, vkEndCommandBuffer(_)).WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+
+    auto execution = createFrameExecution();
+    ASSERT_TRUE(execution);
+    auto& frameExecution = **execution;
+    const auto view = panda::RenderView {};
+    ASSERT_TRUE(frameExecution.prepareSlot(0, view));
+    ASSERT_TRUE(frameExecution.beginCommands(0));
+    ASSERT_TRUE(frameExecution.recordContent(0,
+                                             {
+                                                 .imageView = imageView,
+                                                 .extent = {.width = 320, .height = 200},
+                                                 .colorFormat = vk::Format::eR8G8B8A8Unorm
+    },
+                                             view));
+    EXPECT_TRUE(frameExecution.endCommands(0));
 }
 
 TEST_F(PresentationTest, ReportsUnavailableKhrReleaseFunction)
@@ -426,7 +475,6 @@ TEST_F(PresentationTest, PresentAndRecreationFailuresReleaseThenRetryWithoutReti
     expectResourceDestruction(ResourceDestructionCounts {.semaphores = 6, .swapchains = 2});
     expectExtentReads(4);
     expectInitialGeneration(700);
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
 
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
@@ -462,7 +510,6 @@ TEST_F(PresentationTest, TimelineLimitRejectsFrameBeforeAcquiringAnotherImage)
     expectResourceDestruction(ResourceDestructionCounts {.semaphores = 4, .swapchains = 1});
     expectExtentReads(3);
     expectInitialGeneration(700);
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
     expectCommandRecording(flow);
@@ -492,7 +539,6 @@ TEST_F(PresentationTest, TimelineLimitRejectsFrameBeforeAcquiringAnotherImage)
 TEST_F(PresentationTest, FailedFrameSubmitRetiresAcquireWithoutConsumingTheCandidateValue)
 {
     expectWindowFrame();
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
     expectCommandRecording(flow);
@@ -510,7 +556,6 @@ TEST_F(PresentationTest, FailedFrameSubmitRetiresAcquireWithoutConsumingTheCandi
 TEST_F(PresentationTest, DeviceLostSubmitDoesNotRetryAcquireRetirement)
 {
     expectWindowFrame();
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
     expectCommandRecording(flow);
@@ -586,7 +631,6 @@ TEST_F(PresentationTest, PresentRecoverySurvivesProducerAndReplacementFailures)
     expectResourceDestruction(ResourceDestructionCounts {.semaphores = 5, .swapchains = 1});
     expectExtentReads(2);
     expectInitialGeneration(700);
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
 
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
@@ -673,7 +717,6 @@ TEST_F(PresentationTest, DeviceLostAcquireReturnsTheNativeErrorWithoutUsingTheIm
 TEST_F(PresentationTest, SuboptimalPresentReturnsTheCommittedCompletionPoint)
 {
     expectWindowFrame();
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
     expectCommandRecording(flow);
@@ -696,10 +739,10 @@ TEST_F(PresentationTest, RecordsGpuTimestampsAroundFrameRenderingAndPublishesSub
 {
     expectWindowFrame();
     expectPerformancePools();
-    EXPECT_CALL(swapchains, encodedClear(_)).WillOnce(Return(vk::ClearColorValue {}));
 
     auto flow = Sequence {};
     expectAcquiredImage(flow, vk::Result::eSuccess);
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks) -- gMock owns the one-shot actions registered by this helper.
     expectSampledCommandRecording(flow);
     expectFrameSubmit(flow);
     EXPECT_CALL(submissions, getPoint(1)).InSequence(flow).WillOnce(Return(panda::CompletionPoint {}));

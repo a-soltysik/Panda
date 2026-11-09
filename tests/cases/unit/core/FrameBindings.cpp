@@ -247,6 +247,16 @@ protected:
 };
 }
 
+TEST(MeshRenderer, EncodesLinearClearForTheAttachmentFormat)
+{
+    const auto srgb = panda::core::vulkan::renderer::makeClearColor(vk::Format::eB8G8R8A8Srgb);
+    const auto unorm = panda::core::vulkan::renderer::makeClearColor(vk::Format::eB8G8R8A8Unorm);
+    EXPECT_NEAR(srgb.float32.at(0), 0.025F, 0.0001F);
+    EXPECT_NEAR(unorm.float32.at(0), 0.1718F, 0.0001F);
+    EXPECT_FLOAT_EQ(srgb.float32.at(3), 1.0F);
+    EXPECT_FLOAT_EQ(unorm.float32.at(3), 1.0F);
+}
+
 TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors)
 {
     auto created = createBindings();

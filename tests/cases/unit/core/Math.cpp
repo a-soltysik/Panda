@@ -65,3 +65,10 @@ TEST(Math, IsRepresentableAsNonzeroFloatChecksFloatRange)
     EXPECT_FALSE(panda::detail::isRepresentableAsNonzeroFloat(std::numeric_limits<double>::infinity()));
     EXPECT_FALSE(panda::detail::isRepresentableAsNonzeroFloat(std::numeric_limits<double>::quiet_NaN()));
 }
+
+TEST(Math, ConvertsLinearColorChannelsToSrgb)
+{
+    EXPECT_FLOAT_EQ(panda::detail::linearToSrgb(0.001F), 0.01292F);
+    EXPECT_NEAR(panda::detail::linearToSrgb(0.025F), 0.1718F, 0.0001F);
+    EXPECT_NEAR(panda::detail::linearToSrgb(1.0F), 1.0F, 0.0001F);
+}

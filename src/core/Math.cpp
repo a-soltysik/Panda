@@ -41,4 +41,15 @@ auto isRepresentableAsNonzeroFloat(double value) -> bool
     return std::isfinite(magnitude) && magnitude >= static_cast<double>(std::numeric_limits<float>::denorm_min()) &&
            magnitude <= static_cast<double>(std::numeric_limits<float>::max());
 }
+
+auto linearToSrgb(float value) -> float
+{
+    static constexpr auto transferThreshold = 0.0031308F;
+    static constexpr auto linearScale = 12.92F;
+    static constexpr auto gammaScale = 1.055F;
+    static constexpr auto inverseGamma = 1.0F / 2.4F;
+    static constexpr auto gammaOffset = 0.055F;
+    return value <= transferThreshold ? value * linearScale
+                                      : (gammaScale * std::pow(value, inverseGamma)) - gammaOffset;
+}
 }
