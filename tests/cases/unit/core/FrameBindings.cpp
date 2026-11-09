@@ -14,6 +14,8 @@
 #include <cstdint>
 #include <cstring>
 #include <expected>
+#include <glm/ext/matrix_float4x4.hpp>
+#include <limits>
 #include <memory>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
@@ -27,6 +29,8 @@
 #include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/BufferResourceMock.hpp"
+#include "panda/core/TextureResourceMock.hpp"
+#include "renderer/MeshRenderer.hpp"
 #include "renderer/ShaderData.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
@@ -69,7 +73,12 @@ protected:
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
             .Times(AnyNumber())
             .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
+                properties->limits.maxPushConstantsSize = 4096;
                 properties->limits.maxStorageBufferRange = 4096;
+                properties->limits.framebufferColorSampleCounts =
+                    VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
+                properties->limits.framebufferDepthSampleCounts =
+                    VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
             });
         installDescriptorDefaults();
         EXPECT_CALL(buffers, create(_, Ref(*pool), _))
@@ -91,6 +100,50 @@ protected:
     auto createBindings() -> std::expected<std::unique_ptr<FrameBindings>, panda::Error>
     {
         return FrameBindings::create(physical, device, *pool, 1);
+    }
+
+    auto meshRendererInfo() const -> panda::core::vulkan::renderer::MeshRendererCreateInfo
+    {
+        return {
+            .physicalDevice = physical,
+            .device = device,
+            .pool = *pool,
+            .extent = {64, 64},
+            .colorFormat = vk::Format::eR8G8B8A8Unorm,
+            .frameCount = 1
+        };
+    }
+
+    auto createMeshRenderer()
+        -> std::expected<std::unique_ptr<panda::core::vulkan::renderer::MeshRenderer>, panda::Error>
+    {
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
+            .Times(AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice,
+                               VkFormat,
+                               VkImageType,
+                               VkImageTiling,
+                               VkImageUsageFlags,
+                               VkImageCreateFlags,
+                               VkImageFormatProperties* properties) {
+                *properties = VkImageFormatProperties {};
+                properties->maxExtent = {4096, 4096, 1};
+                properties->sampleCounts = VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
+        EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
+            .Times(AnyNumber())
+            .WillRepeatedly(Return(panda::Result<void> {}));
+        EXPECT_CALL(textures, getNativeView(_))
+            .Times(AnyNumber())
+            .WillRepeatedly(Return(fakeVulkanHandle<VkImageView>(90)));
+        return panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
+    }
+
+    static auto bufferFailure() -> panda::Result<void>
+    {
+        return std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "buffer write failed")};
     }
 
     static auto makeView(std::size_t drawCount) -> panda::RenderView
@@ -174,6 +227,7 @@ protected:
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::BufferResourceMock> buffers;
+    panda::test::ScopedMock<panda::test::TextureResourceMock> textures;
     vk::raii::Context loader {vkGetInstanceProcAddr};
     vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
     vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
@@ -297,4 +351,367 @@ TEST_F(FrameBindingsTest, TextureDescriptorPoolGrowthFailureCanBeRetried)
 
     EXPECT_FALSE(failed);
     EXPECT_TRUE(retried);
+}
+
+TEST_F(FrameBindingsTest, RejectsInsufficientStorageLimitAndInvalidFrameCounts)
+{
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
+        .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
+            properties->limits.maxStorageBufferRange = static_cast<std::uint32_t>(sizeof(MaterialRecord) - 1);
+        })
+        .RetiresOnSaturation();
+    const auto unsupported = createBindings();
+    ASSERT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+
+    const auto empty = FrameBindings::create(physical, device, *pool, 0);
+    const auto oversized =
+        FrameBindings::create(physical,
+                              device,
+                              *pool,
+                              static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 1);
+    EXPECT_FALSE(empty);
+    EXPECT_FALSE(oversized);
+    EXPECT_EQ(empty.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(oversized.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(FrameBindingsTest, RejectsMaterialCountBeyondStorageBufferLimit)
+{
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
+        .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
+            properties->limits.maxStorageBufferRange = static_cast<std::uint32_t>(sizeof(MaterialRecord));
+        });
+    auto bindings = createBindings();
+    ASSERT_TRUE(bindings);
+
+    const auto updated = (*bindings)->updateFrame(0, makeView(2), {});
+
+    ASSERT_FALSE(updated);
+    EXPECT_EQ(updated.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(FrameBindingsTest, PropagatesInvalidShadowViewAndUniformWriteFailures)
+{
+    auto bindings = createBindings();
+    ASSERT_TRUE(bindings);
+    auto invalidView = makeView(0);
+    invalidView.camera.viewProjection = glm::mat4 {0.0F};
+    const auto invalid = (*bindings)->updateFrame(0, invalidView, {});
+    ASSERT_FALSE(invalid);
+    EXPECT_EQ(invalid.error().code, panda::ErrorCode::InvalidArgument);
+
+    EXPECT_CALL(buffers, writeMapped(_, 0, _)).WillOnce(Return(bufferFailure()));
+    const auto failedWrite = (*bindings)->updateFrame(0, makeView(0), {});
+    ASSERT_FALSE(failedWrite);
+    EXPECT_EQ(failedWrite.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(FrameBindingsTest, PropagatesMaterialWriteFailures)
+{
+    auto bindings = createBindings();
+    ASSERT_TRUE(bindings);
+    EXPECT_CALL(buffers, writeMapped(_, 0, _))
+        .Times(2)
+        .WillOnce(Return(panda::Result<void> {}))
+        .WillOnce(Return(bufferFailure()));
+
+    const auto updated = (*bindings)->updateFrame(0, makeView(1), {});
+
+    ASSERT_FALSE(updated);
+    EXPECT_EQ(updated.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(FrameBindingsTest, UpdatesEmptyViewWithoutWritingMaterialRecords)
+{
+    auto bindings = createBindings();
+    ASSERT_TRUE(bindings);
+    EXPECT_CALL(buffers, writeMapped(_, 0, _)).Times(1);
+
+    const auto updated = (*bindings)->updateFrame(0, makeView(0), {});
+
+    EXPECT_TRUE(updated);
+}
+
+TEST_F(FrameBindingsTest, PropagatesDescriptorLayoutCreationFailures)
+{
+    EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(_, NotNull(), _, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
+    const auto frameLayout = createBindings();
+    ASSERT_FALSE(frameLayout);
+
+    EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(_, NotNull(), _, NotNull()))
+        .Times(2)
+        .WillOnce([](VkDevice,
+                     const VkDescriptorSetLayoutCreateInfo*,
+                     const VkAllocationCallbacks*,
+                     VkDescriptorSetLayout* output) {
+            *output = fakeVulkanHandle<VkDescriptorSetLayout>(40);
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        })
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
+    const auto textureLayout = createBindings();
+    EXPECT_FALSE(textureLayout);
+}
+
+TEST_F(FrameBindingsTest, PropagatesPipelineLayoutAndDescriptorPoolCreationFailures)
+{
+    EXPECT_CALL(vulkan, vkCreatePipelineLayout(_, NotNull(), _, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)))
+        .RetiresOnSaturation();
+    const auto layout = createBindings();
+    ASSERT_FALSE(layout);
+
+    EXPECT_CALL(vulkan, vkCreateDescriptorPool(deviceHandle, NotNull(), _, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
+    const auto descriptorPool = createBindings();
+    EXPECT_FALSE(descriptorPool);
+}
+
+TEST_F(FrameBindingsTest, PropagatesFrameDescriptorSetAllocationFailure)
+{
+    EXPECT_CALL(vulkan, vkAllocateDescriptorSets(deviceHandle, NotNull(), NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfPoolMemory)));
+
+    const auto created = createBindings();
+
+    EXPECT_FALSE(created);
+}
+
+TEST_F(FrameBindingsTest, PropagatesSamplerCreationFailures)
+{
+    EXPECT_CALL(vulkan, vkCreateSampler(deviceHandle, NotNull(), _, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
+    const auto shadowSampler = createBindings();
+    ASSERT_FALSE(shadowSampler);
+
+    EXPECT_CALL(vulkan, vkCreateSampler(deviceHandle, NotNull(), _, NotNull()))
+        .Times(2)
+        .WillOnce([](VkDevice, const VkSamplerCreateInfo*, const VkAllocationCallbacks*, VkSampler* output) {
+            *output = fakeVulkanHandle<VkSampler>(50);
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        })
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
+    const auto textureSampler = createBindings();
+    EXPECT_FALSE(textureSampler);
+}
+
+TEST_F(FrameBindingsTest, PropagatesUniformAndMaterialBufferCreationFailures)
+{
+    EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), _)).WillOnce(Return(bufferFailure()));
+    const auto uniformBuffer = createBindings();
+    ASSERT_FALSE(uniformBuffer);
+
+    EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), _))
+        .Times(2)
+        .WillOnce(Return(panda::Result<void> {}))
+        .WillOnce(Return(bufferFailure()));
+    const auto materialBuffer = createBindings();
+    EXPECT_FALSE(materialBuffer);
+}
+
+TEST_F(FrameBindingsTest, TextureDescriptorAllocationFailureCanBeRetried)
+{
+    auto bindings = createBindings();
+    ASSERT_TRUE(bindings);
+    EXPECT_CALL(vulkan, vkAllocateDescriptorSets(deviceHandle, NotNull(), NotNull()))
+        .Times(2)
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfPoolMemory)))
+        .WillOnce([this](VkDevice, const VkDescriptorSetAllocateInfo* info, VkDescriptorSet* output) {
+            for (auto& descriptorSet : std::span {output, info->descriptorSetCount})
+            {
+                descriptorSet = fakeVulkanHandle<VkDescriptorSet>(nextHandle++);
+            }
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
+    const auto view = makeView(1);
+
+    const auto failed = (*bindings)->updateFrame(0, view, {});
+    const auto retried = (*bindings)->updateFrame(0, view, {});
+
+    EXPECT_FALSE(failed);
+    EXPECT_TRUE(retried);
+}
+
+TEST_F(FrameBindingsTest, RejectsInvalidMeshRendererInputsAndDeviceLimits)
+{
+    auto invalid = meshRendererInfo();
+    invalid.frameCount = 0;
+    EXPECT_FALSE(panda::core::vulkan::renderer::MeshRenderer::create(invalid));
+    invalid.frameCount = 1;
+    invalid.extent.width = 0;
+    EXPECT_FALSE(panda::core::vulkan::renderer::MeshRenderer::create(invalid));
+    invalid.extent.width = 64;
+    invalid.extent.height = 0;
+    EXPECT_FALSE(panda::core::vulkan::renderer::MeshRenderer::create(invalid));
+    invalid.extent.height = 64;
+    invalid.colorFormat = vk::Format::eUndefined;
+    EXPECT_FALSE(panda::core::vulkan::renderer::MeshRenderer::create(invalid));
+
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
+        .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
+            properties->limits.maxPushConstantsSize = 0;
+            properties->limits.maxStorageBufferRange = 4096;
+        });
+    const auto unsupported = panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
+    ASSERT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(FrameBindingsTest, RejectsMeshRendererWithInsufficientStorageLimit)
+{
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
+        .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
+            properties->limits.maxPushConstantsSize = std::numeric_limits<std::uint32_t>::max();
+            properties->limits.maxStorageBufferRange = static_cast<std::uint32_t>(sizeof(MaterialRecord) - 1);
+        });
+
+    const auto unsupported = panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
+
+    ASSERT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(FrameBindingsTest, RejectsUnsupportedDepthFormats)
+{
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_,
+                                                         VK_FORMAT_D32_SFLOAT,
+                                                         VK_IMAGE_TYPE_2D,
+                                                         VK_IMAGE_TILING_OPTIMAL,
+                                                         _,
+                                                         0,
+                                                         _))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorFormatNotSupported)));
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_,
+                                                         VK_FORMAT_D16_UNORM,
+                                                         VK_IMAGE_TYPE_2D,
+                                                         VK_IMAGE_TILING_OPTIMAL,
+                                                         _,
+                                                         0,
+                                                         _))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorFormatNotSupported)));
+
+    const auto renderer = panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
+
+    ASSERT_FALSE(renderer);
+    EXPECT_EQ(renderer.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(FrameBindingsTest, PropagatesMeshRendererDepthQueryAndShadowCreationFailures)
+{
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_,
+                                                         VK_FORMAT_D32_SFLOAT,
+                                                         VK_IMAGE_TYPE_2D,
+                                                         VK_IMAGE_TILING_OPTIMAL,
+                                                         _,
+                                                         0,
+                                                         _))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorDeviceLost)));
+    const auto queryFailed = panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
+    ASSERT_FALSE(queryFailed);
+    EXPECT_EQ(queryFailed.error().code, panda::ErrorCode::DeviceLost);
+
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_,
+                                                         VK_FORMAT_D32_SFLOAT,
+                                                         VK_IMAGE_TYPE_2D,
+                                                         VK_IMAGE_TILING_OPTIMAL,
+                                                         _,
+                                                         0,
+                                                         _))
+        .WillOnce([](VkPhysicalDevice,
+                     VkFormat,
+                     VkImageType,
+                     VkImageTiling,
+                     VkImageUsageFlags,
+                     VkImageCreateFlags,
+                     VkImageFormatProperties* properties) {
+            *properties = VkImageFormatProperties {};
+            properties->maxExtent = {4096, 4096, 1};
+            properties->sampleCounts = VK_SAMPLE_COUNT_1_BIT;
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
+    EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
+        .WillOnce(Return(panda::Result<void> {
+            std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "shadow allocation failed")}}));
+    const auto shadowFailed = panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
+    ASSERT_FALSE(shadowFailed);
+    EXPECT_EQ(shadowFailed.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(FrameBindingsTest, MeshRendererResizeFailureKeepsPreviousSampleCount)
+{
+    auto renderer = createMeshRenderer();
+    ASSERT_TRUE(renderer);
+    ASSERT_EQ((*renderer)->getSampleCount(), vk::SampleCountFlagBits::e4);
+    EXPECT_TRUE((*renderer)->resize({64, 64}, vk::Format::eR8G8B8A8Unorm));
+    EXPECT_FALSE((*renderer)->resize({0, 64}, vk::Format::eR8G8B8A8Unorm));
+
+    EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
+        .WillOnce(Return(panda::Result<void> {
+            std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "depth allocation failed")}}));
+    const auto resized = (*renderer)->resize({128, 64}, vk::Format::eR8G8B8A8Unorm);
+
+    ASSERT_FALSE(resized);
+    EXPECT_EQ(resized.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_EQ((*renderer)->getSampleCount(), vk::SampleCountFlagBits::e4);
+}
+
+TEST_F(FrameBindingsTest, MeshRendererUpdatePropagatesBindingFailure)
+{
+    auto renderer = createMeshRenderer();
+    ASSERT_TRUE(renderer);
+    auto view = makeView(0);
+    view.camera.viewProjection = glm::mat4 {0.0F};
+
+    const auto updated = (*renderer)->updateFrame(0, view);
+
+    ASSERT_FALSE(updated);
+    EXPECT_EQ(updated.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(FrameBindingsTest, PropagatesFrameBindingsInitializationFailure)
+{
+    const auto supportedLimits = [](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
+        properties->limits.maxPushConstantsSize = 4096;
+        properties->limits.maxStorageBufferRange = 4096;
+        properties->limits.framebufferColorSampleCounts =
+            VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
+        properties->limits.framebufferDepthSampleCounts =
+            VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
+    };
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
+        .Times(4)
+        .WillOnce(supportedLimits)
+        .WillOnce(supportedLimits)
+        .WillOnce(supportedLimits)
+        .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
+            properties->limits.maxStorageBufferRange = 0;
+        });
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
+        .Times(AnyNumber())
+        .WillRepeatedly([](VkPhysicalDevice,
+                           VkFormat,
+                           VkImageType,
+                           VkImageTiling,
+                           VkImageUsageFlags,
+                           VkImageCreateFlags,
+                           VkImageFormatProperties* properties) {
+            *properties = VkImageFormatProperties {};
+            properties->maxExtent = {4096, 4096, 1};
+            properties->sampleCounts = VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT;
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
+    EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
+        .Times(AnyNumber())
+        .WillRepeatedly(Return(panda::Result<void> {}));
+
+    const auto renderer = panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
+
+    ASSERT_FALSE(renderer);
+    EXPECT_EQ(renderer.error().code, panda::ErrorCode::Unsupported);
 }
