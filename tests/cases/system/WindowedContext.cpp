@@ -129,6 +129,7 @@ struct SceneMeshes
     panda::Mesh triangle;
     panda::Texture baseColorMap;
     panda::Texture metallicRoughnessMap;
+    panda::Texture normalMap;
 };
 
 auto createCompactTriangle(const panda::Context& context) -> panda::Result<panda::Mesh>
@@ -170,6 +171,22 @@ void expectInvalidEmissiveMap(const panda::Context& context,
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
+void expectInvalidNormalMap(const panda::Context& context,
+                            const panda::RenderCamera& camera,
+                            const panda::Mesh& mesh,
+                            const panda::Texture& texture,
+                            panda::MaterialModel model = panda::MaterialModel::Lit)
+{
+    auto view = panda::RenderView {.camera = camera, .directionalLight = {}, .meshes = {}};
+    auto draw = panda::MeshDraw {.mesh = mesh};
+    draw.material.model = model;
+    draw.material.normalTexture = texture;
+    view.meshes.push_back(draw);
+    const auto result = context.render(view);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
+}
+
 auto finishSceneMeshUpload(const panda::Context& context, panda::UploadBatch& batch) -> panda::Result<void>
 {
     const auto completion = batch.submit();
@@ -187,6 +204,27 @@ auto finishSceneMeshUpload(const panda::Context& context, panda::UploadBatch& ba
         return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Scene mesh upload did not complete")};
     }
     return {};
+}
+
+auto writeSceneNormalMap(panda::UploadBatch& batch, const panda::Texture& normalMap) -> panda::Result<void>
+{
+    static constexpr auto pixels = std::array {std::byte {0x80},
+                                               std::byte {0x80},
+                                               std::byte {0xff},
+                                               std::byte {0xff},
+                                               std::byte {0x80},
+                                               std::byte {0x80},
+                                               std::byte {0xff},
+                                               std::byte {0xff},
+                                               std::byte {0x80},
+                                               std::byte {0x80},
+                                               std::byte {0xff},
+                                               std::byte {0xff},
+                                               std::byte {0x80},
+                                               std::byte {0x80},
+                                               std::byte {0xff},
+                                               std::byte {0xff}};
+    return batch.write(normalMap, pixels);
 }
 
 auto writeSceneTextureMaps(panda::UploadBatch& batch, const SceneMeshes& meshes) -> panda::Result<void>
@@ -231,7 +269,7 @@ auto writeSceneTextureMaps(panda::UploadBatch& batch, const SceneMeshes& meshes)
     {
         return std::unexpected {written.error()};
     }
-    return {};
+    return writeSceneNormalMap(batch, meshes.normalMap);
 }
 
 auto uploadSceneMeshes(const panda::Context& context,
@@ -295,16 +333,84 @@ auto createUploadedCubeGroundAndCompactTriangle(const panda::Context& context) -
     {
         return std::unexpected {metallicRoughnessMap.error()};
     }
+    auto normalMap = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
+    if (!normalMap)
+    {
+        return std::unexpected {normalMap.error()};
+    }
     auto meshes = SceneMeshes {.cube = std::move(*cube),
                                .ground = std::move(*ground),
                                .triangle = std::move(*triangle),
                                .baseColorMap = std::move(*baseColorMap),
-                               .metallicRoughnessMap = std::move(*metallicRoughnessMap)};
+                               .metallicRoughnessMap = std::move(*metallicRoughnessMap),
+                               .normalMap = std::move(*normalMap)};
     if (const auto uploaded = uploadSceneMeshes(context, meshes, cubeGeometry, groundGeometry); !uploaded)
     {
         return std::unexpected {uploaded.error()};
     }
     return meshes;
+}
+
+auto normalMapFallbackVertices(bool hasUv) -> std::span<const float>
+{
+    static constexpr auto withUv =
+        std::array {-0.5F, -0.5F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.5F, -0.5F, 0.0F, 0.0F,
+                    0.0F,  1.0F,  1.0F, 0.0F, 0.0F, 0.5F, 0.0F, 0.0F, 0.0F, 1.0F,  0.5F, 1.0F};
+    static constexpr auto withoutUv = std::array {-0.5F,
+                                                  -0.5F,
+                                                  0.0F,
+                                                  0.0F,
+                                                  0.0F,
+                                                  1.0F,
+                                                  0.5F,
+                                                  -0.5F,
+                                                  0.0F,
+                                                  0.0F,
+                                                  0.0F,
+                                                  1.0F,
+                                                  0.0F,
+                                                  0.5F,
+                                                  0.0F,
+                                                  0.0F,
+                                                  0.0F,
+                                                  1.0F};
+    return hasUv ? std::span<const float> {withUv} : std::span<const float> {withoutUv};
+}
+
+auto createNormalMapFallbackMesh(const panda::Context& context, bool hasUv) -> panda::Result<panda::Mesh>
+{
+    auto attributes = std::vector<panda::VertexAttribute> {
+        {.semantic = panda::VertexAttributeSemantic::Position, .format = panda::VertexAttributeFormat::Float3},
+        {.semantic = panda::VertexAttributeSemantic::Normal,
+         .format = panda::VertexAttributeFormat::Float3,
+         .offset = 12}
+    };
+    if (hasUv)
+    {
+        attributes.push_back({.semantic = panda::VertexAttributeSemantic::TexCoord0,
+                              .format = panda::VertexAttributeFormat::Float2,
+                              .offset = 24});
+    }
+    auto mesh = context.createMesh(
+        {.vertexCount = 3, .vertexStride = hasUv ? 32U : 24U, .indices = std::nullopt, .attributes = attributes});
+    if (!mesh)
+    {
+        return std::unexpected {mesh.error()};
+    }
+    auto batch = context.createUploadBatch();
+    if (!batch)
+    {
+        return std::unexpected {batch.error()};
+    }
+    if (const auto written = batch->write(*mesh, std::as_bytes(normalMapFallbackVertices(hasUv))); !written)
+    {
+        return std::unexpected {written.error()};
+    }
+    if (const auto uploaded = finishSceneMeshUpload(context, *batch); !uploaded)
+    {
+        return std::unexpected {uploaded.error()};
+    }
+    return std::move(*mesh);
 }
 
 auto makeTestCamera(panda::FramebufferExtent extent) -> panda::Result<panda::RenderCamera>
@@ -514,7 +620,7 @@ TEST(WindowedContextSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCo
             GTEST_SKIP() << meshes.error().message;
         }
         ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
-        auto texture = createSceneTexture(context, vk::Format::eR8G8B8A8Srgb);
+        auto texture = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
         ASSERT_TRUE(texture.has_value()) << texture.error().message;
         auto batch = context.createUploadBatch();
         ASSERT_TRUE(batch.has_value()) << batch.error().message;
@@ -543,7 +649,7 @@ TEST(WindowedContextSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCo
         ASSERT_TRUE(camera.has_value()) << camera.error().message;
         auto view = panda::RenderView {.camera = *camera, .directionalLight = {}, .meshes = {}};
         auto draw = panda::MeshDraw {.mesh = meshes->cube};
-        draw.material.baseColorTexture = *texture;
+        draw.material.normalTexture = *texture;
         view.meshes.push_back(draw);
 
         const auto frame = context.render(view);
@@ -552,6 +658,76 @@ TEST(WindowedContextSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCo
         view.meshes.clear();
         verifyCompletion(context, frame->completion);
     }
+    const auto validationError = std::ranges::find_if(records.entries, [](const auto& entry) {
+        return entry.level == panda::log::Level::Error;
+    });
+    EXPECT_EQ(validationError, records.entries.end())
+        << (validationError == records.entries.end() ? "" : validationError->message);
+}
+
+TEST(WindowedContextSystem, RendersNormalMapsAndFallsBackWithoutUvOrTangents)
+{
+    auto records = panda::test::LogRecords {};
+    auto capture = panda::test::ProcessSinkRegistration {records};
+    auto window = panda::tools::Window::create({160, 120}, "Panda normal map smoke");
+    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
+    {
+        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
+    }
+    ASSERT_TRUE(window.has_value());
+    auto surface = SuspensibleSurface {*window};
+    auto created =
+        panda::Context::createWithSurface(surface,
+                                          {.applicationName = "Panda normal map smoke", .enableValidation = true});
+    if (!created && created.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << created.error().message;
+    }
+    ASSERT_TRUE(created.has_value()) << created.error().message;
+    auto context = std::move(*created);
+    auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
+    ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
+    const auto extent = window->getFramebufferExtent();
+    ASSERT_TRUE(extent.has_value()) << extent.error().message;
+    auto view = makeCubeAndGroundView(*extent, *meshes);
+    ASSERT_TRUE(view.has_value()) << view.error().message;
+    expectInvalidNormalMap(context, view->camera, meshes->cube, meshes->normalMap, panda::MaterialModel::Unlit);
+    auto srgbNormalMap = createSceneTexture(context, vk::Format::eR8G8B8A8Srgb);
+    ASSERT_TRUE(srgbNormalMap.has_value()) << srgbNormalMap.error().message;
+    expectInvalidNormalMap(context, view->camera, meshes->cube, *srgbNormalMap);
+    auto unuploadedNormalMap = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
+    ASSERT_TRUE(unuploadedNormalMap.has_value()) << unuploadedNormalMap.error().message;
+    expectInvalidNormalMap(context, view->camera, meshes->cube, *unuploadedNormalMap);
+    auto noUvMesh = createNormalMapFallbackMesh(context, false);
+    ASSERT_TRUE(noUvMesh.has_value()) << noUvMesh.error().message;
+    auto noTangentMesh = createNormalMapFallbackMesh(context, true);
+    ASSERT_TRUE(noTangentMesh.has_value()) << noTangentMesh.error().message;
+    auto normalMappedDraw = panda::MeshDraw {};
+    normalMappedDraw.mesh = meshes->cube;
+    normalMappedDraw.material.normalTexture = meshes->normalMap;
+    view->meshes.push_back(normalMappedDraw);
+    auto noUvDraw = panda::MeshDraw {};
+    noUvDraw.mesh = *noUvMesh;
+    noUvDraw.material.normalTexture = meshes->normalMap;
+    view->meshes.push_back(noUvDraw);
+    auto noTangentDraw = panda::MeshDraw {};
+    noTangentDraw.mesh = *noTangentMesh;
+    noTangentDraw.material.normalTexture = meshes->normalMap;
+    view->meshes.push_back(noTangentDraw);
+
+    const auto frame = context.render(*view);
+
+    ASSERT_TRUE(frame.has_value()) << frame.error().message;
+    EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+    verifyCompletion(context, frame->completion);
+    const auto missingUvWarning = std::ranges::find_if(records.entries, [](const auto& entry) {
+        return entry.level == panda::log::Level::Warning && entry.message.find("no TexCoord0") != std::string::npos;
+    });
+    EXPECT_NE(missingUvWarning, records.entries.end());
+    const auto missingTangentWarning = std::ranges::find_if(records.entries, [](const auto& entry) {
+        return entry.level == panda::log::Level::Warning && entry.message.find("no Tangent") != std::string::npos;
+    });
+    EXPECT_NE(missingTangentWarning, records.entries.end());
     const auto validationError = std::ranges::find_if(records.entries, [](const auto& entry) {
         return entry.level == panda::log::Level::Error;
     });

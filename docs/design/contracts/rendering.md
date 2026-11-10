@@ -42,19 +42,24 @@ Blend with material, draw, and vertex alpha.
 
 The optional Lit metallic-roughness map must be an uploaded, sampled `R8G8B8A8Unorm` or `B8G8R8A8Unorm` texture from
 the same Context, and its mesh must declare `TexCoord0`. Its blue channel multiplies the material metallic value and its
-green channel multiplies roughness; a missing map contributes white. Numeric channels remain linear. Normal and
-occlusion maps remain planned. Their channel convention, tangent requirements, and missing-tangent behavior are
-specified in the material/import sections below.
+green channel multiplies roughness; a missing map contributes white. Numeric channels remain linear.
+
+The optional Lit tangent-space normal map must be an uploaded, sampled `R8G8B8A8Unorm` or `B8G8R8A8Unorm` texture from
+the same Context. Its mesh needs `TexCoord0` and `Tangent` for normal mapping; if either is absent, Panda ignores the
+map
+and logs a warning while rendering with the interpolated mesh normal. `normalScale` defaults to 1 and multiplies the
+normal's tangent-space X and Y components without a fixed range; it must be finite. Normal maps do not change geometry
+or the shadow silhouette. Occlusion maps remain planned.
 
 Shader program, material parameters, and pipeline/render state are separate concepts. Editing a color is not a reason to
 compile a pipeline. Sharing a material shares its parameters; cloning is explicit.
 
 ## Alpha and face selection
 
-| Mode   | First-version behavior                                                                            |
-|--------|---------------------------------------------------------------------------------------------------|
-| Opaque | Depth test/write and the standard opaque rendering path                                           |
-| Mask   | Explicit cutoff, depth test/write, matching clipping in shadow passes                             |
+| Mode   | First-version behavior                                                                                       |
+|--------|--------------------------------------------------------------------------------------------------------------|
+| Opaque | Depth test/write and the standard opaque rendering path                                                      |
+| Mask   | Explicit cutoff, depth test/write, matching clipping in shadow passes                                        |
 | Blend  | Straight-alpha source-over after Opaque/Mask, object-level back-to-front order, depth test on and writes off |
 
 Blend uses the product of material, draw and optional vertex alpha, clamped to [0,1]. Blended meshes do not cast
@@ -354,9 +359,8 @@ normalized atlas region.
 Material data provides linear base color and emissive, metallic, roughness,
 occlusion strength, normal scale and alpha cutoff. Built-in default: tint white,
 emissive black, metallic 0, roughness 1, occlusion strength 1, normal scale 1,
-cutoff 0.5. Clamp validated metallic/roughness/strength to [0,1] and normal
-scale to [0,2]; reject non-finite inputs. A missing texture uses a semantic
-neutral value.
+cutoff 0.5. Clamp validated metallic/roughness/strength to [0,1] and reject
+non-finite inputs. A missing texture uses a semantic neutral value.
 
 Draw data supplies a full model matrix, inverse-transpose normal transform and
 linear tint. Select separate pipeline variants for single meshes and instanced
@@ -371,15 +375,17 @@ float format, fit within the stride and not overlap. An empty layout creates
 upload-only storage.
 
 The current built-in renderer consumes Position for every draw, Normal for Lit
-materials, and optional Color for either material model; a missing vertex color
-contributes white. It selects a compatible pipeline from the material model,
-layout stride, consumed attribute offsets, face mode and model determinant sign.
-`RenderFace::Front`, `Back` and `Both` select the visible side(s); negative
+materials, Tangent when a usable Lit normal map is set, and optional Color for either
+material model; a missing vertex color contributes white. It selects a compatible
+pipeline from the material model, layout stride, consumed attribute offsets, face mode
+and model determinant sign.
+`RenderFace::Front`, `Back` and `Both` select the visible side (s); negative
 determinants reverse the pipeline's front-face winding in both camera and shadow
 passes. Lit shading flips the normal for rendered back faces in `Back` and `Both`
-modes. Base-color, metallic-roughness and emissive maps consume `TexCoord0`; without
-these maps, UV data is not required. Tangent layouts are validated but are not consumed yet. Normal maps
-will also require tangents; a missing normal remains a clear preflight error for Lit materials.
+modes. Base-color, metallic-roughness and emissive maps consume `TexCoord0`; a normal
+map consumes `TexCoord0` and `Tangent` when both are present. Without those maps, UV
+and tangent data are not required. A missing mesh normal remains a clear preflight
+error for Lit materials.
 Keep unused attributes out of vertex data. The current Unlit material uses base
 color and emission without light evaluation. Emission only changes the surface's
 own color; it does not illuminate other surfaces or create a bloom halo.
@@ -389,9 +395,9 @@ this implementation slice.
 Current material parameters use one 48-byte std430 storage-buffer record per
 draw: metallic at offset 0, roughness at 4, the Lit flag at 8, `RenderFace` at
 12, alpha cutoff at 16, the base-color-map flag at 20, the metallic-roughness-map
-flag at 24 and the emissive-map flag at 28. The emissive RGB factor occupies a
-`vec4` at offset 32 (the fourth component is padding). Records are tightly packed
-per frame slot; the direct draw's
+flag at 24 and the emissive-map flag at 28. A `vec4` at offset 32 stores emissive
+RGB and normal scale in its fourth component. Records are tightly packed per frame
+slot; the direct draw's
 `firstInstance` supplies the flat material index to the fragment shader. Keep this
 host/shader record layout synchronized.
 
@@ -404,9 +410,11 @@ instance tint and vertex color (white when absent). The linear emissive factor
 multiplies an optional sRGB emissive texture; its alpha is ignored. Emission is
 added before tone mapping in both Lit and Unlit shading, but does not affect other
 surfaces or the shadow pass. Base-color and emissive textures decode sRGB to
-linear. Metallic/roughness and occlusion textures decode linear. Metallic/roughness
-texture uses B/G channels, occlusion R, tangent-space normal XYZ. Missing normal
-map uses (0.5,0.5,1), missing metallic/roughness uses (1,1,1), missing occlusion
+linear. Metallic/roughness, normal and occlusion textures decode linear. Metallic/roughness
+texture uses B/G channels, occlusion R, and tangent-space normal XYZ. Normal-map XY
+is multiplied by `normalScale` before tangent-to-world conversion. A normal map ignored
+for a missing UV or tangent leaves the interpolated mesh normal unchanged. Missing
+metallic/roughness uses (1,1,1), missing occlusion
 uses white, and a missing emissive texture uses white (the default emissive factor
 is black, so default emission remains black). Import computes missing normals and
 tangents where UVs allow; if

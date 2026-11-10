@@ -14,6 +14,7 @@
 #include <glm/matrix.hpp>
 #include <optional>
 #include <panda/Error.hpp>
+#include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/RenderView.hpp>
 #include <span>
@@ -23,6 +24,7 @@
 #include "BuiltinShaders.hpp"
 #include "VulkanError.hpp"
 #include "renderer/ShaderData.hpp"
+#include "resources/MeshResource.hpp"
 
 namespace panda::core::vulkan::renderer
 {
@@ -62,6 +64,40 @@ constexpr auto alphaBlend =
 constexpr auto noColorBlend = vk::PipelineColorBlendStateCreateInfo {};
 constexpr auto dynamic = vk::PipelineDynamicStateCreateInfo {
     .dynamicStateCount = static_cast<std::uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
+
+auto findVertexAttribute(const Mesh& mesh, VertexAttributeSemantic semantic) -> const VertexAttribute*
+{
+    const auto& attributes = mesh.getVertexAttributes();
+    const auto attribute = std::ranges::find(attributes, semantic, &VertexAttribute::semantic);
+    return attribute == attributes.end() ? nullptr : &*attribute;
+}
+
+auto hasVertexAttribute(const Mesh& mesh, VertexAttributeSemantic semantic) -> bool
+{
+    return mesh.isValid() && ::panda::detail::MeshResource::getResource(mesh)->getLayout().hasVertexAttribute(semantic);
+}
+
+auto usesNormalMap(const MeshDraw& draw, bool hasUv, bool hasTangent) -> bool
+{
+    return draw.material.model == MaterialModel::Lit && draw.material.normalTexture.isValid() && hasUv && hasTangent;
+}
+
+auto usesTextureCoordinates(const Material& material, bool hasNormalMap) -> bool
+{
+    return material.baseColorTexture.isValid() || material.metallicRoughnessTexture.isValid() ||
+           material.emissiveTexture.isValid() || hasNormalMap;
+}
+
+auto vertexAttributeOffset(const VertexAttribute* attribute) -> std::uint32_t
+{
+    return attribute != nullptr ? attribute->offset : 0U;
+}
+
+auto makeVertexAttributeDescription(std::uint32_t location, vk::Format format, std::uint32_t offset)
+    -> vk::VertexInputAttributeDescription
+{
+    return {.location = location, .binding = meshVertexBufferBinding, .format = format, .offset = offset};
+}
 
 auto isSrgb(vk::Format format) -> bool
 {
@@ -173,8 +209,13 @@ auto makeShadowVertexInput(const MeshPipelineCache::ShadowPipelineKey& key) -> S
     return result;
 }
 
-auto meshVertexShaderWords(bool lit, bool hasColor, bool hasTextureCoordinates) -> std::span<const std::uint32_t>
+auto meshVertexShaderWords(const MeshPipelineCache::MeshPipelineKey& key) -> std::span<const std::uint32_t>
 {
+    if (key.hasNormalMap)
+    {
+        return key.hasColor ? std::span<const std::uint32_t> {shaders::meshLitColorNormalVertex}
+                            : std::span<const std::uint32_t> {shaders::meshLitPlainNormalVertex};
+    }
     static constexpr auto variants = std::array {
         std::span<const std::uint32_t> {shaders::meshUnlitPlainVertex},
         std::span<const std::uint32_t> {shaders::meshUnlitPlainTextureVertex},
@@ -185,8 +226,9 @@ auto meshVertexShaderWords(bool lit, bool hasColor, bool hasTextureCoordinates) 
         std::span<const std::uint32_t> {shaders::meshLitColorVertex},
         std::span<const std::uint32_t> {shaders::meshLitColorTextureVertex},
     };
-    const auto variantIndex = (static_cast<std::size_t>(lit) << 2U) | (static_cast<std::size_t>(hasColor) << 1U) |
-                              static_cast<std::size_t>(hasTextureCoordinates);
+    const auto variantIndex = (static_cast<std::size_t>(key.lit) << 2U) |
+                              (static_cast<std::size_t>(key.hasColor) << 1U) |
+                              static_cast<std::size_t>(key.hasTextureCoordinates);
     return variants.at(variantIndex);
 }
 
@@ -328,26 +370,27 @@ MeshPipelineCache::MeshPipelineCache(const vk::raii::Device& device, vk::Pipelin
 
 auto MeshPipelineCache::makeMeshPipelineKey(const MeshDraw& draw) -> MeshPipelineKey
 {
-    const auto attributes = draw.mesh.getVertexAttributes();
-    const auto findOffset = [&attributes](VertexAttributeSemantic semantic) {
-        const auto attribute = std::ranges::find(attributes, semantic, &VertexAttribute::semantic);
-        return attribute == attributes.end() ? 0U : attribute->offset;
-    };
     const auto lit = draw.material.model == MaterialModel::Lit;
-    const auto hasColor = std::ranges::any_of(attributes, [](const auto& attribute) {
-        return attribute.semantic == VertexAttributeSemantic::Color;
-    });
-    const auto hasTextureCoordinates = draw.material.baseColorTexture.isValid() ||
-                                       draw.material.metallicRoughnessTexture.isValid() ||
-                                       draw.material.emissiveTexture.isValid();
+    const auto* position = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Position);
+    const auto* normal = lit ? findVertexAttribute(draw.mesh, VertexAttributeSemantic::Normal) : nullptr;
+    const auto* color = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Color);
+    const auto hasUv = hasVertexAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0);
+    const auto hasTangentAttribute = hasVertexAttribute(draw.mesh, VertexAttributeSemantic::Tangent);
+    const auto hasNormalMap = usesNormalMap(draw, hasUv, hasTangentAttribute);
+    const auto hasTextureCoordinates = usesTextureCoordinates(draw.material, hasNormalMap);
+    const auto* texCoord =
+        hasTextureCoordinates ? findVertexAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0) : nullptr;
+    const auto* tangent = hasNormalMap ? findVertexAttribute(draw.mesh, VertexAttributeSemantic::Tangent) : nullptr;
     return {.lit = lit,
-            .hasColor = hasColor,
+            .hasColor = color != nullptr,
             .hasTextureCoordinates = hasTextureCoordinates,
+            .hasNormalMap = hasNormalMap,
             .vertexStride = draw.mesh.getVertexStride(),
-            .positionOffset = findOffset(VertexAttributeSemantic::Position),
-            .normalOffset = lit ? findOffset(VertexAttributeSemantic::Normal) : 0U,
-            .texCoordOffset = hasTextureCoordinates ? findOffset(VertexAttributeSemantic::TexCoord0) : 0U,
-            .colorOffset = hasColor ? findOffset(VertexAttributeSemantic::Color) : 0U,
+            .positionOffset = vertexAttributeOffset(position),
+            .normalOffset = vertexAttributeOffset(normal),
+            .texCoordOffset = vertexAttributeOffset(texCoord),
+            .tangentOffset = vertexAttributeOffset(tangent),
+            .colorOffset = vertexAttributeOffset(color),
             .renderFace = draw.material.renderFace,
             .alphaMode = draw.material.alphaMode,
             .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F};
@@ -355,21 +398,16 @@ auto MeshPipelineCache::makeMeshPipelineKey(const MeshDraw& draw) -> MeshPipelin
 
 auto MeshPipelineCache::makeShadowPipelineKey(const MeshDraw& draw) -> ShadowPipelineKey
 {
-    const auto attributes = draw.mesh.getVertexAttributes();
-    const auto findOffset = [&attributes](VertexAttributeSemantic semantic) {
-        const auto attribute = std::ranges::find(attributes, semantic, &VertexAttribute::semantic);
-        return attribute == attributes.end() ? 0U : attribute->offset;
-    };
-    const auto hasColor =
-        draw.material.alphaMode == AlphaMode::Mask && std::ranges::any_of(attributes, [](const auto& attribute) {
-            return attribute.semantic == VertexAttributeSemantic::Color;
-        });
+    const auto* position = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Position);
+    const auto* texCoord = findVertexAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0);
+    const auto* color = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Color);
+    const auto hasColor = draw.material.alphaMode == AlphaMode::Mask && color != nullptr;
     const auto hasBaseColorTexture =
         draw.material.alphaMode == AlphaMode::Mask && draw.material.baseColorTexture.isValid();
     return {.vertexStride = draw.mesh.getVertexStride(),
-            .positionOffset = findOffset(VertexAttributeSemantic::Position),
-            .texCoordOffset = hasBaseColorTexture ? findOffset(VertexAttributeSemantic::TexCoord0) : 0U,
-            .colorOffset = hasColor ? findOffset(VertexAttributeSemantic::Color) : 0U,
+            .positionOffset = position != nullptr ? position->offset : 0U,
+            .texCoordOffset = hasBaseColorTexture && texCoord != nullptr ? texCoord->offset : 0U,
+            .colorOffset = hasColor ? color->offset : 0U,
             .hasColor = hasColor,
             .hasBaseColorTexture = hasBaseColorTexture,
             .renderFace = draw.material.renderFace,
@@ -406,6 +444,21 @@ auto MeshPipelineCache::prepare(const RenderView& view) -> std::expected<void, E
 
 auto MeshPipelineCache::prepareDraw(const MeshDraw& draw) -> std::expected<void, Error>
 {
+    if (draw.material.model == MaterialModel::Lit && draw.material.normalTexture.isValid())
+    {
+        const auto hasUv = hasVertexAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0);
+        const auto hasTangent = hasVertexAttribute(draw.mesh, VertexAttributeSemantic::Tangent);
+        if (!hasUv && !_warnedMissingNormalMapUv)
+        {
+            panda::log::warning("Ignoring normal map because the mesh has no TexCoord0 attribute");
+            _warnedMissingNormalMapUv = true;
+        }
+        else if (hasUv && !hasTangent && !_warnedMissingNormalMapTangent)
+        {
+            panda::log::warning("Ignoring normal map because the mesh has no Tangent attribute");
+            _warnedMissingNormalMapTangent = true;
+        }
+    }
     if (const auto prepared = prepare(makeMeshPipelineKey(draw)); !prepared)
     {
         return prepared;
@@ -457,45 +510,47 @@ auto MeshPipelineCache::getShadowPipeline(const MeshDraw& draw) const -> vk::Pip
 auto MeshPipelineCache::makeVertexAttributeDescriptions(const MeshPipelineKey& key)
     -> std::vector<vk::VertexInputAttributeDescription>
 {
-    auto attributes = std::vector {
-        vk::VertexInputAttributeDescription {.location = PANDA_VERTEX_ATTRIBUTE_POSITION_LOCATION,
-                                             .binding = meshVertexBufferBinding,
-                                             .format = vk::Format::eR32G32B32Sfloat,
-                                             .offset = key.positionOffset}
-    };
+    auto attributes = std::vector {makeVertexAttributeDescription(PANDA_VERTEX_ATTRIBUTE_POSITION_LOCATION,
+                                                                  vk::Format::eR32G32B32Sfloat,
+                                                                  key.positionOffset)};
     if (key.lit)
     {
-        attributes.push_back({.location = PANDA_VERTEX_ATTRIBUTE_NORMAL_LOCATION,
-                              .binding = meshVertexBufferBinding,
-                              .format = vk::Format::eR32G32B32Sfloat,
-                              .offset = key.normalOffset});
+        attributes.push_back(makeVertexAttributeDescription(PANDA_VERTEX_ATTRIBUTE_NORMAL_LOCATION,
+                                                            vk::Format::eR32G32B32Sfloat,
+                                                            key.normalOffset));
+    }
+    if (key.hasNormalMap)
+    {
+        attributes.push_back(makeVertexAttributeDescription(PANDA_VERTEX_ATTRIBUTE_TANGENT_LOCATION,
+                                                            vk::Format::eR32G32B32A32Sfloat,
+                                                            key.tangentOffset));
     }
     if (key.hasTextureCoordinates)
     {
-        attributes.push_back({.location = PANDA_VERTEX_ATTRIBUTE_TEX_COORD_0_LOCATION,
-                              .binding = meshVertexBufferBinding,
-                              .format = vk::Format::eR32G32Sfloat,
-                              .offset = key.texCoordOffset});
+        attributes.push_back(makeVertexAttributeDescription(PANDA_VERTEX_ATTRIBUTE_TEX_COORD_0_LOCATION,
+                                                            vk::Format::eR32G32Sfloat,
+                                                            key.texCoordOffset));
     }
     if (key.hasColor)
     {
-        attributes.push_back({.location = PANDA_VERTEX_ATTRIBUTE_COLOR_LOCATION,
-                              .binding = meshVertexBufferBinding,
-                              .format = vk::Format::eR32G32B32A32Sfloat,
-                              .offset = key.colorOffset});
+        attributes.push_back(makeVertexAttributeDescription(PANDA_VERTEX_ATTRIBUTE_COLOR_LOCATION,
+                                                            vk::Format::eR32G32B32A32Sfloat,
+                                                            key.colorOffset));
     }
     return attributes;
 }
 
 auto MeshPipelineCache::createPipeline(const MeshPipelineKey& key) const -> std::expected<vk::raii::Pipeline, Error>
 {
-    const auto vertexWords = meshVertexShaderWords(key.lit, key.hasColor, key.hasTextureCoordinates);
+    const auto vertexWords = meshVertexShaderWords(key);
     auto vertex = createShaderModule(_device, vertexWords);
     if (!vertex)
     {
         return std::unexpected {vertex.error()};
     }
-    auto fragment = createShaderModule(_device, shaders::meshFragment);
+    const auto fragmentWords = key.hasNormalMap ? std::span<const std::uint32_t> {shaders::meshNormalFragment}
+                                                : std::span<const std::uint32_t> {shaders::meshFragment};
+    auto fragment = createShaderModule(_device, fragmentWords);
     if (!fragment)
     {
         return std::unexpected {fragment.error()};

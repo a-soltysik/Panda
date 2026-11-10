@@ -24,10 +24,12 @@ public:
         bool lit {false};
         bool hasColor {false};
         bool hasTextureCoordinates {false};
+        bool hasNormalMap {false};
         std::uint32_t vertexStride {0};
         std::uint32_t positionOffset {0};
         std::uint32_t normalOffset {0};
         std::uint32_t texCoordOffset {0};
+        std::uint32_t tangentOffset {0};
         std::uint32_t colorOffset {0};
         RenderFace renderFace {RenderFace::Front};
         AlphaMode alphaMode {AlphaMode::Opaque};
@@ -83,5 +85,7 @@ private:
     OutputCompatibility _outputCompatibility;
     std::map<MeshPipelineKey, vk::raii::Pipeline> _pipelines;
     std::map<ShadowPipelineKey, vk::raii::Pipeline> _shadowPipelines;
+    bool _warnedMissingNormalMapUv {false};
+    bool _warnedMissingNormalMapTangent {false};
 };
 }
