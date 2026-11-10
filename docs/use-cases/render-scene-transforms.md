@@ -28,12 +28,14 @@ renderer use without Scene. Persistence remains in the
 1. **Request a snapshot.** The application calls `Scene::createRenderView()` with the
    current framebuffer aspect ratio. Scene checks that its Context remains valid.
 2. **Prepare the camera.** `SceneState` requires an active camera, updates its dirty
-   world transform and builds the lens's view-projection matrix. Its world pose
-   must have positive uniform scale and no shear; the lens ignores uniform scale.
+   world transform and builds the lens projection. `SceneTransformMath` checks that
+   the camera pose has positive uniform scale and no shear, then supplies its
+   rotation for the view-projection matrix; the lens ignores uniform scale.
 3. **Collect visible objects.** `SceneState` updates required world caches, copies
-   visible mesh transforms/tints and retains their mesh handles. The light's world
-   rotation maps its local -Z axis into the lighting direction. Visibility applies
-   to each object independently.
+   visible mesh transforms/tints and retains their mesh handles. For a light,
+   `SceneTransformMath` checks its world basis and supplies its rotation; SceneState
+   maps local -Z into the lighting direction. Visibility applies to each object
+   independently.
 4. **Publish the snapshot.** Scene returns a value independent of subsequent scene
    edits. The application passes it to `Context::render()` in its frame loop.
    Context performs renderer data and mesh-ownership validation before submission.
@@ -43,12 +45,22 @@ sequenceDiagram
     participant A as Application
     participant S as Scene
     participant D as SceneState
+    participant M as SceneTransformMath
     participant C as Context
     A->>S: Step 1 - createRenderView(aspectRatio)
     S->>C: Check live Context
     S->>D: Step 2 - Prepare active camera
-    D->>D: Update ancestors and validate camera pose/lens
+    D->>D: Update ancestors and build lens projection
+    D->>M: Check camera world basis
+    M-->>D: Positive uniform pose rotation or Error
+    D->>D: Build camera view-projection matrix
     D->>D: Step 3 - Collect visible meshes and light
+    D->>D: Copy visible mesh draws
+    opt Visible directional light
+        D->>M: Check light world basis
+        M-->>D: Pose rotation or Error
+        D->>D: Derive light direction
+    end
     D-->>S: Camera, light and retained mesh draws
     S-->>A: Step 4 - Result containing snapshot
     A->>C: render(snapshot)

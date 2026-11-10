@@ -593,7 +593,7 @@ TEST_F(PresentationTest, PropagatesAcquireSemaphoreInitializationFailure)
     expectReleaseEntryPoint();
     EXPECT_CALL(submissions, initialize(_)).WillOnce(Return(panda::Result<void> {}));
     expectNativeCommandResources();
-    const auto semaphore = fakeVulkanHandle<VkSemaphore>(1001);
+    auto* const semaphore = fakeVulkanHandle<VkSemaphore>(1001);
     EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
         .Times(2)
         .WillOnce([semaphore](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* out) {
