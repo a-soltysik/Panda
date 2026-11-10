@@ -272,6 +272,7 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
     material.roughness = -0.5F;
     material.alphaCutoff = 0.4F;
     material.emissive = {0.2F, 0.4F, 0.8F};
+    material.normalScale = 3.0F;
     auto writes = std::vector<std::vector<std::byte>> {};
     EXPECT_CALL(buffers, writeMapped(_, 0, _))
         .Times(2)
@@ -293,7 +294,8 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
             ASSERT_NE(imageWrite, writeSpan.end());
             EXPECT_EQ(imageWrite->pImageInfo->imageView, static_cast<VkImageView>(shadowView));
             EXPECT_EQ(imageWrite->pImageInfo->imageLayout, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
-        })
+        });
+    EXPECT_CALL(vulkan, vkUpdateDescriptorSets(deviceHandle, 4, NotNull(), 0, nullptr))
         .WillOnce([shadowView](VkDevice,
                                std::uint32_t writeCount,
                                const VkWriteDescriptorSet* descriptorWrites,
@@ -322,9 +324,10 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
     EXPECT_EQ(record.hasBaseColorTexture, 0U);
     EXPECT_EQ(record.hasMetallicRoughnessTexture, 0U);
     EXPECT_EQ(record.hasEmissiveTexture, 0U);
-    EXPECT_FLOAT_EQ(record.emissive.x, 0.2F);
-    EXPECT_FLOAT_EQ(record.emissive.y, 0.4F);
-    EXPECT_FLOAT_EQ(record.emissive.z, 0.8F);
+    EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.x, 0.2F);
+    EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.y, 0.4F);
+    EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.z, 0.8F);
+    EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.w, 3.0F);
 }
 
 TEST_F(FrameBindingsTest, MaterialBufferGrowthFailureCanBeRetried)

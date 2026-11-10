@@ -15,6 +15,7 @@ public:
     [[nodiscard]] auto getVertexCount() const noexcept -> std::uint32_t;
     [[nodiscard]] auto getVertexStride() const noexcept -> std::uint32_t;
     [[nodiscard]] auto getVertexAttributes() const noexcept -> const std::vector<VertexAttribute>&;
+    [[nodiscard]] auto hasVertexAttribute(VertexAttributeSemantic semantic) const noexcept -> bool;
     [[nodiscard]] auto getVertexSize() const noexcept -> std::uint64_t;
     [[nodiscard]] auto getIndices() const noexcept -> const std::optional<MeshIndexDesc>&;
     [[nodiscard]] auto getIndexSize() const noexcept -> std::uint64_t;
@@ -23,6 +24,7 @@ private:
     MeshLayout() = default;
 
     MeshDesc _description {};
+    std::uint32_t _vertexAttributeMask {0};
     std::uint64_t _vertexSize {0};
     std::uint64_t _indexSize {0};
 };

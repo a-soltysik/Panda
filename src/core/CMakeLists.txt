@@ -110,6 +110,7 @@ panda_add_component(panda_core
         vulkan/resources/TextureResource.hpp
         vulkan/renderer/MeshRenderer.hpp
         vulkan/renderer/FrameBindings.hpp
+        vulkan/renderer/MaterialTextureSlots.hpp
         vulkan/renderer/MeshPipelineCache.hpp
         vulkan/renderer/RenderAttachments.hpp
         vulkan/renderer/ShaderData.hpp

@@ -4,11 +4,13 @@
 geometry helper, then creates a compact position-and-color triangle with
 `Context::createMesh(MeshDesc)`. One upload batch initializes all three meshes,
 the cube's optional 2x2 sRGB base-color and emissive maps, and neutral 1x1 linear
-metallic-roughness map. The emissive map adds orange emission to part of the
-cube's surface; it does not illuminate other objects or produce a bloom halo.
-The cube uses standard UVs; the
-custom triangle has no UVs and renders without a map. The view renders the cube
-and ground with the built-in directional light,
+metallic-roughness map. A second draw of the same cube uses a neutral gray material
+and a 4x4 linear normal map with alternating tangent-space directions. Its striped
+lighting shows the normal map separately from the other maps without changing the
+cube geometry. The emissive map adds orange emission to part of the textured cube;
+it does not illuminate other objects or produce a bloom halo. Both cubes use
+standard UVs; the custom triangle has no UVs and renders without a map. The view
+renders the cubes and ground with the built-in directional light,
 depth-map shadows and lit material, plus the triangle with an unlit material.
 The custom triangle shows how a mesh can use its own vertex stride and attribute
 offsets instead of the standard 64-byte geometry layout; its vertex data and draw

@@ -24,14 +24,19 @@ function(panda_add_builtin_shaders target)
 
     panda_add_builtin_shader_command(mesh_lit_color.vert mesh_lit_color.vert)
     panda_add_builtin_shader_command(mesh_lit_color_texture.vert mesh_lit_color.vert -DHAS_TEXTURE_COORDINATES=1)
+    panda_add_builtin_shader_command(mesh_lit_color_normal.vert mesh_lit_color.vert -DHAS_TEXTURE_COORDINATES=1
+                                    -DHAS_NORMAL_MAP=1)
     panda_add_builtin_shader_command(mesh_lit_plain.vert mesh_lit_plain.vert)
     panda_add_builtin_shader_command(mesh_lit_plain_texture.vert mesh_lit_plain.vert -DHAS_TEXTURE_COORDINATES=1)
+    panda_add_builtin_shader_command(mesh_lit_plain_normal.vert mesh_lit_plain.vert -DHAS_TEXTURE_COORDINATES=1
+                                    -DHAS_NORMAL_MAP=1)
     panda_add_builtin_shader_command(mesh_unlit_color.vert mesh_unlit_color.vert)
     panda_add_builtin_shader_command(mesh_unlit_color_texture.vert mesh_unlit_color.vert -DHAS_TEXTURE_COORDINATES=1)
     panda_add_builtin_shader_command(mesh_unlit_plain.vert mesh_unlit_plain.vert)
     panda_add_builtin_shader_command(mesh_unlit_plain_texture.vert mesh_unlit_plain.vert -DHAS_TEXTURE_COORDINATES=1)
     # Keep discard compatible with devices that lack shaderDemoteToHelperInvocation.
     panda_add_builtin_shader_command(mesh.frag mesh.frag --target-spv=spv1.3)
+    panda_add_builtin_shader_command(mesh_normal.frag mesh.frag -DHAS_NORMAL_MAP=1 --target-spv=spv1.3)
     panda_add_builtin_shader_command(shadow.vert shadow.vert)
     panda_add_builtin_shader_command(shadow_texture.vert shadow.vert -DHAS_BASE_COLOR_TEXTURE=1)
     panda_add_builtin_shader_command(shadow_vertex_alpha.vert shadow_vertex_alpha.vert)

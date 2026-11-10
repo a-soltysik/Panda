@@ -19,9 +19,11 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    layout compatible with its material. All draws require Position; Lit also requires
    Normal. Color is optional and defaults to white. A base-color map is optional; if
    set, it must be a sampled RGBA8 sRGB texture from the same Context. Lit
-   metallic-roughness and emissive maps are also optional; they require sampled
-   RGBA8 UNORM and RGBA8 sRGB respectively. All maps must be from the same Context,
-   require TexCoord0, and need a submitted upload.
+   metallic-roughness, emissive and normal maps are also optional; they require
+   sampled RGBA8 UNORM, RGBA8 sRGB and RGBA8 UNORM respectively. All maps must be
+   from the same Context and need a submitted upload. Base-color, metallic-roughness
+   and emissive maps require TexCoord0; a normal map is ignored with a warning if
+   TexCoord0 or Tangent is missing.
 3. Camera, light, transform, tint and material values are finite and valid for the
    built-in renderer. A zero-sized framebuffer is allowed and returns `Suspended`.
 
@@ -34,9 +36,11 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
 2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, light,
-   tint, material alpha mode and cutoff, then verifies each mesh's Context and required attributes.
-   If a base-color, Lit metallic-roughness or emissive map is set, it checks the
-   texture's Context, sampled usage, required format and the mesh's TexCoord0. It polls and
+   tint, material alpha mode, cutoff and finite normal-map scale, then verifies each mesh's Context and required attributes.
+   If a base-color, Lit metallic-roughness, emissive or Lit normal map is set, it checks the
+   texture's Context, sampled usage and required format. Base-color, metallic-roughness
+   and emissive maps also require TexCoord0; the normal map falls back with a warning
+   when UVs or tangents are missing. It polls and
    reclaims completed upload packets, then rejects a texture whose upload was never
    submitted. Rendering remains queued
    after any in-flight upload on the Context submission queue.
@@ -166,7 +170,11 @@ Lit materials can also sample a linear UNORM metallic-roughness map; blue scales
 metallic and green scales roughness. Both material models can use an sRGB emissive
 map, whose RGB multiplies the linear emissive factor; alpha is ignored. Emission is
 added before tone mapping and changes only the object's color: it does not light
-other objects or create a bloom halo. Mapped draws require TexCoord0; a missing map contributes white. Lit materials evaluate one directional
+other objects or create a bloom halo. Base-color, metallic-roughness and emissive maps
+require TexCoord0. A Lit normal map uses TexCoord0 and Tangent; without either attribute
+it is ignored with a warning, leaving the interpolated mesh normal in use. Normal-map
+scale defaults to 1, multiplies tangent-space X and Y, and accepts any finite value.
+Lit materials evaluate one directional
 light with a Cook-Torrance microfacet specular term: GGX normal distribution,
 Schlick-GGX geometry and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is
 combined with that specular term. Each Lit material supplies metallic and roughness,
@@ -184,8 +192,8 @@ outputs sRGB, using hardware conversion for sRGB swapchain formats or shader enc
 for UNORM formats. Direct directional light is shadowed with one 2048² depth map per
 frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
 orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
-Points outside that fixed camera-centered region receive no shadow. Normal and
-occlusion maps, multiple lights, spot/point shadows and improved shadow coverage
+Points outside that fixed camera-centered region receive no shadow. Occlusion maps,
+multiple lights, spot/point shadows and improved shadow coverage
 and filtering remain work in
 [Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
 current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and

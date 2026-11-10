@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <expected>
+#include <numeric>
 #include <optional>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
@@ -104,6 +105,16 @@ auto hasPosition(const std::vector<ValidatedAttribute>& attributes) -> bool
     });
 }
 
+auto vertexAttributeMask(const std::vector<VertexAttribute>& attributes) -> std::uint32_t
+{
+    return std::accumulate(attributes.begin(),
+                           attributes.end(),
+                           std::uint32_t {},
+                           [](auto mask, const auto& attribute) {
+                               return mask | (std::uint32_t {1} << std::to_underlying(attribute.semantic));
+                           });
+}
+
 auto validateNonOverlappingAttributes(std::vector<ValidatedAttribute>& attributes) -> Result<void>
 {
     std::ranges::sort(attributes, {}, &ValidatedAttribute::start);
@@ -178,6 +189,7 @@ auto MeshLayout::create(MeshDesc description) -> Result<MeshLayout>
     const auto vertexSize = static_cast<std::uint64_t>(description.vertexCount) * description.vertexStride;
     auto layout = MeshLayout {};
     layout._description = std::move(description);
+    layout._vertexAttributeMask = vertexAttributeMask(layout._description.attributes);
     layout._vertexSize = vertexSize;
     layout._indexSize = *indexSize;
     return layout;
@@ -196,6 +208,11 @@ auto MeshLayout::getVertexStride() const noexcept -> std::uint32_t
 auto MeshLayout::getVertexAttributes() const noexcept -> const std::vector<VertexAttribute>&
 {
     return _description.attributes;
+}
+
+auto MeshLayout::hasVertexAttribute(VertexAttributeSemantic semantic) const noexcept -> bool
+{
+    return (_vertexAttributeMask & (std::uint32_t {1} << std::to_underlying(semantic))) != 0;
 }
 
 auto MeshLayout::getVertexSize() const noexcept -> std::uint64_t

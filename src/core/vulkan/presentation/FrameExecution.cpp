@@ -8,6 +8,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -22,28 +23,29 @@
 #include <vector>
 
 #include "performance/PerformanceManagerImpl.hpp"
+#include "renderer/MaterialTextureSlots.hpp"
 #include "renderer/MeshRenderer.hpp"
 
 namespace panda::core::vulkan::presentation
 {
 namespace
 {
+void retainTexture(std::vector<Texture>& retained, const Texture& texture)
+{
+    if (texture.isValid())
+    {
+        retained.push_back(texture);
+    }
+}
+
 void retainMaterialTextures(std::vector<Texture>& retained, const RenderView& view)
 {
-    retained.reserve(view.meshes.size() * 3);
+    retained.reserve(view.meshes.size() * renderer::materialTextureSlots.size());
     for (const auto& draw : view.meshes)
     {
-        if (draw.material.baseColorTexture.isValid())
+        for (const auto& slot : renderer::materialTextureSlots)
         {
-            retained.push_back(draw.material.baseColorTexture);
-        }
-        if (draw.material.metallicRoughnessTexture.isValid())
-        {
-            retained.push_back(draw.material.metallicRoughnessTexture);
-        }
-        if (draw.material.emissiveTexture.isValid())
-        {
-            retained.push_back(draw.material.emissiveTexture);
+            retainTexture(retained, draw.material.*(slot.texture));
         }
     }
 }

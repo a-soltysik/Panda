@@ -125,6 +125,10 @@ TEST(RenderViewValidation, RejectsNonFiniteMaterialValuesAndUnknownModel)
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view.meshes.back().material.metallic = 0.0F;
+    view.meshes.back().material.normalScale = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    view.meshes.back().material.normalScale = 1.0F;
     view.meshes.back().material.baseColor.g = std::numeric_limits<float>::infinity();
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
@@ -135,6 +139,9 @@ TEST(RenderViewValidation, RejectsNonFiniteMaterialValuesAndUnknownModel)
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view.meshes.back().material.model = panda::MaterialModel::Lit;
+    view.meshes.back().material.normalScale = -3.0F;
+    EXPECT_TRUE(validateRenderViewData(view));
+    view.meshes.back().material.normalScale = 1.0F;
     view.meshes.back().material.renderFace = panda::RenderFace::Both;
     EXPECT_TRUE(validateRenderViewData(view));
 

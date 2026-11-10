@@ -61,6 +61,11 @@ struct Material
     /// Optional emissive map. If set, it must be uploaded RGBA8 sRGB, sampled, and from the rendered Context; the
     /// mesh must declare TexCoord0. Its RGB multiplies emissive; alpha is ignored. An empty handle contributes white.
     Texture emissiveTexture;
+    /// Optional Lit-only tangent-space normal map. If set, it must be uploaded RGBA8 UNORM, sampled, and from the
+    /// rendered Context. Without TexCoord0 or Tangent, the map is ignored with a warning.
+    Texture normalTexture;
+    /// Finite multiplier for tangent-space normal-map X and Y components.
+    float normalScale {1.0F};
     /// Linear RGB emissive multiplier, multiplied by emissiveTexture and added before tone mapping; defaults to black.
     glm::vec3 emissive {};
     /// Metallic response, clamped to [0,1] when uploaded.

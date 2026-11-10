@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "VulkanError.hpp"
+#include "renderer/MaterialTextureSlots.hpp"
 #include "renderer/ShaderData.hpp"
 #include "renderer/ShaderInterface.inc"
 #include "renderer/ShadowView.hpp"
@@ -36,7 +37,25 @@ using detail::checkedCreation;
 
 namespace
 {
-constexpr auto textureDescriptorsPerDraw = std::uint32_t {3};
+constexpr auto textureDescriptorsPerDraw = static_cast<std::uint32_t>(materialTextureSlots.size());
+
+constexpr auto makeTextureBinding(std::uint32_t binding) -> vk::DescriptorSetLayoutBinding
+{
+    return {.binding = binding,
+            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eFragment};
+}
+
+constexpr auto makeTextureBindings() -> std::array<vk::DescriptorSetLayoutBinding, materialTextureSlots.size()>
+{
+    auto bindings = std::array<vk::DescriptorSetLayoutBinding, materialTextureSlots.size()> {};
+    for (auto index = std::size_t {}; index < materialTextureSlots.size(); ++index)
+    {
+        bindings.at(index) = makeTextureBinding(materialTextureSlots.at(index).binding);
+    }
+    return bindings;
+}
 
 struct TextureDescriptorResources
 {
@@ -73,7 +92,7 @@ auto makeMaterialRecord(const Material& material) -> MaterialRecord
         .hasBaseColorTexture = material.baseColorTexture.isValid() ? 1U : 0U,
         .hasMetallicRoughnessTexture = material.metallicRoughnessTexture.isValid() ? 1U : 0U,
         .hasEmissiveTexture = material.emissiveTexture.isValid() ? 1U : 0U,
-        .emissive = glm::vec4 {material.emissive, 0.0F}
+        .emissiveAndNormalScale = glm::vec4 {material.emissive, material.normalScale}
     };
 }
 
@@ -230,20 +249,7 @@ auto FrameBindings::initializeDescriptorSetLayout() -> std::expected<void, Error
 
 auto FrameBindings::initializeTextureDescriptorSetLayout() -> std::expected<void, Error>
 {
-    static constexpr auto bindings = std::array {
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_TEXTURE_BASE_COLOR_BINDING,
-                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment},
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING,
-                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment},
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_TEXTURE_EMISSIVE_BINDING,
-                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment}
-    };
+    static constexpr auto bindings = makeTextureBindings();
     const auto setLayout = (*_device).createDescriptorSetLayout(
         vk::DescriptorSetLayoutCreateInfo {.bindingCount = static_cast<std::uint32_t>(bindings.size()),
                                            .pBindings = bindings.data()},
@@ -504,22 +510,18 @@ void FrameBindings::writeTextureDescriptors(const FrameResources& frame,
     auto imageInfos = std::vector<vk::DescriptorImageInfo>(view.meshes.size() * textureDescriptorsPerDraw);
     auto writes = std::vector<vk::WriteDescriptorSet> {};
     writes.reserve(view.meshes.size() * textureDescriptorsPerDraw);
-    static constexpr auto bindings = std::array<std::uint32_t, 3> {PANDA_TEXTURE_BASE_COLOR_BINDING,
-                                                                   PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING,
-                                                                   PANDA_TEXTURE_EMISSIVE_BINDING};
     for (auto index = std::size_t {}; index < view.meshes.size(); ++index)
     {
         const auto& material = view.meshes.at(index).material;
-        const auto textures =
-            std::array {&material.baseColorTexture, &material.metallicRoughnessTexture, &material.emissiveTexture};
         const auto descriptorSet = *frame.textureDescriptorSets.at(index);
-        for (auto binding = std::size_t {}; binding < textures.size(); ++binding)
+        for (auto slotIndex = std::size_t {}; slotIndex < materialTextureSlots.size(); ++slotIndex)
         {
-            const auto imageInfoIndex = (index * textureDescriptorsPerDraw) + binding;
+            const auto& slot = materialTextureSlots.at(slotIndex);
+            const auto imageInfoIndex = (index * textureDescriptorsPerDraw) + slotIndex;
             imageInfos.at(imageInfoIndex) =
-                makeTextureDescriptorInfo(*textures.at(binding), *_textureSampler, shadowView);
+                makeTextureDescriptorInfo(material.*(slot.texture), *_textureSampler, shadowView);
             writes.push_back({.dstSet = descriptorSet,
-                              .dstBinding = bindings.at(binding),
+                              .dstBinding = slot.binding,
                               .descriptorCount = 1,
                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
                               .pImageInfo = &imageInfos.at(imageInfoIndex)});

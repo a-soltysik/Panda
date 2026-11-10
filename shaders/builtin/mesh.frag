@@ -21,6 +21,9 @@ layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_BASE_COLOR_BI
 layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING) uniform sampler2D
     metallicRoughnessMap;
 layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_EMISSIVE_BINDING) uniform sampler2D emissiveMap;
+#ifdef HAS_NORMAL_MAP
+layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_NORMAL_BINDING) uniform sampler2D normalMap;
+#endif
 struct MaterialRecord
 {
     float metallic;
@@ -31,7 +34,7 @@ struct MaterialRecord
     uint hasBaseColorTexture;
     uint hasMetallicRoughnessTexture;
     uint hasEmissiveTexture;
-    vec4 emissive;
+    vec4 emissiveAndNormalScale;
 };
 
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_MATERIAL_DATA_BINDING, std430) readonly buffer MaterialData
@@ -44,6 +47,9 @@ layout(location = PANDA_MESH_VARYING_WORLD_NORMAL_LOCATION) in vec3 worldNormal;
 layout(location = PANDA_MESH_VARYING_BASE_COLOR_LOCATION) in vec4 baseColor;
 layout(location = PANDA_MESH_VARYING_MATERIAL_INDEX_LOCATION) flat in uint materialIndex;
 layout(location = PANDA_MESH_VARYING_TEXTURE_COORDINATES_LOCATION) in vec2 textureCoordinates;
+#ifdef HAS_NORMAL_MAP
+layout(location = PANDA_MESH_VARYING_WORLD_TANGENT_LOCATION) in vec4 worldTangent;
+#endif
 layout(location = PANDA_MESH_FRAGMENT_COLOR_LOCATION) out vec4 fragmentColor;
 
 const float pi = 3.14159265359;
@@ -111,7 +117,7 @@ float shadowVisibility(vec3 normal)
 void main()
 {
     const MaterialRecord material = materialData.records[materialIndex];
-    const vec3 emissive = material.emissive.rgb *
+    const vec3 emissive = material.emissiveAndNormalScale.rgb *
         (material.hasEmissiveTexture != 0u ? texture(emissiveMap, textureCoordinates).rgb : vec3(1.0));
     const vec4 mappedBaseColor = baseColor *
         (material.hasBaseColorTexture != 0u ? texture(baseColorMap, textureCoordinates) : vec4(1.0));
@@ -132,6 +138,24 @@ void main()
     {
         normal = -normal;
     }
+    const vec3 geometricNormal = normal;
+#ifdef HAS_NORMAL_MAP
+    vec3 tangent = worldTangent.xyz - normal * dot(normal, worldTangent.xyz);
+    const float tangentLengthSquared = dot(tangent, tangent);
+    if (tangentLengthSquared > 0.00000001 && abs(worldTangent.w) > 0.5)
+    {
+        tangent *= inversesqrt(tangentLengthSquared);
+        const vec3 bitangent = cross(normal, tangent) * worldTangent.w;
+        vec3 mappedNormal = (texture(normalMap, textureCoordinates).xyz * 2.0) - 1.0;
+        mappedNormal *= vec3(material.emissiveAndNormalScale.w, material.emissiveAndNormalScale.w, 1.0);
+        const float largestComponent = max(max(abs(mappedNormal.x), abs(mappedNormal.y)), abs(mappedNormal.z));
+        if (largestComponent > 0.0)
+        {
+            mappedNormal /= largestComponent;
+            normal = normalize(mat3(tangent, bitangent, normal) * mappedNormal);
+        }
+    }
+#endif
     const vec4 mappedMetallicRoughness =
         material.hasMetallicRoughnessTexture != 0u ? texture(metallicRoughnessMap, textureCoordinates) : vec4(1.0);
     const float metallic = clamp(material.metallic * mappedMetallicRoughness.b, 0.0, 1.0);
@@ -152,7 +176,7 @@ void main()
     const vec3 specular = (distribution * geometry * fresnel) / max(4.0 * normalView * normalLight, 0.001);
     const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * mappedBaseColor.rgb / pi;
     const vec3 direct = (diffuse + specular) * frameData.lightColorIntensity.rgb *
-    frameData.lightColorIntensity.w * normalLight * shadowVisibility(normal);
+    frameData.lightColorIntensity.w * normalLight * shadowVisibility(geometricNormal);
     const vec3 ambient = mappedBaseColor.rgb * frameData.ambient.rgb * frameData.ambient.w;
     const vec3 mapped = toneMapAces(ambient + direct + emissive);
     const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);

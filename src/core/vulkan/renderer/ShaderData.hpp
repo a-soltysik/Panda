@@ -40,7 +40,7 @@ struct alignas(16) MaterialRecord
     std::uint32_t hasBaseColorTexture {};
     std::uint32_t hasMetallicRoughnessTexture {};
     std::uint32_t hasEmissiveTexture {};
-    glm::vec4 emissive {};
+    glm::vec4 emissiveAndNormalScale {};
 };
 
 static_assert(sizeof(FrameUniform) == 192);
@@ -62,7 +62,7 @@ static_assert(offsetof(MaterialRecord, alphaCutoff) == 16);
 static_assert(offsetof(MaterialRecord, hasBaseColorTexture) == 20);
 static_assert(offsetof(MaterialRecord, hasMetallicRoughnessTexture) == 24);
 static_assert(offsetof(MaterialRecord, hasEmissiveTexture) == 28);
-static_assert(offsetof(MaterialRecord, emissive) == 32);
+static_assert(offsetof(MaterialRecord, emissiveAndNormalScale) == 32);
 static_assert(static_cast<std::uint32_t>(VertexAttributeSemantic::Position) ==
               PANDA_VERTEX_ATTRIBUTE_POSITION_LOCATION);
 static_assert(static_cast<std::uint32_t>(VertexAttributeSemantic::Normal) == PANDA_VERTEX_ATTRIBUTE_NORMAL_LOCATION);
