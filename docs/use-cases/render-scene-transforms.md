@@ -26,16 +26,20 @@ renderer use without Scene. Persistence remains in the
 ## Main flow
 
 1. **Request a snapshot.** The application calls `Scene::createRenderView()` with the
-   current framebuffer aspect ratio. Scene checks that its Context remains valid.
-2. **Prepare the camera.** `SceneState` requires an active camera, updates its dirty
-   world transform and builds the lens projection. `SceneTransformMath` checks that
-   the camera pose has positive uniform scale and no shear, then supplies its
-   rotation for the view-projection matrix; the lens ignores uniform scale.
-3. **Collect visible objects.** `SceneState` updates required world caches, copies
-   visible mesh transforms/tints and retains their mesh handles. For a light,
-   `SceneTransformMath` checks its world basis and supplies its rotation; SceneState
-   maps local -Z into the lighting direction. Visibility applies to each object
-   independently.
+   current framebuffer aspect ratio. Scene checks that its Context remains valid
+   and delegates to `SceneState`.
+2. **Prepare the camera.** `SceneState::createRenderView()` delegates to a short-lived
+   `SceneRenderViewBuilder` borrowing the state. The builder requires an active
+   camera, updates its dirty world transform and builds the lens projection.
+   `SceneTransformMath` checks that the camera pose has positive uniform scale and
+   no shear, then supplies its rotation for the view-projection matrix; the lens
+   ignores uniform scale.
+3. **Collect visible objects.** The builder visits scene slots in order, updates
+   world caches only for alive, visible objects with meshes or lights, and copies
+   visible mesh transforms/tints and their mesh handles. For a light,
+   `SceneTransformMath` checks its world basis and supplies its rotation; the
+   builder maps local -Z into the lighting direction. Visibility applies to each
+   object independently.
 4. **Publish the snapshot.** Scene returns a value independent of subsequent scene
    edits. The application passes it to `Context::render()` in its frame loop.
    Context performs renderer data and mesh-ownership validation before submission.
@@ -45,23 +49,30 @@ sequenceDiagram
     participant A as Application
     participant S as Scene
     participant D as SceneState
+    participant B as SceneRenderViewBuilder
     participant M as SceneTransformMath
     participant C as Context
     A->>S: Step 1 - createRenderView(aspectRatio)
     S->>C: Check live Context
-    S->>D: Step 2 - Prepare active camera
-    D->>D: Update ancestors and build lens projection
-    D->>M: Check camera world basis
-    M-->>D: Positive uniform pose rotation or Error
-    D->>D: Build camera view-projection matrix
-    D->>D: Step 3 - Collect visible meshes and light
-    D->>D: Copy visible mesh draws
-    opt Visible directional light
-        D->>M: Check light world basis
-        M-->>D: Pose rotation or Error
-        D->>D: Derive light direction
+    S->>D: Delegate snapshot request
+    D->>B: Step 2 - build(aspectRatio), borrowing SceneState
+    B->>D: Read active camera and updateWorld
+    D-->>B: Lens and camera world transform
+    B->>M: Check camera world basis
+    M-->>B: Positive uniform pose rotation or Error
+    B->>B: Build lens projection and camera view-projection matrix
+    loop Scene slots in storage order
+        B->>D: Step 3 - Read slot and updateWorld when needed
+        D-->>B: Component values and world transform
+        B->>B: Copy visible mesh draw
     end
-    D-->>S: Camera, light and retained mesh draws
+    opt Visible directional light
+        B->>M: Check light world basis
+        M-->>B: Pose rotation or Error
+        B->>B: Derive light direction
+    end
+    B-->>D: Camera, light and retained mesh draws or Error
+    D-->>S: Return snapshot result
     S-->>A: Step 4 - Result containing snapshot
     A->>C: render(snapshot)
     C->>C: Validate renderer data and mesh ownership
@@ -78,6 +89,10 @@ orientation must describe an orthonormal basis.
 values plus retained mesh handles. Deleting an object releases its Scene-owned mesh
 reference without invalidating an already prepared snapshot. Context outlives both.
 The renderer retains submitted mesh uses through GPU completion.
+
+**Builder lifetime.** `SceneRenderViewBuilder` borrows SceneState only while building
+one snapshot. SceneState remains the sole owner of entity identity, hierarchy,
+components and world caches; the builder does not create or delete entities.
 
 **Current light boundary.** The renderer supports one visible directional light and
 its shadow pass. Multiple visible lights report `Unsupported`. With no visible
