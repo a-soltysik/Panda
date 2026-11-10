@@ -4,11 +4,8 @@
 #include <cstddef>
 #include <expected>
 #include <glm/ext/matrix_float4x4.hpp>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/ext/quaternion_common.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <glm/vector_relational.hpp>
 #include <optional>
 #include <panda/Error.hpp>
@@ -24,6 +21,7 @@
 #include <vector>
 
 #include "Math.hpp"
+#include "SceneRenderViewBuilder.hpp"
 #include "SceneTransformMath.hpp"
 
 namespace panda::scene::detail
@@ -35,44 +33,6 @@ namespace
 auto transformError() -> Error
 {
     return makeError(ErrorCode::InvalidArgument, "Entity handle is stale or belongs to another Scene");
-}
-
-auto makeCameraFromProjection(const glm::mat4& world, const glm::mat4& projection) -> Result<RenderCamera>
-{
-    auto rotation = extractPoseRotation(world);
-    if (!rotation)
-    {
-        return std::unexpected {rotation.error()};
-    }
-    const auto position = glm::vec3 {world[3]};
-    const auto view = glm::mat4_cast(glm::conjugate(*rotation)) * glm::translate(glm::mat4 {1.0F}, -position);
-    const auto viewProjection = projection * view;
-    if (!isFinite(viewProjection))
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Camera matrix is not representable")};
-    }
-    return RenderCamera {.viewProjection = viewProjection, .position = position};
-}
-
-auto makeCamera(const glm::mat4& world, const PerspectiveCamera& lens, float aspectRatio) -> Result<RenderCamera>
-{
-    auto projection =
-        createPerspectiveProjection(lens.verticalFieldOfViewRadians, aspectRatio, lens.nearPlane, lens.farPlane);
-    if (!projection)
-    {
-        return std::unexpected {projection.error()};
-    }
-    return makeCameraFromProjection(world, *projection);
-}
-
-auto makeCamera(const glm::mat4& world, const OrthographicCamera& lens, float aspectRatio) -> Result<RenderCamera>
-{
-    auto projection = createOrthographicProjection(lens.height, aspectRatio, lens.nearPlane, lens.farPlane);
-    if (!projection)
-    {
-        return std::unexpected {projection.error()};
-    }
-    return makeCameraFromProjection(world, *projection);
 }
 
 auto validateCamera(const std::optional<PerspectiveCamera>& camera) -> Result<void>
@@ -661,101 +621,8 @@ auto SceneState::setActiveCamera(const Entity& entity) -> Result<void>
     return {};
 }
 
-auto SceneState::appendRenderObject(std::size_t index, RenderView& view, bool& hasLight) -> Result<void>
-{
-    const auto& slot = _slots[index];
-    if (!slot.alive || !slot.visible || (!slot.mesh && !slot.light))
-    {
-        return {};
-    }
-    auto updated = updateWorld(index);
-    if (!updated)
-    {
-        return updated;
-    }
-    if (slot.mesh)
-    {
-        view.meshes.push_back({.mesh = slot.mesh->mesh, .modelMatrix = slot.worldMatrix, .tint = slot.mesh->tint});
-    }
-    return appendLight(index, view, hasLight);
-}
-
-auto SceneState::appendLight(std::size_t index, RenderView& view, bool& hasLight) -> Result<void>
-{
-    const auto& slot = _slots[index];
-    if (slot.light)
-    {
-        if (hasLight)
-        {
-            return std::unexpected {
-                makeError(ErrorCode::Unsupported, "Renderer supports one visible directional light")};
-        }
-        auto rotation = extractPoseRotation(slot.worldMatrix);
-        if (!rotation)
-        {
-            return std::unexpected {rotation.error()};
-        }
-        view.directionalLight = {
-            .direction = *rotation * glm::vec3 {0.0F, 0.0F, -1.0F},
-            .color = slot.light->color,
-            .intensity = slot.light->intensity
-        };
-        hasLight = true;
-    }
-    return {};
-}
-
-auto SceneState::activeRenderCamera(float aspectRatio) -> Result<RenderCamera>
-{
-    const auto cameraIndex = _activeCamera;
-    if (!cameraIndex)
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene has no active camera")};
-    }
-    const auto& slot = _slots[*cameraIndex];
-    if (!slot.camera && !slot.orthographicCamera)
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Active object has no camera lens")};
-    }
-    auto updated = updateWorld(*cameraIndex);
-    if (!updated)
-    {
-        return std::unexpected {updated.error()};
-    }
-    if (slot.camera)
-    {
-        return makeCamera(slot.worldMatrix, *slot.camera, aspectRatio);
-    }
-    return makeCamera(slot.worldMatrix, *slot.orthographicCamera, aspectRatio);
-}
-
 auto SceneState::createRenderView(float aspectRatio) -> Result<RenderView>
 {
-    auto camera = activeRenderCamera(aspectRatio);
-    if (!camera)
-    {
-        return std::unexpected {camera.error()};
-    }
-    auto view = RenderView {.camera = *camera, .directionalLight = {.intensity = 0.0F}, .meshes = {}};
-    auto collected = collectRenderObjects(view);
-    if (!collected)
-    {
-        return std::unexpected {collected.error()};
-    }
-    return view;
-}
-
-auto SceneState::collectRenderObjects(RenderView& view) -> Result<void>
-{
-    auto hasLight = false;
-    for (auto index = std::size_t {0}; index < _slots.size(); ++index)
-    {
-        auto result = appendRenderObject(index, view, hasLight);
-        if (!result)
-        {
-            return std::unexpected {result.error()};
-        }
-    }
-    return {};
+    return SceneRenderViewBuilder {*this}.build(aspectRatio);
 }
 }

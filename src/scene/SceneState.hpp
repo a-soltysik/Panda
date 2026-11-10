@@ -16,6 +16,8 @@ struct SceneIdentity final
 {
 };
 
+class SceneRenderViewBuilder;
+
 class SceneState final
 {
 public:
@@ -81,11 +83,9 @@ private:
     [[nodiscard]] auto getParentWorld(std::optional<std::size_t> parent) -> Result<glm::mat4>;
     void markDirty(std::size_t slot);
     void destroySlot(std::size_t slot);
-    [[nodiscard]] auto appendRenderObject(std::size_t index, RenderView& view, bool& hasLight) -> Result<void>;
-    [[nodiscard]] auto appendLight(std::size_t index, RenderView& view, bool& hasLight) -> Result<void>;
     [[nodiscard]] auto makeEntity(std::size_t index) const -> Entity;
-    [[nodiscard]] auto activeRenderCamera(float aspectRatio) -> Result<RenderCamera>;
-    [[nodiscard]] auto collectRenderObjects(RenderView& view) -> Result<void>;
+
+    friend class SceneRenderViewBuilder;
 
     std::shared_ptr<const SceneIdentity> _identity {std::make_shared<SceneIdentity>()};
     std::vector<Slot> _slots;
