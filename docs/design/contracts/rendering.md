@@ -49,7 +49,14 @@ the same Context. Its mesh needs `TexCoord0` and `Tangent` for normal mapping; i
 map
 and logs a warning while rendering with the interpolated mesh normal. `normalScale` defaults to 1 and multiplies the
 normal's tangent-space X and Y components without a fixed range; it must be finite. Normal maps do not change geometry
-or the shadow silhouette. Occlusion maps remain planned.
+or the shadow silhouette.
+
+The optional Lit occlusion map must be an uploaded, sampled `R8G8B8A8Unorm` or `B8G8R8A8Unorm` texture from the same
+Context, and its mesh must declare `TexCoord0`. Its red channel stores ambient occlusion: white leaves ambient
+illumination unchanged, while darker values reduce it. `occlusionStrength` defaults to 1, must be finite, and is
+clamped to [0,1] when uploaded. The shader multiplies the ambient term by
+`mix(1, occlusionTexture.r, occlusionStrength)`; direct lighting and dynamic shadows are unchanged. A missing map is
+equivalent to white.
 
 Shader program, material parameters, and pipeline/render state are separate concepts. Editing a color is not a reason to
 compile a pipeline. Sharing a material shares its parameters; cloning is explicit.
@@ -382,7 +389,7 @@ and model determinant sign.
 `RenderFace::Front`, `Back` and `Both` select the visible side (s); negative
 determinants reverse the pipeline's front-face winding in both camera and shadow
 passes. Lit shading flips the normal for rendered back faces in `Back` and `Both`
-modes. Base-color, metallic-roughness and emissive maps consume `TexCoord0`; a normal
+modes. Base-color, metallic-roughness, emissive and occlusion maps consume `TexCoord0`; a normal
 map consumes `TexCoord0` and `Tangent` when both are present. Without those maps, UV
 and tangent data are not required. A missing mesh normal remains a clear preflight
 error for Lit materials.
@@ -392,12 +399,13 @@ own color; it does not illuminate other surfaces or create a bloom halo.
 Procedural clouds without a vertex binding and instance-driven data remain outside
 this implementation slice.
 
-Current material parameters use one 48-byte std430 storage-buffer record per
+Current material parameters use one 64-byte std430 storage-buffer record per
 draw: metallic at offset 0, roughness at 4, the Lit flag at 8, `RenderFace` at
 12, alpha cutoff at 16, the base-color-map flag at 20, the metallic-roughness-map
-flag at 24 and the emissive-map flag at 28. A `vec4` at offset 32 stores emissive
-RGB and normal scale in its fourth component. Records are tightly packed per frame
-slot; the direct draw's
+flag at 24, the emissive-map flag at 28, and the occlusion-map flag at 48 with
+occlusion strength at 52. A `vec4` at offset 32 stores emissive RGB and normal scale
+in its fourth component. The record's final eight bytes are alignment padding.
+Records are tightly packed per frame slot; the direct draw's
 `firstInstance` supplies the flat material index to the fragment shader. Keep this
 host/shader record layout synchronized.
 

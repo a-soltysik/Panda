@@ -19,6 +19,7 @@ inline constexpr auto materialTextureSlots = std::array {
     MaterialTextureSlot {.binding = PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING,
                          .texture = &Material::metallicRoughnessTexture                                             },
     MaterialTextureSlot {.binding = PANDA_TEXTURE_EMISSIVE_BINDING,           .texture = &Material::emissiveTexture },
-    MaterialTextureSlot {.binding = PANDA_TEXTURE_NORMAL_BINDING,             .texture = &Material::normalTexture   }
+    MaterialTextureSlot {.binding = PANDA_TEXTURE_NORMAL_BINDING,             .texture = &Material::normalTexture   },
+    MaterialTextureSlot {.binding = PANDA_TEXTURE_OCCLUSION_BINDING,          .texture = &Material::occlusionTexture}
 };
 }

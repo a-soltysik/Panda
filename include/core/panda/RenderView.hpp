@@ -78,6 +78,12 @@ struct Material
     AlphaMode alphaMode {AlphaMode::Opaque};
     /// Linear alpha threshold used by Mask materials; must be in [0,1].
     float alphaCutoff {0.5F};
+    /// Optional Lit-only linear occlusion map. If set, it must be uploaded RGBA8 UNORM, sampled, and from the rendered
+    /// Context; the mesh must declare TexCoord0. Its red channel scales ambient lighting. An empty handle contributes
+    /// white.
+    Texture occlusionTexture;
+    /// Finite multiplier for the occlusion map's effect, clamped to [0,1] when uploaded; defaults to full strength.
+    float occlusionStrength {1.0F};
 };
 
 /// @brief Camera data for one rendered view.

@@ -21,6 +21,7 @@ layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_BASE_COLOR_BI
 layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING) uniform sampler2D
     metallicRoughnessMap;
 layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_EMISSIVE_BINDING) uniform sampler2D emissiveMap;
+layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_OCCLUSION_BINDING) uniform sampler2D occlusionMap;
 #ifdef HAS_NORMAL_MAP
 layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_NORMAL_BINDING) uniform sampler2D normalMap;
 #endif
@@ -35,6 +36,9 @@ struct MaterialRecord
     uint hasMetallicRoughnessTexture;
     uint hasEmissiveTexture;
     vec4 emissiveAndNormalScale;
+    uint hasOcclusionTexture;
+    float occlusionStrength;
+    vec2 padding;
 };
 
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_MATERIAL_DATA_BINDING, std430) readonly buffer MaterialData
@@ -177,7 +181,10 @@ void main()
     const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * mappedBaseColor.rgb / pi;
     const vec3 direct = (diffuse + specular) * frameData.lightColorIntensity.rgb *
     frameData.lightColorIntensity.w * normalLight * shadowVisibility(geometricNormal);
-    const vec3 ambient = mappedBaseColor.rgb * frameData.ambient.rgb * frameData.ambient.w;
+    const float occlusionSample =
+        material.hasOcclusionTexture != 0u ? texture(occlusionMap, textureCoordinates).r : 1.0;
+    const float ambientOcclusion = mix(1.0, occlusionSample, clamp(material.occlusionStrength, 0.0, 1.0));
+    const vec3 ambient = mappedBaseColor.rgb * frameData.ambient.rgb * frameData.ambient.w * ambientOcclusion;
     const vec3 mapped = toneMapAces(ambient + direct + emissive);
     const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
     fragmentColor = vec4(outputColor, opacity);

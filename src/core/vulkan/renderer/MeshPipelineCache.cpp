@@ -85,7 +85,7 @@ auto usesNormalMap(const MeshDraw& draw, bool hasUv, bool hasTangent) -> bool
 auto usesTextureCoordinates(const Material& material, bool hasNormalMap) -> bool
 {
     return material.baseColorTexture.isValid() || material.metallicRoughnessTexture.isValid() ||
-           material.emissiveTexture.isValid() || hasNormalMap;
+           material.emissiveTexture.isValid() || material.occlusionTexture.isValid() || hasNormalMap;
 }
 
 auto vertexAttributeOffset(const VertexAttribute* attribute) -> std::uint32_t

@@ -65,8 +65,8 @@ auto isValidMaterial(const Material& material) -> bool
            material.baseColor.b >= 0.0F && material.baseColor.a >= 0.0F && isFinite(material.emissive) &&
            material.emissive.r >= 0.0F && material.emissive.g >= 0.0F && material.emissive.b >= 0.0F &&
            std::isfinite(material.metallic) && std::isfinite(material.roughness) &&
-           std::isfinite(material.normalScale) && std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0F &&
-           material.alphaCutoff <= 1.0F;
+           std::isfinite(material.normalScale) && std::isfinite(material.occlusionStrength) &&
+           std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0F && material.alphaCutoff <= 1.0F;
 }
 
 auto hasAttribute(const Mesh& mesh, VertexAttributeSemantic semantic) -> bool
@@ -74,14 +74,20 @@ auto hasAttribute(const Mesh& mesh, VertexAttributeSemantic semantic) -> bool
     return ::panda::detail::MeshResource::getResource(mesh)->getLayout().hasVertexAttribute(semantic);
 }
 
-auto isCompatibleMeshDraw(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+auto validateMeshDraw(const MeshDraw& draw, const resources::MemoryPool& pool) -> Result<void>
 {
     if (!draw.mesh.isValid() || !::panda::detail::MeshResource::getResource(draw.mesh)->belongsTo(pool))
     {
-        return false;
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Context")};
     }
-    return hasAttribute(draw.mesh, VertexAttributeSemantic::Position) &&
-           (draw.material.model != MaterialModel::Lit || hasAttribute(draw.mesh, VertexAttributeSemantic::Normal));
+    if (!hasAttribute(draw.mesh, VertexAttributeSemantic::Position) ||
+        (draw.material.model == MaterialModel::Lit && !hasAttribute(draw.mesh, VertexAttributeSemantic::Normal)))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Context")};
+    }
+    return {};
 }
 
 auto isCompatibleTexture(const Texture& handle,
@@ -97,39 +103,98 @@ auto isCompatibleTexture(const Texture& handle,
            std::ranges::find(formats, texture.getFormat()) != formats.end();
 }
 
-auto areCompatibleSrgbMaps(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+auto validateSrgbMaps(const MeshDraw& draw, const resources::MemoryPool& pool) -> Result<void>
 {
     static constexpr auto formats = std::array {vk::Format::eR8G8B8A8Srgb, vk::Format::eB8G8R8A8Srgb};
     const auto hasUv = hasAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0);
-    return (!draw.material.baseColorTexture.isValid() || hasUv) &&
-           isCompatibleTexture(draw.material.baseColorTexture, pool, formats) &&
-           (!draw.material.emissiveTexture.isValid() || hasUv) &&
-           isCompatibleTexture(draw.material.emissiveTexture, pool, formats);
+    if ((!draw.material.baseColorTexture.isValid() || hasUv) &&
+        isCompatibleTexture(draw.material.baseColorTexture, pool, formats) &&
+        (!draw.material.emissiveTexture.isValid() || hasUv) &&
+        isCompatibleTexture(draw.material.emissiveTexture, pool, formats))
+    {
+        return {};
+    }
+    return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                      "Base-color and emissive maps require UVs and a sampled RGBA8 sRGB texture "
+                                      "from this Context")};
 }
 
-auto isCompatibleMetallicRoughnessTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+auto validateMetallicRoughnessTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> Result<void>
 {
     static constexpr auto formats = std::array {vk::Format::eR8G8B8A8Unorm, vk::Format::eB8G8R8A8Unorm};
-    return !draw.material.metallicRoughnessTexture.isValid() ||
-           (draw.material.model == MaterialModel::Lit && hasAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0) &&
-            isCompatibleTexture(draw.material.metallicRoughnessTexture, pool, formats));
+    if (!draw.material.metallicRoughnessTexture.isValid() ||
+        (draw.material.model == MaterialModel::Lit && hasAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0) &&
+         isCompatibleTexture(draw.material.metallicRoughnessTexture, pool, formats)))
+    {
+        return {};
+    }
+    return std::unexpected {
+        makeError(ErrorCode::InvalidArgument,
+                  "Metallic-roughness map requires UVs and a sampled RGBA8 UNORM texture for a Lit material from "
+                  "this Context")};
 }
 
-auto isCompatibleNormalTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> bool
+auto validateNormalTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> Result<void>
 {
     static constexpr auto formats = std::array {vk::Format::eR8G8B8A8Unorm, vk::Format::eB8G8R8A8Unorm};
-    return !draw.material.normalTexture.isValid() || (draw.material.model == MaterialModel::Lit &&
-                                                      isCompatibleTexture(draw.material.normalTexture, pool, formats));
+    if (!draw.material.normalTexture.isValid() ||
+        (draw.material.model == MaterialModel::Lit && isCompatibleTexture(draw.material.normalTexture, pool, formats)))
+    {
+        return {};
+    }
+    return std::unexpected {
+        makeError(ErrorCode::InvalidArgument,
+                  "Normal map requires a sampled RGBA8 UNORM texture for a Lit material from this Context")};
 }
 
-template <typename CompatibilityCheck>
-auto hasIncompatibleDraws(const RenderView& view,
-                          const resources::MemoryPool& pool,
-                          CompatibilityCheck compatibilityCheck) -> bool
+auto validateOcclusionTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> Result<void>
 {
-    return std::ranges::any_of(view.meshes, [&pool, compatibilityCheck](const auto& draw) {
-        return !compatibilityCheck(draw, pool);
-    });
+    static constexpr auto formats = std::array {vk::Format::eR8G8B8A8Unorm, vk::Format::eB8G8R8A8Unorm};
+    if (!draw.material.occlusionTexture.isValid() ||
+        (draw.material.model == MaterialModel::Lit && hasAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0) &&
+         isCompatibleTexture(draw.material.occlusionTexture, pool, formats)))
+    {
+        return {};
+    }
+    return std::unexpected {
+        makeError(ErrorCode::InvalidArgument,
+                  "Occlusion map requires UVs and a sampled RGBA8 UNORM texture for a Lit material from this "
+                  "Context")};
+}
+
+auto isUploadedTexture(const Texture& texture) -> bool
+{
+    return !texture.isValid() || ::panda::detail::TextureResource::getResource(texture)->isUploaded();
+}
+
+auto validateMaterialTexturesUploaded(const Material& material) -> Result<void>
+{
+    const auto textures = std::array {&material.baseColorTexture,
+                                      &material.metallicRoughnessTexture,
+                                      &material.emissiveTexture,
+                                      &material.normalTexture,
+                                      &material.occlusionTexture};
+    if (std::ranges::all_of(textures, [](const Texture* texture) {
+            return isUploadedTexture(*texture);
+        }))
+    {
+        return {};
+    }
+    return std::unexpected {makeError(ErrorCode::InvalidArgument, "Material texture has not been uploaded")};
+}
+
+using DrawValidation = Result<void> (*)(const MeshDraw&, const resources::MemoryPool&);
+
+auto validateDraws(const RenderView& view, const resources::MemoryPool& pool, DrawValidation validate) -> Result<void>
+{
+    for (const auto& draw : view.meshes)
+    {
+        if (auto result = validate(draw, pool); !result)
+        {
+            return result;
+        }
+    }
+    return {};
 }
 
 }
@@ -163,47 +228,29 @@ auto validateRenderViewData(const RenderView& view) -> Result<void>
 
 auto validateRenderViewMeshes(const RenderView& view, const resources::MemoryPool& pool) -> Result<void>
 {
-    if (hasIncompatibleDraws(view, pool, isCompatibleMeshDraw))
+    static constexpr std::array<DrawValidation, 5> validations {validateMeshDraw,
+                                                                validateSrgbMaps,
+                                                                validateMetallicRoughnessTexture,
+                                                                validateNormalTexture,
+                                                                validateOcclusionTexture};
+    for (const auto validate : validations)
     {
-        return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Context")};
-    }
-    if (hasIncompatibleDraws(view, pool, areCompatibleSrgbMaps))
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument,
-                                          "Base-color and emissive maps require UVs and a sampled RGBA8 sRGB texture "
-                                          "from this Context")};
-    }
-    if (hasIncompatibleDraws(view, pool, isCompatibleMetallicRoughnessTexture))
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument,
-                                          "Metallic-roughness map requires UVs and a sampled RGBA8 UNORM texture for "
-                                          "a Lit material from this Context")};
-    }
-    if (hasIncompatibleDraws(view, pool, isCompatibleNormalTexture))
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument,
-                                          "Normal map requires a sampled RGBA8 UNORM texture for a Lit material "
-                                          "from this Context")};
+        if (auto result = validateDraws(view, pool, validate); !result)
+        {
+            return result;
+        }
     }
     return {};
 }
 
 auto validateRenderViewTextures(const RenderView& view) -> Result<void>
 {
-    if (std::ranges::any_of(view.meshes, [](const auto& draw) {
-            return (draw.material.baseColorTexture.isValid() &&
-                    !::panda::detail::TextureResource::getResource(draw.material.baseColorTexture)->isUploaded()) ||
-                   (draw.material.metallicRoughnessTexture.isValid() &&
-                    !::panda::detail::TextureResource::getResource(draw.material.metallicRoughnessTexture)
-                         ->isUploaded()) ||
-                   (draw.material.emissiveTexture.isValid() &&
-                    !::panda::detail::TextureResource::getResource(draw.material.emissiveTexture)->isUploaded()) ||
-                   (draw.material.normalTexture.isValid() &&
-                    !::panda::detail::TextureResource::getResource(draw.material.normalTexture)->isUploaded());
-        }))
+    for (const auto& draw : view.meshes)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Material texture has not been uploaded")};
+        if (auto result = validateMaterialTexturesUploaded(draw.material); !result)
+        {
+            return result;
+        }
     }
     return {};
 }

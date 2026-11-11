@@ -187,6 +187,22 @@ void expectInvalidNormalMap(const panda::Context& context,
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
+void expectInvalidOcclusionMap(const panda::Context& context,
+                               const panda::RenderCamera& camera,
+                               const panda::Mesh& mesh,
+                               const panda::Texture& texture,
+                               panda::MaterialModel model = panda::MaterialModel::Lit)
+{
+    auto view = panda::RenderView {.camera = camera, .directionalLight = {}, .meshes = {}};
+    auto draw = panda::MeshDraw {.mesh = mesh};
+    draw.material.model = model;
+    draw.material.occlusionTexture = texture;
+    view.meshes.push_back(draw);
+    const auto result = context.render(view);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
+}
+
 auto finishSceneMeshUpload(const panda::Context& context, panda::UploadBatch& batch) -> panda::Result<void>
 {
     const auto completion = batch.submit();
@@ -776,6 +792,10 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         metallicRoughnessDraw.material.metallic = 0.75F;
         metallicRoughnessDraw.material.roughness = 0.8F;
         view->meshes.push_back(metallicRoughnessDraw);
+        auto occlusionDraw = panda::MeshDraw {.mesh = meshes->cube};
+        occlusionDraw.material.occlusionTexture = meshes->metallicRoughnessMap;
+        occlusionDraw.material.occlusionStrength = 0.75F;
+        view->meshes.push_back(occlusionDraw);
         auto litEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube};
         litEmissiveDraw.material.emissiveTexture = meshes->baseColorMap;
         litEmissiveDraw.material.emissive = {1.0F, 0.8F, 0.3F};
@@ -808,6 +828,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         });
         ASSERT_TRUE(uvlessLitMesh.has_value()) << uvlessLitMesh.error().message;
         expectInvalidEmissiveMap(context, view->camera, *uvlessLitMesh, meshes->baseColorMap);
+        expectInvalidOcclusionMap(context, view->camera, *uvlessLitMesh, meshes->metallicRoughnessMap);
         auto missingUvMrView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
         auto missingUvMrDraw = panda::MeshDraw {};
         missingUvMrDraw.mesh = *uvlessLitMesh;
@@ -826,6 +847,12 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         const auto unlitMrResult = context.render(unlitMrView);
         ASSERT_FALSE(unlitMrResult.has_value());
         EXPECT_EQ(unlitMrResult.error().code, panda::ErrorCode::InvalidArgument);
+        expectInvalidOcclusionMap(context,
+                                  view->camera,
+                                  meshes->cube,
+                                  meshes->metallicRoughnessMap,
+                                  panda::MaterialModel::Unlit);
+        expectInvalidOcclusionMap(context, view->camera, meshes->cube, meshes->baseColorMap);
 
         auto linearMap = context.createTexture({
             .extent = vk::Extent2D {1, 1},
@@ -864,6 +891,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment
         });
         ASSERT_TRUE(unsampledMetallicRoughnessMap.has_value()) << unsampledMetallicRoughnessMap.error().message;
+        expectInvalidOcclusionMap(context, view->camera, meshes->cube, *unsampledMetallicRoughnessMap);
         auto unsampledEmissiveMap = context.createTexture({
             .extent = vk::Extent2D {1, 1},
             .format = vk::Format::eR8G8B8A8Srgb,
@@ -902,6 +930,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
         });
         ASSERT_TRUE(unuploadedMrMap.has_value()) << unuploadedMrMap.error().message;
+        expectInvalidOcclusionMap(context, view->camera, meshes->cube, *unuploadedMrMap);
         auto unuploadedMrView = panda::RenderView {.camera = view->camera, .directionalLight = {}, .meshes = {}};
         auto unuploadedMrDraw = panda::MeshDraw {};
         unuploadedMrDraw.mesh = meshes->cube;

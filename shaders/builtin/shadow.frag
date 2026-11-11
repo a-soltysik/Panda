@@ -16,6 +16,9 @@ struct MaterialRecord
     uint hasMetallicRoughnessTexture;
     uint hasEmissiveTexture;
     vec4 emissive;
+    uint hasOcclusionTexture;
+    float occlusionStrength;
+    vec2 padding;
 };
 
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_MATERIAL_DATA_BINDING, std430) readonly buffer MaterialData

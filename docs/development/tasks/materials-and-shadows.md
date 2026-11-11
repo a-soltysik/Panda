@@ -34,9 +34,13 @@ emission is added before tone mapping for Lit and Unlit shading. It changes only
 the object's visible color, not other surfaces, shadows or bloom. Lit materials can
 use a sampled RGBA8 UNORM tangent-space normal map with `TexCoord0` and `Tangent`;
 missing either attribute logs a warning and uses the interpolated mesh normal.
+Lit materials can also use an optional sampled RGBA8 UNORM occlusion map requiring
+`TexCoord0`; its red channel attenuates only ambient illumination, with a finite
+`occlusionStrength` clamped to [0,1] when uploaded and defaulting to 1. The default
+white fallback leaves ambient lighting unchanged.
 `normalScale` defaults to 1, scales tangent-space X and Y, and accepts any finite value. Shader locations share one
 preprocessor definition file consumed by C++ and GLSL, with C++ static assertions against
-`VertexAttributeSemantic`. Material values use a named 48-byte record packed
+`VertexAttributeSemantic`. Material values use a named 64-byte record packed
 contiguously in a per-frame storage buffer with one mapped write per frame. `Material`
 selects front, back or both faces and Opaque, Mask or Blend alpha handling. Mask uses
 the product of material alpha, draw tint alpha and vertex alpha (one when Color is
@@ -46,41 +50,39 @@ with depth writes disabled, and is skipped by the shadow pass. Camera and shadow
 pipelines account for negative determinants, and Lit shading flips normals on
 rendered back faces. `simple_scene` shows the compact layout, a cube with
 base-color, metallic-roughness and emissive maps, a neighboring neutral cube with
-a normal map, and an untextured Unlit triangle; `scene_demo` puts an upright,
+normal and occlusion maps, and an untextured Unlit triangle; `scene_demo` puts an upright,
 vertex-colored triangle into the existing animated object grid.
 
-Occlusion maps, multiple lights, spot/point shadows, and the required shadow-quality
+Multiple lights, spot/point shadows, and the required shadow-quality
 captures remain incomplete.
 This task is not accepted.
 
 ## Current verification
 
-- Windows 11: `msvc-quality`, `all_verify_interface_header_sets
-  panda_format_checks`, and `clang-cuda-analysis-windows` passed. The
-  `msvc-fast` build and full CTest passed all 600 tests; four were skipped (one
-  benchmark and three noncoherent-memory variants). Tool versions: CMake 4.4.2,
-  Ninja 1.13.2, ccache 4.13.6.
+- Windows 11: `msvc-quality` build, isolated public-header verification and format
+  checks, Windows CUDA host/device analysis, and `msvc-fast` build passed.
+  `ctest --preset msvc-fast` passed all 600 tests, with four skips (one benchmark
+  and three noncoherent-memory variants). Tool versions: CMake 4.4.2, Ninja 1.13.2,
+  ccache 4.13.6.
 - WSL Ubuntu 26.04: after syncing with
   `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -SyncOnly`,
-  `gcc-quality`, `all_verify_interface_header_sets panda_format_checks`, and
-  `clang-cuda-analysis` passed. The `gcc-fast` build and full CTest passed all
-  600 tests; eight were skipped (five CUDA capability cases and three
-  noncoherent-memory variants). `gcc-docs` generated the public API
-  documentation. Tool versions: CMake 4.2.3, GCC 16.0.1, Ninja 1.13.2, ccache
-  4.12.3.
-- Both Clang CUDA analysis builds warn that the installed CUDA version is newer
-  than Clang's latest partially supported version 12.9; both targets pass.
-- The final Windows `simple_scene` build was launched on an NVIDIA GeForce RTX
-  4070 Ti. Visual inspection showed distinct alternating light and dark bands
-  on the neutral normal-mapped cube. The normal-map system test renders the
-  mapped and fallback paths but does not compare expected pixels.
+  `gcc-quality` build, isolated public-header verification and format checks, Linux
+  CUDA host/device analysis, and `gcc-fast` build passed. `ctest --preset gcc-fast`
+  passed all 600 tests, with eight skips (five CUDA capability cases and three
+  noncoherent-memory variants). `gcc-docs` generated the API documentation.
+  Tool versions: CMake 4.2.3, GCC 16.0.1, Ninja 1.13.2, ccache 4.12.3.
+- The system render test submits an occlusion-mapped Lit draw and rejects maps
+  with an unsupported model, format, missing UVs, unsampled usage or no submitted
+  upload. It checks successful rendering and validation, not expected pixels.
+  SPIR-V disassembly confirms a 64-byte `MaterialRecord` array stride and the
+  declared member offsets in both mesh and shadow fragment shaders.
 - `git diff --check` passed. `check_docs.py` checked 80 Markdown files and the
-  task queue with no structural errors; `docs-checks` validated 42 Mermaid
-  diagrams in 83 files. SPIR-V disassembly confirms a 48-byte `MaterialRecord`
-  array stride in both mesh and shadow fragment shaders.
-- No RenderDoc shadow-quality capture or automated pixel comparison was made.
-  The hard-edged shadow remains visible in `simple_scene`; shadow quality is
-  still incomplete, so this task remains in progress.
+  task queue with no structural errors; `docs-checks` validated 42 Mermaid diagrams
+  in 83 files.
+- A previous Windows visual check on an NVIDIA GeForce RTX 4070 Ti showed the
+  normal-map lighting bands. The new occlusion patch in `simple_scene` has not
+  been visually inspected and no pixel comparison was made. No RenderDoc
+  shadow-quality capture was made; shadow quality remains incomplete.
 
 ## Acceptance
 
