@@ -27,6 +27,9 @@ class WindowSurface;
 /// @brief Options for creating a Vulkan 1.3 context.
 struct ContextOptions
 {
+    /// Default maximum number of lights accepted by the built-in renderer.
+    static constexpr std::uint32_t defaultMaxLights {64};
+
     /// Whether external Vulkan buffers are unavailable, enabled when supported,
     /// or required on the selected device.
     enum class ExternalBufferSupport : std::uint8_t
@@ -44,6 +47,9 @@ struct ContextOptions
     /// Create timestamp query pools and collect paired CPU and GPU frame timings when the selected queue supports them.
     /// Disabled by default to avoid measurement work in contexts that do not need it.
     bool enableFramePerformanceSampling {false};
+    /// Maximum directional lights in one RenderView; zero allows views without directional lighting.
+    /// Positive limits must fit the selected device's storage-buffer limits.
+    std::uint32_t maxLights {defaultMaxLights};
     /// External Vulkan memory export support.
     ExternalBufferSupport externalBufferSupport {ExternalBufferSupport::Disabled};
 };
@@ -114,9 +120,10 @@ class Context final
 public:
     /// @brief Creates a context without a window surface and selects a Vulkan 1.3
     /// graphics/compute device with dynamic rendering, synchronization2 and timeline semaphores enabled.
-    /// @param options Application name and optional validation or frame-sampling setup.
+    /// @param options Application name, optional validation/frame sampling, and the light budget.
     /// @return A fully initialized owner, or an Error. `Unsupported` means the
-    /// loader/device lacks required capabilities; select a compatible runtime/device.
+    /// loader/device lacks required capabilities or cannot satisfy the light budget;
+    /// select a compatible runtime/device or lower `maxLights`.
     /// If requested validation support is missing, install it or disable
     /// `ContextOptions::enableValidation`. `ResourceExhausted` means other resources
     /// may need to be released before retrying.
@@ -132,10 +139,11 @@ public:
     /// @param surface Borrowed window-system implementation; its extension list must
     /// include `VK_KHR_surface` and the platform surface extension. It and its native
     /// window must outlive Context; calls follow its thread requirements.
-    /// @param options Application name and optional validation or frame-sampling setup.
+    /// @param options Application name, optional validation/frame sampling, and the light budget.
     /// @return A fully initialized owner, or an Error. `Unsupported` means required
-    /// surface/device capabilities or extensions are unavailable; use a compatible
-    /// runtime/device, or disable validation if its optional support is missing.
+    /// surface/device capabilities or extensions are unavailable, including a device
+    /// unable to satisfy the light budget; use a compatible runtime/device, lower
+    /// `maxLights`, or disable validation if its optional support is missing.
     /// `InvalidArgument` can mean the surface extension list omits `VK_KHR_surface`;
     /// include it and the platform-required extensions. Surface-provider errors,
     /// including `SurfaceLost`, are propagated; recover or recreate the platform
@@ -214,13 +222,14 @@ public:
     [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>;
 
     /// @brief Renders and presents one application-supplied view.
-    /// @param view Camera, directional light and mesh draws; an empty mesh list presents the background.
+    /// @param view Camera, directional lights and mesh draws; an empty mesh list presents the background.
+    /// The first directional light uses the current shadow pass; later directional lights are unshadowed.
     /// Meshes must belong to this Context, be uploaded, and declare a valid vertex layout.
     /// Lit materials require Position and Normal; unlit materials require Position. Color is optional and defaults to white.
     /// If a base-color texture is set, it must be uploaded, sampled, RGBA8 sRGB, and from this Context; its mesh must declare TexCoord0.
-    /// @return Checked frame result or a validation/backend/window error. A valid
-    /// completion token means submitted work, not completed presentation. Meshes
-    /// Meshes and selected textures are retained through their submitted GPU use.
+    /// @return Checked frame result or a validation/backend/window error, including `ResourceExhausted` when the
+    /// view exceeds `ContextOptions::maxLights`. A valid completion token means submitted work, not completed
+    /// presentation. Meshes and selected textures are retained through their submitted GPU use.
     [[nodiscard]] auto render(const RenderView& view) const -> Result<FrameResult>;
 
 private:

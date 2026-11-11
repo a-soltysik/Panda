@@ -102,7 +102,8 @@ FrameExecution::FrameExecution(const FrameExecutionCreateInfo& info)
       _queueFamily {info.queueFamily},
       _submissions {info.submissions},
       _pool {info.pool},
-      _performance {info.performance}
+      _performance {info.performance},
+      _maxLights {info.maxLights}
 {
 }
 
@@ -241,7 +242,8 @@ auto FrameExecution::createOrResizeMeshRenderer(const FrameOutput& output) -> st
                                                         .pool = *_pool,
                                                         .extent = output.extent,
                                                         .colorFormat = output.colorFormat,
-                                                        .frameCount = _slots.size()});
+                                                        .frameCount = _slots.size(),
+                                                        .maxLights = _maxLights});
         if (!renderer)
         {
             return std::unexpected {renderer.error()};

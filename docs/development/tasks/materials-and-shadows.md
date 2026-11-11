@@ -51,45 +51,51 @@ pipelines account for negative determinants, and Lit shading flips normals on
 rendered back faces. `simple_scene` shows the compact layout, a cube with
 base-color, metallic-roughness and emissive maps, a neighboring neutral cube with
 normal and occlusion maps, and an untextured Unlit triangle; `scene_demo` puts an upright,
-vertex-colored triangle into the existing animated object grid.
+vertex-colored triangle into the existing animated object grid and shows a first,
+shadowed directional light with an unshadowed fill light. The built-in renderer packs
+all directional-light records in a per-frame SSBO. `ContextOptions::maxLights` defaults
+to 64 and is checked against device storage-buffer limits at Context creation; a view
+that exceeds the budget returns `ResourceExhausted`. A zero budget supports views
+without directional lights; Lit materials still receive the ambient term. The first
+directional light uses the current shadow map, and later lights are unshadowed.
 
-Multiple lights, spot/point shadows, and the required shadow-quality
-captures remain incomplete.
+Spot/point lighting and shadows, and the required shadow-quality captures remain
+incomplete.
 This task is not accepted.
 
 ## Current verification
 
-- Windows 11: `msvc-quality` build, isolated public-header verification and format
-  checks, Windows CUDA host/device analysis, and `msvc-fast` build passed.
-  `ctest --preset msvc-fast` passed all 600 tests, with four skips (one benchmark
-  and three noncoherent-memory variants). Tool versions: CMake 4.4.2, Ninja 1.13.2,
-  ccache 4.13.6.
+- Windows 11: `msvc-quality` build and the `all_verify_interface_header_sets` and
+  `panda_format_checks` targets passed. `clang-cuda-analysis-windows` configured
+  and built successfully. `msvc-fast` configured and built; `ctest --preset msvc-fast`
+  passed all 608 tests, with four skips (one benchmark and three noncoherent-memory
+  variants). Tool versions: CMake 4.4.2, Ninja 1.13.2, ccache 4.13.6.
 - WSL Ubuntu 26.04: after syncing with
   `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -SyncOnly`,
-  `gcc-quality` build, isolated public-header verification and format checks, Linux
-  CUDA host/device analysis, and `gcc-fast` build passed. `ctest --preset gcc-fast`
-  passed all 600 tests, with eight skips (five CUDA capability cases and three
-  noncoherent-memory variants). `gcc-docs` generated the API documentation.
+  `gcc-quality` build and the `all_verify_interface_header_sets` and
+  `panda_format_checks` targets passed. `clang-cuda-analysis` configured and built
+  successfully. `gcc-fast` configured and built; `ctest --preset gcc-fast` passed
+  all 608 tests, with eight skips (five CUDA capability cases and three
+  noncoherent-memory variants). `gcc-docs` generated the public API documentation.
   Tool versions: CMake 4.2.3, GCC 16.0.1, Ninja 1.13.2, ccache 4.12.3.
-- The system render test submits an occlusion-mapped Lit draw and rejects maps
-  with an unsupported model, format, missing UVs, unsampled usage or no submitted
-  upload. It checks successful rendering and validation, not expected pixels.
-  SPIR-V disassembly confirms a 64-byte `MaterialRecord` array stride and the
-  declared member offsets in both mesh and shadow fragment shaders.
-- `git diff --check` passed. `check_docs.py` checked 80 Markdown files and the
-  task queue with no structural errors; `docs-checks` validated 42 Mermaid diagrams
-  in 83 files.
-- A previous Windows visual check on an NVIDIA GeForce RTX 4070 Ti showed the
-  normal-map lighting bands. The new occlusion patch in `simple_scene` has not
-  been visually inspected and no pixel comparison was made. No RenderDoc
-  shadow-quality capture was made; shadow quality remains incomplete.
+- The system tests render the 65-directional-light budget and zero-light Unlit cases.
+  They check submission and validation behavior, not expected pixels. The occlusion
+  map system case also checks upload/model/format/UV/usage rejection, not pixel
+  values. SPIR-V disassembly confirms a 64-byte `MaterialRecord` array stride and
+  its member offsets in the mesh and shadow fragment shaders.
+- `git diff --check` passed. `check_docs.py` checked 80 Markdown files and the task
+  queue with no structural errors. `docs-checks` and the API documentation build
+  passed for the current source.
+- No visual inspection or pixel comparison was made for the current changes, and
+  there is no RenderDoc shadow-quality capture or CPU performance profile. Spot/point
+  lighting and shadows and shadow-quality evidence remain incomplete.
 
 ## Acceptance
 
 ABI/visual cases for position/color-only and lit mesh layouts, emissive factor and
 map behavior in Lit and Unlit materials, blend compositing and draw order, missing
-tangent with normal-map fallback, 65 lights, mask shadows, negative scale, tangent
-sign, spot/point shadows and format fallback.
+tangent with normal-map fallback, 65 lights with an enlarged budget, mask shadows,
+negative scale, tangent sign, spot/point shadows and format fallback.
 
 CPU performance evidence: profile render-view preparation and command recording in
 an optimized build for the 65-light case and representative spot/point shadow

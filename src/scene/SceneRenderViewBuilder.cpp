@@ -90,7 +90,7 @@ auto SceneRenderViewBuilder::activeRenderCamera(float aspectRatio) -> Result<Ren
     return makeCamera(slot.worldMatrix, *slot.orthographicCamera, aspectRatio);
 }
 
-auto SceneRenderViewBuilder::appendRenderObject(std::size_t index, RenderView& view, bool& hasLight) -> Result<void>
+auto SceneRenderViewBuilder::appendRenderObject(std::size_t index, RenderView& view) -> Result<void>
 {
     const auto& slot = _scene._slots[index];
     if (!slot.alive || !slot.visible || (!slot.mesh && !slot.light))
@@ -106,40 +106,34 @@ auto SceneRenderViewBuilder::appendRenderObject(std::size_t index, RenderView& v
     {
         view.meshes.push_back({.mesh = slot.mesh->mesh, .modelMatrix = slot.worldMatrix, .tint = slot.mesh->tint});
     }
-    return appendLight(index, view, hasLight);
+    return appendLight(index, view);
 }
 
-auto SceneRenderViewBuilder::appendLight(std::size_t index, RenderView& view, bool& hasLight) -> Result<void>
+auto SceneRenderViewBuilder::appendLight(std::size_t index, RenderView& view) -> Result<void>
 {
     const auto& slot = _scene._slots[index];
     if (slot.light)
     {
-        if (hasLight)
-        {
-            return std::unexpected {
-                makeError(ErrorCode::Unsupported, "Renderer supports one visible directional light")};
-        }
         auto rotation = extractPoseRotation(slot.worldMatrix);
         if (!rotation)
         {
             return std::unexpected {rotation.error()};
         }
-        view.directionalLight = {
+        const auto light = panda::DirectionalLight {
             .direction = *rotation * glm::vec3 {0.0F, 0.0F, -1.0F},
             .color = slot.light->color,
             .intensity = slot.light->intensity
         };
-        hasLight = true;
+        view.directionalLights.push_back(light);
     }
     return {};
 }
 
 auto SceneRenderViewBuilder::collectRenderObjects(RenderView& view) -> Result<void>
 {
-    auto hasLight = false;
     for (auto index = std::size_t {0}; index < _scene._slots.size(); ++index)
     {
-        auto result = appendRenderObject(index, view, hasLight);
+        auto result = appendRenderObject(index, view);
         if (!result)
         {
             return std::unexpected {result.error()};
@@ -155,7 +149,8 @@ auto SceneRenderViewBuilder::build(float aspectRatio) -> Result<RenderView>
     {
         return std::unexpected {camera.error()};
     }
-    auto view = RenderView {.camera = *camera, .directionalLight = {.intensity = 0.0F}, .meshes = {}};
+    auto view = RenderView {};
+    view.camera = *camera;
     auto collected = collectRenderObjects(view);
     if (!collected)
     {

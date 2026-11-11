@@ -3,7 +3,7 @@
 ## Goal and boundary
 
 An application asks optional `Panda::Scene` to prepare a `RenderView` containing its
-visible meshes, active camera and directional light. **Panda::Scene** starts empty,
+visible meshes, active camera and directional lights. **Panda::Scene** starts empty,
 owns runtime identities, transforms and component values, and retains associated
 mesh handles. **The application** creates entities, attaches camera/light
 components, creates/uploads GPU assets, selects the camera, updates the scene and
@@ -65,13 +65,13 @@ sequenceDiagram
         B->>D: Step 3 - Read slot and updateWorld when needed
         D-->>B: Component values and world transform
         B->>B: Copy visible mesh draw
+        opt Visible directional light
+            B->>M: Check light world basis
+            M-->>B: Pose rotation or Error
+            B->>B: Append each visible light in scene order
+        end
     end
-    opt Visible directional light
-        B->>M: Check light world basis
-        M-->>B: Pose rotation or Error
-        B->>B: Derive light direction
-    end
-    B-->>D: Camera, light and retained mesh draws or Error
+    B-->>D: Camera, directional lights and retained mesh draws or Error
     D-->>S: Return snapshot result
     S-->>A: Step 4 - Result containing snapshot
     A->>C: render(snapshot)
@@ -94,18 +94,19 @@ The renderer retains submitted mesh uses through GPU completion.
 one snapshot. SceneState remains the sole owner of entity identity, hierarchy,
 components and world caches; the builder does not create or delete entities.
 
-**Current light boundary.** The renderer supports one visible directional light and
-its shadow pass. Multiple visible lights report `Unsupported`. With no visible
-light, direct intensity is zero; the renderer's existing ambient term still applies.
+**Current light boundary.** Scene preserves visible directional lights in its
+`RenderView::directionalLights` vector. The first visible light uses the renderer's
+existing shadow pass; later visible lights contribute unshadowed direct lighting.
+With no visible light, direct intensity is zero and the renderer's ambient term still
+applies.
 Deleting the active camera clears selection instead of choosing another object.
 
 ## Variants and errors
 
-|                  | Point and condition                                                                | Response                 | Resulting state and next action                             |
-|------------------|------------------------------------------------------------------------------------|--------------------------|-------------------------------------------------------------|
-| **Error&nbsp;1** | Step 2: no selected camera, invalid lens/aspect, reflected/nonuniform/sheared pose | Return `InvalidArgument` | No snapshot is published; select or correct the camera.     |
-| **Error&nbsp;2** | Step 3: multiple visible directional lights                                        | Return `Unsupported`     | No snapshot is published; hide or remove additional lights. |
-| **Error&nbsp;3** | Step 3: invalid light pose or non-finite derived world transform                   | Return `InvalidArgument` | Logical scene state is unchanged; correct the object data.  |
+|                  | Point and condition                                                                | Response                 | Resulting state and next action                            |
+|------------------|------------------------------------------------------------------------------------|--------------------------|------------------------------------------------------------|
+| **Error&nbsp;1** | Step 2: no selected camera, invalid lens/aspect, reflected/nonuniform/sheared pose | Return `InvalidArgument` | No snapshot is published; select or correct the camera.    |
+| **Error&nbsp;2** | Step 3: invalid light pose or non-finite derived world transform                   | Return `InvalidArgument` | Logical scene state is unchanged; correct the object data. |
 
 ## Outcomes
 

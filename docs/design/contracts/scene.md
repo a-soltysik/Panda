@@ -174,7 +174,7 @@ rules are specified in the rendering contract.
 `Scene::create()` adds no entities. An application creates a camera entity, attaches
 a perspective or orthographic lens, selects it, and creates any light entities it
 wants. The `scene_demo` example places its camera at (7, 5, 9) and explicitly adds
-one directional light. Scene does not create GPU resources; the application can
+one shadowed directional light and an unshadowed fill light. Scene does not create GPU resources; the application can
 create a ground with Core's plane geometry helper and attach its uploaded mesh.
 
 Cube is centered at the origin with side length 1 m. Plane lies in XZ, faces +Y and

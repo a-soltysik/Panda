@@ -217,6 +217,9 @@ protected:
                 *output = VkPhysicalDeviceProperties {};
                 output->apiVersion = vk::ApiVersion13;
                 output->deviceType = static_cast<VkPhysicalDeviceType>(vk::PhysicalDeviceType::eDiscreteGpu);
+                output->limits.maxStorageBufferRange = 4096;
+                output->limits.maxDescriptorSetStorageBuffers = 4;
+                output->limits.maxPerStageDescriptorStorageBuffers = 4;
                 std::ranges::copy(std::string_view {"Unit GPU"}, std::span {output->deviceName}.begin());
             });
     }

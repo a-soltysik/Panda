@@ -36,8 +36,9 @@ camera lenses, and directional-light parameters. The application creates entitie
 attaches components, selects a camera, and owns geometry and uploads. A selected
 camera and visible objects produce a `RenderView` snapshot; camera/light poses
 reject shear, reflections and nonuniform scale. Deleting the active camera clears
-selection. Visibility does not hide children. One visible directional light is
-supported; more report `Unsupported`, and no light produces zero direct intensity.
+selection. Visibility does not hide children. Visible directional lights are copied
+in `RenderView::directionalLights`; the first uses the shadow pass and later lights
+contribute unshadowed direct lighting. No visible light produces zero direct intensity.
 Renderer-specific data and mesh ownership are checked once in `Context::render()`.
 Core provides configurable CPU sphere geometry. The `scene_demo` example renders an
 animated hierarchy through Scene; `simple_scene` remains a direct-renderer example.

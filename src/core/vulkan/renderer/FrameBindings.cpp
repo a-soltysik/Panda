@@ -57,27 +57,78 @@ constexpr auto makeTextureBindings() -> std::array<vk::DescriptorSetLayoutBindin
     return bindings;
 }
 
+constexpr auto makeFrameBindings() -> std::array<vk::DescriptorSetLayoutBinding, 4>
+{
+    return {
+        vk::DescriptorSetLayoutBinding {
+                                        .binding = PANDA_FRAME_UNIFORM_BINDING,
+                                        .descriptorType = vk::DescriptorType::eUniformBuffer,
+                                        .descriptorCount = 1,
+                                        .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
+        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_SHADOW_MAP_BINDING,
+                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                                        .descriptorCount = 1,
+                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   },
+        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_MATERIAL_DATA_BINDING,
+                                        .descriptorType = vk::DescriptorType::eStorageBuffer,
+                                        .descriptorCount = 1,
+                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   },
+        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_LIGHT_DATA_BINDING,
+                                        .descriptorType = vk::DescriptorType::eStorageBuffer,
+                                        .descriptorCount = 1,
+                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   }
+    };
+}
+
+auto makeBufferWrite(vk::DescriptorSet set,
+                     std::uint32_t binding,
+                     vk::DescriptorType type,
+                     const vk::DescriptorBufferInfo& info) -> vk::WriteDescriptorSet
+{
+    return {.dstSet = set, .dstBinding = binding, .descriptorCount = 1, .descriptorType = type, .pBufferInfo = &info};
+}
+
+auto makeBufferInfo(vk::Buffer buffer, vk::DeviceSize range) -> vk::DescriptorBufferInfo
+{
+    return {.buffer = buffer, .offset = 0, .range = range};
+}
+
 struct TextureDescriptorResources
 {
     vk::raii::DescriptorPool pool {nullptr};
     std::vector<vk::raii::DescriptorSet> sets;
 };
 
-auto makeFrameUniform(const RenderView& view) -> std::expected<FrameUniform, Error>
+auto makeFrameUniform(const RenderView& view, std::uint32_t lightCount) -> std::expected<FrameUniform, Error>
 {
-    const auto lightViewProjection = createDirectionalShadowView(view.camera, view.directionalLight);
-    if (!lightViewProjection)
+    auto lightViewProjection = glm::mat4 {1.0F};
+    auto lightDirection = glm::vec3 {};
+    if (!view.directionalLights.empty())
     {
-        return std::unexpected {lightViewProjection.error()};
+        const auto& shadowLight = view.directionalLights.front();
+        const auto shadowView = createDirectionalShadowView(view.camera, shadowLight);
+        if (!shadowView)
+        {
+            return std::unexpected {shadowView.error()};
+        }
+        lightViewProjection = *shadowView;
+        lightDirection = glm::normalize(shadowLight.direction);
     }
-    const auto direction = glm::normalize(view.directionalLight.direction);
     return FrameUniform {
         .viewProjection = view.camera.viewProjection,
-        .lightViewProjection = *lightViewProjection,
+        .lightViewProjection = lightViewProjection,
         .cameraPosition = glm::vec4 {view.camera.position, 1.0F},
-        .lightDirection = glm::vec4 {direction, 0.0F},
-        .lightColorIntensity = glm::vec4 {view.directionalLight.color, view.directionalLight.intensity},
-        .ambient = glm::vec4 {1.0F, 1.0F, 1.0F, 0.06F}
+        .lightDirection = glm::vec4 {lightDirection, 0.0F},
+        .ambient = glm::vec4 {1.0F, 1.0F, 1.0F, 0.06F},
+        .lightInfo = glm::uvec4 {lightCount, 0U, 0U, 0U}
+    };
+}
+
+auto makeLightRecord(const DirectionalLight& light) -> LightRecord
+{
+    return {
+        .direction = glm::vec4 {glm::normalize(light.direction), 0.0F           },
+        .colorIntensity = glm::vec4 {light.color,                     light.intensity}
     };
 }
 
@@ -157,41 +208,48 @@ FrameBindings::FrameBindings(vk::PhysicalDevice physicalDevice,
 
 FrameBindings::~FrameBindings() = default;
 
-auto FrameBindings::validateDeviceLimits(vk::PhysicalDevice physicalDevice) -> std::expected<void, Error>
+auto FrameBindings::validateDeviceLimits(vk::PhysicalDevice physicalDevice, std::uint32_t maxLights)
+    -> std::expected<void, Error>
 {
-    if (physicalDevice.getProperties().limits.maxStorageBufferRange < sizeof(MaterialRecord))
+    return validateDeviceLimits(physicalDevice.getProperties().limits, maxLights);
+}
+
+auto FrameBindings::validateDeviceLimits(const vk::PhysicalDeviceLimits& limits, std::uint32_t maxLights)
+    -> std::expected<void, Error>
+{
+    if (limits.maxStorageBufferRange < sizeof(MaterialRecord) ||
+        limits.maxStorageBufferRange / sizeof(LightRecord) < maxLights || limits.maxDescriptorSetStorageBuffers < 2 ||
+        limits.maxPerStageDescriptorStorageBuffers < 2)
     {
         return std::unexpected {
-            makeError(ErrorCode::Unsupported, "Device storage-buffer limit is below renderer needs")};
+            makeError(ErrorCode::Unsupported, "Device storage-buffer limits are below the configured renderer needs")};
     }
     return {};
 }
 
-auto FrameBindings::create(vk::PhysicalDevice physicalDevice,
-                           const vk::raii::Device& device,
-                           resources::MemoryPool& pool,
-                           std::size_t frameCount) -> std::expected<std::unique_ptr<FrameBindings>, Error>
+auto FrameBindings::create(const FrameBindingsCreateInfo& info) -> std::expected<std::unique_ptr<FrameBindings>, Error>
 {
-    if (const auto supported = validateDeviceLimits(physicalDevice); !supported)
+    if (const auto supported = validateDeviceLimits(info.physicalDevice, info.maxLights); !supported)
     {
         return std::unexpected {supported.error()};
     }
-    if (frameCount == 0 || frameCount > std::numeric_limits<std::uint32_t>::max())
+    if (info.frameCount == 0 || info.frameCount > std::numeric_limits<std::uint32_t>::max() / 2U)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid frame binding count")};
     }
     auto bindings = std::unique_ptr<FrameBindings> {
-        new FrameBindings {physicalDevice, device, pool, frameCount}
+        new FrameBindings {info.physicalDevice, info.device, info.pool, info.frameCount}
     };
-    if (const auto initialized = bindings->initialize(); !initialized)
+    if (const auto initialized = bindings->initialize(info.maxLights); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
     return bindings;
 }
 
-auto FrameBindings::initialize() -> std::expected<void, Error>
+auto FrameBindings::initialize(std::uint32_t maxLights) -> std::expected<void, Error>
 {
+    _maxLights = maxLights;
     return initializeDescriptorState()
         .and_then([this] {
             return initializeSamplers();
@@ -220,21 +278,7 @@ auto FrameBindings::initializeDescriptorState() -> std::expected<void, Error>
 
 auto FrameBindings::initializeDescriptorSetLayout() -> std::expected<void, Error>
 {
-    static constexpr auto bindings = std::array {
-        vk::DescriptorSetLayoutBinding {
-                                        .binding = PANDA_FRAME_UNIFORM_BINDING,
-                                        .descriptorType = vk::DescriptorType::eUniformBuffer,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_SHADOW_MAP_BINDING,
-                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   },
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_MATERIAL_DATA_BINDING,
-                                        .descriptorType = vk::DescriptorType::eStorageBuffer,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   }
-    };
+    static constexpr auto bindings = makeFrameBindings();
     const auto setLayout = (*_device).createDescriptorSetLayout(
         vk::DescriptorSetLayoutCreateInfo {.bindingCount = static_cast<std::uint32_t>(bindings.size()),
                                            .pBindings = bindings.data()},
@@ -290,9 +334,9 @@ auto FrameBindings::initializeDescriptorPool() -> std::expected<void, Error>
 {
     const auto setCount = static_cast<std::uint32_t>(_frames.size());
     const auto poolSizes = std::array {
-        vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBuffer,        .descriptorCount = setCount},
-        vk::DescriptorPoolSize {.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = setCount},
-        vk::DescriptorPoolSize {.type = vk::DescriptorType::eStorageBuffer,        .descriptorCount = setCount}
+        vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBuffer,        .descriptorCount = setCount     },
+        vk::DescriptorPoolSize {.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = setCount     },
+        vk::DescriptorPoolSize {.type = vk::DescriptorType::eStorageBuffer,        .descriptorCount = setCount * 2U}
     };
     auto pool = checkedCreation(_device.createDescriptorPool(
         vk::DescriptorPoolCreateInfo {.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -330,27 +374,43 @@ auto FrameBindings::initializeFrameBuffers() -> std::expected<void, Error>
 {
     for (auto& frame : _frames)
     {
-        static constexpr auto uniformDescription = BufferDesc {.size = sizeof(FrameUniform),
-                                                               .usage = vk::BufferUsageFlagBits::eUniformBuffer,
-                                                               .memory = BufferMemory::Upload};
-        auto uniformBuffer = ::panda::detail::BufferResource::create(_device, _pool, uniformDescription);
-        if (!uniformBuffer)
+        if (const auto initialized = initializeFrameBuffersForSlot(frame); !initialized)
         {
-            return std::unexpected {uniformBuffer.error()};
+            return initialized;
         }
-        frame.uniformBuffer = std::move(*uniformBuffer);
-        static constexpr auto materialDescription = BufferDesc {.size = sizeof(MaterialRecord),
-                                                                .usage = vk::BufferUsageFlagBits::eStorageBuffer,
-                                                                .memory = BufferMemory::Upload};
-        auto materialBuffer = ::panda::detail::BufferResource::create(_device, _pool, materialDescription);
-        if (!materialBuffer)
-        {
-            return std::unexpected {materialBuffer.error()};
-        }
-        frame.materialBuffer = std::move(*materialBuffer);
-        frame.materialBufferCapacity = sizeof(MaterialRecord);
     }
     return {};
+}
+
+auto FrameBindings::initializeFrameBuffersForSlot(FrameResources& frame) -> std::expected<void, Error>
+{
+    return createUploadBuffer(sizeof(FrameUniform), vk::BufferUsageFlagBits::eUniformBuffer)
+        .transform([&](auto buffer) {
+            frame.uniformBuffer = std::move(buffer);
+        })
+        .and_then([&] {
+            return createUploadBuffer(sizeof(MaterialRecord), vk::BufferUsageFlagBits::eStorageBuffer)
+                .transform([&](auto buffer) {
+                    frame.materialBuffer = std::move(buffer);
+                    frame.materialBufferCapacity = sizeof(MaterialRecord);
+                });
+        })
+        .and_then([&] {
+            return createUploadBuffer(sizeof(LightRecord), vk::BufferUsageFlagBits::eStorageBuffer)
+                .transform([&](auto buffer) {
+                    frame.lightBuffer = std::move(buffer);
+                    frame.lightBufferCapacity = sizeof(LightRecord);
+                });
+        });
+}
+
+auto FrameBindings::createUploadBuffer(vk::DeviceSize size, vk::BufferUsageFlagBits usage)
+    -> std::expected<std::shared_ptr<::panda::detail::BufferResource>, Error>
+{
+    return ::panda::detail::BufferResource::create(
+        _device,
+        _pool,
+        BufferDesc {.size = size, .usage = usage, .memory = BufferMemory::Upload});
 }
 
 auto FrameBindings::initializeSamplers() -> std::expected<void, Error>
@@ -403,15 +463,40 @@ auto FrameBindings::initializeTextureSampler() -> std::expected<void, Error>
     return {};
 }
 
-auto FrameBindings::writeFrameUniform(FrameResources& frame, const RenderView& view) -> std::expected<void, Error>
+auto FrameBindings::writeFrameUniform(FrameResources& frame, const RenderView& view, std::uint32_t lightCount)
+    -> std::expected<void, Error>
 {
-    const auto uniform = makeFrameUniform(view);
+    const auto uniform = makeFrameUniform(view, lightCount);
     if (!uniform)
     {
         return std::unexpected {uniform.error()};
     }
     const auto bytes = std::as_bytes(std::span {&*uniform, std::size_t {1}});
     return frame.uniformBuffer->writeMapped(0, bytes);
+}
+
+auto FrameBindings::ensureLightBuffer(FrameResources& frame, std::size_t lightCount) -> std::expected<void, Error>
+{
+    if (lightCount > _maxStorageBufferRange / sizeof(LightRecord))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds storage-buffer limits")};
+    }
+    const auto requiredCapacity = sizeof(LightRecord) * std::max<std::size_t>(lightCount, 1U);
+    if (frame.lightBufferCapacity < requiredCapacity)
+    {
+        const auto description = BufferDesc {.size = requiredCapacity,
+                                             .usage = vk::BufferUsageFlagBits::eStorageBuffer,
+                                             .memory = BufferMemory::Upload};
+        auto buffer = ::panda::detail::BufferResource::create(_device, _pool, description);
+        if (!buffer)
+        {
+            return std::unexpected {buffer.error()};
+        }
+        frame.lightBuffer = std::move(*buffer);
+        frame.lightBufferCapacity = requiredCapacity;
+    }
+    return {};
 }
 
 auto FrameBindings::ensureMaterialBuffer(FrameResources& frame, std::size_t drawCount) -> std::expected<void, Error>
@@ -474,33 +559,45 @@ auto FrameBindings::writeMaterialRecords(FrameResources& frame, const RenderView
     return {};
 }
 
+auto FrameBindings::writeLightRecords(FrameResources& frame, const RenderView& view) -> std::expected<void, Error>
+{
+    if (view.directionalLights.empty())
+    {
+        return {};
+    }
+    _lightRecords.clear();
+    _lightRecords.reserve(view.directionalLights.size());
+    std::ranges::transform(view.directionalLights, std::back_inserter(_lightRecords), makeLightRecord);
+    const auto lightBytes = std::as_bytes(std::span {_lightRecords});
+    return frame.lightBuffer->writeMapped(0, lightBytes);
+}
+
 void FrameBindings::updateFrameDescriptorSet(const FrameResources& frame, vk::ImageView shadowView)
 {
-    const auto bufferInfo = vk::DescriptorBufferInfo {.buffer = frame.uniformBuffer->getNative(),
-                                                      .offset = 0,
-                                                      .range = sizeof(FrameUniform)};
+    const auto bufferInfo = makeBufferInfo(frame.uniformBuffer->getNative(), sizeof(FrameUniform));
     const auto imageInfo = vk::DescriptorImageInfo {.sampler = *_shadowSampler,
                                                     .imageView = shadowView,
                                                     .imageLayout = vk::ImageLayout::eDepthReadOnlyOptimal};
-    const auto materialInfo = vk::DescriptorBufferInfo {.buffer = frame.materialBuffer->getNative(),
-                                                        .offset = 0,
-                                                        .range = frame.materialBufferCapacity};
+    const auto materialInfo = makeBufferInfo(frame.materialBuffer->getNative(), frame.materialBufferCapacity);
+    const auto lightInfo = makeBufferInfo(frame.lightBuffer->getNative(), frame.lightBufferCapacity);
     const auto writes = std::array {
-        vk::WriteDescriptorSet {.dstSet = *frame.descriptorSet,
-                                .dstBinding = PANDA_FRAME_UNIFORM_BINDING,
-                                .descriptorCount = 1,
-                                .descriptorType = vk::DescriptorType::eUniformBuffer,
-                                .pBufferInfo = &bufferInfo  },
+        makeBufferWrite(*frame.descriptorSet,
+                        PANDA_FRAME_UNIFORM_BINDING,
+                        vk::DescriptorType::eUniformBuffer,
+                        bufferInfo),
         vk::WriteDescriptorSet {.dstSet = *frame.descriptorSet,
                                 .dstBinding = PANDA_FRAME_SHADOW_MAP_BINDING,
                                 .descriptorCount = 1,
                                 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                                .pImageInfo = &imageInfo    },
-        vk::WriteDescriptorSet {.dstSet = *frame.descriptorSet,
-                                .dstBinding = PANDA_FRAME_MATERIAL_DATA_BINDING,
-                                .descriptorCount = 1,
-                                .descriptorType = vk::DescriptorType::eStorageBuffer,
-                                .pBufferInfo = &materialInfo}
+                                .pImageInfo = &imageInfo},
+        makeBufferWrite(*frame.descriptorSet,
+                        PANDA_FRAME_MATERIAL_DATA_BINDING,
+                        vk::DescriptorType::eStorageBuffer,
+                        materialInfo),
+        makeBufferWrite(*frame.descriptorSet,
+                        PANDA_FRAME_LIGHT_DATA_BINDING,
+                        vk::DescriptorType::eStorageBuffer,
+                        lightInfo)
     };
     _device.updateDescriptorSets(writes, {});
 }
@@ -551,24 +648,32 @@ auto FrameBindings::updateFrame(std::size_t frameIndex, const RenderView& view, 
     -> std::expected<void, Error>
 {
     auto& frame = _frames.at(frameIndex);
-    if (const auto written = writeFrameUniform(frame, view); !written)
+    const auto requestedLightCount = view.directionalLights.size();
+    if (requestedLightCount > _maxLights)
     {
-        return written;
+        return std::unexpected {
+            makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds the Context maxLights budget")};
     }
-    if (const auto prepared = ensureMaterialBuffer(frame, view.meshes.size()); !prepared)
-    {
-        return prepared;
-    }
-    if (const auto written = writeMaterialRecords(frame, view); !written)
-    {
-        return written;
-    }
-    if (const auto ensured = ensureTextureDescriptorSets(frame, view.meshes.size()); !ensured)
-    {
-        return ensured;
-    }
-    updateFrameDescriptorSet(frame, shadowView);
-    writeTextureDescriptors(frame, view, shadowView);
-    return {};
+    const auto lightCount = static_cast<std::uint32_t>(requestedLightCount);
+    return ensureLightBuffer(frame, lightCount)
+        .and_then([&] {
+            return writeFrameUniform(frame, view, lightCount);
+        })
+        .and_then([&] {
+            return ensureMaterialBuffer(frame, view.meshes.size());
+        })
+        .and_then([&] {
+            return writeMaterialRecords(frame, view);
+        })
+        .and_then([&] {
+            return writeLightRecords(frame, view);
+        })
+        .and_then([&] {
+            return ensureTextureDescriptorSets(frame, view.meshes.size());
+        })
+        .transform([&] {
+            updateFrameDescriptorSet(frame, shadowView);
+            writeTextureDescriptors(frame, view, shadowView);
+        });
 }
 }

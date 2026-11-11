@@ -27,6 +27,7 @@
 #include "external/ExternalContext.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/Presentation.hpp"
+#include "renderer/FrameBindings.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace panda::core::vulkan::context
@@ -109,7 +110,7 @@ auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice,
 
 auto initializeDevice(ContextResources& resources, const WindowSurface* surface, const ContextOptions& options)
     -> Result<void>;
-auto selectPhysicalDevice(ContextResources& resources) -> Result<SelectedDevice>;
+auto selectPhysicalDevice(ContextResources& resources, std::uint32_t maxLights) -> Result<SelectedDevice>;
 auto queryExternalSupport(ContextResources& resources, const ContextOptions& options)
     -> Result<std::optional<api_detail::ExternalSupport>>;
 auto initializeLogicalDevice(ContextResources& resources,
@@ -119,7 +120,7 @@ auto initializeLogicalDevice(ContextResources& resources,
 auto initializeSelectedDevice(ContextResources& resources,
                               const WindowSurface* surface,
                               const SelectedDevice& selected,
-                              bool enableFramePerformanceSampling) -> Result<void>;
+                              const ContextOptions& options) -> Result<void>;
 auto initializeSelectedDeviceResources(ContextResources& resources,
                                        const WindowSurface* surface,
                                        const SelectedDevice& selected,
@@ -127,8 +128,10 @@ auto initializeSelectedDeviceResources(ContextResources& resources,
 auto initializePerformance(ContextResources& resources,
                            const SelectedDevice& selected,
                            bool enableFramePerformanceSampling) -> Result<void>;
-auto initializePresentation(ContextResources& resources, const WindowSurface& surface, const SelectedDevice& selected)
-    -> Result<void>;
+auto initializePresentation(ContextResources& resources,
+                            const WindowSurface& surface,
+                            const SelectedDevice& selected,
+                            std::uint32_t maxLights) -> Result<void>;
 void updateDeviceInfo(ContextResources& resources, const SelectedDevice& selected);
 }
 
@@ -151,7 +154,7 @@ auto createResources(const WindowSurface* surface, const ContextOptions& options
 
 namespace
 {
-auto selectPhysicalDevice(ContextResources& resources) -> Result<SelectedDevice>
+auto selectPhysicalDevice(ContextResources& resources, std::uint32_t maxLights) -> Result<SelectedDevice>
 {
     const auto& instanceResources = resources.instance();
     const auto surface = instanceResources.surface ? **instanceResources.surface : vk::SurfaceKHR {};
@@ -161,6 +164,10 @@ auto selectPhysicalDevice(ContextResources& resources) -> Result<SelectedDevice>
         return std::unexpected {std::move(selected.error())};
     }
     resources.physicalDevice() = vk::raii::PhysicalDevice {resources.instance().instance, selected->physicalDevice};
+    if (const auto supported = renderer::FrameBindings::validateDeviceLimits(selected->limits, maxLights); !supported)
+    {
+        return std::unexpected {supported.error()};
+    }
     return selected;
 }
 
@@ -194,7 +201,7 @@ auto initializeLogicalDevice(ContextResources& resources,
 auto initializeDevice(ContextResources& resources, const WindowSurface* surface, const ContextOptions& options)
     -> Result<void>
 {
-    auto selected = selectPhysicalDevice(resources);
+    auto selected = selectPhysicalDevice(resources, options.maxLights);
     if (!selected)
     {
         return std::unexpected {selected.error()};
@@ -215,22 +222,23 @@ auto initializeDevice(ContextResources& resources, const WindowSurface* surface,
     {
         return std::unexpected {initialized.error()};
     }
-    return initializeSelectedDevice(resources, surface, *selected, options.enableFramePerformanceSampling);
+    return initializeSelectedDevice(resources, surface, *selected, options);
 }
 
 auto initializeSelectedDevice(ContextResources& resources,
                               const WindowSurface* surface,
                               const SelectedDevice& selected,
-                              bool enableFramePerformanceSampling) -> Result<void>
+                              const ContextOptions& options) -> Result<void>
 {
-    if (const auto initialized = initializePerformance(resources, selected, enableFramePerformanceSampling);
+    if (const auto initialized = initializePerformance(resources, selected, options.enableFramePerformanceSampling);
         !initialized)
     {
         return std::unexpected {initialized.error()};
     }
     if (surface != nullptr)
     {
-        if (const auto initialized = initializePresentation(resources, *surface, selected); !initialized)
+        if (const auto initialized = initializePresentation(resources, *surface, selected, options.maxLights);
+            !initialized)
         {
             return std::unexpected {initialized.error()};
         }
@@ -303,8 +311,10 @@ auto initializePerformance(ContextResources& resources,
     return {};
 }
 
-auto initializePresentation(ContextResources& resources, const WindowSurface& surface, const SelectedDevice& selected)
-    -> Result<void>
+auto initializePresentation(ContextResources& resources,
+                            const WindowSurface& surface,
+                            const SelectedDevice& selected,
+                            std::uint32_t maxLights) -> Result<void>
 {
     const auto& instanceResources = resources.instance();
     const auto contextSurface = instanceResources.surface ? **instanceResources.surface : vk::SurfaceKHR {};
@@ -315,7 +325,8 @@ auto initializePresentation(ContextResources& resources, const WindowSurface& su
                                               .deviceInfo = selected.info,
                                               .submissions = *resources.submissions(),
                                               .pool = resources.memoryPool().get(),
-                                              .performance = resources.performanceManagerImplementation().get()});
+                                              .performance = resources.performanceManagerImplementation().get(),
+                                              .maxLights = maxLights});
     if (!presentation)
     {
         return std::unexpected {presentation.error()};

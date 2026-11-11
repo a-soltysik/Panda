@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/RenderView.hpp>
@@ -50,6 +51,7 @@ struct FrameExecutionCreateInfo
     ::panda::detail::SubmissionQueue& submissions;
     resources::MemoryPool* pool {nullptr};
     ::panda::detail::PerformanceManagerImpl* performance {nullptr};
+    std::uint32_t maxLights {::panda::ContextOptions::defaultMaxLights};
 };
 
 class FrameExecution final
@@ -109,6 +111,7 @@ private:
     ::panda::detail::SubmissionQueue& _submissions;
     resources::MemoryPool* _pool;
     ::panda::detail::PerformanceManagerImpl* _performance;
+    std::uint32_t _maxLights;
     std::unique_ptr<renderer::MeshRenderer> _renderer;
     std::array<ExecutionSlot, slotCount> _slots;
 };

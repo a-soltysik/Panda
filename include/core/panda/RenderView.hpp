@@ -125,8 +125,8 @@ struct RenderView
 {
     /// Camera used for mesh projection and view-dependent lighting.
     RenderCamera camera;
-    /// Directional light used by the built-in metallic-roughness material.
-    DirectionalLight directionalLight;
+    /// Directional lights used by Lit materials; the first casts the current shadow, later lights are unshadowed.
+    std::vector<DirectionalLight> directionalLights;
     /// Draws to render; an empty list presents only the configured background.
     std::vector<MeshDraw> meshes;
 };

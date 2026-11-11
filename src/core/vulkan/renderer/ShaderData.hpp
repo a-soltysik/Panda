@@ -6,6 +6,7 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/ext/vector_uint4.hpp>
 #include <panda/Mesh.hpp>
 
 #include "ShaderInterface.inc"
@@ -20,8 +21,14 @@ struct alignas(16) FrameUniform
     glm::mat4 lightViewProjection;
     glm::vec4 cameraPosition;
     glm::vec4 lightDirection;
-    glm::vec4 lightColorIntensity;
     glm::vec4 ambient;
+    glm::uvec4 lightInfo;
+};
+
+struct alignas(16) LightRecord
+{
+    glm::vec4 direction;
+    glm::vec4 colorIntensity;
 };
 
 struct alignas(16) DrawConstants
@@ -52,8 +59,11 @@ static_assert(sizeof(glm::vec4) == 16);
 static_assert(offsetof(FrameUniform, lightViewProjection) == 64);
 static_assert(offsetof(FrameUniform, cameraPosition) == 128);
 static_assert(offsetof(FrameUniform, lightDirection) == 144);
-static_assert(offsetof(FrameUniform, lightColorIntensity) == 160);
-static_assert(offsetof(FrameUniform, ambient) == 176);
+static_assert(offsetof(FrameUniform, ambient) == 160);
+static_assert(offsetof(FrameUniform, lightInfo) == 176);
+static_assert(sizeof(LightRecord) == 32);
+static_assert(offsetof(LightRecord, direction) == 0);
+static_assert(offsetof(LightRecord, colorIntensity) == 16);
 static_assert(sizeof(DrawConstants) == 128);
 static_assert(offsetof(DrawConstants, normalColumns) == 64);
 static_assert(offsetof(DrawConstants, tint) == 112);

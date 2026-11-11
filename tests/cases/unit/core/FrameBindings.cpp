@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -18,6 +19,7 @@
 #include <limits>
 #include <memory>
 #include <panda/Buffer.hpp>
+#include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <span>
@@ -41,6 +43,7 @@ constexpr auto allSampleCounts = static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT
                                  static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_4_BIT);
 
 using panda::core::vulkan::renderer::FrameBindings;
+using panda::core::vulkan::renderer::LightRecord;
 using panda::core::vulkan::renderer::MaterialRecord;
 using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::BufferResource;
@@ -79,6 +82,8 @@ protected:
             .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
                 properties->limits.maxPushConstantsSize = 4096;
                 properties->limits.maxStorageBufferRange = 4096;
+                properties->limits.maxDescriptorSetStorageBuffers = 4;
+                properties->limits.maxPerStageDescriptorStorageBuffers = 4;
                 properties->limits.framebufferColorSampleCounts = allSampleCounts;
                 properties->limits.framebufferDepthSampleCounts = allSampleCounts;
             });
@@ -99,9 +104,11 @@ protected:
         std::ignore = instance.release();
     }
 
-    auto createBindings() -> std::expected<std::unique_ptr<FrameBindings>, panda::Error>
+    auto createBindings(std::uint32_t maxLights = panda::ContextOptions::defaultMaxLights)
+        -> std::expected<std::unique_ptr<FrameBindings>, panda::Error>
     {
-        return FrameBindings::create(physical, device, *pool, 1);
+        return FrameBindings::create(
+            {.physicalDevice = physical, .device = device, .pool = *pool, .frameCount = 1, .maxLights = maxLights});
     }
 
     auto meshRendererInfo() const -> panda::core::vulkan::renderer::MeshRendererCreateInfo
@@ -282,7 +289,7 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
             return panda::Result<void> {};
         });
     const auto shadowView = vk::ImageView {fakeVulkanHandle<VkImageView>(90)};
-    EXPECT_CALL(vulkan, vkUpdateDescriptorSets(deviceHandle, 3, NotNull(), 0, nullptr))
+    EXPECT_CALL(vulkan, vkUpdateDescriptorSets(deviceHandle, 4, NotNull(), 0, nullptr))
         .WillOnce([shadowView](VkDevice,
                                std::uint32_t writeCount,
                                const VkWriteDescriptorSet* descriptorWrites,
@@ -314,9 +321,9 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
 
     ASSERT_TRUE(updated);
     ASSERT_EQ(writes.size(), 2U);
-    ASSERT_EQ(writes.back().size(), sizeof(MaterialRecord));
+    ASSERT_EQ(writes.at(1).size(), sizeof(MaterialRecord));
     auto record = MaterialRecord {};
-    std::memcpy(&record, writes.back().data(), sizeof(record));
+    std::memcpy(&record, writes.at(1).data(), sizeof(record));
     EXPECT_FLOAT_EQ(record.metallic, 1.0F);
     EXPECT_FLOAT_EQ(record.roughness, 0.0F);
     EXPECT_EQ(record.isLit, 0U);
@@ -355,6 +362,78 @@ TEST_F(FrameBindingsTest, MaterialBufferGrowthFailureCanBeRetried)
     EXPECT_TRUE(retried);
 }
 
+TEST_F(FrameBindingsTest, WritesAllDirectionalLightsToTheStorageBuffer)
+{
+    auto created = createBindings();
+    ASSERT_TRUE(created);
+    auto bindings = std::move(*created);
+    auto view = makeView(1);
+    view.directionalLights = {
+        {.direction = {0.0F, -2.0F, 0.0F}, .color = {1.0F, 0.5F, 0.25F}, .intensity = 3.0F},
+        {.direction = {0.0F, 0.0F, -4.0F}, .color = {0.25F, 0.5F, 1.0F}, .intensity = 2.0F}
+    };
+    auto writes = std::vector<std::vector<std::byte>> {};
+    EXPECT_CALL(buffers, writeMapped(_, 0, _))
+        .Times(3)
+        .WillRepeatedly([&writes](const BufferResource&, std::uint64_t, std::span<const std::byte> data) {
+            writes.emplace_back(data.begin(), data.end());
+            return panda::Result<void> {};
+        });
+
+    const auto updated = bindings->updateFrame(0, view, {});
+
+    ASSERT_TRUE(updated);
+    ASSERT_EQ(writes.size(), 3U);
+    ASSERT_EQ(writes.at(0).size(), sizeof(panda::core::vulkan::renderer::FrameUniform));
+    ASSERT_EQ(writes.at(2).size(), sizeof(LightRecord) * 2U);
+    auto uniform = panda::core::vulkan::renderer::FrameUniform {};
+    std::memcpy(&uniform, writes.at(0).data(), sizeof(uniform));
+    EXPECT_EQ(uniform.lightInfo.x, 2U);
+    auto records = std::array<LightRecord, 2> {};
+    std::memcpy(records.data(), writes.at(2).data(), writes.at(2).size());
+    EXPECT_FLOAT_EQ(records.at(0).direction.y, -1.0F);
+    EXPECT_FLOAT_EQ(records.at(0).colorIntensity.y, 0.5F);
+    EXPECT_FLOAT_EQ(records.at(0).colorIntensity.w, 3.0F);
+    EXPECT_FLOAT_EQ(records.at(1).direction.z, -1.0F);
+    EXPECT_FLOAT_EQ(records.at(1).colorIntensity.x, 0.25F);
+    EXPECT_FLOAT_EQ(records.at(1).colorIntensity.w, 2.0F);
+}
+
+TEST_F(FrameBindingsTest, LightBufferGrowthFailureCanBeRetried)
+{
+    auto created = createBindings();
+    ASSERT_TRUE(created);
+    auto bindings = std::move(*created);
+    const auto largerBufferSize = sizeof(LightRecord) * 2U;
+    EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), testing::Field(&panda::BufferDesc::size, largerBufferSize)))
+        .Times(2)
+        .WillOnce(Return(panda::Result<void> {
+            std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "buffer growth failed")}}))
+        .WillOnce(Return(panda::Result<void> {}));
+    auto view = makeView(1);
+    view.directionalLights.resize(2);
+
+    const auto failed = bindings->updateFrame(0, view, {});
+    const auto retried = bindings->updateFrame(0, view, {});
+
+    EXPECT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_TRUE(retried);
+}
+
+TEST_F(FrameBindingsTest, RejectsLightCountAboveConfiguredBudget)
+{
+    auto bindings = createBindings(1);
+    ASSERT_TRUE(bindings);
+    auto view = makeView(1);
+    view.directionalLights.resize(2);
+
+    const auto updated = (*bindings)->updateFrame(0, view, {});
+
+    ASSERT_FALSE(updated);
+    EXPECT_EQ(updated.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
 TEST_F(FrameBindingsTest, TextureDescriptorPoolGrowthFailureCanBeRetried)
 {
     auto created = createBindings();
@@ -391,16 +470,19 @@ TEST_F(FrameBindingsTest, RejectsInsufficientStorageLimitAndInvalidFrameCounts)
     ASSERT_FALSE(unsupported);
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 
-    const auto empty = FrameBindings::create(physical, device, *pool, 0);
+    const auto empty =
+        FrameBindings::create({.physicalDevice = physical, .device = device, .pool = *pool, .frameCount = 0});
     const auto oversized =
-        FrameBindings::create(physical,
-                              device,
-                              *pool,
-                              static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 1);
+        FrameBindings::create({.physicalDevice = physical,
+                               .device = device,
+                               .pool = *pool,
+                               .frameCount = static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 1});
     EXPECT_FALSE(empty);
     EXPECT_FALSE(oversized);
     EXPECT_EQ(empty.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_EQ(oversized.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_TRUE(FrameBindings::validateDeviceLimits(physical, 0));
+    EXPECT_EQ(FrameBindings::validateDeviceLimits(physical, 129).error().code, panda::ErrorCode::Unsupported);
 }
 
 TEST_F(FrameBindingsTest, RejectsMaterialCountBeyondStorageBufferLimit)
@@ -408,8 +490,10 @@ TEST_F(FrameBindingsTest, RejectsMaterialCountBeyondStorageBufferLimit)
     EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
         .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
             properties->limits.maxStorageBufferRange = static_cast<std::uint32_t>(sizeof(MaterialRecord));
+            properties->limits.maxDescriptorSetStorageBuffers = 4;
+            properties->limits.maxPerStageDescriptorStorageBuffers = 4;
         });
-    auto bindings = createBindings();
+    auto bindings = createBindings(1);
     ASSERT_TRUE(bindings);
 
     const auto updated = (*bindings)->updateFrame(0, makeView(2), {});
@@ -423,6 +507,7 @@ TEST_F(FrameBindingsTest, PropagatesInvalidShadowViewAndUniformWriteFailures)
     auto bindings = createBindings();
     ASSERT_TRUE(bindings);
     auto invalidView = makeView(0);
+    invalidView.directionalLights.push_back({});
     invalidView.camera.viewProjection = glm::mat4 {0.0F};
     const auto invalid = (*bindings)->updateFrame(0, invalidView, {});
     ASSERT_FALSE(invalid);
@@ -458,6 +543,32 @@ TEST_F(FrameBindingsTest, UpdatesEmptyViewWithoutWritingMaterialRecords)
     const auto updated = (*bindings)->updateFrame(0, makeView(0), {});
 
     EXPECT_TRUE(updated);
+}
+
+TEST_F(FrameBindingsTest, UpdatesUnlitViewWithZeroLightBudget)
+{
+    auto bindings = createBindings(0);
+    ASSERT_TRUE(bindings);
+    auto view = makeView(1);
+    view.meshes.front().material.model = panda::MaterialModel::Unlit;
+    auto writes = std::vector<std::vector<std::byte>> {};
+    EXPECT_CALL(buffers, writeMapped(_, 0, _))
+        .Times(2)
+        .WillRepeatedly([&writes](const BufferResource&, std::uint64_t, std::span<const std::byte> data) {
+            writes.emplace_back(data.begin(), data.end());
+            return panda::Result<void> {};
+        });
+
+    const auto updated = (*bindings)->updateFrame(0, view, {});
+
+    ASSERT_TRUE(updated);
+    ASSERT_EQ(writes.size(), 2U);
+    auto uniform = panda::core::vulkan::renderer::FrameUniform {};
+    std::memcpy(&uniform, writes.at(0).data(), sizeof(uniform));
+    EXPECT_EQ(uniform.lightInfo.x, 0U);
+    auto material = MaterialRecord {};
+    std::memcpy(&material, writes.at(1).data(), sizeof(material));
+    EXPECT_EQ(material.isLit, 0U);
 }
 
 TEST_F(FrameBindingsTest, PropagatesDescriptorLayoutCreationFailures)
@@ -579,6 +690,8 @@ TEST_F(FrameBindingsTest, RejectsInvalidMeshRendererInputsAndDeviceLimits)
         .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
             properties->limits.maxPushConstantsSize = 0;
             properties->limits.maxStorageBufferRange = 4096;
+            properties->limits.maxDescriptorSetStorageBuffers = 4;
+            properties->limits.maxPerStageDescriptorStorageBuffers = 4;
         });
     const auto unsupported = panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
     ASSERT_FALSE(unsupported);
@@ -591,6 +704,8 @@ TEST_F(FrameBindingsTest, RejectsMeshRendererWithInsufficientStorageLimit)
         .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
             properties->limits.maxPushConstantsSize = std::numeric_limits<std::uint32_t>::max();
             properties->limits.maxStorageBufferRange = static_cast<std::uint32_t>(sizeof(MaterialRecord) - 1);
+            properties->limits.maxDescriptorSetStorageBuffers = 4;
+            properties->limits.maxPerStageDescriptorStorageBuffers = 4;
         });
 
     const auto unsupported = panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
@@ -692,6 +807,7 @@ TEST_F(FrameBindingsTest, MeshRendererUpdatePropagatesBindingFailure)
     auto renderer = createMeshRenderer();
     ASSERT_TRUE(renderer);
     auto view = makeView(0);
+    view.directionalLights.push_back({});
     view.camera.viewProjection = glm::mat4 {0.0F};
 
     const auto updated = (*renderer)->updateFrame(0, view);
@@ -738,6 +854,8 @@ TEST_F(FrameBindingsTest, PropagatesFrameBindingsInitializationFailure)
     const auto supportedLimits = [](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
         properties->limits.maxPushConstantsSize = 4096;
         properties->limits.maxStorageBufferRange = 4096;
+        properties->limits.maxDescriptorSetStorageBuffers = 4;
+        properties->limits.maxPerStageDescriptorStorageBuffers = 4;
         properties->limits.framebufferColorSampleCounts = allSampleCounts;
         properties->limits.framebufferDepthSampleCounts = allSampleCounts;
     };

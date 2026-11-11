@@ -90,6 +90,14 @@ void addCameraAndLight(panda::scene::Scene& scene)
                                                                         glm::vec3 {0.0F, 1.0F, 0.0F})}}),
         "Create light object");
     panda::expect(scene.setDirectionalLight(light, panda::scene::DirectionalLight {}), "Attach directional light");
+    const auto fillLight = panda::expect(
+        scene.createEntity(
+            {.name = "Unshadowed fill",
+             .transform = {.rotation = glm::quatLookAtRH(glm::normalize(glm::vec3 {-0.65F, -0.45F, -0.3F}),
+                                                         glm::vec3 {0.0F, 1.0F, 0.0F})}}),
+        "Create fill light");
+    panda::expect(scene.setDirectionalLight(fillLight, panda::scene::DirectionalLight {.intensity = 0.8F}),
+                  "Attach fill light");
 }
 
 void addGround(panda::scene::Scene& scene, const panda::Mesh& ground)
