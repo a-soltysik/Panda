@@ -22,8 +22,8 @@ snapshots retain mesh handles. Context outlives all of them.
 
 Requires `PANDA_BUILD_SCENE=ON`, Tools, a display, Vulkan 1.3 with swapchain
 maintenance1, and the Khronos validation layer. The development presets enable the
-scene module. The renderer currently supports one directional light and its shadow
-pass. Additional visible directional lights report `Unsupported`.
+scene module. The first directional light casts the existing shadow; the later fill
+light contributes direct lighting without a shadow.
 
 For the shorter direct-renderer path, see [simple_scene](../simple_scene/README.md).
 

@@ -10,6 +10,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <vector>
@@ -37,6 +38,7 @@ struct MeshRendererCreateInfo
     vk::Extent2D extent;
     vk::Format colorFormat;
     std::size_t frameCount;
+    std::uint32_t maxLights {::panda::ContextOptions::defaultMaxLights};
 };
 
 class MeshRenderer final
@@ -97,6 +99,7 @@ private:
     const vk::raii::Device& _device;
     resources::MemoryPool& _pool;
     std::size_t _frameCount;
+    std::uint32_t _maxLights;
     std::unique_ptr<RenderAttachments> _attachments;
     std::unique_ptr<FrameBindings> _bindings;
     std::optional<MeshPipelineCache> _pipelineCache;

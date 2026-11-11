@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <expected>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
@@ -197,23 +198,37 @@ auto validateDraws(const RenderView& view, const resources::MemoryPool& pool, Dr
     return {};
 }
 
+auto validateDirectionalLight(const DirectionalLight& light) -> Result<void>
+{
+    if (!isFinite(light.direction) || !isFinite(light.color) || !std::isfinite(light.intensity))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Directional light contains non-finite data")};
+    }
+    const auto directionLengthSquared = glm::dot(light.direction, light.direction);
+    if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1.0e-12F || light.intensity < 0.0F ||
+        light.color.r < 0.0F || light.color.g < 0.0F || light.color.b < 0.0F)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Directional light is invalid")};
+    }
+    return {};
+}
+
 }
 
 auto validateRenderViewData(const RenderView& view) -> Result<void>
 {
     if (!isFinite(view.camera.viewProjection) || !isInvertible(view.camera.viewProjection) ||
-        !isFinite(view.camera.position) || !isFinite(view.directionalLight.direction) ||
-        !isFinite(view.directionalLight.color) || !std::isfinite(view.directionalLight.intensity))
+        !isFinite(view.camera.position))
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Render view contains non-finite or singular data")};
     }
-    const auto directionLengthSquared = glm::dot(view.directionalLight.direction, view.directionalLight.direction);
-    if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1.0e-12F ||
-        view.directionalLight.intensity < 0.0F || view.directionalLight.color.r < 0.0F ||
-        view.directionalLight.color.g < 0.0F || view.directionalLight.color.b < 0.0F)
+    for (const auto& light : view.directionalLights)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Directional light is invalid")};
+        if (auto result = validateDirectionalLight(light); !result)
+        {
+            return result;
+        }
     }
     if (std::ranges::any_of(view.meshes, [](const auto& draw) {
             return !isRenderableModel(draw.modelMatrix) || !isFinite(draw.tint) || draw.tint.r < 0.0F ||
@@ -222,6 +237,16 @@ auto validateRenderViewData(const RenderView& view) -> Result<void>
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Mesh draw contains invalid transform or material")};
+    }
+    return {};
+}
+
+auto validateRenderViewLightCount(const RenderView& view, std::uint32_t maxLights) -> Result<void>
+{
+    if (view.directionalLights.size() > maxLights)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds the Context maxLights budget")};
     }
     return {};
 }
@@ -253,5 +278,19 @@ auto validateRenderViewTextures(const RenderView& view) -> Result<void>
         }
     }
     return {};
+}
+
+auto validateRenderView(const RenderView& view, std::uint32_t maxLights, const resources::MemoryPool& pool)
+    -> Result<void>
+{
+    if (auto result = validateRenderViewLightCount(view, maxLights); !result)
+    {
+        return result;
+    }
+    if (auto result = validateRenderViewData(view); !result)
+    {
+        return result;
+    }
+    return validateRenderViewMeshes(view, pool);
 }
 }

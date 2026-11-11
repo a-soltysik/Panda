@@ -34,6 +34,7 @@ struct PresentationCreateInfo
     api_detail::SubmissionQueue& submissions;
     resources::MemoryPool* pool {nullptr};
     api_detail::PerformanceManagerImpl* performance {nullptr};
+    std::uint32_t maxLights {ContextOptions::defaultMaxLights};
 };
 
 class Presentation final

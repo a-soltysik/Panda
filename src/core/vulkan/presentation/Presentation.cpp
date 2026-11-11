@@ -603,7 +603,8 @@ auto Presentation::initializeFrameResources(const PresentationCreateInfo& info) 
                                                            .queueFamily = _deviceInfo.queueFamily,
                                                            .submissions = _submissions,
                                                            .pool = info.pool,
-                                                           .performance = info.performance});
+                                                           .performance = info.performance,
+                                                           .maxLights = info.maxLights});
     if (!execution)
     {
         return std::unexpected {execution.error()};

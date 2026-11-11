@@ -26,6 +26,7 @@ struct SelectedDevice
 {
     vk::PhysicalDevice physicalDevice;
     ContextDeviceInfo info;
+    vk::PhysicalDeviceLimits limits;
     std::uint32_t timestampValidBits {0};
     float timestampPeriodNanoseconds {0.0F};
 };

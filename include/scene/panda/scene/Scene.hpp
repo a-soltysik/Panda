@@ -82,7 +82,7 @@ struct DirectionalLight
 {
     /// Nonnegative finite linear RGB color.
     glm::vec3 color {1.0F};
-    /// Nonnegative finite intensity multiplier; uses the renderer's directional shadow pass.
+    /// Nonnegative finite intensity multiplier; only the first visible scene light is shadowed.
     float intensity {3.0F};
 };
 
@@ -185,10 +185,11 @@ public:
     /// @brief Selects a live object with a camera lens. Deletion/removal clears the selection.
     [[nodiscard]] auto setActiveCamera(const Entity& entity) -> Result<void>;
 
-    /// @brief Copies visible draws, active camera and one directional light into renderer input.
+    /// @brief Copies visible draws, active camera and visible directional lights into renderer input.
     /// @param aspectRatio Finite positive framebuffer width divided by height, supplied each frame.
-    /// @return A snapshot retaining its meshes, or InvalidArgument for missing camera or invalid
-    /// pose; Unsupported for multiple visible directional lights. Context::render validates renderer input.
+    /// @return A snapshot retaining its meshes, or InvalidArgument for a missing camera or invalid pose.
+    /// The first visible directional light uses the current shadow pass; later lights contribute without shadows.
+    /// Context::render validates renderer input and the configured light budget.
     /// Camera/light poses require positive uniform world scale without shear.
     /// Calls are serialized with scene mutation and Context operations; no GPU work is submitted.
     [[nodiscard]] auto createRenderView(float aspectRatio) -> Result<RenderView>;

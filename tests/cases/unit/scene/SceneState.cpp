@@ -359,17 +359,18 @@ TEST(SceneState, TransformsParentedLightAndKeepsReturnedSnapshotIndependent)
     ASSERT_TRUE(scene.setVisible(parent, false));
     const auto first = scene.createRenderView(1.0F);
     ASSERT_TRUE(first);
-    EXPECT_NEAR(first->directionalLight.direction.x, -1.0F, 1.0e-5F);
-    EXPECT_NEAR(first->directionalLight.direction.z, 0.0F, 1.0e-5F);
-    EXPECT_EQ(first->directionalLight.intensity, 2.0F);
+    ASSERT_EQ(first->directionalLights.size(), 1U);
+    EXPECT_NEAR(first->directionalLights.front().direction.x, -1.0F, 1.0e-5F);
+    EXPECT_NEAR(first->directionalLights.front().direction.z, 0.0F, 1.0e-5F);
+    EXPECT_EQ(first->directionalLights.front().intensity, 2.0F);
     ASSERT_TRUE(scene.setVisible(light, false));
     const auto second = scene.createRenderView(1.0F);
     ASSERT_TRUE(second);
-    EXPECT_EQ(second->directionalLight.intensity, 0.0F);
-    EXPECT_EQ(first->directionalLight.intensity, 2.0F);
+    EXPECT_TRUE(second->directionalLights.empty());
+    EXPECT_EQ(first->directionalLights.front().intensity, 2.0F);
 }
 
-TEST(SceneState, RejectsExtraVisibleLightsAndInvalidEdits)
+TEST(SceneState, CollectsVisibleLightsAndRejectsInvalidEdits)
 {
     auto scene = panda::scene::detail::SceneState {};
     selectCamera(scene);
@@ -386,13 +387,17 @@ TEST(SceneState, RejectsExtraVisibleLightsAndInvalidEdits)
         panda::scene::DirectionalLight {.intensity = std::numeric_limits<float>::quiet_NaN()}));
     auto view = scene.createRenderView(1.0F);
     ASSERT_TRUE(view);
-    EXPECT_EQ(view->directionalLight.intensity, 2.0F);
+    ASSERT_EQ(view->directionalLights.size(), 1U);
+    EXPECT_EQ(view->directionalLights.front().intensity, 2.0F);
     ASSERT_TRUE(scene.setDirectionalLight(second, panda::scene::DirectionalLight {}));
     view = scene.createRenderView(1.0F);
-    ASSERT_FALSE(view);
-    EXPECT_EQ(view.error().code, panda::ErrorCode::Unsupported);
+    ASSERT_TRUE(view);
+    ASSERT_EQ(view->directionalLights.size(), 2U);
+    EXPECT_EQ(view->directionalLights.back().intensity, 3.0F);
     ASSERT_TRUE(scene.setDirectionalLight(second, std::nullopt));
-    EXPECT_TRUE(scene.createRenderView(1.0F));
+    view = scene.createRenderView(1.0F);
+    ASSERT_TRUE(view);
+    ASSERT_EQ(view->directionalLights.size(), 1U);
 }
 
 TEST(SceneState, ValidatesCameraLensAspectAndInheritedPose)

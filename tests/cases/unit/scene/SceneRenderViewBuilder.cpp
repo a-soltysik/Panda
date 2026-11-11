@@ -38,7 +38,7 @@ TEST(SceneRenderViewBuilder, BuildsOrthographicCameraAndDefaultsToNoDirectLight)
     ASSERT_TRUE(view);
     EXPECT_NEAR(view->camera.viewProjection[0][0], 0.25F, 1.0e-6F);
     EXPECT_NEAR(view->camera.viewProjection[1][1], -0.5F, 1.0e-6F);
-    EXPECT_FLOAT_EQ(view->directionalLight.intensity, 0.0F);
+    EXPECT_TRUE(view->directionalLights.empty());
 }
 
 TEST(SceneRenderViewBuilder, RejectsInvalidAspectAndNonuniformCameraPose)
@@ -62,7 +62,7 @@ TEST(SceneRenderViewBuilder, RejectsInvalidAspectAndNonuniformCameraPose)
     EXPECT_EQ(invalidPose.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-TEST(SceneRenderViewBuilder, UsesParentedLightAndRejectsMultipleVisibleLights)
+TEST(SceneRenderViewBuilder, PreservesVisibleDirectionalLightOrder)
 {
     auto scene = panda::scene::detail::SceneState {};
     const auto camera = scene.createEntity({});
@@ -85,14 +85,19 @@ TEST(SceneRenderViewBuilder, UsesParentedLightAndRejectsMultipleVisibleLights)
     const auto singleLightView = builder.build(1.0F);
 
     ASSERT_TRUE(singleLightView);
-    EXPECT_NEAR(singleLightView->directionalLight.direction.x, -1.0F, 1.0e-5F);
-    EXPECT_NEAR(singleLightView->directionalLight.direction.z, 0.0F, 1.0e-5F);
+    ASSERT_EQ(singleLightView->directionalLights.size(), 1U);
+    EXPECT_NEAR(singleLightView->directionalLights.front().direction.x, -1.0F, 1.0e-5F);
+    EXPECT_NEAR(singleLightView->directionalLights.front().direction.z, 0.0F, 1.0e-5F);
     ASSERT_TRUE(scene.setVisible(*secondLight, true));
     const auto multipleLightView = builder.build(1.0F);
-    ASSERT_FALSE(multipleLightView);
-    EXPECT_EQ(multipleLightView.error().code, panda::ErrorCode::Unsupported);
+    ASSERT_TRUE(multipleLightView);
+    ASSERT_EQ(multipleLightView->directionalLights.size(), 2U);
+    EXPECT_NEAR(multipleLightView->directionalLights.back().direction.x, 0.0F, 1.0e-5F);
+    EXPECT_NEAR(multipleLightView->directionalLights.back().direction.z, -1.0F, 1.0e-5F);
     ASSERT_TRUE(scene.destroyEntity(*secondLight));
-    EXPECT_TRUE(builder.build(1.0F));
+    const auto singleLightViewAfterRemoval = builder.build(1.0F);
+    ASSERT_TRUE(singleLightViewAfterRemoval);
+    ASSERT_EQ(singleLightViewAfterRemoval->directionalLights.size(), 1U);
 }
 
 TEST(SceneRenderViewBuilder, RejectsLightWithNonuniformWorldPose)

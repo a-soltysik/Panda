@@ -207,6 +207,9 @@ protected:
                 *output = VkPhysicalDeviceProperties {};
                 output->apiVersion = vk::ApiVersion13;
                 output->deviceType = static_cast<VkPhysicalDeviceType>(vk::PhysicalDeviceType::eDiscreteGpu);
+                output->limits.maxStorageBufferRange = 4096;
+                output->limits.maxDescriptorSetStorageBuffers = 4;
+                output->limits.maxPerStageDescriptorStorageBuffers = 4;
                 output->limits.timestampPeriod = timestampPeriod;
                 std::ranges::copy(std::string_view {"Unit GPU"}, std::span {output->deviceName}.begin());
             });
@@ -674,6 +677,17 @@ protected:
     testing::Sequence bindingOrder;
     testing::Sequence allocationOrder;
 };
+}
+
+TEST_F(ContextLifecycleTest, CreatesContextWithZeroLightBudget)
+{
+    expectInstance();
+    expectAdapter(false);
+    expectDevice(false);
+    expectParentsDestroyed(true, false);
+    const auto created = panda::Context::create({.maxLights = 0});
+
+    ASSERT_TRUE(created);
 }
 
 TEST_F(ContextLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOrder)

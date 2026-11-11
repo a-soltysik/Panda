@@ -21,8 +21,8 @@ private:
     [[nodiscard]] static auto makeCamera(const glm::mat4& world, const OrthographicCamera& lens, float aspectRatio)
         -> Result<RenderCamera>;
     [[nodiscard]] auto activeRenderCamera(float aspectRatio) -> Result<RenderCamera>;
-    [[nodiscard]] auto appendRenderObject(std::size_t index, RenderView& view, bool& hasLight) -> Result<void>;
-    [[nodiscard]] auto appendLight(std::size_t index, RenderView& view, bool& hasLight) -> Result<void>;
+    [[nodiscard]] auto appendRenderObject(std::size_t index, RenderView& view) -> Result<void>;
+    [[nodiscard]] auto appendLight(std::size_t index, RenderView& view) -> Result<void>;
     [[nodiscard]] auto collectRenderObjects(RenderView& view) -> Result<void>;
 
     SceneState& _scene;

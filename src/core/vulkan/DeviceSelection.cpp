@@ -464,6 +464,7 @@ auto makeSelectedDevice(vk::PhysicalDevice physicalDevice,
                  .queueFamily = queues.graphics,
                  .presentQueueFamily = queues.present,
                  .swapchainMaintenance = profile.maintenance},
+        .limits = profile.properties.limits,
         .timestampValidBits = queueFamilies.at(queues.graphics).timestampValidBits,
         .timestampPeriodNanoseconds = profile.properties.limits.timestampPeriod
     };

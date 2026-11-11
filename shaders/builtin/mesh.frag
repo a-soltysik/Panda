@@ -12,8 +12,8 @@ layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) 
     mat4 lightViewProjection;
     vec4 cameraPosition;
     vec4 lightDirection;
-    vec4 lightColorIntensity;
     vec4 ambient;
+    uvec4 lightInfo;
 } frameData;
 
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SHADOW_MAP_BINDING) uniform sampler2D shadowMap;
@@ -45,6 +45,17 @@ layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_MATERIAL_DATA_BIN
 {
     MaterialRecord records[];
 } materialData;
+
+struct LightRecord
+{
+    vec4 direction;
+    vec4 colorIntensity;
+};
+
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_LIGHT_DATA_BINDING, std430) readonly buffer LightData
+{
+    LightRecord records[];
+} lightData;
 
 layout(location = PANDA_MESH_VARYING_WORLD_POSITION_LOCATION) in vec3 worldPosition;
 layout(location = PANDA_MESH_VARYING_WORLD_NORMAL_LOCATION) in vec3 worldNormal;
@@ -165,22 +176,27 @@ void main()
     const float metallic = clamp(material.metallic * mappedMetallicRoughness.b, 0.0, 1.0);
     const float roughness = clamp(material.roughness * mappedMetallicRoughness.g, 0.045, 1.0);
     const vec3 viewDirection = normalize(frameData.cameraPosition.xyz - worldPosition);
-    const vec3 lightDirection = normalize(-frameData.lightDirection.xyz);
-    const vec3 halfDirection = normalize(viewDirection + lightDirection);
     const float normalView = max(dot(normal, viewDirection), 0.001);
-    const float normalLight = max(dot(normal, lightDirection), 0.0);
-    const float normalHalf = max(dot(normal, halfDirection), 0.0);
-    const float viewHalf = max(dot(viewDirection, halfDirection), 0.0);
     const float alpha = roughness * roughness;
     const float alphaSquared = alpha * alpha;
     const float geometryK = (roughness + 1.0) * (roughness + 1.0) / 8.0;
-    const vec3 fresnel = fresnelSchlick(viewHalf, mix(dielectricF0, mappedBaseColor.rgb, metallic));
-    const float distribution = distributionGgx(normalHalf, alphaSquared);
-    const float geometry = geometrySchlick(normalView, geometryK) * geometrySchlick(normalLight, geometryK);
-    const vec3 specular = (distribution * geometry * fresnel) / max(4.0 * normalView * normalLight, 0.001);
-    const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * mappedBaseColor.rgb / pi;
-    const vec3 direct = (diffuse + specular) * frameData.lightColorIntensity.rgb *
-    frameData.lightColorIntensity.w * normalLight * shadowVisibility(geometricNormal);
+    vec3 direct = vec3(0.0);
+    for (uint lightIndex = 0u; lightIndex < frameData.lightInfo.x; ++lightIndex)
+    {
+        const LightRecord light = lightData.records[lightIndex];
+        const vec3 lightDirection = normalize(-light.direction.xyz);
+        const vec3 halfDirection = normalize(viewDirection + lightDirection);
+        const float normalLight = max(dot(normal, lightDirection), 0.0);
+        const float normalHalf = max(dot(normal, halfDirection), 0.0);
+        const float viewHalf = max(dot(viewDirection, halfDirection), 0.0);
+        const vec3 fresnel = fresnelSchlick(viewHalf, mix(dielectricF0, mappedBaseColor.rgb, metallic));
+        const float distribution = distributionGgx(normalHalf, alphaSquared);
+        const float geometry = geometrySchlick(normalView, geometryK) * geometrySchlick(normalLight, geometryK);
+        const vec3 specular = (distribution * geometry * fresnel) / max(4.0 * normalView * normalLight, 0.001);
+        const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * mappedBaseColor.rgb / pi;
+        const float visibility = lightIndex == 0u ? shadowVisibility(geometricNormal) : 1.0;
+        direct += (diffuse + specular) * light.colorIntensity.rgb * light.colorIntensity.w * normalLight * visibility;
+    }
     const float occlusionSample =
         material.hasOcclusionTexture != 0u ? texture(occlusionMap, textureCoordinates).r : 1.0;
     const float ambientOcclusion = mix(1.0, occlusionSample, clamp(material.occlusionStrength, 0.0, 1.0));

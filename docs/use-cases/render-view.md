@@ -30,12 +30,16 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 ## Main flow
 
 1. **Build the view.** The application supplies a view-projection matrix, camera
-   position, one directional light and zero or more mesh draws with per-mesh materials.
+   position, zero or more directional lights and zero or more mesh draws with
+   per-mesh materials. The first directional light casts the current shadow; later
+   lights are unshadowed. `ContextOptions::maxLights` controls the total light budget;
+   zero supports a view with no directional lights.
    Mesh handles are ordinary values; Panda does not create entities or own application
    transforms.
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
-2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, light,
+2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, all
+   directional lights and the configured light budget,
    tint, material alpha mode, cutoff, and finite normal-map scale and occlusion
    strength, then verifies each mesh's Context and required attributes. If a base-color,
    Lit metallic-roughness, emissive, Lit normal or Lit occlusion map is set, it checks
@@ -63,8 +67,8 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    `MeshPipelineCache`. On a resize, `RenderAttachments` prepares output-sized depth
    and optional MSAA replacements; after preparation succeeds, the renderer updates
    pipeline compatibility and publishes them. The renderer then updates frame data,
-   per-draw material records and texture descriptors through `FrameBindings` before
-   recording the directional shadow depth pass.
+   per-draw material records, light records and texture descriptors through
+   `FrameBindings` before recording the first directional light's shadow depth pass.
    `MeshPipelineCache` prepares missing color and shadow variants before recording;
    draw recording then looks up those prepared pipelines without creating them. A base-color sample multiplies material and
    draw tint and optional vertex color; a metallic-roughness sample scales Lit
@@ -76,7 +80,9 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    cast a full silhouette. Mask draws multiply texture, material, draw and vertex alpha
    and apply the material cutoff in both shadow and camera passes. The camera pass
    selects pipelines from each material model, alpha mode, consumed vertex attributes,
-   face mode and transform handedness while sampling the shadow map for Lit draws.
+   face mode and transform handedness while summing direct directional lighting and
+   sampling the shadow map for the first light in Lit draws. Later lights are
+   unshadowed in this implementation slice.
    `FrameExecution` records content and its timing markers; it does not acquire or
    present images, or transition the output image. `Presentation` records the final
    transition to present layout and ends the command buffer.
@@ -135,7 +141,7 @@ sequenceDiagram
             R->>K: Set compatibility after preparation succeeds
             R->>RA: Publish replacements and reset replaced history
         end
-        R->>B: Update frame data, material records and texture descriptors
+        R->>B: Update frame data, material/light records and texture descriptors
         B->>V: Write frame buffers and descriptor sets
         R->>K: Prepare needed color and shadow variants
         K->>V: Create missing pipeline variants
@@ -179,8 +185,9 @@ it is ignored with a warning, leaving the interpolated mesh normal in use. Norma
 scale defaults to 1, multiplies tangent-space X and Y, and accepts any finite value.
 Lit materials can use a linear UNORM occlusion map whose red channel scales only the
 constant ambient contribution; `occlusionStrength` blends from no effect (0) to the
-full map (1). It does not dim direct light or shadows. Lit materials evaluate one directional
-light with a Cook-Torrance microfacet specular term: GGX normal distribution,
+full map (1). It does not dim direct light or shadows. Lit materials evaluate the
+directional lights with a Cook-Torrance microfacet specular
+term: GGX normal distribution,
 Schlick-GGX geometry and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is
 combined with that specular term. Each Lit material supplies metallic and roughness,
 clamped to the supported range. Unlit materials skip light evaluation and shadow
@@ -194,12 +201,11 @@ orients back-facing normals consistently when rendering `Back` or `Both`. A
 constant ambient term contributes
 0.06 times base color to Lit materials. The shader applies the ACES fitted tone curve and
 outputs sRGB, using hardware conversion for sRGB swapchain formats or shader encoding
-for UNORM formats. Direct directional light is shadowed with one 2048² depth map per
+for UNORM formats. Only the first directional light is shadowed with one 2048² depth map per
 frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
 orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
-Points outside that fixed camera-centered region receive no shadow. Multiple lights,
-spot/point shadows and improved shadow coverage
-and filtering remain work in
+Points outside that fixed camera-centered region receive no shadow. Spot/point lights,
+their shadows, and improved shadow coverage and filtering remain work in
 [Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
 current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and
 the current visual result. The first mesh draw selects the highest common color/depth

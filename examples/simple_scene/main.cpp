@@ -246,7 +246,7 @@ auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
     cubeDraw.material.emissive = {1.0F, 0.8F, 0.3F};
     return panda::RenderView {
         .camera = {},
-        .directionalLight = {.direction = {-0.55F, -0.6F, -0.58F}},
+        .directionalLights = {{.direction = {-0.55F, -0.6F, -0.58F}}},
         .meshes = {
                    panda::MeshDraw {.mesh = meshes.ground, .modelMatrix = groundTransform, .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
                    cubeDraw, makeNormalMapDemoDraw(meshes),

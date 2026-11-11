@@ -81,7 +81,8 @@ MeshRenderer::MeshRenderer(const MeshRendererCreateInfo& info)
     : _physicalDevice {info.physicalDevice},
       _device {info.device},
       _pool {info.pool},
-      _frameCount {info.frameCount}
+      _frameCount {info.frameCount},
+      _maxLights {info.maxLights}
 {
 }
 
@@ -128,7 +129,7 @@ auto MeshRenderer::initialize(vk::Extent2D extent, vk::Format colorFormat) -> st
         return std::unexpected {
             makeError(ErrorCode::Unsupported, "Device push-constant limit is below renderer needs")};
     }
-    if (const auto supported = FrameBindings::validateDeviceLimits(_physicalDevice); !supported)
+    if (const auto supported = FrameBindings::validateDeviceLimits(_physicalDevice, _maxLights); !supported)
     {
         return supported;
     }
@@ -154,7 +155,11 @@ auto MeshRenderer::initializeAttachments(vk::Extent2D extent, vk::Format colorFo
 
 auto MeshRenderer::initializeBindingsAndPipeline() -> std::expected<void, Error>
 {
-    auto bindings = FrameBindings::create(_physicalDevice, _device, _pool, _frameCount);
+    auto bindings = FrameBindings::create({.physicalDevice = _physicalDevice,
+                                           .device = _device,
+                                           .pool = _pool,
+                                           .frameCount = _frameCount,
+                                           .maxLights = _maxLights});
     if (!bindings)
     {
         return std::unexpected {bindings.error()};

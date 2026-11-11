@@ -40,31 +40,66 @@ TEST(RenderViewValidation, RejectsNonFiniteCameraAndZeroDirection)
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
-    view.directionalLight.direction = {};
+    view.directionalLights.push_back({.direction = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
 
 TEST(RenderViewValidation, RejectsInvalidDirectionalLight)
 {
     auto view = RenderView {};
-    view.directionalLight.direction = glm::vec3 {std::numeric_limits<float>::max()};
+    view.directionalLights.push_back({.direction = glm::vec3 {std::numeric_limits<float>::max()}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
-    view.directionalLight.direction.x = std::numeric_limits<float>::infinity();
+    view.directionalLights.clear();
+    view.directionalLights.push_back({
+        .direction = {std::numeric_limits<float>::infinity(), 0.0F, 0.0F}
+    });
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
-    view.directionalLight.color.r = std::numeric_limits<float>::quiet_NaN();
+    view.directionalLights.clear();
+    view.directionalLights.push_back({
+        .color = {std::numeric_limits<float>::quiet_NaN(), 1.0F, 1.0F}
+    });
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
-    view.directionalLight.intensity = -1.0F;
+    view.directionalLights.clear();
+    view.directionalLights.push_back({.intensity = -1.0F});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
-    view.directionalLight.color.g = -1.0F;
+    view.directionalLights.clear();
+    view.directionalLights.push_back({
+        .color = {1.0F, -1.0F, 1.0F}
+    });
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    view = RenderView {};
+    view.directionalLights.clear();
+    view.directionalLights.push_back({
+        .direction = {},
+        .color = {1.0F, 1.0F, 1.0F},
+        .intensity = 1.0F
+    });
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+}
+
+TEST(RenderViewValidation, EnforcesTheConfiguredLightBudget)
+{
+    auto view = RenderView {};
+    view.meshes.emplace_back();
+    view.directionalLights.resize(65);
+
+    EXPECT_TRUE(panda::core::vulkan::renderer::validateRenderViewLightCount(view, 65));
+    const auto exhausted = panda::core::vulkan::renderer::validateRenderViewLightCount(view, 64);
+    ASSERT_FALSE(exhausted);
+    EXPECT_EQ(exhausted.error().code, ErrorCode::ResourceExhausted);
+    EXPECT_EQ(panda::core::vulkan::renderer::validateRenderViewLightCount(view, 0).error().code,
+              ErrorCode::ResourceExhausted);
+    view.directionalLights.clear();
+    EXPECT_TRUE(panda::core::vulkan::renderer::validateRenderViewLightCount(view, 0));
 }
 
 TEST(RenderViewValidation, AcceptsLargeOrthographicProjection)

@@ -63,8 +63,9 @@ auto borrowIfPresent(const std::unique_ptr<T>& owner) noexcept -> std::optional<
 class Context::Impl
 {
 public:
-    explicit Impl(std::unique_ptr<vulkan::ContextResources> resources) noexcept
-        : _resources {std::move(resources)}
+    explicit Impl(std::unique_ptr<vulkan::ContextResources> resources, std::uint32_t maxLights) noexcept
+        : _resources {std::move(resources)},
+          _maxLights {maxLights}
     {
     }
 
@@ -97,6 +98,7 @@ private:
     }
 
     std::unique_ptr<vulkan::ContextResources> _resources;
+    std::uint32_t _maxLights;
 };
 
 auto Context::Impl::ensureUploads() -> Result<void>
@@ -151,11 +153,7 @@ auto Context::Impl::getPerformanceManagerImplementation() noexcept -> detail::Pe
 auto Context::Impl::render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
     -> Result<FrameResult>
 {
-    if (const auto valid = vulkan::renderer::validateRenderViewData(view); !valid)
-    {
-        return std::unexpected {valid.error()};
-    }
-    if (const auto valid = vulkan::renderer::validateRenderViewMeshes(view, *_resources->memoryPool()); !valid)
+    if (const auto valid = vulkan::renderer::validateRenderView(view, _maxLights, *_resources->memoryPool()); !valid)
     {
         return std::unexpected {valid.error()};
     }
@@ -291,7 +289,7 @@ auto Context::createInternal(const WindowSurface* surface, const ContextOptions&
     {
         return std::unexpected {resources.error()};
     }
-    auto implementation = std::make_unique<Impl>(std::move(*resources));
+    auto implementation = std::make_unique<Impl>(std::move(*resources), options.maxLights);
     return Context {std::move(implementation)};
 }
 
