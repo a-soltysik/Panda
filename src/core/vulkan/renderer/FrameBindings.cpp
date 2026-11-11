@@ -92,7 +92,9 @@ auto makeMaterialRecord(const Material& material) -> MaterialRecord
         .hasBaseColorTexture = material.baseColorTexture.isValid() ? 1U : 0U,
         .hasMetallicRoughnessTexture = material.metallicRoughnessTexture.isValid() ? 1U : 0U,
         .hasEmissiveTexture = material.emissiveTexture.isValid() ? 1U : 0U,
-        .emissiveAndNormalScale = glm::vec4 {material.emissive, material.normalScale}
+        .emissiveAndNormalScale = glm::vec4 {material.emissive, material.normalScale},
+        .hasOcclusionTexture = material.occlusionTexture.isValid() ? 1U : 0U,
+        .occlusionStrength = std::clamp(material.occlusionStrength, 0.0F, 1.0F)
     };
 }
 

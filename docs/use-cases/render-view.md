@@ -19,11 +19,11 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    layout compatible with its material. All draws require Position; Lit also requires
    Normal. Color is optional and defaults to white. A base-color map is optional; if
    set, it must be a sampled RGBA8 sRGB texture from the same Context. Lit
-   metallic-roughness, emissive and normal maps are also optional; they require
-   sampled RGBA8 UNORM, RGBA8 sRGB and RGBA8 UNORM respectively. All maps must be
-   from the same Context and need a submitted upload. Base-color, metallic-roughness
-   and emissive maps require TexCoord0; a normal map is ignored with a warning if
-   TexCoord0 or Tangent is missing.
+   metallic-roughness, emissive, normal and occlusion maps are also optional; they
+   require sampled RGBA8 UNORM, RGBA8 sRGB, RGBA8 UNORM and RGBA8 UNORM textures
+   respectively. All maps must be from the same Context and need a submitted upload.
+   Base-color, metallic-roughness, emissive and occlusion maps require TexCoord0; a
+   normal map is ignored with a warning if TexCoord0 or Tangent is missing.
 3. Camera, light, transform, tint and material values are finite and valid for the
    built-in renderer. A zero-sized framebuffer is allowed and returns `Suspended`.
 
@@ -36,11 +36,12 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
 2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, light,
-   tint, material alpha mode, cutoff and finite normal-map scale, then verifies each mesh's Context and required attributes.
-   If a base-color, Lit metallic-roughness, emissive or Lit normal map is set, it checks the
-   texture's Context, sampled usage and required format. Base-color, metallic-roughness
-   and emissive maps also require TexCoord0; the normal map falls back with a warning
-   when UVs or tangents are missing. It polls and
+   tint, material alpha mode, cutoff, and finite normal-map scale and occlusion
+   strength, then verifies each mesh's Context and required attributes. If a base-color,
+   Lit metallic-roughness, emissive, Lit normal or Lit occlusion map is set, it checks
+   the texture's Context, sampled usage and required format. Base-color,
+   metallic-roughness, emissive and occlusion maps also require TexCoord0; the normal
+   map falls back with a warning when UVs or tangents are missing. It polls and
    reclaims completed upload packets, then rejects a texture whose upload was never
    submitted. Rendering remains queued
    after any in-flight upload on the Context submission queue.
@@ -69,7 +70,9 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    draw tint and optional vertex color; a metallic-roughness sample scales Lit
    material values with its blue and green channels respectively. The emissive
    sample multiplies the linear emissive factor and is added before tone mapping
-   for Lit and Unlit draws. An absent map contributes white. Opaque draws
+   for Lit and Unlit draws. The occlusion map's red channel scales only the Lit
+   ambient term by `mix(1, sample, occlusionStrength)`; it leaves direct light and
+   shadows unchanged. An absent map contributes white. Opaque draws
    cast a full silhouette. Mask draws multiply texture, material, draw and vertex alpha
    and apply the material cutoff in both shadow and camera passes. The camera pass
    selects pipelines from each material model, alpha mode, consumed vertex attributes,
@@ -174,7 +177,9 @@ other objects or create a bloom halo. Base-color, metallic-roughness and emissiv
 require TexCoord0. A Lit normal map uses TexCoord0 and Tangent; without either attribute
 it is ignored with a warning, leaving the interpolated mesh normal in use. Normal-map
 scale defaults to 1, multiplies tangent-space X and Y, and accepts any finite value.
-Lit materials evaluate one directional
+Lit materials can use a linear UNORM occlusion map whose red channel scales only the
+constant ambient contribution; `occlusionStrength` blends from no effect (0) to the
+full map (1). It does not dim direct light or shadows. Lit materials evaluate one directional
 light with a Cook-Torrance microfacet specular term: GGX normal distribution,
 Schlick-GGX geometry and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is
 combined with that specular term. Each Lit material supplies metallic and roughness,
@@ -192,8 +197,8 @@ outputs sRGB, using hardware conversion for sRGB swapchain formats or shader enc
 for UNORM formats. Direct directional light is shadowed with one 2048² depth map per
 frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
 orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
-Points outside that fixed camera-centered region receive no shadow. Occlusion maps,
-multiple lights, spot/point shadows and improved shadow coverage
+Points outside that fixed camera-centered region receive no shadow. Multiple lights,
+spot/point shadows and improved shadow coverage
 and filtering remain work in
 [Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
 current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and

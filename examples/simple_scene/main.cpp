@@ -46,6 +46,7 @@ struct SceneMeshes
     panda::Texture metallicRoughnessMap;
     panda::Texture emissiveMap;
     panda::Texture normalMap;
+    panda::Texture occlusionMap;
 };
 
 struct SceneGeometry
@@ -106,6 +107,15 @@ constexpr auto normalStripeRow = std::array {std::byte {0xd9},
                                              std::byte {0xe6},
                                              std::byte {0xff}};
 constexpr auto normalPixels = std::array {normalStripeRow, normalStripeRow, normalStripeRow, normalStripeRow};
+constexpr auto whiteOcclusionPixel =
+    std::array {std::byte {0xff}, std::byte {0xff}, std::byte {0xff}, std::byte {0xff}};
+constexpr auto darkOcclusionPixel = std::array {std::byte {0x30}, std::byte {0xff}, std::byte {0xff}, std::byte {0xff}};
+constexpr auto occlusionPixels = std::array {
+    std::array {whiteOcclusionPixel, whiteOcclusionPixel, whiteOcclusionPixel, whiteOcclusionPixel},
+    std::array {whiteOcclusionPixel, darkOcclusionPixel,  darkOcclusionPixel,  whiteOcclusionPixel},
+    std::array {whiteOcclusionPixel, darkOcclusionPixel,  darkOcclusionPixel,  whiteOcclusionPixel},
+    std::array {whiteOcclusionPixel, whiteOcclusionPixel, whiteOcclusionPixel, whiteOcclusionPixel}
+};
 
 auto createColoredTriangleVertices() -> std::array<ColoredVertex, 3>
 {
@@ -173,6 +183,16 @@ auto createNormalMap(const panda::Context& context) -> panda::Texture
                          "Create the cube normal map");
 }
 
+auto createOcclusionMap(const panda::Context& context) -> panda::Texture
+{
+    return panda::expect(context.createTexture({
+                             .extent = {4, 4},
+                             .format = vk::Format::eR8G8B8A8Unorm,
+                             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    }),
+                         "Create the cube occlusion map");
+}
+
 void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes, const SceneGeometry& geometry)
 {
     auto batch = panda::expect(context.createUploadBatch(), "Create the upload batch");
@@ -185,6 +205,8 @@ void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes,
                   "Stage the cube metallic-roughness map");
     panda::expect(batch.write(meshes.emissiveMap, emissivePixels), "Stage the cube emissive map");
     panda::expect(batch.write(meshes.normalMap, std::as_bytes(std::span {normalPixels})), "Stage the normal map");
+    panda::expect(batch.write(meshes.occlusionMap, std::as_bytes(std::span {occlusionPixels})),
+                  "Stage the occlusion map");
     const auto completion = panda::expect(batch.submit(), "Submit the scene upload");
     const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for the scene upload");
     panda::expect(status == panda::WaitStatus::Completed, "Scene upload did not finish in time");
@@ -199,6 +221,7 @@ auto makeNormalMapDemoDraw(const SceneMeshes& meshes) -> panda::MeshDraw
     auto draw = panda::MeshDraw {.mesh = meshes.cube, .modelMatrix = transform};
     draw.material.baseColor = {0.55F, 0.55F, 0.55F, 1.0F};
     draw.material.normalTexture = meshes.normalMap;
+    draw.material.occlusionTexture = meshes.occlusionMap;
     return draw;
 }
 
@@ -244,7 +267,8 @@ auto createSceneMeshes(const panda::Context& context) -> SceneMeshes
                                .baseColorMap = createBaseColorMap(context),
                                .metallicRoughnessMap = createMetallicRoughnessMap(context),
                                .emissiveMap = createEmissiveMap(context),
-                               .normalMap = createNormalMap(context)};
+                               .normalMap = createNormalMap(context),
+                               .occlusionMap = createOcclusionMap(context)};
     uploadSceneMeshes(context, meshes, geometry);
     return meshes;
 }
