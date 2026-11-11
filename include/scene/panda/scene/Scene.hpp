@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
@@ -14,6 +15,7 @@
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/ObjectId.hpp>
 #include <string>
+#include <variant>
 
 namespace panda
 {
@@ -85,6 +87,35 @@ struct DirectionalLight
     /// Nonnegative finite intensity multiplier; only the first visible scene light is shadowed.
     float intensity {3.0F};
 };
+
+/// @brief Point light whose position comes from the entity's world transform.
+struct PointLight
+{
+    /// Nonnegative finite linear RGB color.
+    glm::vec3 color {1.0F};
+    /// Nonnegative finite intensity multiplier.
+    float intensity {1.0F};
+    /// Positive finite distance in meters where the contribution reaches zero.
+    float range {};
+};
+
+/// @brief Spot light whose position and local -Z direction come from the entity's world transform.
+struct SpotLight
+{
+    /// Nonnegative finite linear RGB color.
+    glm::vec3 color {1.0F};
+    /// Nonnegative finite intensity multiplier.
+    float intensity {1.0F};
+    /// Positive finite distance in meters where the contribution reaches zero.
+    float range {};
+    /// Radians from the light axis where angular falloff begins.
+    float innerConeAngleRadians {};
+    /// Radians from the light axis where angular falloff reaches zero.
+    float outerConeAngleRadians {std::numbers::pi_v<float> / 4.0F};
+};
+
+/// @brief One light component attached to a scene entity.
+using Light = std::variant<DirectionalLight, PointLight, SpotLight>;
 
 /// @brief Move-only owner of scene objects, transform hierarchy and retained mesh associations.
 /// A Scene borrows its Context, which must outlive it. Entities do not retain or
@@ -176,8 +207,8 @@ public:
     [[nodiscard]] auto setOrthographicCamera(const Entity& entity, std::optional<OrthographicCamera> camera)
         -> Result<void>;
 
-    /// @brief Attaches or removes validated light parameters. Direction follows the world rotation.
-    [[nodiscard]] auto setDirectionalLight(const Entity& entity, std::optional<DirectionalLight> light) -> Result<void>;
+    /// @brief Attaches or removes validated light parameters; point uses world position, directional/spot use world rotation.
+    [[nodiscard]] auto setLight(const Entity& entity, std::optional<Light> light) -> Result<void>;
 
     /// @brief Changes rendering visibility of this object alone; children remain independent.
     [[nodiscard]] auto setVisible(const Entity& entity, bool visible) -> Result<void>;
@@ -185,10 +216,10 @@ public:
     /// @brief Selects a live object with a camera lens. Deletion/removal clears the selection.
     [[nodiscard]] auto setActiveCamera(const Entity& entity) -> Result<void>;
 
-    /// @brief Copies visible draws, active camera and visible directional lights into renderer input.
+    /// @brief Copies visible draws, active camera and visible lights into renderer input.
     /// @param aspectRatio Finite positive framebuffer width divided by height, supplied each frame.
     /// @return A snapshot retaining its meshes, or InvalidArgument for a missing camera or invalid pose.
-    /// The first visible directional light uses the current shadow pass; later lights contribute without shadows.
+    /// The first visible directional light uses the current shadow pass; point and spot lights are unshadowed.
     /// Context::render validates renderer input and the configured light budget.
     /// Camera/light poses require positive uniform world scale without shear.
     /// Calls are serialized with scene mutation and Context operations; no GPU work is submitted.

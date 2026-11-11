@@ -6,6 +6,7 @@
 #include <expected>
 #include <panda_bench/Arguments.hpp>
 #include <string>
+#include <utility>
 
 namespace panda_bench
 {
@@ -19,6 +20,7 @@ struct ParsingState
 {
     Options options;
     std::string outputDirectory {"results"};
+    std::int64_t lightCount {maximumSmokeLightCount};
     std::int64_t warmupSeconds {1};
     std::int64_t measurementSeconds {3};
     std::int64_t runCount {1};
@@ -38,6 +40,12 @@ void addProfileOptions(argparse::ArgumentParser& parser, ParsingState& state)
         .nargs(1)
         .required()
         .store_into(state.outputDirectory);
+    parser.add_argument("--lights")
+        .help("Static lighting workload size (0 to 65; one directional and the rest point lights)")
+        .default_value(std::int64_t {maximumSmokeLightCount})
+        .nargs(1)
+        .required()
+        .store_into(state.lightCount);
 }
 
 void addTimingOptions(argparse::ArgumentParser& parser, ParsingState& state)
@@ -121,6 +129,15 @@ auto validateRunCount(const ParsingState& state) -> std::expected<void, std::str
     return {};
 }
 
+auto validateLightCount(const ParsingState& state) -> std::expected<void, std::string>
+{
+    if (state.lightCount < 0 || std::cmp_greater(state.lightCount, maximumSmokeLightCount))
+    {
+        return std::unexpected {"--lights must be between 0 and 65"};
+    }
+    return {};
+}
+
 auto validateOptions(const ParsingState& state) -> std::expected<void, std::string>
 {
     if (state.options.profile != "smoke")
@@ -134,6 +151,10 @@ auto validateOptions(const ParsingState& state) -> std::expected<void, std::stri
     if (const auto durations = validateDurations(state); !durations)
     {
         return durations;
+    }
+    if (const auto lights = validateLightCount(state); !lights)
+    {
+        return lights;
     }
     return validateRunCount(state);
 }
@@ -162,6 +183,7 @@ auto parseArguments(int argumentCount, char** arguments) -> std::expected<Option
     }
 
     state.options.outputDirectory = state.outputDirectory;
+    state.options.lightCount = static_cast<std::uint32_t>(state.lightCount);
     state.options.warmupDuration = std::chrono::seconds {state.warmupSeconds};
     state.options.measurementDuration = std::chrono::seconds {state.measurementSeconds};
     state.options.runCount = static_cast<std::size_t>(state.runCount);

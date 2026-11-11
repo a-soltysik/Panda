@@ -7,6 +7,7 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/vector_relational.hpp>
+#include <numbers>
 #include <optional>
 #include <panda/Error.hpp>
 #include <panda/Geometry.hpp>
@@ -18,9 +19,11 @@
 #include <panda/scene/Scene.hpp>
 #include <ranges>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "Math.hpp"
+#include "Overloaded.hpp"
 #include "SceneRenderViewBuilder.hpp"
 #include "SceneTransformMath.hpp"
 
@@ -62,6 +65,53 @@ auto validateCamera(const std::optional<OrthographicCamera>& camera) -> Result<v
         return std::unexpected {projection.error()};
     }
     return {};
+}
+
+auto isValidLightColorAndIntensity(glm::vec3 color, float intensity) -> bool
+{
+    return isFinite(color) && std::isfinite(intensity) && intensity >= 0.0F &&
+           !glm::any(glm::lessThan(color, glm::vec3 {0.0F}));
+}
+
+auto isValidLightRange(float range) -> bool
+{
+    return std::isfinite(range) && range > 0.0F;
+}
+
+auto isValidSpotCone(float inner, float outer) -> bool
+{
+    return std::isfinite(inner) && std::isfinite(outer) && inner >= 0.0F && outer > inner &&
+           outer <= std::numbers::pi_v<float> / 2.0F;
+}
+
+auto isValidLightData(const DirectionalLight& light) -> bool
+{
+    return isValidLightColorAndIntensity(light.color, light.intensity);
+}
+
+auto isValidLightData(const PointLight& light) -> bool
+{
+    return isValidLightColorAndIntensity(light.color, light.intensity) && isValidLightRange(light.range);
+}
+
+auto isValidLightData(const SpotLight& light) -> bool
+{
+    return isValidLightColorAndIntensity(light.color, light.intensity) && isValidLightRange(light.range) &&
+           isValidSpotCone(light.innerConeAngleRadians, light.outerConeAngleRadians);
+}
+
+auto isValidSceneLight(const Light& light) -> bool
+{
+    return std::visit(::panda::detail::Overloaded {[](const DirectionalLight& value) {
+                                                       return isValidLightData(value);
+                                                   },
+                                                   [](const PointLight& value) {
+                                                       return isValidLightData(value);
+                                                   },
+                                                   [](const SpotLight& value) {
+                                                       return isValidLightData(value);
+                                                   }},
+                      light);
 }
 }
 
@@ -579,17 +629,16 @@ auto SceneState::setOrthographicCamera(const Entity& entity, std::optional<Ortho
     return {};
 }
 
-auto SceneState::setDirectionalLight(const Entity& entity, std::optional<DirectionalLight> light) -> Result<void>
+auto SceneState::setLight(const Entity& entity, std::optional<Light> light) -> Result<void>
 {
     auto index = resolve(entity);
     if (!index)
     {
         return std::unexpected {index.error()};
     }
-    if (light && (!isFinite(light->color) || !std::isfinite(light->intensity) || light->intensity < 0.0F ||
-                  glm::any(glm::lessThan(light->color, glm::vec3 {0.0F}))))
+    if (light && !isValidSceneLight(*light))
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene directional light is invalid")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene light is invalid")};
     }
     _slots[*index].light = light;
     return {};

@@ -51,51 +51,45 @@ pipelines account for negative determinants, and Lit shading flips normals on
 rendered back faces. `simple_scene` shows the compact layout, a cube with
 base-color, metallic-roughness and emissive maps, a neighboring neutral cube with
 normal and occlusion maps, and an untextured Unlit triangle; `scene_demo` puts an upright,
-vertex-colored triangle into the existing animated object grid and shows a first,
-shadowed directional light with an unshadowed fill light. The built-in renderer packs
-all directional-light records in a per-frame SSBO. `ContextOptions::maxLights` defaults
-to 64 and is checked against device storage-buffer limits at Context creation; a view
-that exceeds the budget returns `ResourceExhausted`. A zero budget supports views
-without directional lights; Lit materials still receive the ambient term. The first
-directional light uses the current shadow map, and later lights are unshadowed.
+vertex-colored triangle into the existing animated object grid and shows a shadowed
+directional light, directional fill, point light and spot light. The built-in renderer
+packs all three light types in a per-frame SSBO. Point and spot contributions use
+inverse-square distance attenuation with a finite-range fade; spot lights also fade
+between their configured cone angles. `ContextOptions::maxLights` defaults to 64 and
+is checked against device storage-buffer limits at Context creation; a view that
+exceeds the budget returns `ResourceExhausted`. A zero budget supports views without
+lights; Lit materials still receive the ambient term. The first directional light
+uses the current shadow map; other directional lights and all point/spot lights are
+unshadowed.
 
-Spot/point lighting and shadows, and the required shadow-quality captures remain
-incomplete.
+Spot/point shadowing and the required shadow-quality captures remain incomplete.
 This task is not accepted.
 
 ## Current verification
 
-- Windows 11: `msvc-quality` build and the `all_verify_interface_header_sets` and
-  `panda_format_checks` targets passed. `clang-cuda-analysis-windows` configured
-  and built successfully. `msvc-fast` configured and built; `ctest --preset msvc-fast`
-  passed all 608 tests, with four skips (one benchmark and three noncoherent-memory
-  variants). Tool versions: CMake 4.4.2, Ninja 1.13.2, ccache 4.13.6.
-- WSL Ubuntu 26.04: after syncing with
-  `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -SyncOnly`,
-  `gcc-quality` build and the `all_verify_interface_header_sets` and
-  `panda_format_checks` targets passed. `clang-cuda-analysis` configured and built
-  successfully. `gcc-fast` configured and built; `ctest --preset gcc-fast` passed
-  all 608 tests, with eight skips (five CUDA capability cases and three
-  noncoherent-memory variants). `gcc-docs` generated the public API documentation.
-  Tool versions: CMake 4.2.3, GCC 16.0.1, Ninja 1.13.2, ccache 4.12.3.
-- The system tests render the 65-directional-light budget and zero-light Unlit cases.
-  They check submission and validation behavior, not expected pixels. The occlusion
-  map system case also checks upload/model/format/UV/usage rejection, not pixel
-  values. SPIR-V disassembly confirms a 64-byte `MaterialRecord` array stride and
-  its member offsets in the mesh and shadow fragment shaders.
-- `git diff --check` passed. `check_docs.py` checked 80 Markdown files and the task
-  queue with no structural errors. `docs-checks` and the API documentation build
-  passed for the current source.
-- No visual inspection or pixel comparison was made for the current changes, and
-  there is no RenderDoc shadow-quality capture or CPU performance profile. Spot/point
-  lighting and shadows and shadow-quality evidence remain incomplete.
+- Windows 11: `msvc-quality` build, `all_verify_interface_header_sets`,
+  `panda_format_checks`, `clang-cuda-analysis-windows`, `msvc-fast` build and
+  `ctest --preset msvc-fast` passed. CTest reported 611 passed and 4 skipped.
+- WSL Ubuntu mirror: `gcc-quality` build, interface-header and format targets,
+  `clang-cuda-analysis`, `gcc-fast` build and full CTest passed. CTest reported 611
+  passed and 8 skipped. The CUDA analyzer warned that the installed CUDA version is
+  newer than its latest partially supported version, 12.9.
+- `check_docs.py` checked 80 Markdown files and the task queue; `docs-checks` validated
+  42 Mermaid diagrams in 83 files on both platforms. `gcc-docs` passed.
+- A one-second WSL smoke run with default benchmark settings completed and its JSON
+  report recorded 65 lights under `renderStaticCubeWithLights`. One earlier launch
+  faulted in `libwayland-client.so.0` at `wl_proxy_get_version`; a repeated run
+  completed. No RenderDoc capture or visual/pixel review was made.
+- Spot/point shadows, directional shadow-quality captures and CPU performance
+  profiling remain incomplete.
 
 ## Acceptance
 
 ABI/visual cases for position/color-only and lit mesh layouts, emissive factor and
 map behavior in Lit and Unlit materials, blend compositing and draw order, missing
 tangent with normal-map fallback, 65 lights with an enlarged budget, mask shadows,
-negative scale, tangent sign, spot/point shadows and format fallback.
+negative scale, tangent sign, point/spot range and cone lighting, spot/point shadows
+and format fallback.
 
 CPU performance evidence: profile render-view preparation and command recording in
 an optimized build for the 65-light case and representative spot/point shadow

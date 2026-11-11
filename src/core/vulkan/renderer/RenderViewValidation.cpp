@@ -15,12 +15,15 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/geometric.hpp>
 #include <glm/matrix.hpp>
+#include <numbers>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
+#include <variant>
 
 #include "Math.hpp"
+#include "Overloaded.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
@@ -198,19 +201,111 @@ auto validateDraws(const RenderView& view, const resources::MemoryPool& pool, Dr
     return {};
 }
 
-auto validateDirectionalLight(const DirectionalLight& light) -> Result<void>
+auto validateLightColorAndIntensity(glm::vec3 color, float intensity) -> Result<void>
 {
-    if (!isFinite(light.direction) || !isFinite(light.color) || !std::isfinite(light.intensity))
+    if (!isFinite(color) || !std::isfinite(intensity))
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Directional light contains non-finite data")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Light contains non-finite data")};
     }
-    const auto directionLengthSquared = glm::dot(light.direction, light.direction);
-    if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1.0e-12F || light.intensity < 0.0F ||
-        light.color.r < 0.0F || light.color.g < 0.0F || light.color.b < 0.0F)
+    if (intensity < 0.0F || color.r < 0.0F || color.g < 0.0F || color.b < 0.0F)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Directional light is invalid")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Light color and intensity must be nonnegative")};
     }
     return {};
+}
+
+auto validateLightDirection(glm::vec3 direction) -> Result<void>
+{
+    if (!isFinite(direction))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Light direction contains non-finite data")};
+    }
+    const auto directionLengthSquared = glm::dot(direction, direction);
+    if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1.0e-12F)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Light direction must be nonzero")};
+    }
+    return {};
+}
+
+auto validateLocalLightRange(float range) -> Result<void>
+{
+    if (!std::isfinite(range) || range <= 0.0F)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Local light range must be finite and positive")};
+    }
+    return {};
+}
+
+auto validateSpotCone(float innerConeAngleRadians, float outerConeAngleRadians) -> Result<void>
+{
+    if (!std::isfinite(innerConeAngleRadians) || !std::isfinite(outerConeAngleRadians) ||
+        innerConeAngleRadians < 0.0F || outerConeAngleRadians <= innerConeAngleRadians ||
+        outerConeAngleRadians > std::numbers::pi_v<float> / 2.0F ||
+        std::cos(innerConeAngleRadians) <= std::cos(outerConeAngleRadians))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Spot cone angles must satisfy 0 <= inner < outer <= pi/2")};
+    }
+    return {};
+}
+
+auto validateLightPosition(glm::vec3 position) -> Result<void>
+{
+    if (!isFinite(position))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Local light position is non-finite")};
+    }
+    return {};
+}
+
+auto validateDirectionalLight(const DirectionalLight& light) -> Result<void>
+{
+    return validateLightColorAndIntensity(light.color, light.intensity).and_then([&] {
+        return validateLightDirection(light.direction);
+    });
+}
+
+auto validatePointLight(const PointLight& light) -> Result<void>
+{
+    return validateLightColorAndIntensity(light.color, light.intensity)
+        .and_then([&] {
+            return validateLightPosition(light.position);
+        })
+        .and_then([&] {
+            return validateLocalLightRange(light.range);
+        });
+}
+
+auto validateSpotLight(const SpotLight& light) -> Result<void>
+{
+    return validateLightColorAndIntensity(light.color, light.intensity)
+        .and_then([&] {
+            return validateLightPosition(light.position);
+        })
+        .and_then([&] {
+            return validateLightDirection(light.direction);
+        })
+        .and_then([&] {
+            return validateLocalLightRange(light.range);
+        })
+        .and_then([&] {
+            return validateSpotCone(light.innerConeAngleRadians, light.outerConeAngleRadians);
+        });
+}
+
+auto validateLight(const Light& light) -> Result<void>
+{
+    return std::visit(::panda::detail::Overloaded {[](const DirectionalLight& value) {
+                                                       return validateDirectionalLight(value);
+                                                   },
+                                                   [](const PointLight& value) {
+                                                       return validatePointLight(value);
+                                                   },
+                                                   [](const SpotLight& value) {
+                                                       return validateSpotLight(value);
+                                                   }},
+                      light);
 }
 
 }
@@ -223,9 +318,9 @@ auto validateRenderViewData(const RenderView& view) -> Result<void>
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Render view contains non-finite or singular data")};
     }
-    for (const auto& light : view.directionalLights)
+    for (const auto& light : view.lights)
     {
-        if (auto result = validateDirectionalLight(light); !result)
+        if (auto result = validateLight(light); !result)
         {
             return result;
         }
@@ -243,7 +338,7 @@ auto validateRenderViewData(const RenderView& view) -> Result<void>
 
 auto validateRenderViewLightCount(const RenderView& view, std::uint32_t maxLights) -> Result<void>
 {
-    if (view.directionalLights.size() > maxLights)
+    if (view.lights.size() > maxLights)
     {
         return std::unexpected {
             makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds the Context maxLights budget")};

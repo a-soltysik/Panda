@@ -6,6 +6,7 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/ext/vector_uint2.hpp>
 #include <glm/ext/vector_uint4.hpp>
 #include <panda/Mesh.hpp>
 
@@ -27,8 +28,19 @@ struct alignas(16) FrameUniform
 
 struct alignas(16) LightRecord
 {
-    glm::vec4 direction;
+    glm::vec4 positionRange;
+    glm::vec4 directionOuterConeCos;
     glm::vec4 colorIntensity;
+    float innerConeCos {};
+    std::uint32_t type {};
+    glm::uvec2 padding {};
+};
+
+enum class ShaderLightType : std::uint8_t
+{
+    Directional = PANDA_LIGHT_TYPE_DIRECTIONAL,
+    Point = PANDA_LIGHT_TYPE_POINT,
+    Spot = PANDA_LIGHT_TYPE_SPOT
 };
 
 struct alignas(16) DrawConstants
@@ -61,9 +73,16 @@ static_assert(offsetof(FrameUniform, cameraPosition) == 128);
 static_assert(offsetof(FrameUniform, lightDirection) == 144);
 static_assert(offsetof(FrameUniform, ambient) == 160);
 static_assert(offsetof(FrameUniform, lightInfo) == 176);
-static_assert(sizeof(LightRecord) == 32);
-static_assert(offsetof(LightRecord, direction) == 0);
-static_assert(offsetof(LightRecord, colorIntensity) == 16);
+static_assert(sizeof(LightRecord) == 64);
+static_assert(offsetof(LightRecord, positionRange) == 0);
+static_assert(offsetof(LightRecord, directionOuterConeCos) == 16);
+static_assert(offsetof(LightRecord, colorIntensity) == 32);
+static_assert(offsetof(LightRecord, innerConeCos) == 48);
+static_assert(offsetof(LightRecord, type) == 52);
+static_assert(offsetof(LightRecord, padding) == 56);
+static_assert(static_cast<std::uint32_t>(ShaderLightType::Directional) == PANDA_LIGHT_TYPE_DIRECTIONAL);
+static_assert(static_cast<std::uint32_t>(ShaderLightType::Point) == PANDA_LIGHT_TYPE_POINT);
+static_assert(static_cast<std::uint32_t>(ShaderLightType::Spot) == PANDA_LIGHT_TYPE_SPOT);
 static_assert(sizeof(DrawConstants) == 128);
 static_assert(offsetof(DrawConstants, normalColumns) == 64);
 static_assert(offsetof(DrawConstants, tint) == 112);

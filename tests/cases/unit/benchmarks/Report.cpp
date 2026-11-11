@@ -19,6 +19,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     report.vulkanApiVersion = 0x00403000;
     report.requestedWindowWidth = 1920;
     report.requestedWindowHeight = 1080;
+    report.requestedLightCount = 65;
     report.requestedWarmup = std::chrono::seconds {2};
     report.requestedMeasurement = std::chrono::seconds {4};
     report.requestedRuns = 1;
@@ -44,10 +45,10 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
 
     const auto json = nlohmann::json::parse(panda_bench::serialize(report));
 
-    EXPECT_EQ(json.at("schemaVersion"), 4);
+    EXPECT_EQ(json.at("schemaVersion"), 5);
     EXPECT_EQ(json.at("profile").at("name"), "smoke");
-    EXPECT_EQ(json.at("profile").at("version"), 2);
-    EXPECT_EQ(json.at("workload"), "renderStaticCube");
+    EXPECT_EQ(json.at("profile").at("version"), 3);
+    EXPECT_EQ(json.at("workload"), "renderStaticCubeWithLights");
     EXPECT_EQ(json.at("code").at("revision"), "123456789abc");
     EXPECT_FALSE(json.at("code").contains("dirtyAtConfigure"));
     EXPECT_EQ(json.at("environment").at("cpuModel"), "Test CPU");
@@ -57,6 +58,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     EXPECT_EQ(json.at("environment").at("driver").at("version"), 123);
     EXPECT_EQ(json.at("settings").at("requestedWindowExtent").at("width"), 1920);
     EXPECT_EQ(json.at("settings").at("requestedWindowExtent").at("height"), 1080);
+    EXPECT_EQ(json.at("settings").at("requestedLightCount"), 65);
     EXPECT_EQ(json.at("settings").at("requestedMeasurementNanoseconds"), 4'000'000'000LL);
     EXPECT_EQ(json.at("runs").size(), 1U);
     EXPECT_EQ(json.at("runs").at(0).at("effectiveFramebufferExtent").at("width"), 1920);
@@ -78,6 +80,8 @@ TEST(BenchmarkReport, OmitsEnvironmentValuesThatWereNotCollected)
     const auto json = nlohmann::json::parse(panda_bench::serialize(panda_bench::Report {}));
     const auto& environment = json.at("environment");
 
+    EXPECT_EQ(json.at("workload"), "renderStaticCube");
+    EXPECT_EQ(json.at("settings").at("requestedLightCount"), 0);
     EXPECT_FALSE(environment.contains("cpuModel"));
     EXPECT_FALSE(environment.contains("gpuModel"));
     EXPECT_FALSE(environment.contains("driver"));

@@ -1,11 +1,15 @@
 #include "VulkanSmokeRunBackend.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <expected>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_uint2.hpp>
+#include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
+#include <numbers>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
@@ -85,6 +89,30 @@ auto configureCubeCamera(panda::RenderView& view, panda::FramebufferExtent exten
     return {};
 }
 
+void configureLights(panda::RenderView& view, std::uint32_t lightCount)
+{
+    if (lightCount == 0)
+    {
+        return;
+    }
+    view.lights.reserve(lightCount);
+    view.lights.emplace_back(panda::DirectionalLight {.direction = glm::normalize(glm::vec3 {-0.4F, -1.0F, -0.3F}),
+                                                      .color = glm::vec3 {1.0F},
+                                                      .intensity = 3.0F});
+    const auto pointLightCount = lightCount - 1U;
+    for (auto index = std::uint32_t {}; index < pointLightCount; ++index)
+    {
+        const auto angle =
+            std::numbers::pi_v<float> * 2.0F * static_cast<float>(index) / static_cast<float>(pointLightCount);
+        view.lights.emplace_back(panda::PointLight {
+            .position = {7.0F * std::cos(angle), 3.0F, 7.0F * std::sin(angle)},
+            .color = glm::vec3 {1.0F},
+            .intensity = 2.0F,
+            .range = 8.0F
+        });
+    }
+}
+
 auto waitForCubeUpload(const panda::Context& context, const panda::CompletionPoint& completion)
     -> std::expected<void, Failure>
 {
@@ -119,6 +147,18 @@ auto uploadCube(const panda::Context& context, panda::Mesh& mesh, const panda::G
     }
     return waitForCubeUpload(context, *completion);
 }
+
+auto addUploadedCube(const panda::Context& context, panda::RenderView& view) -> std::expected<void, Failure>
+{
+    const auto geometry = panda::createCubeGeometry();
+    auto mesh = context.createMeshFromGeometry(geometry);
+    if (!mesh)
+    {
+        return std::unexpected {failFromPanda(mesh.error())};
+    }
+    view.meshes.push_back({.mesh = std::move(*mesh)});
+    return uploadCube(context, view.meshes.back().mesh, geometry);
+}
 }
 
 auto VulkanSmokeRunBackend::initialize(const Options& options) -> std::expected<SmokeRunEnvironment, Failure>
@@ -127,7 +167,7 @@ auto VulkanSmokeRunBackend::initialize(const Options& options) -> std::expected<
     {
         return std::unexpected {window.error()};
     }
-    if (const auto context = createContext(); !context)
+    if (const auto context = createContext(options); !context)
     {
         return std::unexpected {context.error()};
     }
@@ -136,7 +176,7 @@ auto VulkanSmokeRunBackend::initialize(const Options& options) -> std::expected<
     {
         return std::unexpected {environment.error()};
     }
-    if (const auto cube = createStaticCube(environment->framebufferExtent); !cube)
+    if (const auto cube = createStaticCube(environment->framebufferExtent, options.lightCount); !cube)
     {
         return std::unexpected {cube.error()};
     }
@@ -255,11 +295,14 @@ auto VulkanSmokeRunBackend::createWindow(const Options& options) -> std::expecte
     return {};
 }
 
-auto VulkanSmokeRunBackend::createContext() -> std::expected<void, Failure>
+auto VulkanSmokeRunBackend::createContext(const Options& options) -> std::expected<void, Failure>
 {
     auto createdContext = panda::Context::createWithSurface(
         checkedWindow(),
-        {.applicationName = "Panda benchmark", .enableValidation = false, .enableFramePerformanceSampling = true});
+        {.applicationName = "Panda benchmark",
+         .enableValidation = false,
+         .enableFramePerformanceSampling = true,
+         .maxLights = std::max(panda::ContextOptions::defaultMaxLights, options.lightCount)});
     if (!createdContext)
     {
         return std::unexpected {failFromPanda(createdContext.error())};
@@ -299,7 +342,8 @@ auto VulkanSmokeRunBackend::captureEnvironment() -> std::expected<SmokeRunEnviro
     return environment;
 }
 
-auto VulkanSmokeRunBackend::createStaticCube(panda::FramebufferExtent extent) -> std::expected<void, Failure>
+auto VulkanSmokeRunBackend::createStaticCube(panda::FramebufferExtent extent, std::uint32_t lightCount)
+    -> std::expected<void, Failure>
 {
     if (extent.width == 0 || extent.height == 0)
     {
@@ -310,17 +354,11 @@ auto VulkanSmokeRunBackend::createStaticCube(panda::FramebufferExtent extent) ->
     {
         return std::unexpected {camera.error()};
     }
+    configureLights(view, lightCount);
 
-    const auto geometry = panda::createCubeGeometry();
-    auto mesh = checkedContext().createMeshFromGeometry(geometry);
-    if (!mesh)
+    if (const auto cube = addUploadedCube(checkedContext(), view); !cube)
     {
-        return std::unexpected {failFromPanda(mesh.error())};
-    }
-    view.meshes.push_back({.mesh = std::move(*mesh)});
-    if (const auto uploaded = uploadCube(checkedContext(), view.meshes.front().mesh, geometry); !uploaded)
-    {
-        return std::unexpected {uploaded.error()};
+        return cube;
     }
 
     _view = std::move(view);

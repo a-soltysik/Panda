@@ -14,20 +14,33 @@ workload size, or output directory must not require recompilation.
 The current smoke profile accepts:
 
 ```text
-panda-bench --profile smoke --output results --width 1280 --height 720 --warmup-seconds 1 --measure-seconds 3 --runs 1
+panda-bench --profile smoke --output results --width 1280 --height 720 --lights 65 --warmup-seconds 1 --measure-seconds 3 --runs 1
 ```
 
-Smoke profile version 2 creates a standard unit cube and uploads it once before the
-warmup and measurement phases. Every frame in both phases renders the same static
-`RenderView` with one mesh draw; geometry generation and upload are part of startup,
-not the per-frame workload. The JSON workload is `renderStaticCube`. Smoke profile
-version 1 rendered an empty view, so its results are not comparable with version 2.
-This one-draw workload checks the live renderer path but is not a representative scene
-benchmark. With a zero-second warmup, the first measured frame may include first-use
-renderer or pipeline setup.
+Smoke profile version 3 creates and uploads a standard unit cube once before warmup
+and measurement. Every frame renders the same static `RenderView` with one mesh draw.
+`--lights` defaults to 65 and accepts a total count from 0 to 65; zero disables lights,
+while a positive count
+creates one directional light and the remaining point lights on a fixed ring.
+Geometry generation, upload and light fixture generation are part of startup, not the
+per-frame workload. The JSON records the requested light count and uses
+`renderStaticCube` or `renderStaticCubeWithLights` as its workload name. Version 2
+rendered the cube without lights; version 1 rendered an empty view. Older profile
+results from version 1 are not comparable with version 3. Version 2's cube-only
+workload matches version 3 with `--lights 0` when the remaining settings match; runs
+with lights are distinct workloads. This remains a fixed-view smoke workload, not a
+representative scene benchmark. With a zero-second warmup, the first measured frame
+may include first-use renderer or pipeline setup.
+
+For a positive light count, the Context budget is `max(defaultMaxLights, count)`.
+Thus `--lights 65` checks the enlarged budget while remaining independent of a
+device's absolute maximum; unsupported storage-buffer limits fail during Context
+creation. The benchmark prepares `RenderView` once before timing, so CPU frame samples
+measure Panda's Context/render path and do not include Scene render-view preparation.
 
 `--width` and `--height` set the requested window extent in pixels. The defaults are
 1280 by 720; the report records both the requested and effective framebuffer extents.
+`--lights` controls the fixed lighting workload size, defaulting to 65.
 Development and quality presets use Debug and are for functional smoke checks only.
 Use an optimized Release build for performance comparisons. Use RelWithDebInfo when
 profiling needs symbols, and treat those results as a separate build configuration.
@@ -241,11 +254,12 @@ material with linear tint `(0.35+0.06*k,0.55,0.85-0.05*k,1)`, where
 Distinct Material handles
 intentionally produce approximately 100 mesh draws; frame diagnostics record actual
 camera and shadow draws and culled entities. Camera is (0,12,16), looking at origin.
-Lighting is one directional light with a 2048 shadow face and 31 unshadowed point
-lights on a radius-7 horizontal ring at y=3: point k=0..30 has position
-`(7*cos(2*pi*k/31),3,7*sin(2*pi*k/31))`, linear white color, intensity 2 and
-range 8 m. Directional direction is normalized `(-0.4,-1,-0.3)`, linear white
-at intensity 3; ambient/defaults follow the
+Lighting is one directional light with a 2048 shadow face and 64 unshadowed point
+lights on a radius-7 horizontal ring at y=3: point k=0..63 has position
+`(7*cos(2*pi*k/64),3,7*sin(2*pi*k/64))`, linear white color, intensity 2 and
+range 8 m. The profile sets `ContextOptions::maxLights` to 65 for this workload.
+Directional direction is normalized `(-0.4,-1,-0.3)`, linear white at intensity 3;
+ambient/defaults follow the
 [renderer specification](../design/contracts/rendering.md#first-version-renderer-contract).
 These values are fixed by the profile, not generated from driver timing. Test-only geometry avoids external
 model version drift. A separate `minimal-v1` profile uses the Studio camera/light,

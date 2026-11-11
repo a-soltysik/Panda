@@ -3,7 +3,7 @@
 ## Goal and boundary
 
 An application asks optional `Panda::Scene` to prepare a `RenderView` containing its
-visible meshes, active camera and directional lights. **Panda::Scene** starts empty,
+visible meshes, active camera and directional, point or spot lights. **Panda::Scene** starts empty,
 owns runtime identities, transforms and component values, and retains associated
 mesh handles. **The application** creates entities, attaches camera/light
 components, creates/uploads GPU assets, selects the camera, updates the scene and
@@ -36,10 +36,10 @@ renderer use without Scene. Persistence remains in the
    ignores uniform scale.
 3. **Collect visible objects.** The builder visits scene slots in order, updates
    world caches only for alive, visible objects with meshes or lights, and copies
-   visible mesh transforms/tints and their mesh handles. For a light,
-   `SceneTransformMath` checks its world basis and supplies its rotation; the
-   builder maps local -Z into the lighting direction. Visibility applies to each
-   object independently.
+   visible mesh transforms/tints and their mesh handles. `SceneTransformMath`
+   validates each light's world basis. The builder uses world translation for point
+   and spot positions, and transforms local -Z into the direction of directional and
+   spot lights. Visibility applies to each object independently.
 4. **Publish the snapshot.** Scene returns a value independent of subsequent scene
    edits. The application passes it to `Context::render()` in its frame loop.
    Context performs renderer data and mesh-ownership validation before submission.
@@ -65,13 +65,13 @@ sequenceDiagram
         B->>D: Step 3 - Read slot and updateWorld when needed
         D-->>B: Component values and world transform
         B->>B: Copy visible mesh draw
-        opt Visible directional light
+        opt Visible light
             B->>M: Check light world basis
             M-->>B: Pose rotation or Error
-            B->>B: Append each visible light in scene order
+            B->>B: Apply light transform and append light
         end
     end
-    B-->>D: Camera, directional lights and retained mesh draws or Error
+    B-->>D: Camera, visible lights and retained mesh draws or Error
     D-->>S: Return snapshot result
     S-->>A: Step 4 - Result containing snapshot
     A->>C: render(snapshot)
@@ -82,8 +82,9 @@ sequenceDiagram
 
 **Transform authority.** Local TRS remains authoritative. Parent changes invalidate
 descendant caches; querying the view updates dirty ancestors before their children.
-Mesh matrices preserve derived shear. Camera and light poses reject it because their
-orientation must describe an orthonormal basis.
+Mesh matrices preserve derived shear. Camera and light poses reject it because
+their world basis must describe an orthonormal orientation. Point lights emit from
+world translation; entity scale does not change their range or color.
 
 **Snapshot lifetime.** A snapshot contains copies of matrices and light/camera
 values plus retained mesh handles. Deleting an object releases its Scene-owned mesh
@@ -94,11 +95,12 @@ The renderer retains submitted mesh uses through GPU completion.
 one snapshot. SceneState remains the sole owner of entity identity, hierarchy,
 components and world caches; the builder does not create or delete entities.
 
-**Current light boundary.** Scene preserves visible directional lights in its
-`RenderView::directionalLights` vector. The first visible light uses the renderer's
-existing shadow pass; later visible lights contribute unshadowed direct lighting.
-With no visible light, direct intensity is zero and the renderer's ambient term still
-applies.
+**Current light boundary.** Scene preserves visible light variants in scene order in
+`RenderView::lights`. Point and spot lights contribute direct illumination with
+finite-range attenuation; directional and spot directions follow the entity's local
+-Z axis. Only the first directional light uses the current shadow pass. Point and
+spot lights and other directional lights are currently unshadowed. With no visible
+lights, the renderer's ambient term still applies.
 Deleting the active camera clears selection instead of choosing another object.
 
 ## Variants and errors
@@ -106,7 +108,7 @@ Deleting the active camera clears selection instead of choosing another object.
 |                  | Point and condition                                                                | Response                 | Resulting state and next action                            |
 |------------------|------------------------------------------------------------------------------------|--------------------------|------------------------------------------------------------|
 | **Error&nbsp;1** | Step 2: no selected camera, invalid lens/aspect, reflected/nonuniform/sheared pose | Return `InvalidArgument` | No snapshot is published; select or correct the camera.    |
-| **Error&nbsp;2** | Step 3: invalid light pose or non-finite derived world transform                   | Return `InvalidArgument` | Logical scene state is unchanged; correct the object data. |
+| **Error&nbsp;2** | Step 3: invalid light pose or non-finite derived world transform                      | Return `InvalidArgument` | Logical scene state is unchanged; correct the object data. |
 
 ## Outcomes
 

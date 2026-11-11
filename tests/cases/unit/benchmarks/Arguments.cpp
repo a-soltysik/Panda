@@ -30,10 +30,19 @@ TEST(BenchmarkArguments, SuppliesTheSmokeDefaults)
     EXPECT_EQ(options->outputDirectory, "results");
     EXPECT_EQ(options->windowWidth, 1280U);
     EXPECT_EQ(options->windowHeight, 720U);
+    EXPECT_EQ(options->lightCount, panda_bench::maximumSmokeLightCount);
     EXPECT_EQ(options->warmupDuration, std::chrono::seconds {1});
     EXPECT_EQ(options->measurementDuration, std::chrono::seconds {3});
     EXPECT_EQ(options->runCount, 1U);
     EXPECT_FALSE(options->showHelp);
+}
+
+TEST(BenchmarkArguments, AllowsDisablingTheLightingWorkload)
+{
+    const auto options = parse({"panda-bench", "--lights", "0"});
+
+    ASSERT_TRUE(options);
+    EXPECT_EQ(options->lightCount, 0U);
 }
 
 TEST(BenchmarkArguments, ReadsRuntimeSettings)
@@ -47,6 +56,8 @@ TEST(BenchmarkArguments, ReadsRuntimeSettings)
                                 "1920",
                                 "--height",
                                 "1080",
+                                "--lights",
+                                "65",
                                 "--warmup-seconds",
                                 "0",
                                 "--measure-seconds",
@@ -58,6 +69,7 @@ TEST(BenchmarkArguments, ReadsRuntimeSettings)
     EXPECT_EQ(options->outputDirectory, "captures/first-run");
     EXPECT_EQ(options->windowWidth, 1920U);
     EXPECT_EQ(options->windowHeight, 1080U);
+    EXPECT_EQ(options->lightCount, 65U);
     EXPECT_EQ(options->warmupDuration, std::chrono::seconds {0});
     EXPECT_EQ(options->measurementDuration, std::chrono::seconds {12});
     EXPECT_EQ(options->runCount, 3U);
@@ -79,6 +91,7 @@ TEST(BenchmarkArguments, GeneratesHelpForRegisteredOptions)
     EXPECT_NE(help.find("--output"), std::string::npos);
     EXPECT_NE(help.find("--width"), std::string::npos);
     EXPECT_NE(help.find("--height"), std::string::npos);
+    EXPECT_NE(help.find("--lights"), std::string::npos);
     EXPECT_NE(help.find("--warmup-seconds"), std::string::npos);
     EXPECT_NE(help.find("--measure-seconds"), std::string::npos);
     EXPECT_NE(help.find("--runs"), std::string::npos);
@@ -98,6 +111,7 @@ TEST(BenchmarkArguments, RejectsMissingAndUnknownValues)
     EXPECT_FALSE(parse({"panda-bench", "--output"}));
     EXPECT_FALSE(parse({"panda-bench", "--width"}));
     EXPECT_FALSE(parse({"panda-bench", "--height"}));
+    EXPECT_FALSE(parse({"panda-bench", "--lights"}));
     EXPECT_FALSE(parse({"panda-bench", "--warmup-seconds"}));
     EXPECT_FALSE(parse({"panda-bench", "--measure-seconds"}));
     EXPECT_FALSE(parse({"panda-bench", "--runs"}));
@@ -114,4 +128,6 @@ TEST(BenchmarkArguments, EnforcesControlledRunBounds)
     EXPECT_FALSE(parse({"panda-bench", "--width", "0"}));
     EXPECT_FALSE(parse({"panda-bench", "--width", "-1"}));
     EXPECT_FALSE(parse({"panda-bench", "--height", "4294967296"}));
+    EXPECT_FALSE(parse({"panda-bench", "--lights", "-1"}));
+    EXPECT_FALSE(parse({"panda-bench", "--lights", "66"}));
 }

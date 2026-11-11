@@ -30,16 +30,17 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 ## Main flow
 
 1. **Build the view.** The application supplies a view-projection matrix, camera
-   position, zero or more directional lights and zero or more mesh draws with
-   per-mesh materials. The first directional light casts the current shadow; later
-   lights are unshadowed. `ContextOptions::maxLights` controls the total light budget;
-   zero supports a view with no directional lights.
+   position, zero or more directional, point or spot lights, and zero or more mesh
+   draws with per-mesh materials. The first directional light casts the current
+   shadow; point/spot lights and later directional lights are unshadowed.
+   `ContextOptions::maxLights` controls the total light budget; zero supports a view
+   with no lights.
    Mesh handles are ordinary values; Panda does not create entities or own application
    transforms.
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
 2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, all
-   directional lights and the configured light budget,
+   light variants and the configured light budget,
    tint, material alpha mode, cutoff, and finite normal-map scale and occlusion
    strength, then verifies each mesh's Context and required attributes. If a base-color,
    Lit metallic-roughness, emissive, Lit normal or Lit occlusion map is set, it checks
@@ -80,8 +81,9 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    cast a full silhouette. Mask draws multiply texture, material, draw and vertex alpha
    and apply the material cutoff in both shadow and camera passes. The camera pass
    selects pipelines from each material model, alpha mode, consumed vertex attributes,
-   face mode and transform handedness while summing direct directional lighting and
-   sampling the shadow map for the first light in Lit draws. Later lights are
+   face mode and transform handedness while summing directional, point and spot
+   lighting. Point/spot lights use finite-range attenuation and spot-cone falloff;
+   only the first directional light samples the shadow map. Other lights are
    unshadowed in this implementation slice.
    `FrameExecution` records content and its timing markers; it does not acquire or
    present images, or transition the output image. `Presentation` records the final
@@ -186,7 +188,7 @@ scale defaults to 1, multiplies tangent-space X and Y, and accepts any finite va
 Lit materials can use a linear UNORM occlusion map whose red channel scales only the
 constant ambient contribution; `occlusionStrength` blends from no effect (0) to the
 full map (1). It does not dim direct light or shadows. Lit materials evaluate the
-directional lights with a Cook-Torrance microfacet specular
+directional, point and spot lights with a Cook-Torrance microfacet specular
 term: GGX normal distribution,
 Schlick-GGX geometry and Schlick Fresnel with dielectric F0 0.04. Lambert diffuse is
 combined with that specular term. Each Lit material supplies metallic and roughness,
@@ -204,8 +206,9 @@ outputs sRGB, using hardware conversion for sRGB swapchain formats or shader enc
 for UNORM formats. Only the first directional light is shadowed with one 2048² depth map per
 frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
 orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
-Points outside that fixed camera-centered region receive no shadow. Spot/point lights,
-their shadows, and improved shadow coverage and filtering remain work in
+Points outside that fixed camera-centered region receive no shadow. Point/spot direct
+lighting is present, but their shadow views and shadows, plus improved directional
+shadow coverage and filtering, remain work in
 [Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
 current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and
 the current visual result. The first mesh draw selects the highest common color/depth

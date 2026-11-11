@@ -47,7 +47,7 @@ struct ContextOptions
     /// Create timestamp query pools and collect paired CPU and GPU frame timings when the selected queue supports them.
     /// Disabled by default to avoid measurement work in contexts that do not need it.
     bool enableFramePerformanceSampling {false};
-    /// Maximum directional lights in one RenderView; zero allows views without directional lighting.
+    /// Maximum lights in one RenderView; zero allows views without direct lighting.
     /// Positive limits must fit the selected device's storage-buffer limits.
     std::uint32_t maxLights {defaultMaxLights};
     /// External Vulkan memory export support.

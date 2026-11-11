@@ -72,6 +72,7 @@ auto settingsJson(const Report& report) -> Json
     return Json {
         {"requestedWindowExtent",
          Json {{"width", report.requestedWindowWidth}, {"height", report.requestedWindowHeight}}  },
+        {"requestedLightCount",             report.requestedLightCount                            },
         {"validationEnabled",               false                                                 },
         {"externalProfilerEnabled",         false                                                 },
         {"framePerformanceSamplingEnabled", true                                                  },
@@ -120,14 +121,14 @@ auto serialize(const Report& report) -> std::string
     auto runs = Json::array();
     std::ranges::transform(report.runs, std::back_inserter(runs), runJson);
     return Json {
-               {"schemaVersion", 4                                                                    },
-               {"profile",       Json {{"name", "smoke"}, {"version", 2}}                             },
-               {"workload",      "renderStaticCube"                                                   },
-               {"code",          Json {{"revision", report.revision}}                                 },
-               {"environment",   environmentJson(report)                                              },
-               {"settings",      settingsJson(report)                                                 },
-               {"runs",          std::move(runs)                                                      },
-               {"outcome",       Json {{"status", report.outcome}, {"message", report.outcomeMessage}}}
+               {"schemaVersion", 5                                                                                  },
+               {"profile",       Json {{"name", "smoke"}, {"version", 3}}                                           },
+               {"workload",      report.requestedLightCount == 0 ? "renderStaticCube" : "renderStaticCubeWithLights"},
+               {"code",          Json {{"revision", report.revision}}                                               },
+               {"environment",   environmentJson(report)                                                            },
+               {"settings",      settingsJson(report)                                                               },
+               {"runs",          std::move(runs)                                                                    },
+               {"outcome",       Json {{"status", report.outcome}, {"message", report.outcomeMessage}}              }
     }
                .dump(2) +
            "\n";

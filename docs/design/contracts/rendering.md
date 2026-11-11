@@ -363,6 +363,15 @@ buffer/descriptor limits. Exceeding the budget returns an error, never silently
 drops lights. Each shadow view supplies a world-to-shadow transform and
 normalized atlas region.
 
+Point and spot direct illumination uses inverse-square distance attenuation with
+a finite-range fade: `max(1 - (distance / range)^4, 0) / distance^2`. Spot
+illumination also multiplies by the squared, clamped interpolation between the
+cosines of its inner and outer cone angles. This follows the recommended
+attenuation model in [KHR_lights_punctual](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_lights_punctual/README.md).
+Scene point lights use the entity's world position; directional and spot lights
+also use its local -Z direction transformed by the world rotation. Light range
+and cone shape do not scale with the entity.
+
 Material data provides linear base color and emissive, metallic, roughness,
 occlusion strength, normal scale and alpha cutoff. Built-in default: tint white,
 emissive black, metallic 0, roughness 1, occlusion strength 1, normal scale 1,

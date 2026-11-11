@@ -12,7 +12,7 @@ around Y at 0.3 radians per second. `animateWave()` demonstrates per-object anim
 into the world matrices used by the renderer.
 
 The scene starts empty. The application explicitly creates its camera and
-directional-light entities, attaches their components and selects the camera. It
+directional, point and spot light entities, attaches their components and selects the camera. It
 also creates and uploads the cube, ground, configurable sphere and triangle meshes,
 then associates them with scene objects. The sphere uses 48 longitude segments and 24
 latitude rings. Each frame supplies the current framebuffer aspect ratio to
@@ -22,8 +22,9 @@ snapshots retain mesh handles. Context outlives all of them.
 
 Requires `PANDA_BUILD_SCENE=ON`, Tools, a display, Vulkan 1.3 with swapchain
 maintenance1, and the Khronos validation layer. The development presets enable the
-scene module. The first directional light casts the existing shadow; the later fill
-light contributes direct lighting without a shadow.
+scene module. The first directional light casts the existing shadow; the later fill,
+point and spot lights contribute direct lighting without shadows. The local lights
+use finite ranges and the spot uses a cone defined in radians.
 
 For the shorter direct-renderer path, see [simple_scene](../simple_scene/README.md).
 

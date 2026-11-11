@@ -7,8 +7,10 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
+#include <numbers>
 #include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
+#include <variant>
 #include <vector>
 
 namespace panda
@@ -106,6 +108,41 @@ struct DirectionalLight
     float intensity {3.0F};
 };
 
+/// @brief Point light with finite range and inverse-square distance attenuation.
+struct PointLight
+{
+    /// World-space position in meters.
+    glm::vec3 position {};
+    /// Linear RGB light color.
+    glm::vec3 color {1.0F};
+    /// Nonnegative linear intensity multiplier.
+    float intensity {1.0F};
+    /// Positive finite distance in meters where the contribution reaches zero.
+    float range {};
+};
+
+/// @brief Spot light shining along its direction inside a smooth cone.
+struct SpotLight
+{
+    /// World-space position in meters.
+    glm::vec3 position {};
+    /// World-space direction from the light into the scene; normalized by the renderer.
+    glm::vec3 direction {0.0F, 0.0F, -1.0F};
+    /// Linear RGB light color.
+    glm::vec3 color {1.0F};
+    /// Nonnegative linear intensity multiplier.
+    float intensity {1.0F};
+    /// Positive finite distance in meters where the contribution reaches zero.
+    float range {};
+    /// Radians from the light axis where angular falloff begins.
+    float innerConeAngleRadians {};
+    /// Radians from the light axis where angular falloff reaches zero.
+    float outerConeAngleRadians {std::numbers::pi_v<float> / 4.0F};
+};
+
+/// @brief One built-in light type accepted by RenderView and Scene.
+using Light = std::variant<DirectionalLight, PointLight, SpotLight>;
+
 /// @brief One uploaded mesh with an object-to-world transform, linear tint and material.
 struct MeshDraw
 {
@@ -125,8 +162,9 @@ struct RenderView
 {
     /// Camera used for mesh projection and view-dependent lighting.
     RenderCamera camera;
-    /// Directional lights used by Lit materials; the first casts the current shadow, later lights are unshadowed.
-    std::vector<DirectionalLight> directionalLights;
+    /// Ordered lights used by Lit materials. The first directional light casts the current shadow;
+    /// point and spot lights are currently unshadowed.
+    std::vector<Light> lights;
     /// Draws to render; an empty list presents only the configured background.
     std::vector<MeshDraw> meshes;
 };

@@ -45,6 +45,7 @@ auto makeReport(const Options& options) -> Report
     report.cpuModel = hostInfo.cpuModel;
     report.requestedWindowWidth = options.windowWidth;
     report.requestedWindowHeight = options.windowHeight;
+    report.requestedLightCount = options.lightCount;
     report.requestedWarmup = options.warmupDuration;
     report.requestedMeasurement = options.measurementDuration;
     report.requestedRuns = options.runCount;

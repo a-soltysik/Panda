@@ -11,6 +11,7 @@ namespace panda_bench
 {
 inline constexpr std::uint32_t defaultSmokeWindowWidth {1280};
 inline constexpr std::uint32_t defaultSmokeWindowHeight {720};
+inline constexpr std::uint32_t maximumSmokeLightCount {65};
 
 struct Options
 {
@@ -18,6 +19,7 @@ struct Options
     std::filesystem::path outputDirectory {"results"};
     std::uint32_t windowWidth {defaultSmokeWindowWidth};
     std::uint32_t windowHeight {defaultSmokeWindowHeight};
+    std::uint32_t lightCount {maximumSmokeLightCount};
     std::chrono::seconds warmupDuration {1};
     std::chrono::seconds measurementDuration {3};
     std::size_t runCount {1};
