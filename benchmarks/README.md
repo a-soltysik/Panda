@@ -1,11 +1,12 @@
 # Panda benchmark
 
 `panda-bench` is a standalone smoke benchmark for Panda's public frame and
-performance APIs. Its current workload creates and uploads one static cube before the
-warmup and measurement phases, then renders that same view through Panda's normal
-Context path. This exercises the first mesh draw path; representative scene profiles
-are not implemented yet. See the [benchmark specification](../docs/development/benchmarking.md)
-for the measurement boundaries and planned workloads.
+performance APIs. Its workload creates and uploads one static cube before warmup and
+measurement, then renders that view through Panda's normal Context path. `--lights N`
+adds a fixed lighting fixture with one directional light and `N - 1` point lights;
+it defaults to the maximum `N = 65`; set `N = 0` for the cube-only workload. See the
+[benchmark specification](../docs/development/benchmarking.md) for measurement
+boundaries and planned workloads.
 The [UC benchmark smoke run](../docs/use-cases/benchmark-smoke-run.md) traces how
 the executable validates settings, collects samples and writes its report.
 
@@ -49,17 +50,18 @@ Run from the repository root. Print the current options with:
 For example:
 
 ```powershell
-.\build-msvc-development\benchmarks\panda-bench.exe --profile smoke --output results --width 1280 --height 720 --warmup-seconds 1 --measure-seconds 3 --runs 1
+.\build-msvc-development\benchmarks\panda-bench.exe --profile smoke --output results --width 1280 --height 720 --lights 65 --warmup-seconds 1 --measure-seconds 3 --runs 1
 ```
 
 ```sh
-./build-gcc-development-Linux/benchmarks/panda-bench --profile smoke --output results --width 1280 --height 720 --warmup-seconds 1 --measure-seconds 3 --runs 1
+./build-gcc-development-Linux/benchmarks/panda-bench --profile smoke --output results --width 1280 --height 720 --lights 65 --warmup-seconds 1 --measure-seconds 3 --runs 1
 ```
 
-Options set the workload profile, output directory, requested window size,
-warmup and measurement durations, and number of runs. The defaults are the
-values in the example. The smoke profile is currently the only supported
-profile.
+Options set the workload profile, output directory, requested window size, light
+count, warmup and measurement durations, and number of runs. Defaults are 65 lights,
+1 second warmup, 3 seconds measurement and one run. The smoke profile is currently
+the only supported profile; `--lights` accepts 0 to 65 and the report records the
+requested count.
 
 Each run records startup and teardown duration, CPU frame wall time, and GPU
 elapsed time between the frame's timestamp markers. The paired per-frame CPU

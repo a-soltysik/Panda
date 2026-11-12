@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -368,9 +369,9 @@ TEST_F(FrameBindingsTest, WritesAllDirectionalLightsToTheStorageBuffer)
     ASSERT_TRUE(created);
     auto bindings = std::move(*created);
     auto view = makeView(1);
-    view.directionalLights = {
-        {.direction = {0.0F, -2.0F, 0.0F}, .color = {1.0F, 0.5F, 0.25F}, .intensity = 3.0F},
-        {.direction = {0.0F, 0.0F, -4.0F}, .color = {0.25F, 0.5F, 1.0F}, .intensity = 2.0F}
+    view.lights = {
+        panda::DirectionalLight {.direction = {0.0F, -2.0F, 0.0F}, .color = {1.0F, 0.5F, 0.25F}, .intensity = 3.0F},
+        panda::DirectionalLight {.direction = {0.0F, 0.0F, -4.0F}, .color = {0.25F, 0.5F, 1.0F}, .intensity = 2.0F}
     };
     auto writes = std::vector<std::vector<std::byte>> {};
     EXPECT_CALL(buffers, writeMapped(_, 0, _))
@@ -391,12 +392,62 @@ TEST_F(FrameBindingsTest, WritesAllDirectionalLightsToTheStorageBuffer)
     EXPECT_EQ(uniform.lightInfo.x, 2U);
     auto records = std::array<LightRecord, 2> {};
     std::memcpy(records.data(), writes.at(2).data(), writes.at(2).size());
-    EXPECT_FLOAT_EQ(records.at(0).direction.y, -1.0F);
+    EXPECT_FLOAT_EQ(records.at(0).directionOuterConeCos.y, -1.0F);
     EXPECT_FLOAT_EQ(records.at(0).colorIntensity.y, 0.5F);
     EXPECT_FLOAT_EQ(records.at(0).colorIntensity.w, 3.0F);
-    EXPECT_FLOAT_EQ(records.at(1).direction.z, -1.0F);
+    EXPECT_FLOAT_EQ(records.at(1).directionOuterConeCos.z, -1.0F);
     EXPECT_FLOAT_EQ(records.at(1).colorIntensity.x, 0.25F);
     EXPECT_FLOAT_EQ(records.at(1).colorIntensity.w, 2.0F);
+    EXPECT_EQ(records.at(0).type,
+              static_cast<std::uint32_t>(panda::core::vulkan::renderer::ShaderLightType::Directional));
+}
+
+TEST_F(FrameBindingsTest, PacksPointAndSpotLightParametersAndFindsFirstDirectionalShadow)
+{
+    auto created = createBindings();
+    ASSERT_TRUE(created);
+    auto bindings = std::move(*created);
+    auto view = makeView(1);
+    view.lights = {
+        panda::PointLight {.position = {1.0F, 2.0F, 3.0F},
+                           .color = {0.2F, 0.3F, 0.4F},
+                           .intensity = 5.0F,
+                           .range = 8.0F},
+        panda::SpotLight {.position = {-1.0F, 0.0F, 2.0F},
+                           .direction = {0.0F, -2.0F, 0.0F},
+                           .color = {0.5F, 0.6F, 0.7F},
+                           .intensity = 6.0F,
+                           .range = 10.0F,
+                           .innerConeAngleRadians = 0.2F,
+                           .outerConeAngleRadians = 0.6F},
+        panda::DirectionalLight {.direction = {0.0F, -1.0F, 0.0F}}
+    };
+    auto writes = std::vector<std::vector<std::byte>> {};
+    EXPECT_CALL(buffers, writeMapped(_, 0, _))
+        .Times(3)
+        .WillRepeatedly([&writes](const BufferResource&, std::uint64_t, std::span<const std::byte> data) {
+            writes.emplace_back(data.begin(), data.end());
+            return panda::Result<void> {};
+        });
+
+    const auto updated = bindings->updateFrame(0, view, {});
+
+    ASSERT_TRUE(updated);
+    ASSERT_EQ(writes.size(), 3U);
+    auto uniform = panda::core::vulkan::renderer::FrameUniform {};
+    std::memcpy(&uniform, writes.at(0).data(), sizeof(uniform));
+    EXPECT_EQ(uniform.lightInfo.y, 2U);
+    ASSERT_EQ(writes.at(2).size(), sizeof(LightRecord) * 3U);
+    auto records = std::array<LightRecord, 3> {};
+    std::memcpy(records.data(), writes.at(2).data(), writes.at(2).size());
+    EXPECT_EQ(records.at(0).type, static_cast<std::uint32_t>(panda::core::vulkan::renderer::ShaderLightType::Point));
+    EXPECT_EQ(records.at(0).positionRange, glm::vec4(1.0F, 2.0F, 3.0F, 8.0F));
+    EXPECT_FLOAT_EQ(records.at(0).colorIntensity.w, 5.0F);
+    EXPECT_EQ(records.at(1).type, static_cast<std::uint32_t>(panda::core::vulkan::renderer::ShaderLightType::Spot));
+    EXPECT_FLOAT_EQ(records.at(1).directionOuterConeCos.y, -1.0F);
+    EXPECT_FLOAT_EQ(records.at(1).positionRange.w, 10.0F);
+    EXPECT_FLOAT_EQ(records.at(1).innerConeCos, std::cos(0.2F));
+    EXPECT_FLOAT_EQ(records.at(1).directionOuterConeCos.w, std::cos(0.6F));
 }
 
 TEST_F(FrameBindingsTest, LightBufferGrowthFailureCanBeRetried)
@@ -411,7 +462,7 @@ TEST_F(FrameBindingsTest, LightBufferGrowthFailureCanBeRetried)
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "buffer growth failed")}}))
         .WillOnce(Return(panda::Result<void> {}));
     auto view = makeView(1);
-    view.directionalLights.resize(2);
+    view.lights.resize(2);
 
     const auto failed = bindings->updateFrame(0, view, {});
     const auto retried = bindings->updateFrame(0, view, {});
@@ -426,7 +477,7 @@ TEST_F(FrameBindingsTest, RejectsLightCountAboveConfiguredBudget)
     auto bindings = createBindings(1);
     ASSERT_TRUE(bindings);
     auto view = makeView(1);
-    view.directionalLights.resize(2);
+    view.lights.resize(2);
 
     const auto updated = (*bindings)->updateFrame(0, view, {});
 
@@ -507,7 +558,7 @@ TEST_F(FrameBindingsTest, PropagatesInvalidShadowViewAndUniformWriteFailures)
     auto bindings = createBindings();
     ASSERT_TRUE(bindings);
     auto invalidView = makeView(0);
-    invalidView.directionalLights.push_back({});
+    invalidView.lights.emplace_back();
     invalidView.camera.viewProjection = glm::mat4 {0.0F};
     const auto invalid = (*bindings)->updateFrame(0, invalidView, {});
     ASSERT_FALSE(invalid);
@@ -807,7 +858,7 @@ TEST_F(FrameBindingsTest, MeshRendererUpdatePropagatesBindingFailure)
     auto renderer = createMeshRenderer();
     ASSERT_TRUE(renderer);
     auto view = makeView(0);
-    view.directionalLights.push_back({});
+    view.lights.emplace_back();
     view.camera.viewProjection = glm::mat4 {0.0F};
 
     const auto updated = (*renderer)->updateFrame(0, view);

@@ -3,12 +3,15 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <expected>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/trigonometric.hpp>
+#include <limits>
 #include <optional>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
@@ -122,6 +125,76 @@ void verifyCompletion(const panda::Context& context, panda::CompletionPoint poin
     EXPECT_TRUE(*polled);
 }
 
+void expectInvalidLight(const panda::Context& context, const panda::Light& light)
+{
+    auto view = panda::RenderView {};
+    view.lights.push_back(light);
+    const auto result = context.render(view);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+void expectInvalidPointLightData(const panda::Context& context)
+{
+    const auto infinity = std::numeric_limits<float>::infinity();
+    const auto nan = std::numeric_limits<float>::quiet_NaN();
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .position = {infinity, 0.0F, 0.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .color = {infinity, 1.0F, 1.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context, panda::PointLight {.intensity = infinity, .range = 8.0F});
+    expectInvalidLight(context, panda::PointLight {.intensity = -1.0F, .range = 8.0F});
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .color = {-1.0F, 1.0F, 1.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .color = {1.0F, -1.0F, 1.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .color = {1.0F, 1.0F, -1.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context, panda::PointLight {.range = nan});
+    expectInvalidLight(context, panda::PointLight {.range = 0.0F});
+}
+
+void expectInvalidSpotLightData(const panda::Context& context)
+{
+    const auto infinity = std::numeric_limits<float>::infinity();
+    const auto nan = std::numeric_limits<float>::quiet_NaN();
+    expectInvalidLight(context, panda::SpotLight {.direction = {}, .range = 8.0F});
+    expectInvalidLight(context,
+                       panda::SpotLight {
+                           .direction = {infinity, 0.0F, 0.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = nan});
+    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .outerConeAngleRadians = infinity});
+    expectInvalidLight(context,
+                       panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = -0.1F, .outerConeAngleRadians = 0.4F});
+    expectInvalidLight(context,
+                       panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = 0.4F, .outerConeAngleRadians = 0.4F});
+    expectInvalidLight(context,
+                       panda::SpotLight {.range = 8.0F,
+                                         .innerConeAngleRadians = 0.2F,
+                                         .outerConeAngleRadians = glm::half_pi<float>() + 0.1F});
+    expectInvalidLight(context,
+                       panda::SpotLight {.range = 8.0F,
+                                         .innerConeAngleRadians = 0.01F,
+                                         .outerConeAngleRadians = std::nextafter(0.01F, 1.0F)});
+}
+
 struct SceneMeshes
 {
     panda::Mesh cube;
@@ -161,7 +234,7 @@ void expectInvalidEmissiveMap(const panda::Context& context,
                               const panda::Mesh& mesh,
                               const panda::Texture& texture)
 {
-    auto view = panda::RenderView {.camera = camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+    auto view = panda::RenderView {.camera = camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
     auto draw = panda::MeshDraw {.mesh = mesh};
     draw.material.emissiveTexture = texture;
     draw.material.emissive = {1.0F, 1.0F, 1.0F};
@@ -177,7 +250,7 @@ void expectInvalidNormalMap(const panda::Context& context,
                             const panda::Texture& texture,
                             panda::MaterialModel model = panda::MaterialModel::Lit)
 {
-    auto view = panda::RenderView {.camera = camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+    auto view = panda::RenderView {.camera = camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
     auto draw = panda::MeshDraw {.mesh = mesh};
     draw.material.model = model;
     draw.material.normalTexture = texture;
@@ -193,7 +266,7 @@ void expectInvalidOcclusionMap(const panda::Context& context,
                                const panda::Texture& texture,
                                panda::MaterialModel model = panda::MaterialModel::Lit)
 {
-    auto view = panda::RenderView {.camera = camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+    auto view = panda::RenderView {.camera = camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
     auto draw = panda::MeshDraw {.mesh = mesh};
     draw.material.model = model;
     draw.material.occlusionTexture = texture;
@@ -518,7 +591,7 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, const SceneMeshes& m
         glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, -0.5F, 0.0F}), glm::vec3 {10.0F, 1.0F, 10.0F});
     auto view = panda::RenderView {};
     view.camera = *camera;
-    view.directionalLights.push_back({});
+    view.lights.emplace_back();
     view.meshes = {
         panda::MeshDraw {.mesh = meshes.ground, .modelMatrix = groundTransform, .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
         panda::MeshDraw {.mesh = meshes.cube}
@@ -610,16 +683,77 @@ TEST(WindowedContextSystem, RendersSixtyFiveDirectionalLightsWithinConfiguredBud
     ASSERT_TRUE(extent.has_value()) << extent.error().message;
     auto view = makeCubeAndGroundView(*extent, *meshes);
     ASSERT_TRUE(view.has_value()) << view.error().message;
-    view->directionalLights.resize(65);
+    view->lights.resize(65);
 
     const auto frame = context.render(*view);
 
     ASSERT_TRUE(frame.has_value()) << frame.error().message;
     verifyCompletion(context, frame->completion);
-    view->directionalLights.push_back({});
+    view->lights.emplace_back();
     const auto overBudget = context.render(*view);
     ASSERT_FALSE(overBudget.has_value());
     EXPECT_EQ(overBudget.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST(WindowedContextSystem, RendersValidPointAndSpotLights)
+{
+    auto window = panda::tools::Window::create({160, 120}, "Panda local-light validation");
+    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
+    {
+        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
+    }
+    ASSERT_TRUE(window.has_value());
+    auto created = panda::Context::createWithSurface(
+        *window,
+        {.applicationName = "Panda local-light validation", .enableValidation = true});
+    if (!created && created.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << created.error().message;
+    }
+    ASSERT_TRUE(created.has_value()) << created.error().message;
+    auto context = std::move(*created);
+
+    auto view = panda::RenderView {};
+    view.lights.emplace_back(panda::PointLight {
+        .position = {1.0F, 2.0F, 3.0F},
+        .range = 8.0F
+    });
+    auto frame = context.render(view);
+    ASSERT_TRUE(frame.has_value()) << frame.error().message;
+    verifyCompletion(context, frame->completion);
+
+    view.lights.clear();
+    view.lights.emplace_back(panda::SpotLight {
+        .position = {1.0F, 2.0F, 3.0F},
+        .range = 8.0F,
+        .innerConeAngleRadians = 0.2F,
+        .outerConeAngleRadians = 0.4F
+    });
+    frame = context.render(view);
+    ASSERT_TRUE(frame.has_value()) << frame.error().message;
+    verifyCompletion(context, frame->completion);
+}
+
+TEST(WindowedContextSystem, RejectsInvalidPointAndSpotLightData)
+{
+    auto window = panda::tools::Window::create({160, 120}, "Panda local-light validation");
+    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
+    {
+        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
+    }
+    ASSERT_TRUE(window.has_value());
+    auto created = panda::Context::createWithSurface(
+        *window,
+        {.applicationName = "Panda local-light validation", .enableValidation = true});
+    if (!created && created.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << created.error().message;
+    }
+    ASSERT_TRUE(created.has_value()) << created.error().message;
+    auto context = std::move(*created);
+
+    expectInvalidPointLightData(context);
+    expectInvalidSpotLightData(context);
 }
 
 TEST(WindowedContextSystem, RendersUnlitMeshWithZeroLightBudget)
@@ -651,7 +785,7 @@ TEST(WindowedContextSystem, RendersUnlitMeshWithZeroLightBudget)
     ASSERT_TRUE(extent.has_value()) << extent.error().message;
     const auto camera = makeTestCamera(*extent);
     ASSERT_TRUE(camera.has_value()) << camera.error().message;
-    auto view = panda::RenderView {.camera = *camera, .directionalLights = {}, .meshes = {}};
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
     auto draw = panda::MeshDraw {.mesh = *mesh};
     draw.material.model = panda::MaterialModel::Unlit;
     view.meshes.push_back(draw);
@@ -661,7 +795,7 @@ TEST(WindowedContextSystem, RendersUnlitMeshWithZeroLightBudget)
     ASSERT_TRUE(frame.has_value()) << frame.error().message;
     verifyCompletion(context, frame->completion);
     view.meshes.front().material.model = panda::MaterialModel::Lit;
-    view.directionalLights.push_back({});
+    view.lights.emplace_back();
     const auto overBudget = context.render(view);
     ASSERT_FALSE(overBudget.has_value());
     EXPECT_EQ(overBudget.error().code, panda::ErrorCode::ResourceExhausted);
@@ -745,8 +879,7 @@ TEST(WindowedContextSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCo
         ASSERT_TRUE(extent.has_value()) << extent.error().message;
         const auto camera = makeTestCamera(*extent);
         ASSERT_TRUE(camera.has_value()) << camera.error().message;
-        auto view =
-            panda::RenderView {.camera = *camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto view = panda::RenderView {.camera = *camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto draw = panda::MeshDraw {.mesh = meshes->cube};
         draw.material.normalTexture = *texture;
         view.meshes.push_back(draw);
@@ -889,7 +1022,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         unlitEmissiveDraw.material.emissive = {1.0F, 0.8F, 0.3F};
         view->meshes.push_back(unlitEmissiveDraw);
         auto missingUvView =
-            panda::RenderView {.camera = view->camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto missingUvDraw = panda::MeshDraw {};
         missingUvDraw.mesh = meshes->triangle;
         missingUvDraw.material.model = panda::MaterialModel::Unlit;
@@ -914,7 +1047,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         expectInvalidEmissiveMap(context, view->camera, *uvlessLitMesh, meshes->baseColorMap);
         expectInvalidOcclusionMap(context, view->camera, *uvlessLitMesh, meshes->metallicRoughnessMap);
         auto missingUvMrView =
-            panda::RenderView {.camera = view->camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto missingUvMrDraw = panda::MeshDraw {};
         missingUvMrDraw.mesh = *uvlessLitMesh;
         missingUvMrDraw.material.metallicRoughnessTexture = meshes->metallicRoughnessMap;
@@ -924,7 +1057,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         EXPECT_EQ(missingUvMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
         auto unlitMrView =
-            panda::RenderView {.camera = view->camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto unlitMrDraw = panda::MeshDraw {};
         unlitMrDraw.mesh = meshes->cube;
         unlitMrDraw.material.model = panda::MaterialModel::Unlit;
@@ -948,7 +1081,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_TRUE(linearMap.has_value()) << linearMap.error().message;
         expectInvalidEmissiveMap(context, view->camera, meshes->cube, *linearMap);
         auto linearMapView =
-            panda::RenderView {.camera = view->camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto linearBaseColorDraw = panda::MeshDraw {};
         linearBaseColorDraw.mesh = meshes->cube;
         linearBaseColorDraw.material.baseColorTexture = *linearMap;
@@ -964,7 +1097,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         });
         ASSERT_TRUE(srgbMetallicRoughnessMap.has_value()) << srgbMetallicRoughnessMap.error().message;
         auto srgbMrView =
-            panda::RenderView {.camera = view->camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto srgbMrDraw = panda::MeshDraw {};
         srgbMrDraw.mesh = meshes->cube;
         srgbMrDraw.material.metallicRoughnessTexture = *srgbMetallicRoughnessMap;
@@ -988,7 +1121,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_TRUE(unsampledEmissiveMap.has_value()) << unsampledEmissiveMap.error().message;
         expectInvalidEmissiveMap(context, view->camera, meshes->cube, *unsampledEmissiveMap);
         auto unsampledMrView =
-            panda::RenderView {.camera = view->camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto unsampledMrDraw = panda::MeshDraw {};
         unsampledMrDraw.mesh = meshes->cube;
         unsampledMrDraw.material.metallicRoughnessTexture = *unsampledMetallicRoughnessMap;
@@ -1005,7 +1138,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_TRUE(unuploadedMap.has_value()) << unuploadedMap.error().message;
         expectInvalidEmissiveMap(context, view->camera, meshes->cube, *unuploadedMap);
         auto unuploadedMapView =
-            panda::RenderView {.camera = view->camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto unuploadedBaseColorDraw = panda::MeshDraw {};
         unuploadedBaseColorDraw.mesh = meshes->cube;
         unuploadedBaseColorDraw.material.baseColorTexture = *unuploadedMap;
@@ -1022,7 +1155,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_TRUE(unuploadedMrMap.has_value()) << unuploadedMrMap.error().message;
         expectInvalidOcclusionMap(context, view->camera, meshes->cube, *unuploadedMrMap);
         auto unuploadedMrView =
-            panda::RenderView {.camera = view->camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto unuploadedMrDraw = panda::MeshDraw {};
         unuploadedMrDraw.mesh = meshes->cube;
         unuploadedMrDraw.material.metallicRoughnessTexture = *unuploadedMrMap;
@@ -1032,7 +1165,7 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         EXPECT_EQ(unuploadedMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
         auto negativeEmissiveView =
-            panda::RenderView {.camera = view->camera, .directionalLights = {panda::DirectionalLight {}}, .meshes = {}};
+            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto negativeEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube};
         negativeEmissiveDraw.material.emissive = {-1.0F, 0.0F, 0.0F};
         negativeEmissiveView.meshes.push_back(negativeEmissiveDraw);

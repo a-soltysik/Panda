@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -20,8 +21,10 @@
 #include <panda/Texture.hpp>
 #include <span>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "Overloaded.hpp"
 #include "VulkanError.hpp"
 #include "renderer/MaterialTextureSlots.hpp"
 #include "renderer/ShaderData.hpp"
@@ -103,16 +106,21 @@ auto makeFrameUniform(const RenderView& view, std::uint32_t lightCount) -> std::
 {
     auto lightViewProjection = glm::mat4 {1.0F};
     auto lightDirection = glm::vec3 {};
-    if (!view.directionalLights.empty())
+    const auto shadowLight = std::ranges::find_if(view.lights, [](const Light& light) {
+        return std::holds_alternative<DirectionalLight>(light);
+    });
+    auto shadowLightIndex = std::numeric_limits<std::uint32_t>::max();
+    if (shadowLight != view.lights.end())
     {
-        const auto& shadowLight = view.directionalLights.front();
-        const auto shadowView = createDirectionalShadowView(view.camera, shadowLight);
+        shadowLightIndex = static_cast<std::uint32_t>(std::distance(view.lights.begin(), shadowLight));
+        const auto& directionalLight = std::get<DirectionalLight>(*shadowLight);
+        const auto shadowView = createDirectionalShadowView(view.camera, directionalLight);
         if (!shadowView)
         {
             return std::unexpected {shadowView.error()};
         }
         lightViewProjection = *shadowView;
-        lightDirection = glm::normalize(shadowLight.direction);
+        lightDirection = glm::normalize(directionalLight.direction);
     }
     return FrameUniform {
         .viewProjection = view.camera.viewProjection,
@@ -120,16 +128,55 @@ auto makeFrameUniform(const RenderView& view, std::uint32_t lightCount) -> std::
         .cameraPosition = glm::vec4 {view.camera.position, 1.0F},
         .lightDirection = glm::vec4 {lightDirection, 0.0F},
         .ambient = glm::vec4 {1.0F, 1.0F, 1.0F, 0.06F},
-        .lightInfo = glm::uvec4 {lightCount, 0U, 0U, 0U}
+        .lightInfo = glm::uvec4 {lightCount, shadowLightIndex, 0U, 0U}
     };
 }
 
-auto makeLightRecord(const DirectionalLight& light) -> LightRecord
+auto makeDirectionalLightRecord(const DirectionalLight& light) -> LightRecord
 {
-    return {
-        .direction = glm::vec4 {glm::normalize(light.direction), 0.0F           },
-        .colorIntensity = glm::vec4 {light.color,                     light.intensity}
+    return LightRecord {
+        .positionRange = {},
+        .directionOuterConeCos = glm::vec4 {glm::normalize(light.direction), 0.0F},
+        .colorIntensity = glm::vec4 {light.color, light.intensity},
+        .innerConeCos = 0.0F,
+        .type = static_cast<std::uint32_t>(ShaderLightType::Directional)
     };
+}
+
+auto makePointLightRecord(const PointLight& light) -> LightRecord
+{
+    return LightRecord {
+        .positionRange = glm::vec4 {light.position, light.range},
+        .directionOuterConeCos = {},
+        .colorIntensity = glm::vec4 {light.color, light.intensity},
+        .innerConeCos = 0.0F,
+        .type = static_cast<std::uint32_t>(ShaderLightType::Point)
+    };
+}
+
+auto makeSpotLightRecord(const SpotLight& light) -> LightRecord
+{
+    return LightRecord {
+        .positionRange = glm::vec4 {light.position,                  light.range                          },
+        .directionOuterConeCos = glm::vec4 {glm::normalize(light.direction), std::cos(light.outerConeAngleRadians)},
+        .colorIntensity = glm::vec4 {light.color,                     light.intensity                      },
+        .innerConeCos = std::cos(light.innerConeAngleRadians),
+        .type = static_cast<std::uint32_t>(ShaderLightType::Spot)
+    };
+}
+
+auto makeLightRecord(const Light& light) -> LightRecord
+{
+    return std::visit(::panda::detail::Overloaded {[](const DirectionalLight& value) {
+                                                       return makeDirectionalLightRecord(value);
+                                                   },
+                                                   [](const PointLight& value) {
+                                                       return makePointLightRecord(value);
+                                                   },
+                                                   [](const SpotLight& value) {
+                                                       return makeSpotLightRecord(value);
+                                                   }},
+                      light);
 }
 
 auto makeMaterialRecord(const Material& material) -> MaterialRecord
@@ -561,13 +608,13 @@ auto FrameBindings::writeMaterialRecords(FrameResources& frame, const RenderView
 
 auto FrameBindings::writeLightRecords(FrameResources& frame, const RenderView& view) -> std::expected<void, Error>
 {
-    if (view.directionalLights.empty())
+    if (view.lights.empty())
     {
         return {};
     }
     _lightRecords.clear();
-    _lightRecords.reserve(view.directionalLights.size());
-    std::ranges::transform(view.directionalLights, std::back_inserter(_lightRecords), makeLightRecord);
+    _lightRecords.reserve(view.lights.size());
+    std::ranges::transform(view.lights, std::back_inserter(_lightRecords), makeLightRecord);
     const auto lightBytes = std::as_bytes(std::span {_lightRecords});
     return frame.lightBuffer->writeMapped(0, lightBytes);
 }
@@ -648,7 +695,7 @@ auto FrameBindings::updateFrame(std::size_t frameIndex, const RenderView& view, 
     -> std::expected<void, Error>
 {
     auto& frame = _frames.at(frameIndex);
-    const auto requestedLightCount = view.directionalLights.size();
+    const auto requestedLightCount = view.lights.size();
     if (requestedLightCount > _maxLights)
     {
         return std::unexpected {

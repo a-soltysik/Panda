@@ -47,6 +47,7 @@ struct Report
     std::optional<std::uint32_t> vulkanApiVersion;
     std::uint32_t requestedWindowWidth {0};
     std::uint32_t requestedWindowHeight {0};
+    std::uint32_t requestedLightCount {0};
     std::chrono::seconds requestedWarmup {0};
     std::chrono::seconds requestedMeasurement {0};
     std::uint64_t requestedRuns {0};

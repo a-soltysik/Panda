@@ -11,6 +11,7 @@
 #include <limits>
 #include <optional>
 #include <panda/Error.hpp>
+#include <panda/RenderView.hpp>
 #include <panda/Transform.hpp>
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
@@ -350,24 +351,25 @@ TEST(SceneState, TransformsParentedLightAndKeepsReturnedSnapshotIndependent)
         scene,
         {.name = {}, .transform = {.rotation = glm::angleAxis(glm::half_pi<float>(), glm::vec3 {0.0F, 1.0F, 0.0F})}});
     const auto light = createObject(scene);
-    ASSERT_TRUE(scene.setDirectionalLight(light,
-                                          panda::scene::DirectionalLight {
-                                              .color = {0.5F, 0.6F, 0.7F},
-                                              .intensity = 2.0F
+    ASSERT_TRUE(scene.setLight(light,
+                               panda::scene::DirectionalLight {
+                                   .color = {0.5F, 0.6F, 0.7F},
+                                   .intensity = 2.0F
     }));
     ASSERT_TRUE(scene.setParent(light, parent, panda::scene::ReparentMode::KeepLocal));
     ASSERT_TRUE(scene.setVisible(parent, false));
     const auto first = scene.createRenderView(1.0F);
     ASSERT_TRUE(first);
-    ASSERT_EQ(first->directionalLights.size(), 1U);
-    EXPECT_NEAR(first->directionalLights.front().direction.x, -1.0F, 1.0e-5F);
-    EXPECT_NEAR(first->directionalLights.front().direction.z, 0.0F, 1.0e-5F);
-    EXPECT_EQ(first->directionalLights.front().intensity, 2.0F);
+    ASSERT_EQ(first->lights.size(), 1U);
+    const auto& firstLight = std::get<panda::DirectionalLight>(first->lights.front());
+    EXPECT_NEAR(firstLight.direction.x, -1.0F, 1.0e-5F);
+    EXPECT_NEAR(firstLight.direction.z, 0.0F, 1.0e-5F);
+    EXPECT_EQ(firstLight.intensity, 2.0F);
     ASSERT_TRUE(scene.setVisible(light, false));
     const auto second = scene.createRenderView(1.0F);
     ASSERT_TRUE(second);
-    EXPECT_TRUE(second->directionalLights.empty());
-    EXPECT_EQ(first->directionalLights.front().intensity, 2.0F);
+    EXPECT_TRUE(second->lights.empty());
+    EXPECT_EQ(std::get<panda::DirectionalLight>(first->lights.front()).intensity, 2.0F);
 }
 
 TEST(SceneState, CollectsVisibleLightsAndRejectsInvalidEdits)
@@ -376,28 +378,87 @@ TEST(SceneState, CollectsVisibleLightsAndRejectsInvalidEdits)
     selectCamera(scene);
     const auto first = createObject(scene);
     const auto second = createObject(scene);
-    ASSERT_TRUE(scene.setDirectionalLight(first, panda::scene::DirectionalLight {.intensity = 2.0F}));
-    EXPECT_FALSE(scene.setDirectionalLight(first, panda::scene::DirectionalLight {.intensity = -1.0F}));
-    EXPECT_FALSE(scene.setDirectionalLight(first,
-                                           panda::scene::DirectionalLight {
-                                               .color = {-1.0F, 0.0F, 0.0F}
+    ASSERT_TRUE(scene.setLight(first, panda::scene::DirectionalLight {.intensity = 2.0F}));
+    EXPECT_FALSE(scene.setLight(first, panda::scene::DirectionalLight {.intensity = -1.0F}));
+    EXPECT_FALSE(scene.setLight(first,
+                                panda::scene::DirectionalLight {
+                                    .color = {-1.0F, 0.0F, 0.0F}
     }));
-    EXPECT_FALSE(scene.setDirectionalLight(
-        first,
-        panda::scene::DirectionalLight {.intensity = std::numeric_limits<float>::quiet_NaN()}));
+    EXPECT_FALSE(
+        scene.setLight(first, panda::scene::DirectionalLight {.intensity = std::numeric_limits<float>::quiet_NaN()}));
     auto view = scene.createRenderView(1.0F);
     ASSERT_TRUE(view);
-    ASSERT_EQ(view->directionalLights.size(), 1U);
-    EXPECT_EQ(view->directionalLights.front().intensity, 2.0F);
-    ASSERT_TRUE(scene.setDirectionalLight(second, panda::scene::DirectionalLight {}));
+    ASSERT_EQ(view->lights.size(), 1U);
+    EXPECT_EQ(std::get<panda::DirectionalLight>(view->lights.front()).intensity, 2.0F);
+    ASSERT_TRUE(scene.setLight(second, panda::scene::DirectionalLight {}));
     view = scene.createRenderView(1.0F);
     ASSERT_TRUE(view);
-    ASSERT_EQ(view->directionalLights.size(), 2U);
-    EXPECT_EQ(view->directionalLights.back().intensity, 3.0F);
-    ASSERT_TRUE(scene.setDirectionalLight(second, std::nullopt));
+    ASSERT_EQ(view->lights.size(), 2U);
+    EXPECT_EQ(std::get<panda::DirectionalLight>(view->lights.back()).intensity, 3.0F);
+    ASSERT_TRUE(scene.setLight(second, std::nullopt));
     view = scene.createRenderView(1.0F);
     ASSERT_TRUE(view);
-    ASSERT_EQ(view->directionalLights.size(), 1U);
+    ASSERT_EQ(view->lights.size(), 1U);
+}
+
+TEST(SceneState, ValidatesPointLightParameters)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto point = createObject(scene);
+    ASSERT_TRUE(scene.setLight(point, panda::scene::PointLight {.range = 8.0F}));
+    EXPECT_FALSE(scene.setLight(point, panda::scene::PointLight {.range = 0.0F}));
+    EXPECT_FALSE(scene.setLight(point, panda::scene::PointLight {.range = std::numeric_limits<float>::infinity()}));
+    EXPECT_FALSE(
+        scene.setLight(point,
+                       panda::scene::PointLight {.intensity = std::numeric_limits<float>::infinity(), .range = 8.0F}));
+    EXPECT_FALSE(scene.setLight(point,
+                                panda::scene::PointLight {
+                                    .color = {std::numeric_limits<float>::quiet_NaN(), 1.0F, 1.0F},
+                                    .range = 8.0F
+    }));
+    EXPECT_FALSE(scene.setLight(point,
+                                panda::scene::PointLight {
+                                    .color = {1.0F, -1.0F, 1.0F},
+                                    .range = 8.0F
+    }));
+}
+
+TEST(SceneState, ValidatesSpotLightParameters)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto spot = createObject(scene);
+    ASSERT_TRUE(scene.setLight(
+        spot,
+        panda::scene::SpotLight {.range = 8.0F, .innerConeAngleRadians = 0.2F, .outerConeAngleRadians = 0.4F}));
+    EXPECT_FALSE(scene.setLight(spot, panda::scene::SpotLight {.range = 0.0F}));
+    EXPECT_FALSE(scene.setLight(spot, panda::scene::SpotLight {.range = std::numeric_limits<float>::quiet_NaN()}));
+    EXPECT_FALSE(scene.setLight(spot,
+                                panda::scene::SpotLight {
+                                    .color = {-1.0F, 1.0F, 1.0F},
+                                    .range = 8.0F,
+                                    .innerConeAngleRadians = 0.2F,
+                                    .outerConeAngleRadians = 0.4F
+    }));
+    EXPECT_FALSE(scene.setLight(
+        spot,
+        panda::scene::SpotLight {.range = 8.0F, .innerConeAngleRadians = -0.1F, .outerConeAngleRadians = 0.4F}));
+    EXPECT_FALSE(scene.setLight(
+        spot,
+        panda::scene::SpotLight {.range = 8.0F, .innerConeAngleRadians = 0.4F, .outerConeAngleRadians = 0.4F}));
+    EXPECT_FALSE(scene.setLight(spot,
+                                panda::scene::SpotLight {.range = 8.0F,
+                                                         .innerConeAngleRadians = 0.2F,
+                                                         .outerConeAngleRadians = glm::half_pi<float>() + 0.1F}));
+    EXPECT_FALSE(
+        scene.setLight(spot,
+                       panda::scene::SpotLight {.range = 8.0F,
+                                                .innerConeAngleRadians = std::numeric_limits<float>::quiet_NaN(),
+                                                .outerConeAngleRadians = 0.4F}));
+    EXPECT_FALSE(
+        scene.setLight(spot,
+                       panda::scene::SpotLight {.range = 8.0F,
+                                                .innerConeAngleRadians = 0.2F,
+                                                .outerConeAngleRadians = std::numeric_limits<float>::infinity()}));
 }
 
 TEST(SceneState, ValidatesCameraLensAspectAndInheritedPose)
@@ -492,7 +553,7 @@ TEST(SceneState, RejectsDirectionalLightWithNonUniformWorldPose)
     selectCamera(scene);
     const auto parent = createObject(scene, {.name = {}, .transform = {.scale = {2.0F, 1.0F, 1.0F}}});
     const auto light = createObject(scene);
-    ASSERT_TRUE(scene.setDirectionalLight(light, panda::scene::DirectionalLight {}));
+    ASSERT_TRUE(scene.setLight(light, panda::scene::DirectionalLight {}));
     ASSERT_TRUE(scene.setParent(light, parent, panda::scene::ReparentMode::KeepLocal));
 
     const auto view = scene.createRenderView(1.0F);
@@ -509,7 +570,7 @@ TEST(SceneState, RejectsForeignComponentHandlesAndEmptyMeshes)
     const auto local = createObject(scene);
     EXPECT_FALSE(scene.setCamera(foreign, panda::scene::PerspectiveCamera {}));
     EXPECT_FALSE(scene.setOrthographicCamera(foreign, panda::scene::OrthographicCamera {}));
-    EXPECT_FALSE(scene.setDirectionalLight(foreign, panda::scene::DirectionalLight {}));
+    EXPECT_FALSE(scene.setLight(foreign, panda::scene::DirectionalLight {}));
     EXPECT_FALSE(scene.setVisible(foreign, false));
     EXPECT_FALSE(scene.setMesh(local, panda::scene::MeshInstance {}));
     EXPECT_FALSE(scene.setActiveCamera(local));

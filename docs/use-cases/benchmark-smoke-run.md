@@ -6,9 +6,9 @@ An application developer runs `panda-bench` to collect a short, repeatable sampl
 of Panda's public frame timings and save the run details. The flow starts with
 command-line arguments and ends with a JSON report and process outcome. Only the
 `smoke` profile is implemented; it uploads one standard cube before warmup and
-measurement, then submits a fixed one-mesh view through `Context::render(view)`. It
-exercises the live mesh renderer path, but is not a representative scene benchmark or
-performance baseline.
+measurement, then submits a fixed one-mesh view with an optional fixed light list
+through `Context::render(view)`. It exercises the live mesh and lighting paths, but
+is not a representative scene benchmark or performance baseline.
 
 **The benchmark** validates settings, drives the timed phases and checks that the
 sample set is complete. **Panda** owns window/context creation and asynchronous
@@ -18,21 +18,25 @@ frame timing. Each requested run creates and tears down its own window and
 ## Main flow
 
 1. **Parse the request.** `parseArguments()` accepts the smoke profile, output
-   directory, requested window size, warmup and measurement durations, and run
-   count. Defaults are `smoke`, `results`, 1280 by 720 pixels, 1 second warmup,
-   3 seconds measurement and one run. It rejects other profiles, zero extents,
-   warmup outside 0 to 3600 seconds, measurement outside 1 to 86400 seconds, and
-   run counts outside 1 to 100 before creating output files.
+   directory, requested window size, light count, warmup and measurement durations,
+   and run count. Defaults are `smoke`, `results`, 1280 by 720 pixels, 65 lights,
+   1 second warmup, 3 seconds measurement and one run. `--lights` accepts 0 to 65;
+   positive counts create one directional light and the remaining point lights. It
+   rejects other profiles, zero extents, warmup outside 0 to 3600 seconds,
+   measurement outside 1 to 86400 seconds, and run counts outside 1 to 100 before
+   creating output files.
 2. **Prepare reporting.** `runBenchmark()` gathers code/build and host CPU metadata,
    creates the output directory and opens `panda-bench.log` as a logger sink. A
    setup error stops before any run starts.
 3. **Initialize a run.** `SmokeRun` asks `VulkanSmokeRunBackend` to create a window
-   at the requested size, then a windowed `Context` with validation disabled and
-   frame sampling enabled. The backend requires GPU timestamp support and captures
-   the effective framebuffer extent, GPU, driver and Vulkan API information. For a
-   nonzero extent, it creates unit-cube geometry and a matching mesh, snapshots the
+   at the requested size, then a windowed `Context` with validation disabled, frame
+   sampling enabled and `maxLights = max(defaultMaxLights, requested light count)`.
+   The backend requires GPU timestamp support and captures the effective framebuffer
+   extent, GPU, driver and Vulkan API information. For a nonzero extent, it creates
+   unit-cube geometry and a matching mesh, snapshots the
    geometry through an `UploadBatch`, waits for upload completion and prepares one
-   fixed camera and mesh draw. A minimized initial framebuffer makes the run invalid.
+   fixed camera, mesh draw and optional fixed light list. A minimized initial
+   framebuffer makes the run invalid.
 4. **Warm up.** For the requested duration, `SmokeRun` checks that the window stays
    open and its nonzero framebuffer extent stays unchanged, submits a frame, drains
    available samples and discards them, then processes window input. Every frame
@@ -50,9 +54,9 @@ frame timing. Each requested run creates and tears down its own window and
 7. **Tear down and report.** `SmokeRun::execute()` tears down the backend after
    success or failure; the Vulkan backend releases the view's mesh handle, destroys
    the `Context`, then destroys its borrowed window. `runBenchmark()` appends the run
-   result, stops further runs after a failure, writes the JSON report when output
-   setup succeeded, and prints the summary and report/log paths when the report was
-   written.
+   result, stops further runs after a failure, writes the requested light count and
+   other settings to the JSON report when output setup succeeded, and prints the
+   summary and report/log paths when the report was written.
 
 ```mermaid
 sequenceDiagram
@@ -65,13 +69,13 @@ sequenceDiagram
     participant U as UploadBatch
     participant P as PerformanceManager
     participant F as Output files
-    A ->> M: Step 1 - provide smoke settings
+    A ->> M: Step 1 - provide smoke settings and light count
     M ->> F: Step 2 - create output directory and open log
     loop Each requested run
         M ->> S: Step 3 - execute one run
         S ->> B: Step 3 - initialize with options
         B ->> W: Create requested window
-        B ->> C: Create Context with sampling enabled
+        B ->> C: Create Context with sampling and requested light budget
         C -->> B: Context and selected device
         B ->> P: Check timestamp capabilities
         B ->> B: Capture extent and environment
@@ -86,18 +90,21 @@ sequenceDiagram
             B ->> C: wait(upload completion)
             C -->> B: Upload completed
             B ->> B: Prepare fixed camera and mesh view
+            opt Requested light count is positive
+                B ->> B: Add one directional and remaining point lights
+            end
         end
         B -->> S: Step 3 - environment and prepared workload
         loop Until warmup duration ends
             S ->> B: Step 4 - verify window and submit frame
-            B ->> C: render(fixed cube view)
+            B ->> C: render(fixed cube view and light list)
             C -->> B: Presented frame and completion point
             S ->> P: Step 4 - drain and discard warmup samples
             S ->> W: Process events and recheck extent
         end
         loop Until measurement duration ends
             S ->> B: Step 5 - verify window and submit frame
-            B ->> C: render(fixed cube view)
+            B ->> C: render(fixed cube view and light list)
             C -->> B: Presented frame and completion point
             S ->> P: Step 5 - drain and retain measurement-range samples
             S ->> W: Process events and recheck extent
@@ -122,8 +129,9 @@ sequenceDiagram
 **Controlled workload.** Every attempted warmup or measurement frame must return
 `Presented`, and the framebuffer must remain at its initial nonzero extent. A
 detected resize, minimize, close request or other frame status invalidates the run
-rather than mixing different workloads. The smoke profile reuses one uploaded cube and
-fixed `RenderView`; it does not create geometry or submit uploads in the timed loop.
+rather than mixing different workloads. The smoke profile reuses one uploaded cube,
+fixed light list and fixed `RenderView`; it does not create geometry, lights or submit
+uploads in the timed loop.
 See [UC Render and present an application view](render-view.md) for the frame outcomes.
 
 **Presentation pacing.** The current Context uses FIFO presentation. CPU frame samples
@@ -142,9 +150,10 @@ The report's `measurementWallDurationNanoseconds` measures the phase loop, inclu
 frame submission, sample polling and event processing. It is not the sum of the
 per-frame `cpuFrameDuration` values.
 
-**Report contents.** `panda-bench-smoke.json` records schema version 4, smoke
-profile version 2 (`renderStaticCube`), code revision, available environment details,
-requested and effective extents, effective sample count, startup/warmup/measurement/wait/drain/teardown durations,
+**Report contents.** `panda-bench-smoke.json` records schema version 5, smoke
+profile version 3 (`renderStaticCube` or `renderStaticCubeWithLights`), code revision,
+available environment details, requested light count, requested and effective extents,
+effective sample count, startup/warmup/measurement/wait/drain/teardown durations,
 submitted-frame counts, paired per-frame samples, per-run CPU/GPU
 count/mean/p50/p95/p99/min/max statistics and the outcome. The console summary
 prints startup and teardown duration, sample count and CPU/GPU p50 and p95. Engine

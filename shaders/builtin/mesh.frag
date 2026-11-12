@@ -48,8 +48,12 @@ layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_MATERIAL_DATA_BIN
 
 struct LightRecord
 {
-    vec4 direction;
+    vec4 positionRange;
+    vec4 directionOuterConeCos;
     vec4 colorIntensity;
+    float innerConeCos;
+    uint type;
+    uvec2 padding;
 };
 
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_LIGHT_DATA_BINDING, std430) readonly buffer LightData
@@ -129,6 +133,67 @@ float shadowVisibility(vec3 normal)
     return visible / 9.0;
 }
 
+vec3 evaluateDirectLighting(vec3 baseColor,
+                            vec3 normal,
+                            vec3 geometricNormal,
+                            float metallic,
+                            float roughness)
+{
+    const vec3 viewDirection = normalize(frameData.cameraPosition.xyz - worldPosition);
+    const float normalView = max(dot(normal, viewDirection), 0.001);
+    const float alpha = roughness * roughness;
+    const float alphaSquared = alpha * alpha;
+    const float geometryK = (roughness + 1.0) * (roughness + 1.0) / 8.0;
+    vec3 direct = vec3(0.0);
+    for (uint lightIndex = 0u; lightIndex < frameData.lightInfo.x; ++lightIndex)
+    {
+        const LightRecord light = lightData.records[lightIndex];
+        vec3 lightDirection;
+        float attenuation = 1.0;
+        if (light.type == uint(PANDA_LIGHT_TYPE_DIRECTIONAL))
+        {
+            lightDirection = normalize(-light.directionOuterConeCos.xyz);
+        }
+        else
+        {
+            const vec3 toLight = light.positionRange.xyz - worldPosition;
+            const float distanceSquared = dot(toLight, toLight);
+            if (distanceSquared <= 0.000000000001)
+            {
+                continue;
+            }
+            const float lightDistance = sqrt(distanceSquared);
+            if (lightDistance >= light.positionRange.w)
+            {
+                continue;
+            }
+            lightDirection = toLight / lightDistance;
+            const float distanceRatio = lightDistance / light.positionRange.w;
+            attenuation = max(1.0 - pow(distanceRatio, 4.0), 0.0) / distanceSquared;
+            if (light.type == uint(PANDA_LIGHT_TYPE_SPOT))
+            {
+                const float coneCosine = dot(-lightDirection, normalize(light.directionOuterConeCos.xyz));
+                const float coneWidth = light.innerConeCos - light.directionOuterConeCos.w;
+                const float coneAttenuation = clamp((coneCosine - light.directionOuterConeCos.w) / coneWidth, 0.0, 1.0);
+                attenuation *= coneAttenuation * coneAttenuation;
+            }
+        }
+        const vec3 halfDirection = normalize(viewDirection + lightDirection);
+        const float normalLight = max(dot(normal, lightDirection), 0.0);
+        const float normalHalf = max(dot(normal, halfDirection), 0.0);
+        const float viewHalf = max(dot(viewDirection, halfDirection), 0.0);
+        const vec3 fresnel = fresnelSchlick(viewHalf, mix(dielectricF0, baseColor, metallic));
+        const float distribution = distributionGgx(normalHalf, alphaSquared);
+        const float geometry = geometrySchlick(normalView, geometryK) * geometrySchlick(normalLight, geometryK);
+        const vec3 specular = (distribution * geometry * fresnel) / max(4.0 * normalView * normalLight, 0.001);
+        const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * baseColor / pi;
+        const float visibility = lightIndex == frameData.lightInfo.y ? shadowVisibility(geometricNormal) : 1.0;
+        direct += (diffuse + specular) * light.colorIntensity.rgb * light.colorIntensity.w * normalLight *
+            attenuation * visibility;
+    }
+    return direct;
+}
+
 void main()
 {
     const MaterialRecord material = materialData.records[materialIndex];
@@ -175,28 +240,7 @@ void main()
         material.hasMetallicRoughnessTexture != 0u ? texture(metallicRoughnessMap, textureCoordinates) : vec4(1.0);
     const float metallic = clamp(material.metallic * mappedMetallicRoughness.b, 0.0, 1.0);
     const float roughness = clamp(material.roughness * mappedMetallicRoughness.g, 0.045, 1.0);
-    const vec3 viewDirection = normalize(frameData.cameraPosition.xyz - worldPosition);
-    const float normalView = max(dot(normal, viewDirection), 0.001);
-    const float alpha = roughness * roughness;
-    const float alphaSquared = alpha * alpha;
-    const float geometryK = (roughness + 1.0) * (roughness + 1.0) / 8.0;
-    vec3 direct = vec3(0.0);
-    for (uint lightIndex = 0u; lightIndex < frameData.lightInfo.x; ++lightIndex)
-    {
-        const LightRecord light = lightData.records[lightIndex];
-        const vec3 lightDirection = normalize(-light.direction.xyz);
-        const vec3 halfDirection = normalize(viewDirection + lightDirection);
-        const float normalLight = max(dot(normal, lightDirection), 0.0);
-        const float normalHalf = max(dot(normal, halfDirection), 0.0);
-        const float viewHalf = max(dot(viewDirection, halfDirection), 0.0);
-        const vec3 fresnel = fresnelSchlick(viewHalf, mix(dielectricF0, mappedBaseColor.rgb, metallic));
-        const float distribution = distributionGgx(normalHalf, alphaSquared);
-        const float geometry = geometrySchlick(normalView, geometryK) * geometrySchlick(normalLight, geometryK);
-        const vec3 specular = (distribution * geometry * fresnel) / max(4.0 * normalView * normalLight, 0.001);
-        const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * mappedBaseColor.rgb / pi;
-        const float visibility = lightIndex == 0u ? shadowVisibility(geometricNormal) : 1.0;
-        direct += (diffuse + specular) * light.colorIntensity.rgb * light.colorIntensity.w * normalLight * visibility;
-    }
+    const vec3 direct = evaluateDirectLighting(mappedBaseColor.rgb, normal, geometricNormal, metallic, roughness);
     const float occlusionSample =
         material.hasOcclusionTexture != 0u ? texture(occlusionMap, textureCoordinates).r : 1.0;
     const float ambientOcclusion = mix(1.0, occlusionSample, clamp(material.occlusionStrength, 0.0, 1.0));

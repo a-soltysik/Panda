@@ -204,13 +204,13 @@ auto Scene::setOrthographicCamera(const Entity& entity, std::optional<Orthograph
     return _state->setOrthographicCamera(entity, camera);
 }
 
-auto Scene::setDirectionalLight(const Entity& entity, std::optional<DirectionalLight> light) -> Result<void>
+auto Scene::setLight(const Entity& entity, std::optional<Light> light) -> Result<void>
 {
     if (!_state)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot use a moved-from Scene")};
     }
-    return _state->setDirectionalLight(entity, light);
+    return _state->setLight(entity, light);
 }
 
 auto Scene::setVisible(const Entity& entity, bool visible) -> Result<void>

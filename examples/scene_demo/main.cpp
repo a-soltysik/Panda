@@ -70,7 +70,7 @@ auto addTriangle(panda::scene::Scene& scene,
     return object;
 }
 
-void addCameraAndLight(panda::scene::Scene& scene)
+void addCamera(panda::scene::Scene& scene)
 {
     static constexpr auto position = glm::vec3 {7.0F, 5.0F, 9.0F};
     const auto camera = panda::expect(
@@ -84,20 +84,59 @@ void addCameraAndLight(panda::scene::Scene& scene)
         scene.setCamera(camera, panda::scene::PerspectiveCamera {.verticalFieldOfViewRadians = glm::radians(50.0F)}),
         "Attach camera lens");
     panda::expect(scene.setActiveCamera(camera), "Select camera");
+}
+
+void addDirectionalLights(panda::scene::Scene& scene)
+{
     const auto light = panda::expect(
         scene.createEntity({.name = "Sun",
                             .transform = {.rotation = glm::quatLookAtRH(glm::normalize(glm::vec3 {0.55F, -0.6F, 0.58F}),
                                                                         glm::vec3 {0.0F, 1.0F, 0.0F})}}),
         "Create light object");
-    panda::expect(scene.setDirectionalLight(light, panda::scene::DirectionalLight {}), "Attach directional light");
+    panda::expect(scene.setLight(light, panda::scene::DirectionalLight {}), "Attach directional light");
     const auto fillLight = panda::expect(
         scene.createEntity(
             {.name = "Unshadowed fill",
              .transform = {.rotation = glm::quatLookAtRH(glm::normalize(glm::vec3 {-0.65F, -0.45F, -0.3F}),
                                                          glm::vec3 {0.0F, 1.0F, 0.0F})}}),
         "Create fill light");
-    panda::expect(scene.setDirectionalLight(fillLight, panda::scene::DirectionalLight {.intensity = 0.8F}),
-                  "Attach fill light");
+    panda::expect(scene.setLight(fillLight, panda::scene::DirectionalLight {.intensity = 0.8F}), "Attach fill light");
+}
+
+void addPointLight(panda::scene::Scene& scene)
+{
+    const auto pointLight =
+        panda::expect(scene.createEntity({.name = "Blue point light", .transform = {.position = {-3.0F, 1.5F, 0.0F}}}),
+                      "Create point light");
+    panda::expect(scene.setLight(pointLight,
+                                 panda::scene::PointLight {
+                                     .color = {0.25F, 0.45F, 1.0F},
+                                     .intensity = 18.0F,
+                                     .range = 6.0F
+    }),
+                  "Attach point light");
+}
+
+void addSpotLight(panda::scene::Scene& scene)
+{
+    static constexpr auto spotPosition = glm::vec3 {3.0F, 5.0F, 2.0F};
+    const auto spotDirection = glm::normalize(-spotPosition);
+    const auto spotLight =
+        panda::expect(scene.createEntity({
+                          .name = "Warm spot light",
+                          .transform = {.position = spotPosition,
+                                        .rotation = glm::quatLookAtRH(spotDirection, glm::vec3 {0.0F, 1.0F, 0.0F})}
+    }),
+                      "Create spot light");
+    panda::expect(scene.setLight(spotLight,
+                                 panda::scene::SpotLight {
+                                     .color = {1.0F, 0.68F, 0.35F},
+                                     .intensity = 32.0F,
+                                     .range = 9.0F,
+                                     .innerConeAngleRadians = glm::radians(15.0F),
+                                     .outerConeAngleRadians = glm::radians(25.0F)
+    }),
+                  "Attach spot light");
 }
 
 void addGround(panda::scene::Scene& scene, const panda::Mesh& ground)
@@ -259,7 +298,10 @@ void run(const panda::tools::Window& window, panda::Context& context)
     const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for geometry upload");
     panda::expect(status == panda::WaitStatus::Completed, "Geometry upload did not finish in time");
     auto scene = panda::expect(panda::scene::Scene::create(context), "Create scene");
-    addCameraAndLight(scene);
+    addCamera(scene);
+    addDirectionalLights(scene);
+    addPointLight(scene);
+    addSpotLight(scene);
     const auto objects = addObjects(scene, meshes);
     drawLoop(window, context, scene, objects);
 }

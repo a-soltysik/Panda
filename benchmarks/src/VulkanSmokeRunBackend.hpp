@@ -30,10 +30,11 @@ private:
     [[nodiscard]] auto checkedWindow() const -> const panda::tools::Window&;
     [[nodiscard]] auto checkedContext() -> panda::Context&;
     [[nodiscard]] auto createWindow(const Options& options) -> std::expected<void, Failure>;
-    [[nodiscard]] auto createContext() -> std::expected<void, Failure>;
+    [[nodiscard]] auto createContext(const Options& options) -> std::expected<void, Failure>;
     [[nodiscard]] auto checkPerformanceCapabilities() -> std::expected<void, Failure>;
     [[nodiscard]] auto captureEnvironment() -> std::expected<SmokeRunEnvironment, Failure>;
-    [[nodiscard]] auto createStaticCube(panda::FramebufferExtent extent) -> std::expected<void, Failure>;
+    [[nodiscard]] auto createStaticCube(panda::FramebufferExtent extent, std::uint32_t lightCount)
+        -> std::expected<void, Failure>;
 
     std::optional<panda::tools::Window> _window;
     std::optional<panda::Context> _context;

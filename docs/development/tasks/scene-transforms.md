@@ -32,13 +32,15 @@ move-stable runtime handles, scene-lifetime 64-bit object IDs, names, checked
 local/world TRS edits, parent changes and lazy world-matrix caching. The cache
 preserves affine shear for rendering; keep-world edits reject a result that cannot
 be represented by local TRS. Objects may retain meshes, perspective or orthographic
-camera lenses, and directional-light parameters. The application creates entities,
-attaches components, selects a camera, and owns geometry and uploads. A selected
-camera and visible objects produce a `RenderView` snapshot; camera/light poses
-reject shear, reflections and nonuniform scale. Deleting the active camera clears
-selection. Visibility does not hide children. Visible directional lights are copied
-in `RenderView::directionalLights`; the first uses the shadow pass and later lights
-contribute unshadowed direct lighting. No visible light produces zero direct intensity.
+camera lenses, and directional, point or spot light parameters. The application
+creates entities, attaches components, selects a camera, and owns geometry and
+uploads. A selected camera and visible objects produce a `RenderView` snapshot;
+camera and light poses reject shear, reflections and nonuniform scale. Point lights
+emit from the entity's world position. Deleting the active camera clears selection.
+Visibility does not hide children. Visible lights are copied in scene
+order to `RenderView::lights`; the first directional light uses the shadow pass,
+while point/spot lights and other directional lights contribute unshadowed direct
+lighting. With no visible lights, Lit materials retain only their ambient contribution.
 Renderer-specific data and mesh ownership are checked once in `Context::render()`.
 Core provides configurable CPU sphere geometry. The `scene_demo` example renders an
 animated hierarchy through Scene; `simple_scene` remains a direct-renderer example.

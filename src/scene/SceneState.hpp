@@ -41,7 +41,7 @@ public:
     [[nodiscard]] auto setCamera(const Entity& entity, std::optional<PerspectiveCamera> camera) -> Result<void>;
     [[nodiscard]] auto setOrthographicCamera(const Entity& entity, std::optional<OrthographicCamera> camera)
         -> Result<void>;
-    [[nodiscard]] auto setDirectionalLight(const Entity& entity, std::optional<DirectionalLight> light) -> Result<void>;
+    [[nodiscard]] auto setLight(const Entity& entity, std::optional<Light> light) -> Result<void>;
     [[nodiscard]] auto setVisible(const Entity& entity, bool visible) -> Result<void>;
     [[nodiscard]] auto setActiveCamera(const Entity& entity) -> Result<void>;
     [[nodiscard]] auto createRenderView(float aspectRatio) -> Result<RenderView>;
@@ -63,7 +63,7 @@ private:
         std::optional<MeshInstance> mesh;
         std::optional<PerspectiveCamera> camera;
         std::optional<OrthographicCamera> orthographicCamera;
-        std::optional<DirectionalLight> light;
+        std::optional<Light> light;
     };
 
     [[nodiscard]] auto generateObjectId() -> ObjectId;

@@ -15,7 +15,7 @@ direct renderer. Core provides CPU geometry helpers; applications own GPU upload
 Creating a Scene adds no entities, camera, light, or GPU resources. The application
 creates entities and attaches the components it needs with `createEntity()`,
 `setCamera()` or `setOrthographicCamera()`, `setActiveCamera()`, and
-`setDirectionalLight()`. It owns geometry creation and mesh upload, then attaches
+`setLight()`. It owns geometry creation and mesh upload, then attaches
 the resulting handles with `setMesh()`. Applications may also provide render data
 directly without using a scene.
 
@@ -174,7 +174,8 @@ rules are specified in the rendering contract.
 `Scene::create()` adds no entities. An application creates a camera entity, attaches
 a perspective or orthographic lens, selects it, and creates any light entities it
 wants. The `scene_demo` example places its camera at (7, 5, 9) and explicitly adds
-one shadowed directional light and an unshadowed fill light. Scene does not create GPU resources; the application can
+a shadowed directional light, an unshadowed directional fill, a point light and a
+spot light. Scene does not create GPU resources; the application can
 create a ground with Core's plane geometry helper and attach its uploaded mesh.
 
 Cube is centered at the origin with side length 1 m. Plane lies in XZ, faces +Y and
@@ -385,6 +386,13 @@ an application panel and receives an ImGui frame plus an intent sink; it can dis
 application parameters without reflection or automatic serialization. It does not
 own the application's config object. The host chooses its input/camera controls;
 Tools reports keyboard/mouse capture intent so a gizmo drag does not move the camera.
+
+The editor/debug overlay also provides transient visualizations for scene cameras and
+built-in lights: light-direction arrows, point markers and range spheres, spot cones
+and camera frusta. They are generated as overlay geometry, never inserted into `Scene`,
+and do not cast shadows. This remains a small diagnostic set, not a general-purpose
+shape or drawing framework; consumers can build other visualizations in their own
+application panels.
 
 The frame order is poll input, draw UI and collect intents, validate/apply Scene
 changes in the main-thread update phase, run application simulation/reset work,

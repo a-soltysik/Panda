@@ -11,14 +11,43 @@
 #include <panda/Projection.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/scene/Scene.hpp>
+#include <variant>
 
 #include "Math.hpp"
+#include "Overloaded.hpp"
 #include "SceneState.hpp"
 #include "SceneTransformMath.hpp"
 
 namespace panda::scene::detail
 {
 using ::panda::detail::isFinite;
+
+namespace
+{
+auto toRenderLight(const DirectionalLight& light, glm::vec3 direction) -> panda::Light
+{
+    return panda::DirectionalLight {.direction = direction, .color = light.color, .intensity = light.intensity};
+}
+
+auto toRenderLight(const PointLight& light, glm::vec3 position) -> panda::Light
+{
+    return panda::PointLight {.position = position,
+                              .color = light.color,
+                              .intensity = light.intensity,
+                              .range = light.range};
+}
+
+auto toRenderLight(const SpotLight& light, glm::vec3 position, glm::vec3 direction) -> panda::Light
+{
+    return panda::SpotLight {.position = position,
+                             .direction = direction,
+                             .color = light.color,
+                             .intensity = light.intensity,
+                             .range = light.range,
+                             .innerConeAngleRadians = light.innerConeAngleRadians,
+                             .outerConeAngleRadians = light.outerConeAngleRadians};
+}
+}
 
 SceneRenderViewBuilder::SceneRenderViewBuilder(SceneState& scene)
     : _scene {scene}
@@ -112,20 +141,28 @@ auto SceneRenderViewBuilder::appendRenderObject(std::size_t index, RenderView& v
 auto SceneRenderViewBuilder::appendLight(std::size_t index, RenderView& view) -> Result<void>
 {
     const auto& slot = _scene._slots[index];
-    if (slot.light)
+    if (!slot.light)
     {
-        auto rotation = extractPoseRotation(slot.worldMatrix);
-        if (!rotation)
-        {
-            return std::unexpected {rotation.error()};
-        }
-        const auto light = panda::DirectionalLight {
-            .direction = *rotation * glm::vec3 {0.0F, 0.0F, -1.0F},
-            .color = slot.light->color,
-            .intensity = slot.light->intensity
-        };
-        view.directionalLights.push_back(light);
+        return {};
     }
+
+    auto rotation = extractPoseRotation(slot.worldMatrix);
+    if (!rotation)
+    {
+        return std::unexpected {rotation.error()};
+    }
+    const auto position = glm::vec3 {slot.worldMatrix[3]};
+    const auto direction = *rotation * glm::vec3 {0.0F, 0.0F, -1.0F};
+    view.lights.push_back(std::visit(::panda::detail::Overloaded {[&](const DirectionalLight& light) {
+                                                                      return toRenderLight(light, direction);
+                                                                  },
+                                                                  [&](const PointLight& light) {
+                                                                      return toRenderLight(light, position);
+                                                                  },
+                                                                  [&](const SpotLight& light) {
+                                                                      return toRenderLight(light, position, direction);
+                                                                  }},
+                                     *slot.light));
     return {};
 }
 

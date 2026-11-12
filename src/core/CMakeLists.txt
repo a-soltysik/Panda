@@ -117,7 +117,7 @@ panda_add_component(panda_core
         vulkan/renderer/RenderViewValidation.hpp
         vulkan/renderer/ShadowView.hpp
     LIBRARIES PUBLIC panda_common Vulkan::Headers glm::glm PRIVATE Vulkan::Vulkan)
-target_include_directories(panda_core PRIVATE "${PROJECT_SOURCE_DIR}/src/core")
+target_include_directories(panda_core PRIVATE "${PROJECT_SOURCE_DIR}/src/core" "${PROJECT_SOURCE_DIR}/src/common")
 panda_add_builtin_shaders(panda_core)
 
 set_target_properties(panda_core PROPERTIES OUTPUT_NAME panda)
