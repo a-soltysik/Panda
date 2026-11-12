@@ -103,6 +103,74 @@ TEST(SceneRenderViewBuilder, PreservesVisibleDirectionalLightOrder)
     ASSERT_EQ(singleLightViewAfterRemoval->lights.size(), 1U);
 }
 
+TEST(SceneRenderViewBuilder, BuildsPointLightFromItsWorldPosition)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto camera = scene.createEntity({});
+    ASSERT_TRUE(camera);
+    ASSERT_TRUE(scene.setCamera(*camera, panda::scene::PerspectiveCamera {}));
+    ASSERT_TRUE(scene.setActiveCamera(*camera));
+
+    const auto point = scene.createEntity({.name = {}, .transform = {.position = {1.0F, 2.0F, 3.0F}}});
+    ASSERT_TRUE(point);
+    ASSERT_TRUE(scene.setLight(*point,
+                               panda::scene::PointLight {
+                                   .color = {0.2F, 0.3F, 0.4F},
+                                   .intensity = 2.0F,
+                                   .range = 8.0F
+    }));
+    auto builder = panda::scene::detail::SceneRenderViewBuilder {scene};
+
+    const auto view = builder.build(1.0F);
+
+    ASSERT_TRUE(view);
+    ASSERT_EQ(view->lights.size(), 1U);
+    const auto& pointLight = std::get<panda::PointLight>(view->lights.front());
+    EXPECT_EQ(pointLight.position, (glm::vec3 {1.0F, 2.0F, 3.0F}));
+    EXPECT_EQ(pointLight.color, (glm::vec3 {0.2F, 0.3F, 0.4F}));
+    EXPECT_EQ(pointLight.intensity, 2.0F);
+    EXPECT_EQ(pointLight.range, 8.0F);
+}
+
+TEST(SceneRenderViewBuilder, BuildsSpotLightFromItsWorldPose)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto camera = scene.createEntity({});
+    ASSERT_TRUE(camera);
+    ASSERT_TRUE(scene.setCamera(*camera, panda::scene::PerspectiveCamera {}));
+    ASSERT_TRUE(scene.setActiveCamera(*camera));
+
+    const auto spot = scene.createEntity({
+        .name = {},
+        .transform = {.position = {4.0F, 5.0F, 6.0F},
+                 .rotation = glm::angleAxis(glm::half_pi<float>(), glm::vec3 {0.0F, 1.0F, 0.0F})}
+    });
+    ASSERT_TRUE(spot);
+    ASSERT_TRUE(scene.setLight(*spot,
+                               panda::scene::SpotLight {
+                                   .color = {0.5F, 0.6F, 0.7F},
+                                   .intensity = 3.0F,
+                                   .range = 12.0F,
+                                   .innerConeAngleRadians = 0.2F,
+                                   .outerConeAngleRadians = 0.4F
+    }));
+    auto builder = panda::scene::detail::SceneRenderViewBuilder {scene};
+
+    const auto view = builder.build(1.0F);
+
+    ASSERT_TRUE(view);
+    ASSERT_EQ(view->lights.size(), 1U);
+    const auto& spotLight = std::get<panda::SpotLight>(view->lights.front());
+    EXPECT_EQ(spotLight.position, (glm::vec3 {4.0F, 5.0F, 6.0F}));
+    EXPECT_NEAR(spotLight.direction.x, -1.0F, 1.0e-5F);
+    EXPECT_NEAR(spotLight.direction.z, 0.0F, 1.0e-5F);
+    EXPECT_EQ(spotLight.color, (glm::vec3 {0.5F, 0.6F, 0.7F}));
+    EXPECT_EQ(spotLight.intensity, 3.0F);
+    EXPECT_EQ(spotLight.range, 12.0F);
+    EXPECT_EQ(spotLight.innerConeAngleRadians, 0.2F);
+    EXPECT_EQ(spotLight.outerConeAngleRadians, 0.4F);
+}
+
 TEST(SceneRenderViewBuilder, RejectsLightWithNonuniformWorldPose)
 {
     auto scene = panda::scene::detail::SceneState {};

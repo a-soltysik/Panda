@@ -119,12 +119,12 @@ ctest --test-dir <build-directory> --output-on-failure -L system
 Use `-LE system` for a noninteractive run that also selects registered formatting
 checks. Quality presets enable formatting; test presets disable it.
 The `gcc-coverage` preset runs the noninteractive CPU test selection with GCC
-instrumentation, including mocked benchmark orchestration tests. CI runs the full
-registered CTest suite through `gcc-coverage-all` under Xvfb with Mesa lavapipe so
-native window and Vulkan system cases contribute coverage too. It then runs
-`panda-bench` under the same software driver to exercise its CLI and Vulkan frame
-path; benchmark timings are not performance evidence. Run the CPU coverage preset
-locally with:
+instrumentation. The generated report includes only engine sources under `src/`;
+benchmark sources are excluded because running a benchmark does not establish test
+coverage. CI runs the full registered CTest suite through `gcc-coverage-all` under
+Xvfb with Mesa lavapipe, generates and uploads coverage, then separately runs
+`panda-bench` as a Vulkan smoke check. Benchmark timings are not performance
+evidence. Run the CPU coverage preset locally with:
 
 ```sh
 cmake --preset gcc-coverage
@@ -133,11 +133,11 @@ ctest --preset gcc-coverage
 cmake --build --preset gcc-coverage --target panda_coverage_report
 ```
 
-The target generates annotated HTML and Cobertura XML in the configured build
-directory's `coverage/` subdirectory. CI publishes these files as the
-`panda-coverage` artifact. The displayed percentage counts executed test paths.
-Lavapipe provides software Vulkan runtime coverage; native hardware rendering
-still requires separate evidence.
+The target generates annotated HTML and Cobertura XML for `src/` in the configured
+build directory's `coverage/` subdirectory. CI publishes these files as the
+`panda-coverage` artifact. Lavapipe covers software Vulkan paths exercised by the
+system tests; the separate benchmark smoke run does not contribute coverage, and
+native hardware rendering still requires separate evidence.
 
 On pushes to `master` and pull requests targeting it, CI keeps the Mermaid check
 active but skips build, test, coverage, API-doc generation and code-analysis jobs

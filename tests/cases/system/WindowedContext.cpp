@@ -3,12 +3,15 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <expected>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/trigonometric.hpp>
+#include <limits>
 #include <optional>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
@@ -120,6 +123,76 @@ void verifyCompletion(const panda::Context& context, panda::CompletionPoint poin
     const auto polled = context.poll(point);
     ASSERT_TRUE(polled);
     EXPECT_TRUE(*polled);
+}
+
+void expectInvalidLight(const panda::Context& context, const panda::Light& light)
+{
+    auto view = panda::RenderView {};
+    view.lights.push_back(light);
+    const auto result = context.render(view);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+void expectInvalidPointLightData(const panda::Context& context)
+{
+    const auto infinity = std::numeric_limits<float>::infinity();
+    const auto nan = std::numeric_limits<float>::quiet_NaN();
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .position = {infinity, 0.0F, 0.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .color = {infinity, 1.0F, 1.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context, panda::PointLight {.intensity = infinity, .range = 8.0F});
+    expectInvalidLight(context, panda::PointLight {.intensity = -1.0F, .range = 8.0F});
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .color = {-1.0F, 1.0F, 1.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .color = {1.0F, -1.0F, 1.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context,
+                       panda::PointLight {
+                           .color = {1.0F, 1.0F, -1.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context, panda::PointLight {.range = nan});
+    expectInvalidLight(context, panda::PointLight {.range = 0.0F});
+}
+
+void expectInvalidSpotLightData(const panda::Context& context)
+{
+    const auto infinity = std::numeric_limits<float>::infinity();
+    const auto nan = std::numeric_limits<float>::quiet_NaN();
+    expectInvalidLight(context, panda::SpotLight {.direction = {}, .range = 8.0F});
+    expectInvalidLight(context,
+                       panda::SpotLight {
+                           .direction = {infinity, 0.0F, 0.0F},
+                           .range = 8.0F
+    });
+    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = nan});
+    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .outerConeAngleRadians = infinity});
+    expectInvalidLight(context,
+                       panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = -0.1F, .outerConeAngleRadians = 0.4F});
+    expectInvalidLight(context,
+                       panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = 0.4F, .outerConeAngleRadians = 0.4F});
+    expectInvalidLight(context,
+                       panda::SpotLight {.range = 8.0F,
+                                         .innerConeAngleRadians = 0.2F,
+                                         .outerConeAngleRadians = glm::half_pi<float>() + 0.1F});
+    expectInvalidLight(context,
+                       panda::SpotLight {.range = 8.0F,
+                                         .innerConeAngleRadians = 0.01F,
+                                         .outerConeAngleRadians = std::nextafter(0.01F, 1.0F)});
 }
 
 struct SceneMeshes
@@ -620,6 +693,67 @@ TEST(WindowedContextSystem, RendersSixtyFiveDirectionalLightsWithinConfiguredBud
     const auto overBudget = context.render(*view);
     ASSERT_FALSE(overBudget.has_value());
     EXPECT_EQ(overBudget.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST(WindowedContextSystem, RendersValidPointAndSpotLights)
+{
+    auto window = panda::tools::Window::create({160, 120}, "Panda local-light validation");
+    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
+    {
+        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
+    }
+    ASSERT_TRUE(window.has_value());
+    auto created = panda::Context::createWithSurface(
+        *window,
+        {.applicationName = "Panda local-light validation", .enableValidation = true});
+    if (!created && created.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << created.error().message;
+    }
+    ASSERT_TRUE(created.has_value()) << created.error().message;
+    auto context = std::move(*created);
+
+    auto view = panda::RenderView {};
+    view.lights.emplace_back(panda::PointLight {
+        .position = {1.0F, 2.0F, 3.0F},
+        .range = 8.0F
+    });
+    auto frame = context.render(view);
+    ASSERT_TRUE(frame.has_value()) << frame.error().message;
+    verifyCompletion(context, frame->completion);
+
+    view.lights.clear();
+    view.lights.emplace_back(panda::SpotLight {
+        .position = {1.0F, 2.0F, 3.0F},
+        .range = 8.0F,
+        .innerConeAngleRadians = 0.2F,
+        .outerConeAngleRadians = 0.4F
+    });
+    frame = context.render(view);
+    ASSERT_TRUE(frame.has_value()) << frame.error().message;
+    verifyCompletion(context, frame->completion);
+}
+
+TEST(WindowedContextSystem, RejectsInvalidPointAndSpotLightData)
+{
+    auto window = panda::tools::Window::create({160, 120}, "Panda local-light validation");
+    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
+    {
+        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
+    }
+    ASSERT_TRUE(window.has_value());
+    auto created = panda::Context::createWithSurface(
+        *window,
+        {.applicationName = "Panda local-light validation", .enableValidation = true});
+    if (!created && created.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << created.error().message;
+    }
+    ASSERT_TRUE(created.has_value()) << created.error().message;
+    auto context = std::move(*created);
+
+    expectInvalidPointLightData(context);
+    expectInvalidSpotLightData(context);
 }
 
 TEST(WindowedContextSystem, RendersUnlitMeshWithZeroLightBudget)

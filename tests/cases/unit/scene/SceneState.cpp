@@ -401,6 +401,66 @@ TEST(SceneState, CollectsVisibleLightsAndRejectsInvalidEdits)
     ASSERT_EQ(view->lights.size(), 1U);
 }
 
+TEST(SceneState, ValidatesPointLightParameters)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto point = createObject(scene);
+    ASSERT_TRUE(scene.setLight(point, panda::scene::PointLight {.range = 8.0F}));
+    EXPECT_FALSE(scene.setLight(point, panda::scene::PointLight {.range = 0.0F}));
+    EXPECT_FALSE(scene.setLight(point, panda::scene::PointLight {.range = std::numeric_limits<float>::infinity()}));
+    EXPECT_FALSE(
+        scene.setLight(point,
+                       panda::scene::PointLight {.intensity = std::numeric_limits<float>::infinity(), .range = 8.0F}));
+    EXPECT_FALSE(scene.setLight(point,
+                                panda::scene::PointLight {
+                                    .color = {std::numeric_limits<float>::quiet_NaN(), 1.0F, 1.0F},
+                                    .range = 8.0F
+    }));
+    EXPECT_FALSE(scene.setLight(point,
+                                panda::scene::PointLight {
+                                    .color = {1.0F, -1.0F, 1.0F},
+                                    .range = 8.0F
+    }));
+}
+
+TEST(SceneState, ValidatesSpotLightParameters)
+{
+    auto scene = panda::scene::detail::SceneState {};
+    const auto spot = createObject(scene);
+    ASSERT_TRUE(scene.setLight(
+        spot,
+        panda::scene::SpotLight {.range = 8.0F, .innerConeAngleRadians = 0.2F, .outerConeAngleRadians = 0.4F}));
+    EXPECT_FALSE(scene.setLight(spot, panda::scene::SpotLight {.range = 0.0F}));
+    EXPECT_FALSE(scene.setLight(spot, panda::scene::SpotLight {.range = std::numeric_limits<float>::quiet_NaN()}));
+    EXPECT_FALSE(scene.setLight(spot,
+                                panda::scene::SpotLight {
+                                    .color = {-1.0F, 1.0F, 1.0F},
+                                    .range = 8.0F,
+                                    .innerConeAngleRadians = 0.2F,
+                                    .outerConeAngleRadians = 0.4F
+    }));
+    EXPECT_FALSE(scene.setLight(
+        spot,
+        panda::scene::SpotLight {.range = 8.0F, .innerConeAngleRadians = -0.1F, .outerConeAngleRadians = 0.4F}));
+    EXPECT_FALSE(scene.setLight(
+        spot,
+        panda::scene::SpotLight {.range = 8.0F, .innerConeAngleRadians = 0.4F, .outerConeAngleRadians = 0.4F}));
+    EXPECT_FALSE(scene.setLight(spot,
+                                panda::scene::SpotLight {.range = 8.0F,
+                                                         .innerConeAngleRadians = 0.2F,
+                                                         .outerConeAngleRadians = glm::half_pi<float>() + 0.1F}));
+    EXPECT_FALSE(
+        scene.setLight(spot,
+                       panda::scene::SpotLight {.range = 8.0F,
+                                                .innerConeAngleRadians = std::numeric_limits<float>::quiet_NaN(),
+                                                .outerConeAngleRadians = 0.4F}));
+    EXPECT_FALSE(
+        scene.setLight(spot,
+                       panda::scene::SpotLight {.range = 8.0F,
+                                                .innerConeAngleRadians = 0.2F,
+                                                .outerConeAngleRadians = std::numeric_limits<float>::infinity()}));
+}
+
 TEST(SceneState, ValidatesCameraLensAspectAndInheritedPose)
 {
     auto scene = panda::scene::detail::SceneState {};

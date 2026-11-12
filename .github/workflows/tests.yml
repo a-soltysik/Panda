@@ -46,16 +46,6 @@ jobs:
           xvfb-run -a env
           VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           ctest --preset gcc-coverage-all
-      - name: Run benchmark smoke on lavapipe
-        shell: bash
-        run: >-
-          xvfb-run -a env
-          VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
-          build-gcc-coverage-Linux/benchmarks/panda-bench
-          --profile smoke
-          --output "$RUNNER_TEMP/panda-bench-smoke"
-          --width 320 --height 240
-          --warmup-seconds 0 --measure-seconds 1 --runs 1
       - name: Generate coverage report
         if: success() || failure()
         run: cmake --build --preset gcc-coverage --target panda_coverage_report
@@ -73,6 +63,16 @@ jobs:
           files: build-gcc-coverage-Linux/coverage/coverage.xml
           disable_search: true
           fail_ci_if_error: true
+      - name: Run benchmark smoke on lavapipe
+        shell: bash
+        run: >-
+          xvfb-run -a env
+          VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          build-gcc-coverage-Linux/benchmarks/panda-bench
+          --profile smoke
+          --output "$RUNNER_TEMP/panda-bench-smoke"
+          --width 320 --height 240
+          --warmup-seconds 0 --measure-seconds 1 --runs 1
       - name: Show compiler cache statistics
         if: always()
         shell: bash

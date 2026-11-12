@@ -68,18 +68,19 @@ This task is not accepted.
 ## Current verification
 
 - Windows 11: `msvc-quality` build, `all_verify_interface_header_sets`,
-  `panda_format_checks`, `clang-cuda-analysis-windows`, `msvc-fast` build and
-  `ctest --preset msvc-fast` passed. CTest reported 611 passed and 4 skipped.
+  `panda_format_checks`, `clang-cuda-analysis-windows`, `msvc-fast` build and full
+  CTest passed; CTest reported 617 passed and 4 skipped.
 - WSL Ubuntu mirror: `gcc-quality` build, interface-header and format targets,
-  `clang-cuda-analysis`, `gcc-fast` build and full CTest passed. CTest reported 611
-  passed and 8 skipped. The CUDA analyzer warned that the installed CUDA version is
-  newer than its latest partially supported version, 12.9.
+  `clang-cuda-analysis`, `gcc-fast` build and full CTest passed; CTest reported 617
+  passed and 8 skipped. Both CUDA analyzers warned that the installed CUDA version
+  is newer than their latest partially supported version, 12.9.
+- The GCC coverage CTest run passed 600 cases and skipped 4. Its report covers only
+  engine sources under `src/`: 95.8% lines (6115/6386), 98.0% functions (1010/1031)
+  and 86.4% branches (5073/5872). The separate lavapipe benchmark smoke run is not
+  included in that report.
 - `check_docs.py` checked 80 Markdown files and the task queue; `docs-checks` validated
-  42 Mermaid diagrams in 83 files on both platforms. `gcc-docs` passed.
-- A one-second WSL smoke run with default benchmark settings completed and its JSON
-  report recorded 65 lights under `renderStaticCubeWithLights`. One earlier launch
-  faulted in `libwayland-client.so.0` at `wl_proxy_get_version`; a repeated run
-  completed. No RenderDoc capture or visual/pixel review was made.
+  42 Mermaid diagrams in 83 files, and `gcc-docs` passed. No RenderDoc capture or
+  pixel comparison was performed in this verification.
 - Spot/point shadows, directional shadow-quality captures and CPU performance
   profiling remain incomplete.
 
