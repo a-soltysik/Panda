@@ -40,39 +40,43 @@ TEST(RenderViewValidation, RejectsNonFiniteCameraAndZeroDirection)
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
-    view.lights.emplace_back(panda::DirectionalLight {.direction = {}});
+    view.lights.emplace_back(panda::DirectionalLight {.direction = {}, .shadow = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
 
 TEST(RenderViewValidation, RejectsInvalidDirectionalLight)
 {
     auto view = RenderView {};
-    view.lights.emplace_back(panda::DirectionalLight {.direction = glm::vec3 {std::numeric_limits<float>::max()}});
+    view.lights.emplace_back(
+        panda::DirectionalLight {.direction = glm::vec3 {std::numeric_limits<float>::max()}, .shadow = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
     view.lights.clear();
     view.lights.emplace_back(panda::DirectionalLight {
-        .direction = {std::numeric_limits<float>::infinity(), 0.0F, 0.0F}
+        .direction = {std::numeric_limits<float>::infinity(), 0.0F, 0.0F},
+        .shadow = {}
     });
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
     view.lights.clear();
     view.lights.emplace_back(panda::DirectionalLight {
-        .color = {std::numeric_limits<float>::quiet_NaN(), 1.0F, 1.0F}
+        .color = {std::numeric_limits<float>::quiet_NaN(), 1.0F, 1.0F},
+        .shadow = {}
     });
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
     view.lights.clear();
-    view.lights.emplace_back(panda::DirectionalLight {.intensity = -1.0F});
+    view.lights.emplace_back(panda::DirectionalLight {.intensity = -1.0F, .shadow = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view = RenderView {};
     view.lights.clear();
     view.lights.emplace_back(panda::DirectionalLight {
-        .color = {1.0F, -1.0F, 1.0F}
+        .color = {1.0F, -1.0F, 1.0F},
+        .shadow = {}
     });
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
@@ -81,7 +85,8 @@ TEST(RenderViewValidation, RejectsInvalidDirectionalLight)
     view.lights.emplace_back(panda::DirectionalLight {
         .direction = {},
         .color = {1.0F, 1.0F, 1.0F},
-        .intensity = 1.0F
+        .intensity = 1.0F,
+        .shadow = {}
     });
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
@@ -91,7 +96,8 @@ TEST(RenderViewValidation, ValidatesPointAndSpotLights)
     auto view = RenderView {};
     view.lights.emplace_back(panda::PointLight {
         .position = {1.0F, 2.0F, 3.0F},
-        .range = 8.0F
+        .range = 8.0F,
+        .shadow = {}
     });
     EXPECT_TRUE(validateRenderViewData(view));
 
@@ -104,11 +110,30 @@ TEST(RenderViewValidation, ValidatesPointAndSpotLights)
     view.lights.clear();
     view.lights.emplace_back(panda::SpotLight {
         .position = {0.0F, 2.0F, 0.0F},
-        .range = 10.0F
+        .range = 10.0F,
+        .shadow = {}
     });
     EXPECT_TRUE(validateRenderViewData(view));
     std::get<panda::SpotLight>(view.lights.back()).innerConeAngleRadians =
         std::get<panda::SpotLight>(view.lights.back()).outerConeAngleRadians;
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+}
+
+TEST(RenderViewValidation, RejectsInvalidShadowSettingsAtTheRenderBoundary)
+{
+    auto view = RenderView {};
+    view.lights.emplace_back(panda::DirectionalLight {.shadow = panda::ShadowSettings {.resolution = 768U}});
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    view.lights.clear();
+    view.lights.emplace_back(panda::DirectionalLight {
+        .shadow = panda::ShadowSettings {.resolution = {}, .depthBias = -0.1F}
+    });
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    view.lights.clear();
+    view.lights.emplace_back(
+        panda::DirectionalLight {.shadow = panda::ShadowSettings {}, .shadowCoverageMeters = 0.0F});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
 

@@ -11,6 +11,7 @@
 #include <panda/Error.hpp>
 #include <vector>
 
+#include "renderer/ShadowAtlas.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace panda::detail
@@ -20,7 +21,7 @@ class TextureResource;
 
 namespace panda::core::vulkan::renderer
 {
-inline constexpr auto shadowExtent = vk::Extent2D {.width = 2048, .height = 2048};
+inline constexpr auto shadowExtent = vk::Extent2D {.width = shadowAtlasExtent, .height = shadowAtlasExtent};
 
 struct OutputDescription
 {

@@ -141,58 +141,68 @@ void expectInvalidPointLightData(const panda::Context& context)
     expectInvalidLight(context,
                        panda::PointLight {
                            .position = {infinity, 0.0F, 0.0F},
-                           .range = 8.0F
+                           .range = 8.0F,
+                           .shadow = {}
     });
     expectInvalidLight(context,
                        panda::PointLight {
                            .color = {infinity, 1.0F, 1.0F},
-                           .range = 8.0F
+                           .range = 8.0F,
+                           .shadow = {}
     });
-    expectInvalidLight(context, panda::PointLight {.intensity = infinity, .range = 8.0F});
-    expectInvalidLight(context, panda::PointLight {.intensity = -1.0F, .range = 8.0F});
+    expectInvalidLight(context, panda::PointLight {.intensity = infinity, .range = 8.0F, .shadow = {}});
+    expectInvalidLight(context, panda::PointLight {.intensity = -1.0F, .range = 8.0F, .shadow = {}});
     expectInvalidLight(context,
                        panda::PointLight {
                            .color = {-1.0F, 1.0F, 1.0F},
-                           .range = 8.0F
+                           .range = 8.0F,
+                           .shadow = {}
     });
     expectInvalidLight(context,
                        panda::PointLight {
                            .color = {1.0F, -1.0F, 1.0F},
-                           .range = 8.0F
+                           .range = 8.0F,
+                           .shadow = {}
     });
     expectInvalidLight(context,
                        panda::PointLight {
                            .color = {1.0F, 1.0F, -1.0F},
-                           .range = 8.0F
+                           .range = 8.0F,
+                           .shadow = {}
     });
-    expectInvalidLight(context, panda::PointLight {.range = nan});
-    expectInvalidLight(context, panda::PointLight {.range = 0.0F});
+    expectInvalidLight(context, panda::PointLight {.range = nan, .shadow = {}});
+    expectInvalidLight(context, panda::PointLight {.range = 0.0F, .shadow = {}});
 }
 
 void expectInvalidSpotLightData(const panda::Context& context)
 {
     const auto infinity = std::numeric_limits<float>::infinity();
     const auto nan = std::numeric_limits<float>::quiet_NaN();
-    expectInvalidLight(context, panda::SpotLight {.direction = {}, .range = 8.0F});
+    expectInvalidLight(context, panda::SpotLight {.direction = {}, .range = 8.0F, .shadow = {}});
     expectInvalidLight(context,
                        panda::SpotLight {
                            .direction = {infinity, 0.0F, 0.0F},
-                           .range = 8.0F
+                           .range = 8.0F,
+                           .shadow = {}
     });
-    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = nan});
-    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .outerConeAngleRadians = infinity});
-    expectInvalidLight(context,
-                       panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = -0.1F, .outerConeAngleRadians = 0.4F});
-    expectInvalidLight(context,
-                       panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = 0.4F, .outerConeAngleRadians = 0.4F});
+    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = nan, .shadow = {}});
+    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .outerConeAngleRadians = infinity, .shadow = {}});
+    expectInvalidLight(
+        context,
+        panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = -0.1F, .outerConeAngleRadians = 0.4F, .shadow = {}});
+    expectInvalidLight(
+        context,
+        panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = 0.4F, .outerConeAngleRadians = 0.4F, .shadow = {}});
     expectInvalidLight(context,
                        panda::SpotLight {.range = 8.0F,
                                          .innerConeAngleRadians = 0.2F,
-                                         .outerConeAngleRadians = glm::half_pi<float>() + 0.1F});
+                                         .outerConeAngleRadians = glm::half_pi<float>() + 0.1F,
+                                         .shadow = {}});
     expectInvalidLight(context,
                        panda::SpotLight {.range = 8.0F,
                                          .innerConeAngleRadians = 0.01F,
-                                         .outerConeAngleRadians = std::nextafter(0.01F, 1.0F)});
+                                         .outerConeAngleRadians = std::nextafter(0.01F, 1.0F),
+                                         .shadow = {}});
 }
 
 struct SceneMeshes
@@ -716,7 +726,8 @@ TEST(WindowedContextSystem, RendersValidPointAndSpotLights)
     auto view = panda::RenderView {};
     view.lights.emplace_back(panda::PointLight {
         .position = {1.0F, 2.0F, 3.0F},
-        .range = 8.0F
+        .range = 8.0F,
+        .shadow = panda::ShadowSettings {}
     });
     auto frame = context.render(view);
     ASSERT_TRUE(frame.has_value()) << frame.error().message;
@@ -727,7 +738,8 @@ TEST(WindowedContextSystem, RendersValidPointAndSpotLights)
         .position = {1.0F, 2.0F, 3.0F},
         .range = 8.0F,
         .innerConeAngleRadians = 0.2F,
-        .outerConeAngleRadians = 0.4F
+        .outerConeAngleRadians = 0.4F,
+        .shadow = panda::ShadowSettings {}
     });
     frame = context.render(view);
     ASSERT_TRUE(frame.has_value()) << frame.error().message;

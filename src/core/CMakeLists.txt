@@ -37,6 +37,7 @@ panda_add_component(panda_core
         vulkan/renderer/MeshPipelineCache.cpp
         vulkan/renderer/RenderAttachments.cpp
         vulkan/renderer/RenderViewValidation.cpp
+        vulkan/renderer/ShadowAtlas.cpp
         vulkan/renderer/ShadowView.cpp
         vulkan/SubmissionQueue.cpp
         vulkan/upload/UploadBatchImpl.cpp
@@ -113,6 +114,7 @@ panda_add_component(panda_core
         vulkan/renderer/MaterialTextureSlots.hpp
         vulkan/renderer/MeshPipelineCache.hpp
         vulkan/renderer/RenderAttachments.hpp
+        vulkan/renderer/ShadowAtlas.hpp
         vulkan/renderer/ShaderData.hpp
         vulkan/renderer/RenderViewValidation.hpp
         vulkan/renderer/ShadowView.hpp

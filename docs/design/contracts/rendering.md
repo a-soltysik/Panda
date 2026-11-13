@@ -88,8 +88,8 @@ Support directional, spot, and point lights. Shadow casting is an independent pe
 and coverage settings. The default scene uses one shadow-casting directional light; enabling shadows for every light is
 not assumed to be free.
 
-Use one directional view and six cube-oriented point-light views in the shared 2D atlas. Shadow resolution, filtering
-and bias follow the rules below; no cascades are required.
+Use one directional or spot view and six cube-oriented point-light views in the shared 2D atlas. Shadow resolution,
+filtering and bias follow the rules below; no cascades are required.
 
 Opaque and masked geometry cast shadows, with matching mask behavior. Blended objects do not cast by default. Cull
 shadow casters against the light volume, not only the camera frustum. Instancing remains instancing in shadow passes.
@@ -473,7 +473,13 @@ publishing settings. No silent resolution reduction or shadow-light dropping. A
 one-pixel sampler footprint stays inside a guarded tile; clamps prevent PCF
 leakage across neighbors. Use 3x3 PCF; initial depth bias 0.0005 and normal
 offset 0.002 m are configurable starting values that require visual tuning, not
-verified quality claims. Atlas rebuild/resize follows
+verified quality claims. Each built-in light has optional `ShadowSettings`;
+absence disables its shadows, while an unset resolution selects the type's
+default above. Directional lights also expose `shadowCoverageMeters`; spot and
+point projection use their existing outer cone and range. Compare quality by
+world-space texel density at the receiver: orthographic directional density is
+uniform over its coverage, while perspective local-light density changes with
+distance. Atlas rebuild/resize follows
 [resource retirement rules](resources.md#frame-contexts-and-retirement). A
 depth-only masked variant samples the base-color alpha with the same cutoff as
 the camera pass. Blend casts no shadow by default.

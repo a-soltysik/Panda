@@ -6,6 +6,7 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/quaternion_common.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/matrix_access.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <panda/Error.hpp>
 #include <panda/Projection.hpp>
@@ -26,7 +27,11 @@ namespace
 {
 auto toRenderLight(const DirectionalLight& light, glm::vec3 direction) -> panda::Light
 {
-    return panda::DirectionalLight {.direction = direction, .color = light.color, .intensity = light.intensity};
+    return panda::DirectionalLight {.direction = direction,
+                                    .color = light.color,
+                                    .intensity = light.intensity,
+                                    .shadow = light.shadow,
+                                    .shadowCoverageMeters = light.shadowCoverageMeters};
 }
 
 auto toRenderLight(const PointLight& light, glm::vec3 position) -> panda::Light
@@ -34,7 +39,8 @@ auto toRenderLight(const PointLight& light, glm::vec3 position) -> panda::Light
     return panda::PointLight {.position = position,
                               .color = light.color,
                               .intensity = light.intensity,
-                              .range = light.range};
+                              .range = light.range,
+                              .shadow = light.shadow};
 }
 
 auto toRenderLight(const SpotLight& light, glm::vec3 position, glm::vec3 direction) -> panda::Light
@@ -45,7 +51,8 @@ auto toRenderLight(const SpotLight& light, glm::vec3 position, glm::vec3 directi
                              .intensity = light.intensity,
                              .range = light.range,
                              .innerConeAngleRadians = light.innerConeAngleRadians,
-                             .outerConeAngleRadians = light.outerConeAngleRadians};
+                             .outerConeAngleRadians = light.outerConeAngleRadians,
+                             .shadow = light.shadow};
 }
 }
 
@@ -54,17 +61,16 @@ SceneRenderViewBuilder::SceneRenderViewBuilder(SceneState& scene)
 {
 }
 
-auto SceneRenderViewBuilder::makeCameraFromProjection(const glm::mat4& world, const glm::mat4& projection)
-    -> Result<RenderCamera>
+auto SceneRenderViewBuilder::makeCameraFromProjection(CameraProjectionInput input) -> Result<RenderCamera>
 {
-    auto rotation = extractPoseRotation(world);
+    auto rotation = extractPoseRotation(input.world);
     if (!rotation)
     {
         return std::unexpected {rotation.error()};
     }
-    const auto position = glm::vec3 {world[3]};
+    const auto position = glm::vec3 {glm::column(input.world, 3)};
     const auto view = glm::mat4_cast(glm::conjugate(*rotation)) * glm::translate(glm::mat4 {1.0F}, -position);
-    const auto viewProjection = projection * view;
+    const auto viewProjection = input.projection * view;
     if (!isFinite(viewProjection))
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Camera matrix is not representable")};
@@ -81,7 +87,7 @@ auto SceneRenderViewBuilder::makeCamera(const glm::mat4& world, const Perspectiv
     {
         return std::unexpected {projection.error()};
     }
-    return makeCameraFromProjection(world, *projection);
+    return makeCameraFromProjection({.world = world, .projection = *projection});
 }
 
 auto SceneRenderViewBuilder::makeCamera(const glm::mat4& world, const OrthographicCamera& lens, float aspectRatio)
@@ -92,7 +98,7 @@ auto SceneRenderViewBuilder::makeCamera(const glm::mat4& world, const Orthograph
     {
         return std::unexpected {projection.error()};
     }
-    return makeCameraFromProjection(world, *projection);
+    return makeCameraFromProjection({.world = world, .projection = *projection});
 }
 
 auto SceneRenderViewBuilder::activeRenderCamera(float aspectRatio) -> Result<RenderCamera>
@@ -102,7 +108,7 @@ auto SceneRenderViewBuilder::activeRenderCamera(float aspectRatio) -> Result<Ren
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene has no active camera")};
     }
-    const auto& slot = _scene._slots[*cameraIndex];
+    const auto& slot = _scene.slotAt(*cameraIndex);
     if (!slot.camera && !slot.orthographicCamera)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Active object has no camera lens")};
@@ -121,7 +127,7 @@ auto SceneRenderViewBuilder::activeRenderCamera(float aspectRatio) -> Result<Ren
 
 auto SceneRenderViewBuilder::appendRenderObject(std::size_t index, RenderView& view) -> Result<void>
 {
-    const auto& slot = _scene._slots[index];
+    const auto& slot = _scene.slotAt(index);
     if (!slot.alive || !slot.visible || (!slot.mesh && !slot.light))
     {
         return {};
@@ -140,7 +146,7 @@ auto SceneRenderViewBuilder::appendRenderObject(std::size_t index, RenderView& v
 
 auto SceneRenderViewBuilder::appendLight(std::size_t index, RenderView& view) -> Result<void>
 {
-    const auto& slot = _scene._slots[index];
+    const auto& slot = _scene.slotAt(index);
     if (!slot.light)
     {
         return {};
@@ -151,7 +157,7 @@ auto SceneRenderViewBuilder::appendLight(std::size_t index, RenderView& view) ->
     {
         return std::unexpected {rotation.error()};
     }
-    const auto position = glm::vec3 {slot.worldMatrix[3]};
+    const auto position = glm::vec3 {glm::column(slot.worldMatrix, 3)};
     const auto direction = *rotation * glm::vec3 {0.0F, 0.0F, -1.0F};
     view.lights.push_back(std::visit(::panda::detail::Overloaded {[&](const DirectionalLight& light) {
                                                                       return toRenderLight(light, direction);

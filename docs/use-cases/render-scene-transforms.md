@@ -98,9 +98,10 @@ components and world caches; the builder does not create or delete entities.
 **Current light boundary.** Scene preserves visible light variants in scene order in
 `RenderView::lights`. Point and spot lights contribute direct illumination with
 finite-range attenuation; directional and spot directions follow the entity's local
--Z axis. Only the first directional light uses the current shadow pass. Point and
-spot lights and other directional lights are currently unshadowed. With no visible
-lights, the renderer's ambient term still applies.
+-Z axis. Each light can opt into shadows with `ShadowSettings`; unset settings leave
+that light unshadowed. Directional shadows use their orthographic coverage, while
+point and spot shadows use their range and the spot's cone. With no visible lights,
+the renderer's ambient term still applies.
 Deleting the active camera clears selection instead of choosing another object.
 
 ## Variants and errors

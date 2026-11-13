@@ -31,8 +31,16 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 
 1. **Build the view.** The application supplies a view-projection matrix, camera
    position, zero or more directional, point or spot lights, and zero or more mesh
-   draws with per-mesh materials. The first directional light casts the current
-   shadow; point/spot lights and later directional lights are unshadowed.
+   draws with per-mesh materials. Each light opts into shadows by supplying
+   `ShadowSettings`; an unset resolution selects the default for that light type.
+   Directional lights also select their orthographic coverage; spot and point
+   shadow views use the light's existing cone and range. Resolution is the width
+   and height of each shadow-map face in texels; supported values are 256, 512,
+   1024 and 2048, with defaults of 2048 for directional lights, 1024 for spot
+   lights and 512 per point-light face. `depthBias` is subtracted from projected
+   [0,1] depth before comparison. `normalOffset` moves the receiver along its
+   world-space normal in meters. Increasing either can reduce self-shadowing, but
+   excessive values detach shadows from their casters.
    `ContextOptions::maxLights` controls the total light budget; zero supports a view
    with no lights.
    Mesh handles are ordinary values; Panda does not create entities or own application
@@ -40,7 +48,8 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
 2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, all
-   light variants and the configured light budget,
+   light variants, optional shadow settings, atlas resolutions/capacity, and the
+   configured light budget,
    tint, material alpha mode, cutoff, and finite normal-map scale and occlusion
    strength, then verifies each mesh's Context and required attributes. If a base-color,
    Lit metallic-roughness, emissive, Lit normal or Lit occlusion map is set, it checks
@@ -68,8 +77,10 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    `MeshPipelineCache`. On a resize, `RenderAttachments` prepares output-sized depth
    and optional MSAA replacements; after preparation succeeds, the renderer updates
    pipeline compatibility and publishes them. The renderer then updates frame data,
-   per-draw material records, light records and texture descriptors through
-   `FrameBindings` before recording the first directional light's shadow depth pass.
+   per-draw material records, light and shadow records, dynamic shadow-view matrices,
+   and texture descriptors through `FrameBindings`. `MeshRenderer` clears the depth
+   atlas once and renders opaque/masked casters into each opted-in light's guarded
+   tile with that tile's view matrix.
    `MeshPipelineCache` prepares missing color and shadow variants before recording;
    draw recording then looks up those prepared pipelines without creating them. A base-color sample multiplies material and
    draw tint and optional vertex color; a metallic-roughness sample scales Lit
@@ -82,9 +93,10 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    and apply the material cutoff in both shadow and camera passes. The camera pass
    selects pipelines from each material model, alpha mode, consumed vertex attributes,
    face mode and transform handedness while summing directional, point and spot
-   lighting. Point/spot lights use finite-range attenuation and spot-cone falloff;
-   only the first directional light samples the shadow map. Other lights are
-   unshadowed in this implementation slice.
+   lighting. Point/spot lights use finite-range attenuation and spot-cone falloff.
+   Each light samples its own atlas view; point lights choose one of six cube faces
+   from the dominant axis between light and shaded point. The 3x3 PCF taps clamp to
+   the selected tile, so they do not read neighboring maps.
    `FrameExecution` records content and its timing markers; it does not acquire or
    present images, or transition the output image. `Presentation` records the final
    transition to present layout and ends the command buffer.
@@ -148,9 +160,10 @@ sequenceDiagram
         R->>K: Prepare needed color and shadow variants
         K->>V: Create missing pipeline variants
         R->>K: Look up prepared pipelines during draw recording
-        R->>V: Record Mask shadow cutouts using the same base-color alpha as the camera
+        R->>V: Clear atlas and record each configured light view into its guarded tile
+        R->>V: Apply the same Mask cutoff as the camera pass
         R->>V: Record Opaque and Mask draws, then back-to-front Blend draws
-        R->>V: Sample enabled material maps and shadows for Lit shading
+        R->>V: Sample material maps and per-light atlas views for Lit shading
         R->>V: Add emission before tone mapping for Lit and Unlit shading
     end
     P->>V: Transition output image to present layout
@@ -203,15 +216,15 @@ orients back-facing normals consistently when rendering `Back` or `Both`. A
 constant ambient term contributes
 0.06 times base color to Lit materials. The shader applies the ACES fitted tone curve and
 outputs sRGB, using hardware conversion for sRGB swapchain formats or shader encoding
-for UNORM formats. Only the first directional light is shadowed with one 2048² depth map per
-frame slot and 3x3 PCF; ambient light remains unshadowed. The map uses a 30 m
-orthographic view centered 15 m ahead of the camera and a 0.1–80 m light-depth range.
-Points outside that fixed camera-centered region receive no shadow. Point/spot direct
-lighting is present, but their shadow views and shadows, plus improved directional
-shadow coverage and filtering, remain work in
-[Materials, lights and shadows](../development/tasks/materials-and-shadows.md). The
-current 3x3 PCF has visible edge aliasing; the first-scene task records that limit and
-the current visual result. The first mesh draw selects the highest common color/depth
+for UNORM formats. A frame slot owns one 4096² shadow depth atlas. Each opted-in
+directional or spot light occupies one guarded tile; each point light occupies six
+cube-oriented tiles. Defaults are 2048 with 30 m orthographic coverage for directional,
+1024 for spot, and 512 per point face. The shader applies 3x3 PCF and clamps taps to
+the selected tile; ambient light remains unshadowed. Directional shadows use a uniform
+texel density across their coverage, while point-light density changes with distance.
+The required captures still need to tune directional coverage, bias and filtering in
+[Materials, lights and shadows](../development/tasks/materials-and-shadows.md).
+The first mesh draw selects the highest common color/depth
 attachment sample count supported by the active formats and device limits (4x, then
 2x, then 1x); `FrameResult::effectiveSampleCount` reports it.
 

@@ -68,7 +68,7 @@ panda_add_test(panda_unit_core unit
     VULKAN_INTERNAL
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core"
     SOURCES Version.cpp DeviceSelection.cpp SwapchainGeneration.cpp
-            SwapchainCreation.cpp ExternalTimelineValue.cpp Math.cpp RenderViewValidation.cpp ShadowView.cpp
+            SwapchainCreation.cpp ExternalTimelineValue.cpp Math.cpp RenderViewValidation.cpp ShadowAtlas.cpp ShadowView.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock)
 target_compile_definitions(panda_unit_core PRIVATE

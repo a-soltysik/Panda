@@ -1,11 +1,6 @@
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) uniform FrameData
 {
     mat4 viewProjection;
-    mat4 lightViewProjection;
-    vec4 cameraPosition;
-    vec4 lightDirection;
-    vec4 lightColorIntensity;
-    vec4 ambient;
 } frameData;
 
 layout(push_constant) uniform DrawData

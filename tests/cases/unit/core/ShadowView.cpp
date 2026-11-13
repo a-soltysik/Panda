@@ -2,7 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/trigonometric.hpp>
@@ -95,4 +97,76 @@ TEST(ShadowView, AcceptsLargeOrthographicCamera)
     ASSERT_TRUE(projection);
     camera.viewProjection = *projection;
     EXPECT_TRUE(panda::core::vulkan::renderer::createDirectionalShadowView(camera, panda::DirectionalLight {}));
+}
+
+TEST(ShadowView, SpotViewCoversItsOuterCone)
+{
+    static constexpr auto light = panda::SpotLight {
+        .position = {2.0F, 3.0F, 4.0F},
+        .direction = {0.0F, 0.0F, -1.0F},
+        .range = 8.0F,
+        .outerConeAngleRadians = glm::radians(35.0F),
+        .shadow = {}
+    };
+
+    const auto view = panda::core::vulkan::renderer::createSpotShadowView(light);
+
+    ASSERT_TRUE(view);
+    static constexpr auto distance = light.range * 0.5F;
+    const auto coneEdge =
+        light.position + glm::vec3 {distance * std::tan(light.outerConeAngleRadians), 0.0F, -distance};
+    const auto projected = *view * glm::vec4 {coneEdge, 1.0F};
+    ASSERT_NE(projected.w, 0.0F);
+    EXPECT_NEAR(projected.x / projected.w, 1.0F, 1.0e-5F);
+    EXPECT_NEAR(projected.y / projected.w, 0.0F, 1.0e-5F);
+    EXPECT_GE(projected.z / projected.w, 0.0F);
+    EXPECT_LE(projected.z / projected.w, 1.0F);
+}
+
+TEST(ShadowView, PointViewsFaceAllSixCubeDirections)
+{
+    static constexpr auto light = panda::PointLight {
+        .position = {2.0F, 3.0F, 4.0F},
+        .range = 8.0F,
+        .shadow = {}
+    };
+    static constexpr auto directions = std::array {
+        glm::vec3 {1.0F,  0.0F,  0.0F },
+        glm::vec3 {-1.0F, 0.0F,  0.0F },
+        glm::vec3 {0.0F,  1.0F,  0.0F },
+        glm::vec3 {0.0F,  -1.0F, 0.0F },
+        glm::vec3 {0.0F,  0.0F,  1.0F },
+        glm::vec3 {0.0F,  0.0F,  -1.0F}
+    };
+
+    const auto views = panda::core::vulkan::renderer::createPointShadowViews(light);
+
+    ASSERT_TRUE(views);
+    for (auto index = std::size_t {}; index < views->size(); ++index)
+    {
+        const auto point = light.position + directions.at(index) * (light.range * 0.5F);
+        const auto projected = views->at(index) * glm::vec4 {point, 1.0F};
+        ASSERT_NE(projected.w, 0.0F);
+        EXPECT_NEAR(projected.x / projected.w, 0.0F, 1.0e-5F);
+        EXPECT_NEAR(projected.y / projected.w, 0.0F, 1.0e-5F);
+        EXPECT_GE(projected.z / projected.w, 0.0F);
+        EXPECT_LE(projected.z / projected.w, 1.0F);
+    }
+}
+
+TEST(ShadowView, RejectsInvalidLocalShadowViews)
+{
+    auto spot = panda::SpotLight {.range = 8.0F, .shadow = {}};
+    spot.direction = {};
+    EXPECT_FALSE(panda::core::vulkan::renderer::createSpotShadowView(spot));
+    spot.direction = {0.0F, 0.0F, -1.0F};
+    spot.range = 0.0F;
+    EXPECT_FALSE(panda::core::vulkan::renderer::createSpotShadowView(spot));
+
+    auto point = panda::PointLight {.range = 8.0F, .shadow = {}};
+    point.position.x = std::numeric_limits<float>::infinity();
+    EXPECT_FALSE(panda::core::vulkan::renderer::createPointShadowViews(point));
+    point.position = {};
+    point.range = 0.0F;
+    EXPECT_FALSE(panda::core::vulkan::renderer::createPointShadowViews(point));
 }

@@ -38,9 +38,10 @@ uploads. A selected camera and visible objects produce a `RenderView` snapshot;
 camera and light poses reject shear, reflections and nonuniform scale. Point lights
 emit from the entity's world position. Deleting the active camera clears selection.
 Visibility does not hide children. Visible lights are copied in scene
-order to `RenderView::lights`; the first directional light uses the shadow pass,
-while point/spot lights and other directional lights contribute unshadowed direct
-lighting. With no visible lights, Lit materials retain only their ambient contribution.
+order to `RenderView::lights`. Each light may opt into shadows through
+`ShadowSettings`; without it the light contributes direct lighting only. Directional
+coverage is explicit, and local views follow light range and spot cone. With no
+visible lights, Lit materials retain only their ambient contribution.
 Renderer-specific data and mesh ownership are checked once in `Context::render()`.
 Core provides configurable CPU sphere geometry. The `scene_demo` example renders an
 animated hierarchy through Scene; `simple_scene` remains a direct-renderer example.

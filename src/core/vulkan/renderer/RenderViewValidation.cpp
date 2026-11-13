@@ -14,8 +14,10 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/geometric.hpp>
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_access.hpp>
 #include <glm/matrix.hpp>
-#include <numbers>
+#include <optional>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/RenderView.hpp>
@@ -33,6 +35,7 @@ namespace panda::core::vulkan::renderer
 namespace
 {
 using panda::detail::isFinite;
+constexpr auto minimumLightDirectionLengthSquared = 1.0e-12F;
 
 auto isInvertible(const glm::mat4& matrix) -> bool
 {
@@ -43,8 +46,9 @@ auto isInvertible(const glm::mat4& matrix) -> bool
 auto isAffine(const glm::mat4& model) -> bool
 {
     static constexpr auto tolerance = 1.0e-6F;
-    return std::abs(model[0][3]) <= tolerance && std::abs(model[1][3]) <= tolerance &&
-           std::abs(model[2][3]) <= tolerance && std::abs(model[3][3] - 1.0F) <= tolerance;
+    const auto affineRow = glm::row(model, 3);
+    return std::abs(affineRow.x) <= tolerance && std::abs(affineRow.y) <= tolerance &&
+           std::abs(affineRow.z) <= tolerance && std::abs(affineRow.w - 1.0F) <= tolerance;
 }
 
 auto isRenderableModel(const glm::mat4& model) -> bool
@@ -221,7 +225,7 @@ auto validateLightDirection(glm::vec3 direction) -> Result<void>
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Light direction contains non-finite data")};
     }
     const auto directionLengthSquared = glm::dot(direction, direction);
-    if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1.0e-12F)
+    if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= minimumLightDirectionLengthSquared)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Light direction must be nonzero")};
     }
@@ -241,7 +245,7 @@ auto validateSpotCone(float innerConeAngleRadians, float outerConeAngleRadians) 
 {
     if (!std::isfinite(innerConeAngleRadians) || !std::isfinite(outerConeAngleRadians) ||
         innerConeAngleRadians < 0.0F || outerConeAngleRadians <= innerConeAngleRadians ||
-        outerConeAngleRadians > std::numbers::pi_v<float> / 2.0F ||
+        outerConeAngleRadians > glm::half_pi<float>() ||
         std::cos(innerConeAngleRadians) <= std::cos(outerConeAngleRadians))
     {
         return std::unexpected {
@@ -259,11 +263,40 @@ auto validateLightPosition(glm::vec3 position) -> Result<void>
     return {};
 }
 
+auto validateShadowSettings(const std::optional<ShadowSettings>& shadow) -> Result<void>
+{
+    if (!shadow)
+    {
+        return {};
+    }
+    constexpr auto supportedResolutions = std::array {256U, 512U, 1024U, 2048U};
+    const auto validResolution = !shadow->resolution || std::ranges::find(supportedResolutions, *shadow->resolution) !=
+                                                            supportedResolutions.end();
+    if (!validResolution || !std::isfinite(shadow->depthBias) || shadow->depthBias < 0.0F ||
+        !std::isfinite(shadow->normalOffset) || shadow->normalOffset < 0.0F)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Shadow settings are invalid")};
+    }
+    return {};
+}
+
 auto validateDirectionalLight(const DirectionalLight& light) -> Result<void>
 {
-    return validateLightColorAndIntensity(light.color, light.intensity).and_then([&] {
-        return validateLightDirection(light.direction);
-    });
+    return validateLightColorAndIntensity(light.color, light.intensity)
+        .and_then([&] {
+            return validateLightDirection(light.direction);
+        })
+        .and_then([&] {
+            return validateShadowSettings(light.shadow);
+        })
+        .and_then([&] {
+            if (light.shadow && (!std::isfinite(light.shadowCoverageMeters) || light.shadowCoverageMeters <= 0.0F))
+            {
+                return Result<void> {std::unexpected {
+                    makeError(ErrorCode::InvalidArgument, "Directional shadow coverage must be finite and positive")}};
+            }
+            return Result<void> {};
+        });
 }
 
 auto validatePointLight(const PointLight& light) -> Result<void>
@@ -274,6 +307,9 @@ auto validatePointLight(const PointLight& light) -> Result<void>
         })
         .and_then([&] {
             return validateLocalLightRange(light.range);
+        })
+        .and_then([&] {
+            return validateShadowSettings(light.shadow);
         });
 }
 
@@ -291,6 +327,9 @@ auto validateSpotLight(const SpotLight& light) -> Result<void>
         })
         .and_then([&] {
             return validateSpotCone(light.innerConeAngleRadians, light.outerConeAngleRadians);
+        })
+        .and_then([&] {
+            return validateShadowSettings(light.shadow);
         });
 }
 

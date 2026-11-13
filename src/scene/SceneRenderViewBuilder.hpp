@@ -14,8 +14,13 @@ public:
     [[nodiscard]] auto build(float aspectRatio) -> Result<RenderView>;
 
 private:
-    [[nodiscard]] static auto makeCameraFromProjection(const glm::mat4& world, const glm::mat4& projection)
-        -> Result<RenderCamera>;
+    struct CameraProjectionInput
+    {
+        const glm::mat4& world;
+        const glm::mat4& projection;
+    };
+
+    [[nodiscard]] static auto makeCameraFromProjection(CameraProjectionInput input) -> Result<RenderCamera>;
     [[nodiscard]] static auto makeCamera(const glm::mat4& world, const PerspectiveCamera& lens, float aspectRatio)
         -> Result<RenderCamera>;
     [[nodiscard]] static auto makeCamera(const glm::mat4& world, const OrthographicCamera& lens, float aspectRatio)

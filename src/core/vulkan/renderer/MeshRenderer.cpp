@@ -14,6 +14,7 @@
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/gtc/matrix_access.hpp>
 #include <glm/matrix.hpp>
 #include <limits>
 #include <memory>
@@ -42,9 +43,9 @@ auto makeDrawConstants(const MeshDraw& draw) -> DrawConstants
     const auto normalMatrix = glm::transpose(glm::inverse(glm::mat3 {draw.modelMatrix}));
     const auto constants = DrawConstants {
         .modelMatrix = draw.modelMatrix,
-        .normalColumns = {glm::vec4 {normalMatrix[0], 0.0F},
-                          glm::vec4 {normalMatrix[1], 0.0F},
-                          glm::vec4 {normalMatrix[2], 0.0F}},
+        .normalColumns = {glm::vec4 {glm::column(normalMatrix, 0), 0.0F},
+                          glm::vec4 {glm::column(normalMatrix, 1), 0.0F},
+                          glm::vec4 {glm::column(normalMatrix, 2), 0.0F}},
         .tint = draw.tint * draw.material.baseColor
     };
     return constants;
@@ -219,7 +220,29 @@ void MeshRenderer::recordShadowPass(vk::CommandBuffer command, std::size_t frame
 {
     _attachments->transitionShadowForAttachment(command, frameIndex);
     recordShadowAttachment(command, _attachments->getShadowView(frameIndex));
-    setDrawState(command, frameIndex, shadowExtent);
+    const auto& plan = _bindings->getShadowAtlasPlan(frameIndex);
+    for (auto shadowViewIndex = std::size_t {}; shadowViewIndex < plan.views.size(); ++shadowViewIndex)
+    {
+        recordShadowView(command, frameIndex, view, shadowViewIndex);
+    }
+    command.endRendering();
+    _attachments->transitionShadowForSampling(command, frameIndex);
+}
+
+void MeshRenderer::recordShadowView(vk::CommandBuffer command,
+                                    std::size_t frameIndex,
+                                    const RenderView& view,
+                                    std::size_t shadowViewIndex)
+{
+    const auto& shadowView = _bindings->getShadowAtlasPlan(frameIndex).views.at(shadowViewIndex);
+    setViewportAndScissor(
+        command,
+        {.width = shadowView.tile.resolution, .height = shadowView.tile.resolution},
+        {.x = static_cast<std::int32_t>(shadowView.tile.x), .y = static_cast<std::int32_t>(shadowView.tile.y)});
+    bindFrameDescriptorSet(
+        command,
+        {.frameIndex = frameIndex,
+         .shadowViewOffset = _bindings->getShadowViewOffset(frameIndex, static_cast<std::uint32_t>(shadowViewIndex))});
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
     {
@@ -229,13 +252,12 @@ void MeshRenderer::recordShadowPass(vk::CommandBuffer command, std::size_t frame
         }
         ++materialIndex;
     }
-    command.endRendering();
-    _attachments->transitionShadowForSampling(command, frameIndex);
 }
 
 void MeshRenderer::recordColorPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view)
 {
-    setDrawState(command, frameIndex, _attachments->getOutputDescription().extent);
+    setViewportAndScissor(command, _attachments->getOutputDescription().extent);
+    bindFrameDescriptorSet(command, {.frameIndex = frameIndex, .shadowViewOffset = 0});
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
     {
@@ -314,22 +336,28 @@ void MeshRenderer::recordShadowAttachment(vk::CommandBuffer command, vk::ImageVi
     command.beginRendering(info);
 }
 
-void MeshRenderer::setDrawState(vk::CommandBuffer command, std::size_t frameIndex, vk::Extent2D extent) const
+void MeshRenderer::setViewportAndScissor(vk::CommandBuffer command, vk::Extent2D extent, vk::Offset2D offset)
 {
     command.setViewport(0,
-                        vk::Viewport {.width = static_cast<float>(extent.width),
+                        vk::Viewport {.x = static_cast<float>(offset.x),
+                                      .y = static_cast<float>(offset.y),
+                                      .width = static_cast<float>(extent.width),
                                       .height = static_cast<float>(extent.height),
                                       .minDepth = 0.0F,
                                       .maxDepth = 1.0F});
-    command.setScissor(0, vk::Rect2D {.extent = extent});
-    const auto descriptorSet = _bindings->getFrameDescriptorSet(frameIndex);
+    command.setScissor(0, vk::Rect2D {.offset = offset, .extent = extent});
+}
+
+void MeshRenderer::bindFrameDescriptorSet(vk::CommandBuffer command, FrameDescriptorBinding binding) const
+{
+    const auto descriptorSet = _bindings->getFrameDescriptorSet(binding.frameIndex);
     command.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                _bindings->getPipelineLayout(),
                                PANDA_FRAME_DESCRIPTOR_SET,
                                1,
                                &descriptorSet,
-                               0,
-                               nullptr);
+                               1,
+                               &binding.shadowViewOffset);
 }
 
 void MeshRenderer::recordDraw(vk::CommandBuffer command,

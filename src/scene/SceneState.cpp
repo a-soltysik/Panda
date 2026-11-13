@@ -1,14 +1,18 @@
 #include "SceneState.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <expected>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/vector_relational.hpp>
-#include <numbers>
+#include <iterator>
 #include <optional>
+#include <panda/Assert.hpp>
 #include <panda/Error.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/Projection.hpp>
@@ -81,23 +85,38 @@ auto isValidLightRange(float range) -> bool
 auto isValidSpotCone(float inner, float outer) -> bool
 {
     return std::isfinite(inner) && std::isfinite(outer) && inner >= 0.0F && outer > inner &&
-           outer <= std::numbers::pi_v<float> / 2.0F;
+           outer <= glm::half_pi<float>();
+}
+
+auto isValidShadowSettings(const std::optional<ShadowSettings>& shadow) -> bool
+{
+    if (!shadow)
+    {
+        return true;
+    }
+    constexpr auto resolutions = std::array {256U, 512U, 1024U, 2048U};
+    return (!shadow->resolution || std::ranges::find(resolutions, *shadow->resolution) != resolutions.end()) &&
+           std::isfinite(shadow->depthBias) && shadow->depthBias >= 0.0F && std::isfinite(shadow->normalOffset) &&
+           shadow->normalOffset >= 0.0F;
 }
 
 auto isValidLightData(const DirectionalLight& light) -> bool
 {
-    return isValidLightColorAndIntensity(light.color, light.intensity);
+    return isValidLightColorAndIntensity(light.color, light.intensity) && isValidShadowSettings(light.shadow) &&
+           (!light.shadow || (std::isfinite(light.shadowCoverageMeters) && light.shadowCoverageMeters > 0.0F));
 }
 
 auto isValidLightData(const PointLight& light) -> bool
 {
-    return isValidLightColorAndIntensity(light.color, light.intensity) && isValidLightRange(light.range);
+    return isValidLightColorAndIntensity(light.color, light.intensity) && isValidLightRange(light.range) &&
+           isValidShadowSettings(light.shadow);
 }
 
 auto isValidLightData(const SpotLight& light) -> bool
 {
     return isValidLightColorAndIntensity(light.color, light.intensity) && isValidLightRange(light.range) &&
-           isValidSpotCone(light.innerConeAngleRadians, light.outerConeAngleRadians);
+           isValidSpotCone(light.innerConeAngleRadians, light.outerConeAngleRadians) &&
+           isValidShadowSettings(light.shadow);
 }
 
 auto isValidSceneLight(const Light& light) -> bool
@@ -144,7 +163,7 @@ auto SceneState::insertEntity(ObjectId objectId,
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene already used this ObjectId")};
     }
     auto slotIndex = allocateSlot();
-    auto& slot = _slots[slotIndex];
+    auto& slot = slotAt(slotIndex);
     slot = Slot {.name = description.name,
                  .objectId = objectId,
                  .local = validatedTransform.first,
@@ -180,7 +199,7 @@ auto SceneState::makeEntity(std::size_t index) const -> Entity
     auto entity = Entity {};
     entity._scene = _identity;
     entity._slot = index;
-    entity._slotReuseCount = _slots[index].reuseCount;
+    entity._slotReuseCount = slotAt(index).reuseCount;
     return entity;
 }
 
@@ -200,7 +219,7 @@ auto SceneState::isAlive(const Entity& entity) const noexcept -> bool
 {
     const auto identity = entity._scene.lock();
     return identity && identity.get() == _identity.get() && entity._slot < _slots.size() &&
-           _slots[entity._slot].alive && _slots[entity._slot].reuseCount == entity._slotReuseCount;
+           slotAt(entity._slot).alive && slotAt(entity._slot).reuseCount == entity._slotReuseCount;
 }
 
 auto SceneState::getObjectId(const Entity& entity) const -> Result<ObjectId>
@@ -210,7 +229,7 @@ auto SceneState::getObjectId(const Entity& entity) const -> Result<ObjectId>
     {
         return std::unexpected {slot.error()};
     }
-    const auto& objectId = _slots[*slot].objectId;
+    const auto& objectId = slotAt(*slot).objectId;
     if (!objectId)
     {
         return std::unexpected {makeError(ErrorCode::BackendFailure, "Live Scene entity is missing its ObjectId")};
@@ -239,7 +258,7 @@ auto SceneState::getLocalTransform(const Entity& entity) const -> Result<Transfo
     {
         return std::unexpected {slot.error()};
     }
-    return _slots[*slot].local;
+    return slotAt(*slot).local;
 }
 
 auto SceneState::getName(const Entity& entity) const -> Result<std::string>
@@ -249,7 +268,7 @@ auto SceneState::getName(const Entity& entity) const -> Result<std::string>
     {
         return std::unexpected {slot.error()};
     }
-    return _slots[*slot].name;
+    return slotAt(*slot).name;
 }
 
 auto SceneState::setName(const Entity& entity, std::string name) -> Result<void>
@@ -259,7 +278,7 @@ auto SceneState::setName(const Entity& entity, std::string name) -> Result<void>
     {
         return std::unexpected {slot.error()};
     }
-    _slots[*slot].name = std::move(name);
+    slotAt(*slot).name = std::move(name);
     return {};
 }
 
@@ -275,7 +294,7 @@ auto SceneState::setLocalTransform(const Entity& entity, const Transform& transf
     {
         return std::unexpected {validated.error()};
     }
-    auto& slot = _slots[*slotIndex];
+    auto& slot = slotAt(*slotIndex);
     auto parentWorld = getParentWorld(slot.parent);
     if (!parentWorld)
     {
@@ -303,7 +322,7 @@ auto SceneState::getWorldTransform(const Entity& entity) -> Result<glm::mat4>
     {
         return std::unexpected {updated.error()};
     }
-    return _slots[*slot].worldMatrix;
+    return slotAt(*slot).worldMatrix;
 }
 
 auto SceneState::setWorldTransform(const Entity& entity, const Transform& transform) -> Result<void>
@@ -318,7 +337,7 @@ auto SceneState::setWorldTransform(const Entity& entity, const Transform& transf
     {
         return std::unexpected {world.error()};
     }
-    auto local = preserveWorld(world->second, _slots[*slotIndex].parent);
+    auto local = preserveWorld(world->second, slotAt(*slotIndex).parent);
     if (!local)
     {
         return std::unexpected {local.error()};
@@ -333,7 +352,7 @@ auto SceneState::getParent(const Entity& entity) const -> Result<std::optional<E
     {
         return std::unexpected {slotIndex.error()};
     }
-    const auto parent = _slots[*slotIndex].parent;
+    const auto parent = slotAt(*slotIndex).parent;
     if (!parent)
     {
         return std::optional<Entity> {};
@@ -375,7 +394,7 @@ auto SceneState::destroyEntity(const Entity& entity) -> Result<void>
     {
         return std::unexpected {slot.error()};
     }
-    if (!_slots[*slot].children.empty())
+    if (!slotAt(*slot).children.empty())
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot delete a scene object with children")};
     }
@@ -391,17 +410,17 @@ auto SceneState::destroySubtree(const Entity& entity) -> Result<void>
         return std::unexpected {root.error()};
     }
     auto pending = std::vector<std::size_t> {*root};
-    if (const auto parent = _slots[*root].parent)
+    if (const auto parent = slotAt(*root).parent)
     {
-        std::erase(_slots[*parent].children, *root);
+        std::erase(slotAt(*parent).children, *root);
     }
     while (!pending.empty())
     {
         const auto current = pending.back();
         pending.pop_back();
-        auto children = std::move(_slots[current].children);
+        auto children = std::move(slotAt(current).children);
         pending.insert(pending.end(), children.begin(), children.end());
-        _slots[current].parent.reset();
+        slotAt(current).parent.reset();
         destroySlot(current);
     }
     return {};
@@ -414,6 +433,18 @@ auto SceneState::resolve(const Entity& entity) const -> Result<std::size_t>
         return std::unexpected {transformError()};
     }
     return entity._slot;
+}
+
+auto SceneState::slotAt(std::size_t index) -> Slot&
+{
+    ::panda::expect(index < _slots.size(), "Scene slot index is out of range");
+    return *std::next(_slots.begin(), static_cast<std::ptrdiff_t>(index));
+}
+
+auto SceneState::slotAt(std::size_t index) const -> const Slot&
+{
+    ::panda::expect(index < _slots.size(), "Scene slot index is out of range");
+    return *std::next(_slots.begin(), static_cast<std::ptrdiff_t>(index));
 }
 
 auto SceneState::resolveParent(const std::optional<Entity>& parent) const -> Result<std::optional<std::size_t>>
@@ -435,7 +466,7 @@ auto SceneState::localAfterReparent(std::size_t child, std::optional<std::size_t
 {
     if (mode == ReparentMode::KeepLocal)
     {
-        return std::pair {_slots[child].local, _slots[child].localMatrix};
+        return std::pair {slotAt(child).local, slotAt(child).localMatrix};
     }
     auto world = getWorldTransform(makeEntity(child));
     if (!world)
@@ -455,7 +486,7 @@ auto SceneState::preserveWorld(const glm::mat4& world, std::optional<std::size_t
         {
             return std::unexpected {updated.error()};
         }
-        auto inverse = checkedInverse(_slots[*parent].worldMatrix);
+        auto inverse = checkedInverse(slotAt(*parent).worldMatrix);
         if (!inverse)
         {
             return std::unexpected {inverse.error()};
@@ -467,7 +498,7 @@ auto SceneState::preserveWorld(const glm::mat4& world, std::optional<std::size_t
 
 auto SceneState::wouldCreateCycle(std::size_t child, std::optional<std::size_t> parent) const -> bool
 {
-    for (auto ancestor = parent; ancestor; ancestor = _slots[*ancestor].parent)
+    for (auto ancestor = parent; ancestor; ancestor = slotAt(*ancestor).parent)
     {
         if (*ancestor == child)
         {
@@ -482,15 +513,15 @@ void SceneState::attach(std::size_t childIndex,
                         const Transform& local,
                         const glm::mat4& matrix)
 {
-    auto& child = _slots[childIndex];
+    auto& child = slotAt(childIndex);
     if (child.parent)
     {
-        std::erase(_slots[*child.parent].children, childIndex);
+        std::erase(slotAt(*child.parent).children, childIndex);
     }
     child.parent = parentIndex;
     if (parentIndex)
     {
-        _slots[*parentIndex].children.push_back(childIndex);
+        slotAt(*parentIndex).children.push_back(childIndex);
     }
     child.local = local;
     child.localMatrix = matrix;
@@ -499,14 +530,14 @@ void SceneState::attach(std::size_t childIndex,
 auto SceneState::updateWorld(std::size_t slotIndex) -> Result<void>
 {
     auto pending = std::vector<std::size_t> {};
-    for (auto current = std::optional {slotIndex}; current && _slots[*current].dirty; current = _slots[*current].parent)
+    for (auto current = std::optional {slotIndex}; current && slotAt(*current).dirty; current = slotAt(*current).parent)
     {
         pending.push_back(*current);
     }
     for (const auto current : std::views::reverse(pending))
     {
-        auto& slot = _slots[current];
-        const auto parentWorld = slot.parent ? _slots[*slot.parent].worldMatrix : glm::mat4 {1.0F};
+        auto& slot = slotAt(current);
+        const auto parentWorld = slot.parent ? slotAt(*slot.parent).worldMatrix : glm::mat4 {1.0F};
         const auto world = parentWorld * slot.localMatrix;
         if (!isFinite(world))
         {
@@ -525,8 +556,8 @@ void SceneState::markDirty(std::size_t slotIndex)
     {
         const auto current = pending.back();
         pending.pop_back();
-        _slots[current].dirty = true;
-        pending.insert(pending.end(), _slots[current].children.begin(), _slots[current].children.end());
+        slotAt(current).dirty = true;
+        pending.insert(pending.end(), slotAt(current).children.begin(), slotAt(current).children.end());
     }
 }
 
@@ -541,19 +572,21 @@ auto SceneState::getParentWorld(std::optional<std::size_t> parent) -> Result<glm
     {
         return std::unexpected {updated.error()};
     }
-    return _slots[*parent].worldMatrix;
+    return slotAt(*parent).worldMatrix;
 }
 
 void SceneState::destroySlot(std::size_t slotIndex)
 {
-    auto& slot = _slots[slotIndex];
+    auto& slot = slotAt(slotIndex);
     if (slot.parent)
     {
-        std::erase(_slots[*slot.parent].children, slotIndex);
+        std::erase(slotAt(*slot.parent).children, slotIndex);
     }
     if (slot.objectId)
     {
-        _objectSlots[*slot.objectId].reset();
+        const auto objectSlot = _objectSlots.find(*slot.objectId);
+        ::panda::expect(objectSlot != _objectSlots.end(), "Scene ObjectId is missing from the object index");
+        objectSlot->second.reset();
     }
     if (_activeCamera == slotIndex)
     {
@@ -577,7 +610,7 @@ auto SceneState::setMesh(const Entity& entity, std::optional<MeshInstance> mesh)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene mesh or tint is invalid")};
     }
-    _slots[*index].mesh = std::move(mesh);
+    slotAt(*index).mesh = std::move(mesh);
     return {};
 }
 
@@ -593,12 +626,12 @@ auto SceneState::setCamera(const Entity& entity, std::optional<PerspectiveCamera
     {
         return std::unexpected {validation.error()};
     }
-    _slots[*index].camera = camera;
+    slotAt(*index).camera = camera;
     if (camera)
     {
-        _slots[*index].orthographicCamera.reset();
+        slotAt(*index).orthographicCamera.reset();
     }
-    if (!camera && !_slots[*index].orthographicCamera && _activeCamera == *index)
+    if (!camera && !slotAt(*index).orthographicCamera && _activeCamera == *index)
     {
         _activeCamera.reset();
     }
@@ -617,12 +650,12 @@ auto SceneState::setOrthographicCamera(const Entity& entity, std::optional<Ortho
     {
         return std::unexpected {validation.error()};
     }
-    _slots[*index].orthographicCamera = camera;
+    slotAt(*index).orthographicCamera = camera;
     if (camera)
     {
-        _slots[*index].camera.reset();
+        slotAt(*index).camera.reset();
     }
-    if (!camera && !_slots[*index].camera && _activeCamera == *index)
+    if (!camera && !slotAt(*index).camera && _activeCamera == *index)
     {
         _activeCamera.reset();
     }
@@ -640,7 +673,7 @@ auto SceneState::setLight(const Entity& entity, std::optional<Light> light) -> R
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene light is invalid")};
     }
-    _slots[*index].light = light;
+    slotAt(*index).light = light;
     return {};
 }
 
@@ -651,7 +684,7 @@ auto SceneState::setVisible(const Entity& entity, bool visible) -> Result<void>
     {
         return std::unexpected {index.error()};
     }
-    _slots[*index].visible = visible;
+    slotAt(*index).visible = visible;
     return {};
 }
 
@@ -662,7 +695,7 @@ auto SceneState::setActiveCamera(const Entity& entity) -> Result<void>
     {
         return std::unexpected {index.error()};
     }
-    if (!_slots[*index].camera && !_slots[*index].orthographicCamera)
+    if (!slotAt(*index).camera && !slotAt(*index).orthographicCamera)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Active object has no camera")};
     }
