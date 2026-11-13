@@ -9,9 +9,7 @@ layout(constant_id = PANDA_MESH_ALPHA_MODE_SPECIALIZATION_ID) const uint alphaMo
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) uniform FrameData
 {
     mat4 viewProjection;
-    mat4 lightViewProjection;
     vec4 cameraPosition;
-    vec4 lightDirection;
     vec4 ambient;
     uvec4 lightInfo;
 } frameData;
@@ -53,13 +51,26 @@ struct LightRecord
     vec4 colorIntensity;
     float innerConeCos;
     uint type;
-    uvec2 padding;
+    uint shadowViewIndex;
+    uint shadowViewCount;
 };
 
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_LIGHT_DATA_BINDING, std430) readonly buffer LightData
 {
     LightRecord records[];
 } lightData;
+
+struct ShadowRecord
+{
+    mat4 viewProjection;
+    vec4 atlasScaleBias;
+    vec4 shadowParameters;
+};
+
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SHADOW_DATA_BINDING, std430) readonly buffer ShadowData
+{
+    ShadowRecord records[];
+} shadowData;
 
 layout(location = PANDA_MESH_VARYING_WORLD_POSITION_LOCATION) in vec3 worldPosition;
 layout(location = PANDA_MESH_VARYING_WORLD_NORMAL_LOCATION) in vec3 worldNormal;
@@ -103,9 +114,33 @@ vec3 toneMapAces(vec3 color)
     return clamp((color * ((2.51 * color) + 0.03)) / ((color * ((2.43 * color) + 0.59)) + 0.14), 0.0, 1.0);
 }
 
-float shadowVisibility(vec3 normal)
+uint pointShadowFace(vec3 directionFromLight)
 {
-    const vec4 lightPosition = frameData.lightViewProjection * vec4(worldPosition + normal * 0.002, 1.0);
+    const vec3 absoluteDirection = abs(directionFromLight);
+    if (absoluteDirection.x >= absoluteDirection.y && absoluteDirection.x >= absoluteDirection.z)
+    {
+        return directionFromLight.x >= 0.0 ? 0u : 1u;
+    }
+    if (absoluteDirection.y >= absoluteDirection.z)
+    {
+        return directionFromLight.y >= 0.0 ? 2u : 3u;
+    }
+    return directionFromLight.z >= 0.0 ? 4u : 5u;
+}
+
+float shadowVisibility(LightRecord light, vec3 normal)
+{
+    if (light.shadowViewCount == 0u)
+    {
+        return 1.0;
+    }
+    uint shadowViewIndex = light.shadowViewIndex;
+    if (light.type == uint(PANDA_LIGHT_TYPE_POINT))
+    {
+        shadowViewIndex += pointShadowFace(worldPosition - light.positionRange.xyz);
+    }
+    const ShadowRecord shadow = shadowData.records[shadowViewIndex];
+    const vec4 lightPosition = shadow.viewProjection * vec4(worldPosition + normal * shadow.shadowParameters.y, 1.0);
     if (abs(lightPosition.w) <= 0.000001)
     {
         return 1.0;
@@ -116,18 +151,20 @@ float shadowVisibility(vec3 normal)
     {
         return 1.0;
     }
-    const vec2 shadowUv = shadowCoordinate.xy * 0.5 + 0.5;
-    const ivec2 size = textureSize(shadowMap, 0);
-    const ivec2 center = ivec2(shadowUv * vec2(size));
-    const float lightFacing = max(dot(normal, normalize(-frameData.lightDirection.xyz)), 0.0);
-    const float depthBias = max(0.0005, 0.002 * (1.0 - lightFacing));
+    const vec2 atlasUv = shadow.atlasScaleBias.zw +
+        (shadowCoordinate.xy * 0.5 + 0.5) * shadow.atlasScaleBias.xy;
+    const ivec2 atlasSize = textureSize(shadowMap, 0);
+    const ivec2 tileMinimum = ivec2(round(shadow.atlasScaleBias.zw * vec2(atlasSize)));
+    const ivec2 tileSize = ivec2(round(shadow.atlasScaleBias.xy * vec2(atlasSize)));
+    const ivec2 tileMaximum = tileMinimum + tileSize - 1;
+    const ivec2 center = clamp(ivec2(atlasUv * vec2(atlasSize)), tileMinimum, tileMaximum);
     float visible = 0.0;
     for (int y = -1; y <= 1; ++y)
     {
         for (int x = -1; x <= 1; ++x)
         {
-            const ivec2 texel = clamp(center + ivec2(x, y), ivec2(0), size - 1);
-            visible += shadowCoordinate.z - depthBias <= texelFetch(shadowMap, texel, 0).r ? 1.0 : 0.0;
+            const ivec2 texel = clamp(center + ivec2(x, y), tileMinimum, tileMaximum);
+            visible += shadowCoordinate.z - shadow.shadowParameters.x <= texelFetch(shadowMap, texel, 0).r ? 1.0 : 0.0;
         }
     }
     return visible / 9.0;
@@ -187,7 +224,7 @@ vec3 evaluateDirectLighting(vec3 baseColor,
         const float geometry = geometrySchlick(normalView, geometryK) * geometrySchlick(normalLight, geometryK);
         const vec3 specular = (distribution * geometry * fresnel) / max(4.0 * normalView * normalLight, 0.001);
         const vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * baseColor / pi;
-        const float visibility = lightIndex == frameData.lightInfo.y ? shadowVisibility(geometricNormal) : 1.0;
+        const float visibility = shadowVisibility(light, geometricNormal);
         direct += (diffuse + specular) * light.colorIntensity.rgb * light.colorIntensity.w * normalLight *
             attenuation * visibility;
     }

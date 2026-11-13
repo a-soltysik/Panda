@@ -16,6 +16,7 @@
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/Plane.hpp>
+#include <panda/RenderView.hpp>
 #include <panda/Sphere.hpp>
 #include <panda/Transform.hpp>
 #include <panda/UploadBatch.hpp>
@@ -53,10 +54,7 @@ auto createTriangleGeometry() -> panda::Geometry
     return geometry;
 }
 
-auto addTriangle(panda::scene::Scene& scene,
-                 const panda::Mesh& triangle,
-                 const panda::scene::Entity& group,
-                 glm::vec2 grid) -> panda::scene::Entity
+auto addTriangle(panda::scene::Scene& scene, const panda::Mesh& triangle, glm::vec2 grid) -> panda::scene::Entity
 {
     const auto object = panda::expect(
         scene.createEntity({
@@ -66,7 +64,6 @@ auto addTriangle(panda::scene::Scene& scene,
     }),
         "Create triangle object");
     panda::expect(scene.setMesh(object, panda::scene::MeshInstance {.mesh = triangle}), "Attach triangle mesh");
-    panda::expect(scene.setParent(object, group), "Parent triangle to group");
     return object;
 }
 
@@ -93,14 +90,16 @@ void addDirectionalLights(panda::scene::Scene& scene)
                             .transform = {.rotation = glm::quatLookAtRH(glm::normalize(glm::vec3 {0.55F, -0.6F, 0.58F}),
                                                                         glm::vec3 {0.0F, 1.0F, 0.0F})}}),
         "Create light object");
-    panda::expect(scene.setLight(light, panda::scene::DirectionalLight {}), "Attach directional light");
+    panda::expect(scene.setLight(light, panda::scene::DirectionalLight {.shadow = panda::ShadowSettings {}}),
+                  "Attach directional light");
     const auto fillLight = panda::expect(
         scene.createEntity(
             {.name = "Unshadowed fill",
              .transform = {.rotation = glm::quatLookAtRH(glm::normalize(glm::vec3 {-0.65F, -0.45F, -0.3F}),
                                                          glm::vec3 {0.0F, 1.0F, 0.0F})}}),
         "Create fill light");
-    panda::expect(scene.setLight(fillLight, panda::scene::DirectionalLight {.intensity = 0.8F}), "Attach fill light");
+    panda::expect(scene.setLight(fillLight, panda::scene::DirectionalLight {.intensity = 0.25F, .shadow = {}}),
+                  "Attach fill light");
 }
 
 void addPointLight(panda::scene::Scene& scene)
@@ -112,7 +111,8 @@ void addPointLight(panda::scene::Scene& scene)
                                  panda::scene::PointLight {
                                      .color = {0.25F, 0.45F, 1.0F},
                                      .intensity = 18.0F,
-                                     .range = 6.0F
+                                     .range = 6.0F,
+                                     .shadow = panda::ShadowSettings {}
     }),
                   "Attach point light");
 }
@@ -134,7 +134,8 @@ void addSpotLight(panda::scene::Scene& scene)
                                      .intensity = 32.0F,
                                      .range = 9.0F,
                                      .innerConeAngleRadians = glm::radians(15.0F),
-                                     .outerConeAngleRadians = glm::radians(25.0F)
+                                     .outerConeAngleRadians = glm::radians(25.0F),
+                                     .shadow = panda::ShadowSettings {}
     }),
                   "Attach spot light");
 }
@@ -150,7 +151,7 @@ void addGround(panda::scene::Scene& scene, const panda::Mesh& ground)
     panda::expect(scene.setMesh(floor,
                                 panda::scene::MeshInstance {
                                     .mesh = ground,
-                                    .tint = {0.65F, 0.67F, 0.7F, 1.0F}
+                                    .tint = {0.45F, 0.47F, 0.5F, 1.0F}
     }),
                   "Attach ground");
 }
@@ -203,10 +204,8 @@ void addGridObjects(panda::scene::Scene& scene, const SceneMeshes& meshes, Anima
         }
         else if (index == triangleIndex)
         {
-            objects.objects.push_back(addTriangle(scene,
-                                                  meshes.triangle,
-                                                  objects.group,
-                                                  glm::vec2 {static_cast<float>(column), static_cast<float>(row)}));
+            objects.objects.push_back(
+                addTriangle(scene, meshes.triangle, glm::vec2 {static_cast<float>(column), static_cast<float>(row)}));
         }
         else
         {

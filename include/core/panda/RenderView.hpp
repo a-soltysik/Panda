@@ -8,6 +8,7 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <numbers>
+#include <optional>
 #include <panda/Mesh.hpp>
 #include <panda/Texture.hpp>
 #include <variant>
@@ -97,6 +98,20 @@ struct RenderCamera
     glm::vec3 position {};
 };
 
+/// @brief Shadow quality settings for one light.
+struct ShadowSettings
+{
+    /// Optional shadow-map face width and height in texels (256, 512, 1024 or 2048).
+    /// Empty selects 2048 for directional, 1024 for spot, or 512 per point-light face.
+    std::optional<std::uint32_t> resolution;
+    /// Nonnegative bias subtracted from projected [0,1] shadow depth before comparison; default 0.0005.
+    /// Larger values reduce self-shadowing but can detach shadows from their casters.
+    float depthBias {0.0005F};
+    /// Nonnegative offset of the receiver along its world-space normal before projection, in meters; default 0.002.
+    /// Larger values reduce self-shadowing but can detach shadows from their casters.
+    float normalOffset {0.002F};
+};
+
 /// @brief One directional light; direction points from the light into the scene.
 struct DirectionalLight
 {
@@ -106,6 +121,10 @@ struct DirectionalLight
     glm::vec3 color {1.0F, 1.0F, 1.0F};
     /// Nonnegative linear intensity multiplier.
     float intensity {3.0F};
+    /// Optional dynamic shadow map; empty means this light has no shadow pass.
+    std::optional<ShadowSettings> shadow;
+    /// Orthographic shadow width in meters; used only when `shadow` is set.
+    float shadowCoverageMeters {30.0F};
 };
 
 /// @brief Point light with finite range and inverse-square distance attenuation.
@@ -119,6 +138,8 @@ struct PointLight
     float intensity {1.0F};
     /// Positive finite distance in meters where the contribution reaches zero.
     float range {};
+    /// Optional dynamic shadow map; empty means this light has no shadow pass.
+    std::optional<ShadowSettings> shadow;
 };
 
 /// @brief Spot light shining along its direction inside a smooth cone.
@@ -138,6 +159,8 @@ struct SpotLight
     float innerConeAngleRadians {};
     /// Radians from the light axis where angular falloff reaches zero.
     float outerConeAngleRadians {std::numbers::pi_v<float> / 4.0F};
+    /// Optional dynamic shadow map; empty means this light has no shadow pass.
+    std::optional<ShadowSettings> shadow;
 };
 
 /// @brief One built-in light type accepted by RenderView and Scene.
@@ -162,8 +185,7 @@ struct RenderView
 {
     /// Camera used for mesh projection and view-dependent lighting.
     RenderCamera camera;
-    /// Ordered lights used by Lit materials. The first directional light casts the current shadow;
-    /// point and spot lights are currently unshadowed.
+    /// Ordered lights used by Lit materials. Each light casts a shadow only when its `shadow` settings are present.
     std::vector<Light> lights;
     /// Draws to render; an empty list presents only the configured background.
     std::vector<MeshDraw> meshes;

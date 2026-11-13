@@ -223,7 +223,8 @@ public:
 
     /// @brief Renders and presents one application-supplied view.
     /// @param view Camera, directional lights and mesh draws; an empty mesh list presents the background.
-    /// The first directional light uses the current shadow pass; later directional lights are unshadowed.
+    /// A light casts shadows only when its optional `shadow` settings are set; local shadow views use its range/cone.
+    /// Directional shadows use `shadowCoverageMeters` to set their orthographic width.
     /// Meshes must belong to this Context, be uploaded, and declare a valid vertex layout.
     /// Lit materials require Position and Normal; unlit materials require Position. Color is optional and defaults to white.
     /// If a base-color texture is set, it must be uploaded, sampled, RGBA8 sRGB, and from this Context; its mesh must declare TexCoord0.

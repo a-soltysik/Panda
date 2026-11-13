@@ -9,8 +9,8 @@ budget, spot/point atlas views, color space, tone map and pipeline keys.
 
 Non-goal: No custom material DSL or IBL.
 
-Interface: Material and light data, shadow views and renderer pipeline keys; finalize public names and GPU layout during
-implementation.
+Interface: Per-light optional `ShadowSettings`, directional coverage, atlas views and renderer pipeline keys. A light
+without shadow settings contributes direct light and allocates no atlas area.
 
 Paths: `../../../include/core/panda`, `src/core/vulkan/renderer/`, `shaders/`, `tests/cases/`, examples and directly affected documentation.
 Specifications: [Renderer layout and materials](../../design/contracts/rendering.md#first-version-renderer-contract), [transform conventions](../../design/contracts/scene.md#transforms-and-camera-conventions).
@@ -50,39 +50,55 @@ with depth writes disabled, and is skipped by the shadow pass. Camera and shadow
 pipelines account for negative determinants, and Lit shading flips normals on
 rendered back faces. `simple_scene` shows the compact layout, a cube with
 base-color, metallic-roughness and emissive maps, a neighboring neutral cube with
-normal and occlusion maps, and an untextured Unlit triangle; `scene_demo` puts an upright,
-vertex-colored triangle into the existing animated object grid and shows a shadowed
-directional light, directional fill, point light and spot light. The built-in renderer
+normal and occlusion maps, and an untextured Unlit triangle; `scene_demo` keeps an upright,
+vertex-colored triangle outside the rotating group so it does not collapse to an edge-on
+streak, and lowers the unshadowed fill and ground tint to preserve shadow contrast. It
+shows a shadowed directional light, directional fill, point light and spot light. The built-in renderer
 packs all three light types in a per-frame SSBO. Point and spot contributions use
 inverse-square distance attenuation with a finite-range fade; spot lights also fade
 between their configured cone angles. `ContextOptions::maxLights` defaults to 64 and
 is checked against device storage-buffer limits at Context creation; a view that
 exceeds the budget returns `ResourceExhausted`. A zero budget supports views without
-lights; Lit materials still receive the ambient term. The first directional light
-uses the current shadow map; other directional lights and all point/spot lights are
-unshadowed.
-
-Spot/point shadowing and the required shadow-quality captures remain incomplete.
-This task is not accepted.
+lights; Lit materials still receive the ambient term. Any directional, spot or point
+light may opt into shadows. Each directional/spot light receives one guarded 2D atlas
+tile; a point light receives six cube-oriented tiles. The atlas is fixed at 4096 by
+4096 texels, with 256-texel allocation cells and 4-texel guards; `resolution` selects
+the map size for each face, not the atlas size. Defaults are 2048 for directional with
+30 m orthographic coverage, 1024 for spot, and 512 per point face. The renderer rejects
+unsupported resolutions and atlas overflow without silently changing settings.
+Masked shadows use the camera cutoff; blended draws do not cast. The local-light shadow
+path and deterministic atlas allocation are implemented. RenderDoc captures and
+optimized CPU scope timings are recorded below.
 
 ## Current verification
 
-- Windows 11: `msvc-quality` build, `all_verify_interface_header_sets`,
-  `panda_format_checks`, `clang-cuda-analysis-windows`, `msvc-fast` build and full
-  CTest passed; CTest reported 617 passed and 4 skipped.
-- WSL Ubuntu mirror: `gcc-quality` build, interface-header and format targets,
-  `clang-cuda-analysis`, `gcc-fast` build and full CTest passed; CTest reported 617
-  passed and 8 skipped. Both CUDA analyzers warned that the installed CUDA version
-  is newer than their latest partially supported version, 12.9.
-- The GCC coverage CTest run passed 600 cases and skipped 4. Its report covers only
-  engine sources under `src/`: 95.8% lines (6115/6386), 98.0% functions (1010/1031)
-  and 86.4% branches (5073/5872). The separate lavapipe benchmark smoke run is not
-  included in that report.
+- Windows 11: `msvc-quality`, `all_verify_interface_header_sets`, `panda_format_checks`,
+  `clang-cuda-analysis-windows`, and `msvc-fast` passed. Full CTest passed 623 tests;
+  4 of 627 were skipped.
+- WSL Ubuntu mirror: `gcc-quality`, interface-header and format targets,
+  `clang-cuda-analysis`, `gcc-fast`, and `gcc-docs` passed. Full CTest passed 619 tests;
+  8 of 627 were skipped. Both CUDA analyzers warn that the installed CUDA version is
+  newer than their latest partially supported version, 12.9.
 - `check_docs.py` checked 80 Markdown files and the task queue; `docs-checks` validated
-  42 Mermaid diagrams in 83 files, and `gcc-docs` passed. No RenderDoc capture or
-  pixel comparison was performed in this verification.
-- Spot/point shadows, directional shadow-quality captures and CPU performance
-  profiling remain incomplete.
+  42 Mermaid diagrams in 83 files. No current coverage percentages are claimed because
+  coverage was not rerun for this working tree.
+- RenderDoc 1.46 captured separate 1280×720 `scene_demo` frames for directional, point
+  and spot shadows on an RTX 4070 Ti. Each capture enabled only the light under review,
+  making its shadow on the broad ground receiver visible. Defaults were directional
+  2048, spot 1024, point 512 per face and 3×3 PCF. The 3×3 object layout and 14 m
+  ground show receivers at different distances within the same view; this was a visual
+  comparison, not a controlled camera-distance sweep or automated pixel baseline.
+- MSVC 19.51 `RelWithDebInfo`, Ryzen 5 7600 and RTX 4070 Ti: with validation and external
+  graphics hooks disabled, a 65-light `scene_demo` workload (directional, point and spot
+  shadow casters plus 61 unshadowed lights) measured 500 frames after 100 warmup frames.
+  `Scene::createRenderView` averaged 14.5 μs (11.2–54.8 μs); `MeshRenderer::record`
+  averaged 43.8 μs (34.2–89.0 μs). These direct scope timings exclude presentation
+  waits; they showed no renderer-stage cost that justified an optimization. Nsight CPU
+  stack sampling was unavailable because it requires administrator privileges.
+- The separate 65-light smoke benchmark completed 720 samples at 320×240 with validation
+  and the external profiler disabled: CPU frame time averaged 6.93 ms (p95 7.01 ms),
+  GPU execution averaged 91 μs (p95 117 μs). FIFO presentation dominates total CPU frame
+  time, so this result is not used to rank renderer hotspots.
 
 ## Acceptance
 
@@ -97,10 +113,11 @@ an optimized build for the 65-light case and representative spot/point shadow
 casters. Disable validation and external graphics hooks for timing, record the
 measured hotspots, and optimize only costs confirmed in those workloads.
 
-The first-scene shadow uses a fixed 2048 by 2048 map over 30 m and 3x3 PCF, which
-visibly aliases at its edges. This task must tune or replace that filtering and
-coverage strategy. GPU captures at representative camera distances must show a
-clear improvement without visible self-shadow acne or detached shadows; record the
-effective resolution/filtering and any remaining limits.
+The shadow atlas uses 3x3 PCF with initial configurable depth bias 0.0005 and normal
+offset 0.002 m. Quality depends on projected texel density, not face resolution alone:
+directional density is uniform over its configured width, while point-light density
+falls with distance. Compare receivers at representative distances for every light
+type. GPU captures must show usable shadow detail without visible self-shadow acne or
+detached shadows; record the effective resolution/filtering and remaining limits.
 
 Learning: Inspect a tinted textured surface and its shadow in RenderDoc.

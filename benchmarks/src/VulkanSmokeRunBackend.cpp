@@ -98,7 +98,8 @@ void configureLights(panda::RenderView& view, std::uint32_t lightCount)
     view.lights.reserve(lightCount);
     view.lights.emplace_back(panda::DirectionalLight {.direction = glm::normalize(glm::vec3 {-0.4F, -1.0F, -0.3F}),
                                                       .color = glm::vec3 {1.0F},
-                                                      .intensity = 3.0F});
+                                                      .intensity = 3.0F,
+                                                      .shadow = panda::ShadowSettings {}});
     const auto pointLightCount = lightCount - 1U;
     for (auto index = std::uint32_t {}; index < pointLightCount; ++index)
     {
@@ -108,7 +109,8 @@ void configureLights(panda::RenderView& view, std::uint32_t lightCount)
             .position = {7.0F * std::cos(angle), 3.0F, 7.0F * std::sin(angle)},
             .color = glm::vec3 {1.0F},
             .intensity = 2.0F,
-            .range = 8.0F
+            .range = 8.0F,
+            .shadow = {}
         });
     }
 }

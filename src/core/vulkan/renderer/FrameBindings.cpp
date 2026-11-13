@@ -11,10 +11,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <glm/ext/matrix_float4x4.hpp>
 #include <glm/geometric.hpp>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
@@ -29,7 +31,7 @@
 #include "renderer/MaterialTextureSlots.hpp"
 #include "renderer/ShaderData.hpp"
 #include "renderer/ShaderInterface.inc"
-#include "renderer/ShadowView.hpp"
+#include "renderer/ShadowAtlas.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
@@ -41,6 +43,7 @@ using detail::checkedCreation;
 namespace
 {
 constexpr auto textureDescriptorsPerDraw = static_cast<std::uint32_t>(materialTextureSlots.size());
+constexpr auto ambientIntensity = 0.06F;
 
 constexpr auto makeTextureBinding(std::uint32_t binding) -> vk::DescriptorSetLayoutBinding
 {
@@ -60,9 +63,9 @@ constexpr auto makeTextureBindings() -> std::array<vk::DescriptorSetLayoutBindin
     return bindings;
 }
 
-constexpr auto makeFrameBindings() -> std::array<vk::DescriptorSetLayoutBinding, 4>
+constexpr auto makeFrameBindings()
 {
-    return {
+    return std::array {
         vk::DescriptorSetLayoutBinding {
                                         .binding = PANDA_FRAME_UNIFORM_BINDING,
                                         .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -79,7 +82,15 @@ constexpr auto makeFrameBindings() -> std::array<vk::DescriptorSetLayoutBinding,
         vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_LIGHT_DATA_BINDING,
                                         .descriptorType = vk::DescriptorType::eStorageBuffer,
                                         .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   }
+                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   },
+        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_SHADOW_DATA_BINDING,
+                                        .descriptorType = vk::DescriptorType::eStorageBuffer,
+                                        .descriptorCount = 1,
+                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   },
+        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_SHADOW_VIEW_BINDING,
+                                        .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
+                                        .descriptorCount = 1,
+                                        .stageFlags = vk::ShaderStageFlagBits::eVertex                                     }
     };
 }
 
@@ -89,6 +100,16 @@ auto makeBufferWrite(vk::DescriptorSet set,
                      const vk::DescriptorBufferInfo& info) -> vk::WriteDescriptorSet
 {
     return {.dstSet = set, .dstBinding = binding, .descriptorCount = 1, .descriptorType = type, .pBufferInfo = &info};
+}
+
+auto makeImageWrite(vk::DescriptorSet set, std::uint32_t binding, const vk::DescriptorImageInfo& info)
+    -> vk::WriteDescriptorSet
+{
+    return {.dstSet = set,
+            .dstBinding = binding,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+            .pImageInfo = &info};
 }
 
 auto makeBufferInfo(vk::Buffer buffer, vk::DeviceSize range) -> vk::DescriptorBufferInfo
@@ -102,81 +123,72 @@ struct TextureDescriptorResources
     std::vector<vk::raii::DescriptorSet> sets;
 };
 
-auto makeFrameUniform(const RenderView& view, std::uint32_t lightCount) -> std::expected<FrameUniform, Error>
+auto makeFrameUniform(const RenderView& view, std::uint32_t lightCount) -> FrameUniform
 {
-    auto lightViewProjection = glm::mat4 {1.0F};
-    auto lightDirection = glm::vec3 {};
-    const auto shadowLight = std::ranges::find_if(view.lights, [](const Light& light) {
-        return std::holds_alternative<DirectionalLight>(light);
-    });
-    auto shadowLightIndex = std::numeric_limits<std::uint32_t>::max();
-    if (shadowLight != view.lights.end())
-    {
-        shadowLightIndex = static_cast<std::uint32_t>(std::distance(view.lights.begin(), shadowLight));
-        const auto& directionalLight = std::get<DirectionalLight>(*shadowLight);
-        const auto shadowView = createDirectionalShadowView(view.camera, directionalLight);
-        if (!shadowView)
-        {
-            return std::unexpected {shadowView.error()};
-        }
-        lightViewProjection = *shadowView;
-        lightDirection = glm::normalize(directionalLight.direction);
-    }
     return FrameUniform {
         .viewProjection = view.camera.viewProjection,
-        .lightViewProjection = lightViewProjection,
         .cameraPosition = glm::vec4 {view.camera.position, 1.0F},
-        .lightDirection = glm::vec4 {lightDirection, 0.0F},
-        .ambient = glm::vec4 {1.0F, 1.0F, 1.0F, 0.06F},
-        .lightInfo = glm::uvec4 {lightCount, shadowLightIndex, 0U, 0U}
+        .ambient = glm::vec4 {1.0F, 1.0F, 1.0F, ambientIntensity},
+        .lightInfo = glm::uvec4 {lightCount, 0U, 0U, 0U}
     };
 }
 
-auto makeDirectionalLightRecord(const DirectionalLight& light) -> LightRecord
+auto makeDirectionalLightRecord(const DirectionalLight& light,
+                                std::uint32_t shadowViewIndex,
+                                std::uint32_t shadowViewCount) -> LightRecord
 {
     return LightRecord {
         .positionRange = {},
         .directionOuterConeCos = glm::vec4 {glm::normalize(light.direction), 0.0F},
         .colorIntensity = glm::vec4 {light.color, light.intensity},
         .innerConeCos = 0.0F,
-        .type = static_cast<std::uint32_t>(ShaderLightType::Directional)
+        .type = static_cast<std::uint32_t>(ShaderLightType::Directional),
+        .shadowViewIndex = shadowViewIndex,
+        .shadowViewCount = shadowViewCount
     };
 }
 
-auto makePointLightRecord(const PointLight& light) -> LightRecord
+auto makePointLightRecord(const PointLight& light, std::uint32_t shadowViewIndex, std::uint32_t shadowViewCount)
+    -> LightRecord
 {
     return LightRecord {
         .positionRange = glm::vec4 {light.position, light.range},
         .directionOuterConeCos = {},
         .colorIntensity = glm::vec4 {light.color, light.intensity},
         .innerConeCos = 0.0F,
-        .type = static_cast<std::uint32_t>(ShaderLightType::Point)
+        .type = static_cast<std::uint32_t>(ShaderLightType::Point),
+        .shadowViewIndex = shadowViewIndex,
+        .shadowViewCount = shadowViewCount
     };
 }
 
-auto makeSpotLightRecord(const SpotLight& light) -> LightRecord
+auto makeSpotLightRecord(const SpotLight& light, std::uint32_t shadowViewIndex, std::uint32_t shadowViewCount)
+    -> LightRecord
 {
     return LightRecord {
         .positionRange = glm::vec4 {light.position,                  light.range                          },
         .directionOuterConeCos = glm::vec4 {glm::normalize(light.direction), std::cos(light.outerConeAngleRadians)},
         .colorIntensity = glm::vec4 {light.color,                     light.intensity                      },
         .innerConeCos = std::cos(light.innerConeAngleRadians),
-        .type = static_cast<std::uint32_t>(ShaderLightType::Spot)
+        .type = static_cast<std::uint32_t>(ShaderLightType::Spot),
+        .shadowViewIndex = shadowViewIndex,
+        .shadowViewCount = shadowViewCount
     };
 }
 
-auto makeLightRecord(const Light& light) -> LightRecord
+auto makeLightRecord(const Light& light, std::uint32_t shadowViewIndex, std::uint32_t shadowViewCount) -> LightRecord
 {
-    return std::visit(::panda::detail::Overloaded {[](const DirectionalLight& value) {
-                                                       return makeDirectionalLightRecord(value);
-                                                   },
-                                                   [](const PointLight& value) {
-                                                       return makePointLightRecord(value);
-                                                   },
-                                                   [](const SpotLight& value) {
-                                                       return makeSpotLightRecord(value);
-                                                   }},
-                      light);
+    return std::visit(
+        ::panda::detail::Overloaded {[=](const DirectionalLight& value) {
+                                         return makeDirectionalLightRecord(value, shadowViewIndex, shadowViewCount);
+                                     },
+                                     [=](const PointLight& value) {
+                                         return makePointLightRecord(value, shadowViewIndex, shadowViewCount);
+                                     },
+                                     [=](const SpotLight& value) {
+                                         return makeSpotLightRecord(value, shadowViewIndex, shadowViewCount);
+                                     }},
+        light);
 }
 
 auto makeMaterialRecord(const Material& material) -> MaterialRecord
@@ -208,6 +220,48 @@ auto makeTextureDescriptorInfo(const Texture& texture, vk::Sampler sampler, vk::
             .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 }
 
+auto makeShadowRecord(const ShadowAtlasView& view) -> ShadowRecord
+{
+    const auto resolution = static_cast<float>(view.tile.resolution);
+    return {
+        .viewProjection = view.viewProjection,
+        .atlasScaleBias = glm::vec4 {resolution / static_cast<float>(shadowAtlasExtent),
+                                     resolution / static_cast<float>(shadowAtlasExtent),
+                                     static_cast<float>(view.tile.x) / static_cast<float>(shadowAtlasExtent),
+                                     static_cast<float>(view.tile.y) / static_cast<float>(shadowAtlasExtent)          },
+        .shadowParameters = glm::vec4 {view.depthBias,                                     view.normalOffset, 0.0F, 0.0F}
+    };
+}
+
+auto makeShadowViewMatrices(const ShadowAtlasPlan& plan, std::uint64_t stride) -> std::vector<std::byte>
+{
+    auto matrices = std::vector<std::byte>(stride * plan.views.size());
+    for (auto index = std::size_t {}; index < plan.views.size(); ++index)
+    {
+        const auto matrixBytes = std::as_bytes(std::span {&plan.views.at(index).viewProjection, std::size_t {1}});
+        auto destination = std::span {matrices}.subspan(index * stride, matrixBytes.size());
+        std::ranges::copy(matrixBytes, destination.begin());
+    }
+    return matrices;
+}
+
+auto allocateTextureDescriptorSets(const vk::raii::Device& device,
+                                   vk::DescriptorPool pool,
+                                   vk::DescriptorSetLayout layout,
+                                   std::uint32_t setCount) -> std::expected<std::vector<vk::raii::DescriptorSet>, Error>
+{
+    const auto layouts = std::vector(setCount, layout);
+    const auto allocation = vk::DescriptorSetAllocateInfo {.descriptorPool = pool,
+                                                           .descriptorSetCount = setCount,
+                                                           .pSetLayouts = layouts.data()};
+    auto sets = device.allocateDescriptorSets(allocation);
+    if (sets.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {makeVulkanError(sets.result)};
+    }
+    return std::move(sets.value);
+}
+
 auto createTextureDescriptorResources(const vk::raii::Device& device,
                                       vk::DescriptorSetLayout layout,
                                       std::size_t drawCount) -> std::expected<TextureDescriptorResources, Error>
@@ -220,25 +274,23 @@ auto createTextureDescriptorResources(const vk::raii::Device& device,
     const auto setCount = static_cast<std::uint32_t>(drawCount);
     const auto poolSize = vk::DescriptorPoolSize {.type = vk::DescriptorType::eCombinedImageSampler,
                                                   .descriptorCount = setCount * textureDescriptorsPerDraw};
-    auto pool = checkedCreation(device.createDescriptorPool(
-        vk::DescriptorPoolCreateInfo {.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                      .maxSets = setCount,
-                                      .poolSizeCount = 1,
-                                      .pPoolSizes = &poolSize}));
-    if (!pool)
+    const auto poolInfo = vk::DescriptorPoolCreateInfo {.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                                                        .maxSets = setCount,
+                                                        .poolSizeCount = 1,
+                                                        .pPoolSizes = &poolSize};
+    auto nativePool = vk::DescriptorPool {};
+    const auto created = (*device).createDescriptorPool(&poolInfo, nullptr, &nativePool, *device.getDispatcher());
+    if (created != vk::Result::eSuccess)
     {
-        return std::unexpected {pool.error()};
+        return std::unexpected {makeVulkanError(created)};
     }
-    const auto layouts = std::vector(setCount, layout);
-    const auto allocation = vk::DescriptorSetAllocateInfo {.descriptorPool = **pool,
-                                                           .descriptorSetCount = setCount,
-                                                           .pSetLayouts = layouts.data()};
-    auto sets = device.allocateDescriptorSets(allocation);
-    if (sets.result != vk::Result::eSuccess)
+    auto pool = vk::raii::DescriptorPool {device, nativePool};
+    auto sets = allocateTextureDescriptorSets(device, *pool, layout, setCount);
+    if (!sets)
     {
-        return std::unexpected {makeVulkanError(sets.result)};
+        return std::unexpected {sets.error()};
     }
-    return TextureDescriptorResources {.pool = std::move(*pool), .sets = std::move(sets.value)};
+    return TextureDescriptorResources {.pool = std::move(pool), .sets = std::move(*sets)};
 }
 }
 
@@ -249,6 +301,11 @@ FrameBindings::FrameBindings(vk::PhysicalDevice physicalDevice,
     : _device {device},
       _pool {pool},
       _maxStorageBufferRange {physicalDevice.getProperties().limits.maxStorageBufferRange},
+      _shadowViewStride {([](std::uint64_t alignment) {
+          const auto matrixSize = sizeof(glm::mat4);
+          const auto effectiveAlignment = std::max(alignment, std::uint64_t {1});
+          return matrixSize + ((effectiveAlignment - (matrixSize % effectiveAlignment)) % effectiveAlignment);
+      })(physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment)},
       _frames(frameCount)
 {
 }
@@ -265,11 +322,12 @@ auto FrameBindings::validateDeviceLimits(const vk::PhysicalDeviceLimits& limits,
     -> std::expected<void, Error>
 {
     if (limits.maxStorageBufferRange < sizeof(MaterialRecord) ||
-        limits.maxStorageBufferRange / sizeof(LightRecord) < maxLights || limits.maxDescriptorSetStorageBuffers < 2 ||
-        limits.maxPerStageDescriptorStorageBuffers < 2)
+        limits.maxStorageBufferRange / sizeof(LightRecord) < maxLights || limits.maxDescriptorSetStorageBuffers < 3 ||
+        limits.maxPerStageDescriptorStorageBuffers < 3 ||
+        limits.minUniformBufferOffsetAlignment > std::numeric_limits<std::uint32_t>::max())
     {
         return std::unexpected {
-            makeError(ErrorCode::Unsupported, "Device storage-buffer limits are below the configured renderer needs")};
+            makeError(ErrorCode::Unsupported, "Device descriptor-buffer limits are below renderer needs")};
     }
     return {};
 }
@@ -280,7 +338,7 @@ auto FrameBindings::create(const FrameBindingsCreateInfo& info) -> std::expected
     {
         return std::unexpected {supported.error()};
     }
-    if (info.frameCount == 0 || info.frameCount > std::numeric_limits<std::uint32_t>::max() / 2U)
+    if (info.frameCount == 0 || info.frameCount > std::numeric_limits<std::uint32_t>::max() / 3U)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid frame binding count")};
     }
@@ -382,8 +440,9 @@ auto FrameBindings::initializeDescriptorPool() -> std::expected<void, Error>
     const auto setCount = static_cast<std::uint32_t>(_frames.size());
     const auto poolSizes = std::array {
         vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBuffer,        .descriptorCount = setCount     },
+        vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBufferDynamic, .descriptorCount = setCount     },
         vk::DescriptorPoolSize {.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = setCount     },
-        vk::DescriptorPoolSize {.type = vk::DescriptorType::eStorageBuffer,        .descriptorCount = setCount * 2U}
+        vk::DescriptorPoolSize {.type = vk::DescriptorType::eStorageBuffer,        .descriptorCount = setCount * 3U}
     };
     auto pool = checkedCreation(_device.createDescriptorPool(
         vk::DescriptorPoolCreateInfo {.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -410,9 +469,13 @@ auto FrameBindings::allocateFrameDescriptorSets() -> std::expected<void, Error>
     {
         return std::unexpected {makeVulkanError(sets.result)};
     }
-    for (auto index = std::size_t {}; index < _frames.size(); ++index)
+    auto frame = _frames.begin();
+    auto set = sets.value.begin();
+    while (frame != _frames.end())
     {
-        _frames[index].descriptorSet = std::move(sets.value.at(index));
+        frame->descriptorSet = std::move(*set);
+        ++frame;
+        ++set;
     }
     return {};
 }
@@ -447,6 +510,25 @@ auto FrameBindings::initializeFrameBuffersForSlot(FrameResources& frame) -> std:
                 .transform([&](auto buffer) {
                     frame.lightBuffer = std::move(buffer);
                     frame.lightBufferCapacity = sizeof(LightRecord);
+                });
+        })
+        .and_then([&] {
+            return initializeFrameShadowBuffersForSlot(frame);
+        });
+}
+
+auto FrameBindings::initializeFrameShadowBuffersForSlot(FrameResources& frame) -> std::expected<void, Error>
+{
+    return createUploadBuffer(sizeof(ShadowRecord), vk::BufferUsageFlagBits::eStorageBuffer)
+        .transform([&](auto buffer) {
+            frame.shadowBuffer = std::move(buffer);
+            frame.shadowBufferCapacity = sizeof(ShadowRecord);
+        })
+        .and_then([&] {
+            return createUploadBuffer(_shadowViewStride, vk::BufferUsageFlagBits::eUniformBuffer)
+                .transform([&](auto buffer) {
+                    frame.shadowViewBuffer = std::move(buffer);
+                    frame.shadowViewBufferCapacity = _shadowViewStride;
                 });
         });
 }
@@ -514,11 +596,7 @@ auto FrameBindings::writeFrameUniform(FrameResources& frame, const RenderView& v
     -> std::expected<void, Error>
 {
     const auto uniform = makeFrameUniform(view, lightCount);
-    if (!uniform)
-    {
-        return std::unexpected {uniform.error()};
-    }
-    const auto bytes = std::as_bytes(std::span {&*uniform, std::size_t {1}});
+    const auto bytes = std::as_bytes(std::span {&uniform, std::size_t {1}});
     return frame.uniformBuffer->writeMapped(0, bytes);
 }
 
@@ -543,6 +621,57 @@ auto FrameBindings::ensureLightBuffer(FrameResources& frame, std::size_t lightCo
         frame.lightBuffer = std::move(*buffer);
         frame.lightBufferCapacity = requiredCapacity;
     }
+    return {};
+}
+
+auto FrameBindings::ensureShadowBuffers(FrameResources& frame, std::size_t shadowViewCount)
+    -> std::expected<void, Error>
+{
+    const auto bufferCount = std::max<std::size_t>(shadowViewCount, 1U);
+    if (bufferCount > _maxStorageBufferRange / sizeof(ShadowRecord) ||
+        (shadowViewCount > 0 && (shadowViewCount - 1U) > std::numeric_limits<std::uint32_t>::max() / _shadowViewStride))
+    {
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Shadow views exceed Vulkan buffer limits")};
+    }
+    if (auto result = ensureShadowRecordBuffer(frame, bufferCount); !result)
+    {
+        return result;
+    }
+    return ensureShadowViewBuffer(frame, bufferCount);
+}
+
+auto FrameBindings::ensureShadowRecordBuffer(FrameResources& frame, std::size_t bufferCount)
+    -> std::expected<void, Error>
+{
+    const auto requiredCapacity = sizeof(ShadowRecord) * bufferCount;
+    if (frame.shadowBufferCapacity >= requiredCapacity)
+    {
+        return {};
+    }
+    auto buffer = createUploadBuffer(requiredCapacity, vk::BufferUsageFlagBits::eStorageBuffer);
+    if (!buffer)
+    {
+        return std::unexpected {buffer.error()};
+    }
+    frame.shadowBuffer = std::move(*buffer);
+    frame.shadowBufferCapacity = requiredCapacity;
+    return {};
+}
+
+auto FrameBindings::ensureShadowViewBuffer(FrameResources& frame, std::size_t bufferCount) -> std::expected<void, Error>
+{
+    const auto requiredCapacity = _shadowViewStride * bufferCount;
+    if (frame.shadowViewBufferCapacity >= requiredCapacity)
+    {
+        return {};
+    }
+    auto buffer = createUploadBuffer(requiredCapacity, vk::BufferUsageFlagBits::eUniformBuffer);
+    if (!buffer)
+    {
+        return std::unexpected {buffer.error()};
+    }
+    frame.shadowViewBuffer = std::move(*buffer);
+    frame.shadowViewBufferCapacity = requiredCapacity;
     return {};
 }
 
@@ -606,7 +735,8 @@ auto FrameBindings::writeMaterialRecords(FrameResources& frame, const RenderView
     return {};
 }
 
-auto FrameBindings::writeLightRecords(FrameResources& frame, const RenderView& view) -> std::expected<void, Error>
+auto FrameBindings::writeLightRecords(FrameResources& frame, const RenderView& view, const ShadowAtlasPlan& plan)
+    -> std::expected<void, Error>
 {
     if (view.lights.empty())
     {
@@ -614,38 +744,58 @@ auto FrameBindings::writeLightRecords(FrameResources& frame, const RenderView& v
     }
     _lightRecords.clear();
     _lightRecords.reserve(view.lights.size());
-    std::ranges::transform(view.lights, std::back_inserter(_lightRecords), makeLightRecord);
+    for (auto index = std::size_t {}; index < view.lights.size(); ++index)
+    {
+        _lightRecords.push_back(
+            makeLightRecord(view.lights.at(index), plan.firstViewByLight.at(index), plan.viewCountByLight.at(index)));
+    }
     const auto lightBytes = std::as_bytes(std::span {_lightRecords});
     return frame.lightBuffer->writeMapped(0, lightBytes);
 }
 
+auto FrameBindings::writeShadowRecords(FrameResources& frame, const ShadowAtlasPlan& plan) const
+    -> std::expected<void, Error>
+{
+    if (plan.views.empty())
+    {
+        return {};
+    }
+    auto records = std::vector<ShadowRecord> {};
+    records.reserve(plan.views.size());
+    std::ranges::transform(plan.views, std::back_inserter(records), makeShadowRecord);
+    const auto matrices = makeShadowViewMatrices(plan, _shadowViewStride);
+    const auto recordBytes = std::as_bytes(std::span {records});
+    if (const auto written = frame.shadowBuffer->writeMapped(0, recordBytes); !written)
+    {
+        return written;
+    }
+    return frame.shadowViewBuffer->writeMapped(0, matrices);
+}
+
 void FrameBindings::updateFrameDescriptorSet(const FrameResources& frame, vk::ImageView shadowView)
 {
-    const auto bufferInfo = makeBufferInfo(frame.uniformBuffer->getNative(), sizeof(FrameUniform));
+    const auto descriptorSet = *frame.descriptorSet;
+    const auto uniformInfo = makeBufferInfo(frame.uniformBuffer->getNative(), sizeof(FrameUniform));
     const auto imageInfo = vk::DescriptorImageInfo {.sampler = *_shadowSampler,
                                                     .imageView = shadowView,
                                                     .imageLayout = vk::ImageLayout::eDepthReadOnlyOptimal};
     const auto materialInfo = makeBufferInfo(frame.materialBuffer->getNative(), frame.materialBufferCapacity);
     const auto lightInfo = makeBufferInfo(frame.lightBuffer->getNative(), frame.lightBufferCapacity);
+    const auto shadowInfo = makeBufferInfo(frame.shadowBuffer->getNative(), frame.shadowBufferCapacity);
+    const auto shadowViewInfo = makeBufferInfo(frame.shadowViewBuffer->getNative(), sizeof(glm::mat4));
     const auto writes = std::array {
-        makeBufferWrite(*frame.descriptorSet,
-                        PANDA_FRAME_UNIFORM_BINDING,
-                        vk::DescriptorType::eUniformBuffer,
-                        bufferInfo),
-        vk::WriteDescriptorSet {.dstSet = *frame.descriptorSet,
-                                .dstBinding = PANDA_FRAME_SHADOW_MAP_BINDING,
-                                .descriptorCount = 1,
-                                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                                .pImageInfo = &imageInfo},
-        makeBufferWrite(*frame.descriptorSet,
+        makeBufferWrite(descriptorSet, PANDA_FRAME_UNIFORM_BINDING, vk::DescriptorType::eUniformBuffer, uniformInfo),
+        makeImageWrite(descriptorSet, PANDA_FRAME_SHADOW_MAP_BINDING, imageInfo),
+        makeBufferWrite(descriptorSet,
                         PANDA_FRAME_MATERIAL_DATA_BINDING,
                         vk::DescriptorType::eStorageBuffer,
                         materialInfo),
-        makeBufferWrite(*frame.descriptorSet,
-                        PANDA_FRAME_LIGHT_DATA_BINDING,
-                        vk::DescriptorType::eStorageBuffer,
-                        lightInfo)
-    };
+        makeBufferWrite(descriptorSet, PANDA_FRAME_LIGHT_DATA_BINDING, vk::DescriptorType::eStorageBuffer, lightInfo),
+        makeBufferWrite(descriptorSet, PANDA_FRAME_SHADOW_DATA_BINDING, vk::DescriptorType::eStorageBuffer, shadowInfo),
+        makeBufferWrite(descriptorSet,
+                        PANDA_FRAME_SHADOW_VIEW_BINDING,
+                        vk::DescriptorType::eUniformBufferDynamic,
+                        shadowViewInfo)};
     _device.updateDescriptorSets(writes, {});
 }
 
@@ -691,18 +841,26 @@ auto FrameBindings::getTextureDescriptorSet(std::size_t frameIndex, std::size_t 
     return *_frames.at(frameIndex).textureDescriptorSets.at(drawIndex);
 }
 
-auto FrameBindings::updateFrame(std::size_t frameIndex, const RenderView& view, vk::ImageView shadowView)
+auto FrameBindings::getShadowAtlasPlan(std::size_t frameIndex) const noexcept -> const ShadowAtlasPlan&
+{
+    return _frames.at(frameIndex).shadowPlan;
+}
+
+auto FrameBindings::getShadowViewOffset(std::size_t frameIndex, std::uint32_t shadowViewIndex) const -> std::uint32_t
+{
+    const auto& shadowViews = _frames.at(frameIndex).shadowPlan.views;
+    ::panda::expect(shadowViewIndex < shadowViews.size(), "Shadow view index is out of range");
+    return static_cast<std::uint32_t>(shadowViewIndex * _shadowViewStride);
+}
+
+auto FrameBindings::updateFrameBuffers(FrameResources& frame, const RenderView& view, const ShadowAtlasPlan& plan)
     -> std::expected<void, Error>
 {
-    auto& frame = _frames.at(frameIndex);
-    const auto requestedLightCount = view.lights.size();
-    if (requestedLightCount > _maxLights)
-    {
-        return std::unexpected {
-            makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds the Context maxLights budget")};
-    }
-    const auto lightCount = static_cast<std::uint32_t>(requestedLightCount);
+    const auto lightCount = static_cast<std::uint32_t>(view.lights.size());
     return ensureLightBuffer(frame, lightCount)
+        .and_then([&] {
+            return ensureShadowBuffers(frame, plan.views.size());
+        })
         .and_then([&] {
             return writeFrameUniform(frame, view, lightCount);
         })
@@ -713,14 +871,49 @@ auto FrameBindings::updateFrame(std::size_t frameIndex, const RenderView& view, 
             return writeMaterialRecords(frame, view);
         })
         .and_then([&] {
-            return writeLightRecords(frame, view);
+            return writeLightRecords(frame, view, plan);
         })
         .and_then([&] {
-            return ensureTextureDescriptorSets(frame, view.meshes.size());
-        })
-        .transform([&] {
-            updateFrameDescriptorSet(frame, shadowView);
-            writeTextureDescriptors(frame, view, shadowView);
+            return writeShadowRecords(frame, plan);
         });
+}
+
+auto FrameBindings::updateFrame(std::size_t frameIndex, const RenderView& view, vk::ImageView shadowView)
+    -> std::expected<void, Error>
+{
+    auto& frame = _frames.at(frameIndex);
+    const auto requestedLightCount = view.lights.size();
+    if (requestedLightCount > _maxLights)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds the Context maxLights budget")};
+    }
+    auto plan = buildShadowAtlasPlan(view);
+    if (!plan)
+    {
+        return std::unexpected {plan.error()};
+    }
+    if (const auto updated = updateFrameBuffers(frame, view, *plan); !updated)
+    {
+        return updated;
+    }
+    if (const auto updated = updateFrameDescriptors(frame, view, shadowView); !updated)
+    {
+        return updated;
+    }
+    frame.shadowPlan = std::move(*plan);
+    return {};
+}
+
+auto FrameBindings::updateFrameDescriptors(FrameResources& frame, const RenderView& view, vk::ImageView shadowView)
+    -> std::expected<void, Error>
+{
+    if (const auto updated = ensureTextureDescriptorSets(frame, view.meshes.size()); !updated)
+    {
+        return updated;
+    }
+    updateFrameDescriptorSet(frame, shadowView);
+    writeTextureDescriptors(frame, view, shadowView);
+    return {};
 }
 }

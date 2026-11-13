@@ -104,7 +104,7 @@ TEST_F(SceneRenderingSystem, StartsEmptyAndRendersExplicitlyCreatedCameraAndLigh
     ASSERT_TRUE(litView);
     ASSERT_EQ(litView->lights.size(), 1U);
     EXPECT_FLOAT_EQ(std::get<panda::DirectionalLight>(litView->lights.front()).intensity, 3.0F);
-    ASSERT_TRUE(scene->setLight(*light, panda::scene::DirectionalLight {.intensity = 1.5F}));
+    ASSERT_TRUE(scene->setLight(*light, panda::scene::DirectionalLight {.intensity = 1.5F, .shadow = {}}));
     const auto editedLightView = scene->createRenderView(16.0F / 9.0F);
     ASSERT_TRUE(editedLightView);
     ASSERT_EQ(editedLightView->lights.size(), 1U);

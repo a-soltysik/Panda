@@ -84,8 +84,12 @@ struct DirectionalLight
 {
     /// Nonnegative finite linear RGB color.
     glm::vec3 color {1.0F};
-    /// Nonnegative finite intensity multiplier; only the first visible scene light is shadowed.
+    /// Nonnegative finite intensity multiplier.
     float intensity {3.0F};
+    /// Optional dynamic shadow map; empty by default means the light casts no shadow.
+    std::optional<ShadowSettings> shadow;
+    /// Orthographic shadow width in meters; used only when `shadow` is set.
+    float shadowCoverageMeters {30.0F};
 };
 
 /// @brief Point light whose position comes from the entity's world transform.
@@ -97,6 +101,8 @@ struct PointLight
     float intensity {1.0F};
     /// Positive finite distance in meters where the contribution reaches zero.
     float range {};
+    /// Optional dynamic shadow map; empty by default means the light casts no shadow.
+    std::optional<ShadowSettings> shadow;
 };
 
 /// @brief Spot light whose position and local -Z direction come from the entity's world transform.
@@ -112,6 +118,8 @@ struct SpotLight
     float innerConeAngleRadians {};
     /// Radians from the light axis where angular falloff reaches zero.
     float outerConeAngleRadians {std::numbers::pi_v<float> / 4.0F};
+    /// Optional dynamic shadow map; empty by default means the light casts no shadow.
+    std::optional<ShadowSettings> shadow;
 };
 
 /// @brief One light component attached to a scene entity.
@@ -219,7 +227,7 @@ public:
     /// @brief Copies visible draws, active camera and visible lights into renderer input.
     /// @param aspectRatio Finite positive framebuffer width divided by height, supplied each frame.
     /// @return A snapshot retaining its meshes, or InvalidArgument for a missing camera or invalid pose.
-    /// The first visible directional light uses the current shadow pass; point and spot lights are unshadowed.
+    /// Visible lights retain their optional shadow settings in the returned render snapshot.
     /// Context::render validates renderer input and the configured light budget.
     /// Camera/light poses require positive uniform world scale without shear.
     /// Calls are serialized with scene mutation and Context operations; no GPU work is submitted.

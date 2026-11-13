@@ -1,8 +1,7 @@
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) uniform FrameData
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SHADOW_VIEW_BINDING) uniform ShadowViewData
 {
-    mat4 viewProjection;
     mat4 lightViewProjection;
-} frameData;
+} shadowViewData;
 
 layout(push_constant) uniform DrawData
 {
@@ -17,7 +16,7 @@ layout(location = PANDA_SHADOW_VARYING_TEXTURE_COORDINATES_LOCATION) out vec2 te
 
 void writeShadowVertex(vec3 position, float alpha, vec2 vertexTextureCoordinates)
 {
-    gl_Position = frameData.lightViewProjection * drawData.modelMatrix * vec4(position, 1.0);
+    gl_Position = shadowViewData.lightViewProjection * drawData.modelMatrix * vec4(position, 1.0);
     vertexAlpha = alpha * drawData.tint.a;
     materialIndex = uint(gl_InstanceIndex);
     textureCoordinates = vertexTextureCoordinates;

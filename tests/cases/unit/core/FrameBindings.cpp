@@ -85,6 +85,7 @@ protected:
                 properties->limits.maxStorageBufferRange = 4096;
                 properties->limits.maxDescriptorSetStorageBuffers = 4;
                 properties->limits.maxPerStageDescriptorStorageBuffers = 4;
+                properties->limits.minUniformBufferOffsetAlignment = 256;
                 properties->limits.framebufferColorSampleCounts = allSampleCounts;
                 properties->limits.framebufferDepthSampleCounts = allSampleCounts;
             });
@@ -290,7 +291,7 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
             return panda::Result<void> {};
         });
     const auto shadowView = vk::ImageView {fakeVulkanHandle<VkImageView>(90)};
-    EXPECT_CALL(vulkan, vkUpdateDescriptorSets(deviceHandle, 4, NotNull(), 0, nullptr))
+    EXPECT_CALL(vulkan, vkUpdateDescriptorSets(deviceHandle, 6, NotNull(), 0, nullptr))
         .WillOnce([shadowView](VkDevice,
                                std::uint32_t writeCount,
                                const VkWriteDescriptorSet* descriptorWrites,
@@ -370,8 +371,14 @@ TEST_F(FrameBindingsTest, WritesAllDirectionalLightsToTheStorageBuffer)
     auto bindings = std::move(*created);
     auto view = makeView(1);
     view.lights = {
-        panda::DirectionalLight {.direction = {0.0F, -2.0F, 0.0F}, .color = {1.0F, 0.5F, 0.25F}, .intensity = 3.0F},
-        panda::DirectionalLight {.direction = {0.0F, 0.0F, -4.0F}, .color = {0.25F, 0.5F, 1.0F}, .intensity = 2.0F}
+        panda::DirectionalLight {.direction = {0.0F, -2.0F, 0.0F},
+                                 .color = {1.0F, 0.5F, 0.25F},
+                                 .intensity = 3.0F,
+                                 .shadow = {}},
+        panda::DirectionalLight {.direction = {0.0F, 0.0F, -4.0F},
+                                 .color = {0.25F, 0.5F, 1.0F},
+                                 .intensity = 2.0F,
+                                 .shadow = {}}
     };
     auto writes = std::vector<std::vector<std::byte>> {};
     EXPECT_CALL(buffers, writeMapped(_, 0, _))
@@ -402,7 +409,7 @@ TEST_F(FrameBindingsTest, WritesAllDirectionalLightsToTheStorageBuffer)
               static_cast<std::uint32_t>(panda::core::vulkan::renderer::ShaderLightType::Directional));
 }
 
-TEST_F(FrameBindingsTest, PacksPointAndSpotLightParametersAndFindsFirstDirectionalShadow)
+TEST_F(FrameBindingsTest, PacksPointAndSpotLightsWithoutImplicitShadows)
 {
     auto created = createBindings();
     ASSERT_TRUE(created);
@@ -412,15 +419,17 @@ TEST_F(FrameBindingsTest, PacksPointAndSpotLightParametersAndFindsFirstDirection
         panda::PointLight {.position = {1.0F, 2.0F, 3.0F},
                            .color = {0.2F, 0.3F, 0.4F},
                            .intensity = 5.0F,
-                           .range = 8.0F},
+                           .range = 8.0F,
+                           .shadow = {}},
         panda::SpotLight {.position = {-1.0F, 0.0F, 2.0F},
                            .direction = {0.0F, -2.0F, 0.0F},
                            .color = {0.5F, 0.6F, 0.7F},
                            .intensity = 6.0F,
                            .range = 10.0F,
                            .innerConeAngleRadians = 0.2F,
-                           .outerConeAngleRadians = 0.6F},
-        panda::DirectionalLight {.direction = {0.0F, -1.0F, 0.0F}}
+                           .outerConeAngleRadians = 0.6F,
+                           .shadow = {}},
+        panda::DirectionalLight {.direction = {0.0F, -1.0F, 0.0F}, .shadow = {}}
     };
     auto writes = std::vector<std::vector<std::byte>> {};
     EXPECT_CALL(buffers, writeMapped(_, 0, _))
@@ -436,7 +445,7 @@ TEST_F(FrameBindingsTest, PacksPointAndSpotLightParametersAndFindsFirstDirection
     ASSERT_EQ(writes.size(), 3U);
     auto uniform = panda::core::vulkan::renderer::FrameUniform {};
     std::memcpy(&uniform, writes.at(0).data(), sizeof(uniform));
-    EXPECT_EQ(uniform.lightInfo.y, 2U);
+    EXPECT_EQ(uniform.lightInfo.y, 0U);
     ASSERT_EQ(writes.at(2).size(), sizeof(LightRecord) * 3U);
     auto records = std::array<LightRecord, 3> {};
     std::memcpy(records.data(), writes.at(2).data(), writes.at(2).size());
@@ -448,6 +457,47 @@ TEST_F(FrameBindingsTest, PacksPointAndSpotLightParametersAndFindsFirstDirection
     EXPECT_FLOAT_EQ(records.at(1).positionRange.w, 10.0F);
     EXPECT_FLOAT_EQ(records.at(1).innerConeCos, std::cos(0.2F));
     EXPECT_FLOAT_EQ(records.at(1).directionOuterConeCos.w, std::cos(0.6F));
+    EXPECT_EQ(records.at(0).shadowViewCount, 0U);
+    EXPECT_EQ(records.at(1).shadowViewCount, 0U);
+    EXPECT_EQ(records.at(2).shadowViewCount, 0U);
+}
+
+TEST_F(FrameBindingsTest, PacksOnlyExplicitShadowsAndAllocatesSixPointFaces)
+{
+    auto created = createBindings();
+    ASSERT_TRUE(created);
+    auto bindings = std::move(*created);
+    auto view = makeView(0);
+    view.lights = {
+        panda::SpotLight {.position = {0.0F, 0.0F, 0.0F},  .range = 8.0F,  .shadow = panda::ShadowSettings {}},
+        panda::PointLight {.position = {2.0F, 1.0F, -1.0F}, .range = 12.0F, .shadow = panda::ShadowSettings {}}
+    };
+    auto writes = std::vector<std::vector<std::byte>> {};
+    EXPECT_CALL(buffers, writeMapped(_, 0, _))
+        .Times(4)
+        .WillRepeatedly([&writes](const BufferResource&, std::uint64_t, std::span<const std::byte> data) {
+            writes.emplace_back(data.begin(), data.end());
+            return panda::Result<void> {};
+        });
+
+    ASSERT_TRUE(bindings->updateFrame(0, view, {}));
+
+    const auto& plan = bindings->getShadowAtlasPlan(0);
+    ASSERT_EQ(plan.views.size(), 7U);
+    EXPECT_EQ(plan.firstViewByLight, (std::vector<std::uint32_t> {0U, 1U}));
+    EXPECT_EQ(plan.viewCountByLight, (std::vector<std::uint32_t> {1U, 6U}));
+    EXPECT_EQ(bindings->getShadowViewOffset(0, 0), 0U);
+    EXPECT_EQ(bindings->getShadowViewOffset(0, 1), 256U);
+    ASSERT_EQ(writes.size(), 4U);
+    const auto shadowRecords = std::ranges::find_if(writes, [](const auto& bytes) {
+        return bytes.size() == sizeof(panda::core::vulkan::renderer::ShadowRecord) * 7U;
+    });
+    ASSERT_NE(shadowRecords, writes.end());
+    auto records = std::array<panda::core::vulkan::renderer::ShadowRecord, 7> {};
+    std::memcpy(records.data(), shadowRecords->data(), shadowRecords->size());
+    EXPECT_FLOAT_EQ(records.front().atlasScaleBias.x, 1024.0F / 4096.0F);
+    EXPECT_FLOAT_EQ(records.back().shadowParameters.x, 0.0005F);
+    EXPECT_FLOAT_EQ(records.back().shadowParameters.y, 0.002F);
 }
 
 TEST_F(FrameBindingsTest, LightBufferGrowthFailureCanBeRetried)
@@ -558,7 +608,7 @@ TEST_F(FrameBindingsTest, PropagatesInvalidShadowViewAndUniformWriteFailures)
     auto bindings = createBindings();
     ASSERT_TRUE(bindings);
     auto invalidView = makeView(0);
-    invalidView.lights.emplace_back();
+    invalidView.lights.emplace_back(panda::DirectionalLight {.shadow = panda::ShadowSettings {}});
     invalidView.camera.viewProjection = glm::mat4 {0.0F};
     const auto invalid = (*bindings)->updateFrame(0, invalidView, {});
     ASSERT_FALSE(invalid);
@@ -858,7 +908,7 @@ TEST_F(FrameBindingsTest, MeshRendererUpdatePropagatesBindingFailure)
     auto renderer = createMeshRenderer();
     ASSERT_TRUE(renderer);
     auto view = makeView(0);
-    view.lights.emplace_back();
+    view.lights.emplace_back(panda::DirectionalLight {.shadow = panda::ShadowSettings {}});
     view.camera.viewProjection = glm::mat4 {0.0F};
 
     const auto updated = (*renderer)->updateFrame(0, view);
@@ -890,14 +940,58 @@ TEST_F(FrameBindingsTest, OneSampleColorPassClearsTheSwapchainWithoutResolveAtta
             }
         });
     EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull())).Times(AnyNumber());
-    EXPECT_CALL(vulkan, vkCmdSetViewport(_, _, _, NotNull())).Times(2);
-    EXPECT_CALL(vulkan, vkCmdSetScissor(_, _, _, NotNull())).Times(2);
-    EXPECT_CALL(vulkan, vkCmdBindDescriptorSets(_)).Times(2);
+    EXPECT_CALL(vulkan, vkCmdSetViewport(_, _, _, NotNull())).Times(1);
+    EXPECT_CALL(vulkan, vkCmdSetScissor(_, _, _, NotNull())).Times(1);
+    EXPECT_CALL(vulkan, vkCmdBindDescriptorSets(_)).Times(1);
     EXPECT_CALL(vulkan, vkCmdEndRendering(_)).Times(2);
     const auto command = vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(901)};
     const auto view = panda::RenderView {};
 
     (*renderer)->record(command, vk::ImageView {swapchainImageView}, 0, view);
+}
+
+TEST_F(FrameBindingsTest, RecordsEveryPointFaceWithItsOwnDynamicShadowViewOffset)
+{
+    auto renderer = createMeshRenderer();
+    ASSERT_TRUE(renderer);
+    auto view = panda::RenderView {};
+    view.lights = {
+        panda::SpotLight {.position = {0.0F, 0.0F, 0.0F},  .range = 8.0F,  .shadow = panda::ShadowSettings {}},
+        panda::PointLight {.position = {2.0F, 1.0F, -1.0F}, .range = 12.0F, .shadow = panda::ShadowSettings {}}
+    };
+    ASSERT_TRUE((*renderer)->updateFrame(0, view));
+
+    auto offsets = std::vector<std::uint32_t> {};
+    auto scissors = std::vector<VkRect2D> {};
+    EXPECT_CALL(vulkan, vkCmdBindDescriptorSets(_))
+        .Times(8)
+        .WillRepeatedly([&offsets](const panda::test::DescriptorSetBindCall& call) {
+            ASSERT_EQ(call.dynamicOffsetCount, 1U);
+            offsets.push_back(std::span {call.dynamicOffsets, call.dynamicOffsetCount}.front());
+        });
+    EXPECT_CALL(vulkan, vkCmdSetScissor(_, _, _, NotNull()))
+        .Times(8)
+        .WillRepeatedly([&scissors](VkCommandBuffer, std::uint32_t, std::uint32_t, const VkRect2D* rect) {
+            scissors.push_back(*rect);
+        });
+    EXPECT_CALL(vulkan, vkCmdSetViewport(_, _, _, NotNull())).Times(8);
+    EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull())).Times(AnyNumber());
+    EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull())).Times(2);
+    EXPECT_CALL(vulkan, vkCmdEndRendering(_)).Times(2);
+
+    (*renderer)->record(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(902)}, {}, 0, view);
+
+    ASSERT_EQ(offsets.size(), 8U);
+    for (auto index = std::uint32_t {}; index < 7U; ++index)
+    {
+        EXPECT_EQ(offsets.at(index), index * 256U);
+    }
+    EXPECT_EQ(offsets.back(), 0U);
+    ASSERT_EQ(scissors.size(), 8U);
+    EXPECT_EQ(scissors.front().offset.x, 4);
+    EXPECT_EQ(scissors.front().offset.y, 4);
+    EXPECT_EQ(scissors.front().extent.width, 1024U);
+    EXPECT_EQ(scissors.at(1).extent.width, 512U);
 }
 
 TEST_F(FrameBindingsTest, PropagatesFrameBindingsInitializationFailure)

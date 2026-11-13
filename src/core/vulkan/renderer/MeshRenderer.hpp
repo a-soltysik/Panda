@@ -60,6 +60,12 @@ public:
     void markSubmitted(std::size_t frameIndex) noexcept;
 
 private:
+    struct FrameDescriptorBinding
+    {
+        std::size_t frameIndex;
+        std::uint32_t shadowViewOffset;
+    };
+
     struct BlendDraw
     {
         const MeshDraw* draw {};
@@ -81,11 +87,16 @@ private:
     [[nodiscard]] auto initializeAttachments(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
     [[nodiscard]] auto initializeBindingsAndPipeline() -> std::expected<void, Error>;
     void recordShadowPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
+    void recordShadowView(vk::CommandBuffer command,
+                          std::size_t frameIndex,
+                          const RenderView& view,
+                          std::size_t shadowViewIndex);
     void recordColorPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
     void recordBlendedDraws(vk::CommandBuffer command, std::size_t frameIndex);
     void recordAttachments(vk::CommandBuffer command, vk::ImageView swapchainView, std::size_t frameIndex) const;
     static void recordShadowAttachment(vk::CommandBuffer command, vk::ImageView depthView);
-    void setDrawState(vk::CommandBuffer command, std::size_t frameIndex, vk::Extent2D extent) const;
+    static void setViewportAndScissor(vk::CommandBuffer command, vk::Extent2D extent, vk::Offset2D offset = {});
+    void bindFrameDescriptorSet(vk::CommandBuffer command, FrameDescriptorBinding binding) const;
     void bindTextureDescriptors(vk::CommandBuffer command,
                                 std::size_t frameIndex,
                                 const MeshDraw& draw,

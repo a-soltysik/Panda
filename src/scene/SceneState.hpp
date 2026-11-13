@@ -72,6 +72,8 @@ private:
                                     const std::pair<Transform, glm::mat4>& validatedTransform) -> Result<Entity>;
     [[nodiscard]] auto allocateSlot() -> std::size_t;
     [[nodiscard]] auto resolve(const Entity& entity) const -> Result<std::size_t>;
+    [[nodiscard]] auto slotAt(std::size_t index) -> Slot&;
+    [[nodiscard]] auto slotAt(std::size_t index) const -> const Slot&;
     [[nodiscard]] auto resolveParent(const std::optional<Entity>& parent) const -> Result<std::optional<std::size_t>>;
     [[nodiscard]] auto localAfterReparent(std::size_t child, std::optional<std::size_t> parent, ReparentMode mode)
         -> Result<std::pair<Transform, glm::mat4>>;
