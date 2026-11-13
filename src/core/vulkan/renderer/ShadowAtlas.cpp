@@ -183,16 +183,17 @@ auto appendSpotShadowViews(ShadowAtlasPlan& plan, std::size_t lightIndex, const 
 auto appendLightShadowViews(ShadowAtlasPlan& plan, std::size_t lightIndex, const RenderView& view, const Light& light)
     -> std::expected<void, Error>
 {
-    return std::visit(detail::Overloaded {[&](const DirectionalLight& value) {
-                                              return appendDirectionalShadowViews(plan, lightIndex, view.camera, value);
-                                          },
-                                          [&](const PointLight& value) {
-                                              return appendPointShadowViews(plan, lightIndex, value);
-                                          },
-                                          [&](const SpotLight& value) {
-                                              return appendSpotShadowViews(plan, lightIndex, value);
-                                          }},
-                      light);
+    return std::visit(
+        ::panda::detail::Overloaded {[&](const DirectionalLight& value) {
+                                         return appendDirectionalShadowViews(plan, lightIndex, view.camera, value);
+                                     },
+                                     [&](const PointLight& value) {
+                                         return appendPointShadowViews(plan, lightIndex, value);
+                                     },
+                                     [&](const SpotLight& value) {
+                                         return appendSpotShadowViews(plan, lightIndex, value);
+                                     }},
+        light);
 }
 
 auto assignAtlasTiles(ShadowAtlasPlan& plan) -> std::expected<void, Error>
