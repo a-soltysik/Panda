@@ -94,7 +94,7 @@ TEST(AssertDeathTest, RejectsFalseCondition)
     ASSERT_DEATH(panda::expect(false, "fatal condition"), "Assert.cpp:.*fatal condition");
 }
 
-TEST(AssertDeathTest, ReportsExpectedErrorContext)
+TEST(AssertDeathTest, ReportsExpectedErrorEngine)
 {
     ASSERT_DEATH(
         std::ignore = panda::expect(std::expected<std::uint32_t, std::string> {std::unexpect, "backend failure"},
@@ -102,7 +102,7 @@ TEST(AssertDeathTest, ReportsExpectedErrorContext)
         "Assert.cpp:.*fatal expected: backend failure");
 }
 
-TEST(AssertDeathTest, ReportsVoidExpectedErrorContext)
+TEST(AssertDeathTest, ReportsVoidExpectedErrorEngine)
 {
     ASSERT_DEATH(panda::expect(std::expected<void, std::string> {std::unexpect, "backend failure"}, "fatal void"),
                  "Assert.cpp:.*fatal void: backend failure");

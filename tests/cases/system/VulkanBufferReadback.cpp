@@ -15,7 +15,7 @@
 #include <limits>
 #include <memory>
 #include <panda/Buffer.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <span>
 #include <utility>
@@ -31,7 +31,7 @@ VulkanBufferReadback::VulkanBufferReadback(Buffer source, Buffer destination)
 {
 }
 
-auto VulkanBufferReadback::create(const Context& context, const Buffer& source)
+auto VulkanBufferReadback::create(const Engine& context, const Buffer& source)
     -> Result<std::unique_ptr<VulkanBufferReadback>>
 {
     auto destination = context.getResourceManager().createBuffer(

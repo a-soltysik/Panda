@@ -6,7 +6,7 @@ When an unbound buffer or optimal-tiled image needs backing memory,
 `MemoryPool::allocate` returns a move-only `MemoryAllocation` reserving a range
 that satisfies the resource's Vulkan requirements and the caller's memory
 properties. The **resource creator** still owns the native object and binds it at
-the returned offset. The **Context-owned pool** owns device-memory blocks. This
+the returned offset. The **Engine-owned pool** owns device-memory blocks. This
 flow does not bind or initialize the resource, submit GPU work, wait for
 completion or relocate live ranges.
 
@@ -19,8 +19,8 @@ completion or relocate live ranges.
 
 ## Preconditions
 
-1. **Pool lifetime.** The `Context` and its device-backed `MemoryPool` are live;
-   calls are serialized with other Context operations.
+1. **Pool lifetime.** The `Engine` and its device-backed `MemoryPool` are live;
+   calls are serialized with other Engine operations.
 2. **Unbound resource.** The caller has created one native buffer or optimal-tiled
    image and queried its size, alignment, eligible memory types and dedicated
    requirements.

@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
-#include <panda/Context.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/WindowSurface.hpp>
@@ -20,8 +20,8 @@
 #include <utility>
 #include <vector>
 
-#include "ContextResources.hpp"
 #include "DeviceSelection.hpp"
+#include "InstanceResources.hpp"
 #include "VulkanError.hpp"
 
 namespace panda::core::vulkan::instance
@@ -108,7 +108,7 @@ auto verifyValidationLayer(const vk::raii::Context& loader, bool enabled) -> Res
     return {};
 }
 
-auto verifyPrerequisites(const vk::raii::Context& loader, const ContextOptions& options) -> Result<void>
+auto verifyPrerequisites(const vk::raii::Context& loader, const EngineOptions& options) -> Result<void>
 {
     const auto version = loader.enumerateInstanceVersion();
     if (version.result != vk::Result::eSuccess)
@@ -135,7 +135,7 @@ auto createInstance(const vk::raii::Context& loader, const vk::InstanceCreateInf
     return vk::raii::Instance {loader, instance};
 }
 
-auto makeInstance(const vk::raii::Context& loader, const ContextOptions& options, const InstanceExtensions& extensions)
+auto makeInstance(const vk::raii::Context& loader, const EngineOptions& options, const InstanceExtensions& extensions)
     -> Result<vk::raii::Instance>
 {
     const auto extensionNames =
@@ -189,7 +189,7 @@ auto makeWindowSurface(const WindowSurface* surface, const vk::raii::Instance& i
     return vk::raii::SurfaceKHR {instance, *created};
 }
 
-auto makeInstanceResources(const vk::raii::Context& loader, const WindowSurface* surface, const ContextOptions& options)
+auto makeInstanceResources(const vk::raii::Context& loader, const WindowSurface* surface, const EngineOptions& options)
     -> Result<InstanceResources>
 {
     auto extensions = instanceExtensions(surface, options.enableValidation);
@@ -219,7 +219,7 @@ auto makeInstanceResources(const vk::raii::Context& loader, const WindowSurface*
 }
 }
 
-auto createResources(const vk::raii::Context& loader, const WindowSurface* surface, const ContextOptions& options)
+auto createResources(const vk::raii::Context& loader, const WindowSurface* surface, const EngineOptions& options)
     -> Result<InstanceResources>
 {
     if (const auto checked = verifyPrerequisites(loader, options); !checked)

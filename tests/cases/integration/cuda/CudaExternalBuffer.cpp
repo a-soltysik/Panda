@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/cuda/Cuda.hpp>
 #include <panda/cuda/CudaSession.hpp>
@@ -18,8 +19,8 @@ TEST(CudaExternalBufferIntegration, ImportsPandaOwnedBufferOnce)
     }
 
     auto context =
-        panda::Context::create({.applicationName = "Panda CUDA external buffer integration",
-                                .externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Required});
+        panda::Engine::create({.applicationName = "Panda CUDA external buffer integration",
+                               .externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required});
     if (!context && context.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << context.error().message;

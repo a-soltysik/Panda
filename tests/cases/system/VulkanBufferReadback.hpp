@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <panda/Buffer.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 
 namespace panda::test
@@ -18,7 +18,7 @@ namespace panda::test
 class VulkanBufferReadback final
 {
 public:
-    [[nodiscard]] static auto create(const Context& context, const Buffer& source)
+    [[nodiscard]] static auto create(const Engine& context, const Buffer& source)
         -> Result<std::unique_ptr<VulkanBufferReadback>>;
     ~VulkanBufferReadback();
     VulkanBufferReadback(const VulkanBufferReadback&) = delete;

@@ -11,7 +11,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
 #include <panda/FrameResult.hpp>
 #include <panda/OffscreenTarget.hpp>
 #include <panda/RenderView.hpp>
@@ -38,11 +38,11 @@ struct PresentationCreateInfo
     const vk::raii::Device& device;
     vk::SurfaceKHR surface;
     const WindowSurface& window;
-    ContextDeviceInfo deviceInfo;
+    DeviceInfo deviceInfo;
     api_detail::SubmissionQueue& submissions;
     resources::MemoryPool* pool {nullptr};
     api_detail::PerformanceManagerImpl* performance {nullptr};
-    std::uint32_t maxLights {ContextOptions::defaultMaxLights};
+    std::uint32_t maxLights;
 };
 
 struct CaptureFrameRequest
@@ -161,7 +161,7 @@ private:
     vk::raii::Queue _presentQueue;
     vk::SurfaceKHR _surface {};
     const WindowSurface& _window;
-    ContextDeviceInfo _deviceInfo;
+    DeviceInfo _deviceInfo;
     api_detail::SubmissionQueue& _submissions;
     std::unique_ptr<presentation::FrameExecution> _execution;
     std::array<vk::raii::Semaphore, presentation::FrameExecution::slotCount> _acquireSemaphores {

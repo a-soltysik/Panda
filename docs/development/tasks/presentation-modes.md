@@ -6,7 +6,7 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 Let a windowed application choose Panda's presentation policy instead of fixing
 every swapchain to FIFO. Expose supported FIFO, MAILBOX and IMMEDIATE behavior through
-the public Context creation boundary, and report the effective mode. Make benchmark
+the public Engine creation boundary, and report the effective mode. Make benchmark
 runs select and record their presentation mode so refresh pacing is visible and runs
 using different modes are not compared as the same workload.
 
@@ -19,7 +19,7 @@ the requested mode. See
 the [Vulkan present-mode reference](https://docs.vulkan.org/refpages/latest/refpages/source/VkPresentModeKHR.html)
 for exact mode semantics.
 
-Current implementation always creates FIFO swapchains. `ContextOptions` has no
+Current implementation always creates FIFO swapchains. `EngineOptions` has no
 presentation setting. The accepted [benchmark specification](../benchmarking.md)
 already requires reference reports to record the actual present mode.
 
@@ -31,7 +31,7 @@ Specifications: [renderer](../../design/contracts/rendering.md#rendering-path),
 
 ## Acceptance
 
-- A windowed Context lets the application request a presentation policy; headless
+- A windowed Engine lets the application request a presentation policy; headless
   contexts remain unaffected.
 - Unsupported requests fail clearly or follow a documented fallback, and the
   effective selected mode is observable.

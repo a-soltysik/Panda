@@ -179,7 +179,7 @@ auto ExternalContext::getHandoffBuffer(const Buffer& buffer) const -> Result<Han
     if (!externalContext || &externalContext->get() != this)
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Buffer is not an external buffer from this Context")};
+            makeError(ErrorCode::InvalidArgument, "Buffer is not an external buffer from this Engine")};
     }
     const auto semaphore = resource->getExternalSemaphore();
     if (!semaphore || !_submissions)

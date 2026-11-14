@@ -12,11 +12,11 @@ acquisition and ends with cleanup success or a faulted presentation state.
 1. **Start cleanup.** A command-recording failure, or a present-fence wait/reset
    failure for the acquired image, calls `Presentation::abortAcquire()`.
 2. **Consume acquire and commit retirement.** An empty `SubmissionQueue` submission
-   waits on the slot's acquire semaphore and signals the Context timeline. On
+   waits on the slot's acquire semaphore and signals the Engine timeline. On
    queue acceptance, `Presentation` stores the image index as pending recovery
    and asks `FrameExecution` to record the returned value as the slot's last
    completion. The value is a cleanup dependency, not a submitted frame sample.
-   [UC Commit work to the Context submission timeline](commit-context-submission.md)
+   [UC Commit work to the Engine submission timeline](commit-context-submission.md)
    defines when that value is committed.
 3. **Wait for the retirement submission.** `Presentation::waitCompletion()` waits
    for that committed value before release. If the wait times out, the pending
@@ -34,8 +34,8 @@ sequenceDiagram
     Note over P: Image acquired and normal frame submission did not happen
     P->>P: Step 2 - retain image index for recovery
     P->>Q: Step 2 - empty submit waits on acquire semaphore
-    Note over P,Q: Step 2 - UC Commit work to the Context submission timeline
-    Q->>V: vkQueueSubmit2(signals Context timeline)
+    Note over P,Q: Step 2 - UC Commit work to the Engine submission timeline
+    Q->>V: vkQueueSubmit2(signals Engine timeline)
     V-->>Q: Accepted and committed value
     Q-->>P: Retirement value
     P->>E: Store slot completion without publishing frame state

@@ -12,8 +12,8 @@
 #include <panda/Assert.hpp>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
 #include <panda/Cube.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/OffscreenTarget.hpp>
@@ -38,7 +38,7 @@ void writeFrame(std::size_t frameIndex, const panda::ImageReadback& pixels)
     panda::log::info("Wrote {}x{} RGBA pixels to '{}'", pixels.extent.width, pixels.extent.height, fileName);
 }
 
-void renderSequence(const panda::Context& context, const panda::Mesh& cube)
+void renderSequence(const panda::Engine& context, const panda::Mesh& cube)
 {
     const auto target = panda::expect(context.getResourceManager().createOffscreenTarget({.extent = targetExtent}),
                                       "Create the offscreen target");
@@ -74,7 +74,7 @@ auto main() -> int
     {
         std::ignore = panda::log::Logger::instance().addSink(std::make_unique<panda::log::StreamSink>(std::clog));
         const auto context = panda::expect(
-            panda::Context::create({.applicationName = "Panda offscreen rendering", .enableValidation = true}),
+            panda::Engine::create({.applicationName = "Panda offscreen rendering", .enableValidation = true}),
             "Create a headless Vulkan context");
         const auto geometry = panda::createCubeGeometry();
         const auto cube =

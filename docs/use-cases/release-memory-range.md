@@ -4,7 +4,7 @@
 
 When the final owner of a bound `BufferResource` or `TextureResource` is
 released, Panda destroys the native resource and returns its reserved range to
-the Context's `MemoryPool`. A mesh releases its owned buffer resources through
+the Engine's `MemoryPool`. A mesh releases its owned buffer resources through
 the same path. The flow ends with the range available for reuse and the pool's
 empty-block policy applied; it does not wait for GPU work.
 
@@ -14,7 +14,7 @@ uploads retain resource owners until completion through
 
 ## Preconditions
 
-1. **Pool lifetime.** The Context-owned `MemoryPool` outlives every
+1. **Pool lifetime.** The Engine-owned `MemoryPool` outlives every
    `MemoryAllocation` that borrows it.
 2. **Use is finished.** The native resource has no unfinished GPU use. An
    application handle or submitted packet may still be another shared owner.
@@ -76,14 +76,14 @@ one empty ordinary block for each `(memory type, buffer-or-image)` partition.
 Its reserved `liveBytes` are zero while its memory remains committed. If a new
 allocation is blocked by the heap budget or Vulkan allocation-count limit,
 `MemoryPool::checkBudget()` reclaims empty blocks before reporting exhaustion.
-Context teardown destroys any remaining cached blocks after its live-range
+Engine teardown destroys any remaining cached blocks after its live-range
 check.
 
 ## Variants and errors
 
 |                    | Point and condition                                                                     | Response                                                   | Resulting state and next action                                                       |
 |--------------------|-----------------------------------------------------------------------------------------|------------------------------------------------------------|---------------------------------------------------------------------------------------|
-| **Variant&nbsp;1** | Step 1: another handle or retained packet still owns the resource                       | Do not destroy the resource or return its range            | Keep the Context and pool alive until the final owner is released                     |
+| **Variant&nbsp;1** | Step 1: another handle or retained packet still owns the resource                       | Do not destroy the resource or return its range            | Keep the Engine and pool alive until the final owner is released                     |
 | **Variant&nbsp;2** | Step 5: an ordinary block becomes empty and no peer empty block exists in its partition | Retain that block for a later allocation                   | Its committed bytes remain until reuse, budget reclamation or pool destruction        |
 | **Variant&nbsp;3** | Step 5: a dedicated block or a duplicate empty ordinary block becomes empty             | Destroy the block and release its device-memory allocation | Pool committed-byte and allocation-count totals decrease                              |
 | **Error&nbsp;1**   | Step 3 or 4: the allocation ID or range is missing from the pool                        | `expect` emits a fatal diagnostic                          | This is a broken ownership/accounting invariant; no recoverable release result exists |
@@ -111,7 +111,7 @@ and pending packets retain ownership independently.
   shows the staging-page owners released by cancellation or completed collection.
 - [UC Reclaim completed upload packets](reclaim-completed-uploads.md) shows when
   submitted staging and destination owners are released.
-- [UC Shut down a Context safely](shutdown-context.md) checks that all live ranges
+- [UC Shut down an Engine safely](shutdown-context.md) checks that all live ranges
   are gone before destroying the pool and device.
 - [Allocation, uploads and descriptors](../design/contracts/resources.md#allocation-uploads-and-descriptors)
   owns the allocator and upload-retention rules.

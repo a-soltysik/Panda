@@ -2,13 +2,13 @@
 
 ## Goal and boundary
 
-An application with a windowed `Context` calls `WindowRenderer::render(view)` as
+An application with a windowed `Engine` calls `WindowRenderer::render(view)` as
 it processes window changes. On each call, **Panda** checks the window's
 framebuffer extent and either suspends frame work or ensures a matching
 swapchain generation exists. The flow ends with a suspended result, a usable
 generation that continues into the [UC Render and present an application view](render-view.md),
 or an error. The application owns event processing and decides when to call
-again; `Context` borrows the `WindowSurface` for its lifetime under the
+again; `Engine` borrows the `WindowSurface` for its lifetime under the
 [ownership contract](../design/contracts/resources.md#ownership).
 
 `WindowSurface::getFramebufferExtent()` reports framebuffer pixels, not logical
@@ -17,8 +17,8 @@ on a resize callback.
 
 ## Preconditions
 
-1. **Live windowed Context.** The `Context` has a usable presentation service and
-   calls are serialized on its execution thread. A Context created while the
+1. **Live windowed Engine.** The `Engine` has a usable presentation service and
+   calls are serialized on its execution thread. An Engine created while the
    framebuffer is zero-sized may not have a swapchain generation yet.
 
 ## Main flow
@@ -49,7 +49,7 @@ on a resize callback.
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Context
+    participant C as Engine
     participant P as Presentation
     participant S as WindowSurface
     participant V as Vulkan
@@ -83,7 +83,7 @@ sequenceDiagram
 `FrameResult::Status::Suspended` without acquiring an image or consuming a frame slot. If a
 generation already exists, it remains owned while minimized. After restoration,
 Panda recreates it only if the extent changed or recreation was already pending;
-a Context created at zero extent has no generation, so its first nonzero frame
+an Engine created at zero extent has no generation, so its first nonzero frame
 call creates one.
 
 **A frame can request recreation without a size change.** An out-of-date acquire,
@@ -102,7 +102,7 @@ returns an error, `Presentation` discards any old generation and leaves
 recreation pending. The Vulkan call may have retired the old swapchain even when
 replacement creation fails, so Panda cannot promise to resume using it. Any partially built
 replacement is released by its local RAII owners. A later nonzero frame call on a
-still-usable Context retries without passing an old swapchain handle.
+still-usable Engine retries without passing an old swapchain handle.
 
 ## Variants and errors
 

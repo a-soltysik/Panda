@@ -27,20 +27,20 @@ batch.
 
 ## Current external-buffer behavior
 
-`ContextOptions::ExternalBufferSupport` is `Disabled` by default. `Optional` enables
+`EngineOptions::ExternalBufferSupport` is `Disabled` by default. `Optional` enables
 the platform external-memory extension when available; `Required` returns
 `Unsupported` when the selected Vulkan device cannot enable it. This option has no
 CUDA dependency. With `Optional`, the application reads
-`Context::getDeviceInfo().externalBufferExportEnabled` immediately after creation:
-`true` means the external-memory extension was enabled for that Context; `false`
+`Engine::getDeviceInfo().externalBufferExportEnabled` immediately after creation:
+`true` means the external-memory extension was enabled for that Engine; `false`
 means to choose another path before allocating a shared buffer. `Required` fails
-Context creation instead of returning `false`.
+Engine creation instead of returning `false`.
 
-The flag describes Context-level Vulkan export setup only. Support for an individual
+The flag describes Engine-level Vulkan export setup only. Support for an individual
 buffer usage is queried when that buffer is requested. CUDA applications can also
 create `CudaSession` before allocating buffers; failure to match the selected Vulkan
 device is reported then, so they can select an application-owned fallback early.
-`ContextDeviceInfo::externalSemaphoreExportEnabled` separately reports whether the
+`DeviceInfo::externalSemaphoreExportEnabled` separately reports whether the
 selected device can export the opaque timeline semaphore handle used by the handoff.
 
 `ExternalBufferManager::createBuffer(BufferDesc)` validates the request, checks
@@ -53,7 +53,7 @@ timeline semaphore with initial value 0 and its move-only `ExternalSemaphoreHand
 The semaphore handle can be absent on devices without export support. Ordinary
 `ResourceManager::createBuffer` resources remain non-exportable.
 
-`Panda::Cuda::CudaSession::create(Context&)` selects a CUDA device by UUID and
+`Panda::Cuda::CudaSession::create(Engine&)` selects a CUDA device by UUID and
 creates one non-blocking stream. `CudaSession::importBuffer(ExternalBuffer)` imports
 and maps the dedicated allocation once, and imports the paired timeline semaphore
 when one is present. `SharedCudaBuffer` retains the imported allocation and
@@ -117,7 +117,7 @@ multi-step application work using this handoff.
 
 ## References
 
-- [Resource ownership](resources.md#ownership) explains Context and resource
+- [Resource ownership](resources.md#ownership) explains Engine and resource
   lifetimes.
 - [Resource allocation](resources.md#allocation-uploads-and-descriptors) explains
   why exportable allocations are dedicated and not suballocated from shared blocks.

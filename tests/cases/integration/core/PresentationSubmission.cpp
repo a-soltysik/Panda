@@ -14,7 +14,8 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <span>
@@ -151,8 +152,8 @@ protected:
             });
     }
 
-    auto createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance maintenance =
-                                panda::ContextDeviceInfo::SwapchainMaintenance::Khr)
+    auto createPresentation(
+        panda::DeviceInfo::SwapchainMaintenance maintenance = panda::DeviceInfo::SwapchainMaintenance::Khr)
         -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
     {
         return panda::core::vulkan::Presentation::create({
@@ -168,7 +169,8 @@ protected:
                                                   .queueFamily = 0,
                                                   .presentQueueFamily = 0,
                                                   .swapchainMaintenance = maintenance},
-            .submissions = _submissions.emplace(getDevice(), 0)
+            .submissions = _submissions.emplace(getDevice(), 0),
+            .maxLights = panda::EngineOptions::defaultMaxLights
         });
     }
 
@@ -191,7 +193,7 @@ TEST_F(PresentationSubmissionIntegration, ReportsUnavailableExtReleaseFunction)
 {
     expectQueueLookup();
     EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesEXT"))).WillOnce(Return(nullptr));
-    const auto presentation = createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance::Ext);
+    const auto presentation = createPresentation(panda::DeviceInfo::SwapchainMaintenance::Ext);
     ASSERT_FALSE(presentation.has_value());
     EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(presentation.error().message.find("VK_EXT_swapchain_maintenance1"), std::string::npos);

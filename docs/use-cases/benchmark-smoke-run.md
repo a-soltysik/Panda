@@ -13,7 +13,7 @@ is not a representative scene benchmark or performance baseline.
 **The benchmark** validates settings, drives the timed phases and checks that the
 sample set is complete. **Panda** owns window/context creation and asynchronous
 frame timing. Each requested run creates and tears down its own window and
-`Context`.
+`Engine`.
 
 ## Main flow
 
@@ -29,7 +29,7 @@ frame timing. Each requested run creates and tears down its own window and
    creates the output directory and opens `panda-bench.log` as a logger sink. A
    setup error stops before any run starts.
 3. **Initialize a run.** `SmokeRun` asks `VulkanSmokeRunBackend` to create a window
-   at the requested size, then a windowed `Context` with validation disabled, frame
+   at the requested size, then a windowed `Engine` with validation disabled, frame
    sampling enabled and `maxLights = max(defaultMaxLights, requested light count)`.
    The backend requires GPU timestamp support and captures the effective framebuffer
    extent, GPU, driver and Vulkan API information. For a nonzero extent, it creates
@@ -53,7 +53,7 @@ frame timing. Each requested run creates and tears down its own window and
    the number of retained samples equals the number of measured submitted frames.
 7. **Tear down and report.** `SmokeRun::execute()` tears down the backend after
    success or failure; the Vulkan backend releases the view's mesh handle, destroys
-   the `Context`, then destroys its borrowed window. `runBenchmark()` appends the run
+   the `Engine`, then destroys its borrowed window. `runBenchmark()` appends the run
    result, stops further runs after a failure, writes the requested light count and
    other settings to the JSON report when output setup succeeded, and prints the
    summary and report/log paths when the report was written.
@@ -65,7 +65,7 @@ sequenceDiagram
     participant S as SmokeRun
     participant B as Vulkan backend
     participant W as Window
-    participant C as Context
+    participant C as Engine
     participant U as UploadBatch
     participant P as PerformanceManager
     participant F as Output files
@@ -75,8 +75,8 @@ sequenceDiagram
         M ->> S: Step 3 - execute one run
         S ->> B: Step 3 - initialize with options
         B ->> W: Create requested window
-        B ->> C: Create Context with sampling and requested light budget
-        C -->> B: Context and selected device
+        B ->> C: Create Engine with sampling and requested light budget
+        C -->> B: Engine and selected device
         B ->> P: Check timestamp capabilities
         B ->> B: Capture extent and environment
         opt Initial framebuffer extent is nonzero
@@ -117,7 +117,7 @@ sequenceDiagram
         S ->> S: Check sample count against submitted frames
         S ->> B: Step 7 - teardown
         B ->> B: Release view's mesh handle
-        B ->> C: Destroy Context
+        B ->> C: Destroy Engine
         B ->> W: Destroy window
     end
     M ->> F: Step 7 - write JSON report
@@ -134,7 +134,7 @@ fixed light list and fixed `RenderView`; it does not create geometry, lights or 
 uploads in the timed loop.
 See [UC Render and present an application view](render-view.md) for the frame outcomes.
 
-**Presentation pacing.** The current Context uses FIFO presentation. CPU frame samples
+**Presentation pacing.** The current Engine uses FIFO presentation. CPU frame samples
 include acquisition and presentation waits, so they can track display refresh rather
 than active CPU rendering. GPU samples measure the timestamped rendering work and
 exclude presentation waits.
@@ -184,11 +184,11 @@ an empty sample set has no statistics summary.
 
 ### Failed-run teardown
 
-Initialization or run failure can leave a window, a `Context`, both, or neither
+Initialization or run failure can leave a window, a `Engine`, both, or neither
 in the backend. `SmokeRun::execute()` always calls teardown after the run returns or
-throws. Teardown releases the view's mesh handle before Context shutdown; Context
+throws. Teardown releases the view's mesh handle before Engine shutdown; Engine
 drains submitted upload and frame work before the backend releases the borrowed window.
-See [UC Shut down a Context safely](shutdown-context.md). The benchmark then records
+See [UC Shut down an Engine safely](shutdown-context.md). The benchmark then records
 the outcome and stops later runs.
 
 ```mermaid
@@ -196,13 +196,13 @@ sequenceDiagram
     participant M as Benchmark
     participant S as SmokeRun
     participant B as Vulkan backend
-    participant C as Context
+    participant C as Engine
     participant W as Window
     B -->> S: Initialization or run error
     S ->> B: Step 7 - teardown()
     B ->> B: Release view's mesh handle
-    opt Context was created
-        B ->> C: Destroy Context
+    opt Engine was created
+        B ->> C: Destroy Engine
     end
     opt Window was created
         B ->> W: Destroy window
@@ -236,7 +236,7 @@ complete JSON report is not guaranteed. The process returns `EXIT_FAILURE`.
   how `PerformanceManager` buffers, pairs and exposes frame samples.
 - [UC Render and present an application view](render-view.md) explains
   the `Presented`, skipped and recreation outcomes that the controlled run checks.
-- [UC Shut down a Context safely](shutdown-context.md) explains the drain performed
+- [UC Shut down an Engine safely](shutdown-context.md) explains the drain performed
   when the benchmark tears down a run with submitted work.
 - [Frame rendering and benchmark smoke test](../development/tasks/frame-rendering.md)
   records the task scope and acceptance criteria for public timing collection and

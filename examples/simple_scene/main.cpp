@@ -14,8 +14,8 @@
 #include <panda/Assert.hpp>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
 #include <panda/Cube.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
@@ -126,7 +126,7 @@ auto createColoredTriangleVertices() -> std::array<ColoredVertex, 3>
     };
 }
 
-auto createColoredTriangleMesh(const panda::Context& context, const std::array<ColoredVertex, 3>& vertices)
+auto createColoredTriangleMesh(const panda::Engine& context, const std::array<ColoredVertex, 3>& vertices)
     -> panda::Mesh
 {
     return panda::expect(context.getResourceManager().createMesh({
@@ -143,7 +143,7 @@ auto createColoredTriangleMesh(const panda::Context& context, const std::array<C
                          "Create the unlit triangle mesh");
 }
 
-auto createBaseColorMap(const panda::Context& context) -> panda::Texture
+auto createBaseColorMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {2, 2},
@@ -153,7 +153,7 @@ auto createBaseColorMap(const panda::Context& context) -> panda::Texture
                          "Create the cube base-color map");
 }
 
-auto createMetallicRoughnessMap(const panda::Context& context) -> panda::Texture
+auto createMetallicRoughnessMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {1, 1},
@@ -163,7 +163,7 @@ auto createMetallicRoughnessMap(const panda::Context& context) -> panda::Texture
                          "Create the cube metallic-roughness map");
 }
 
-auto createEmissiveMap(const panda::Context& context) -> panda::Texture
+auto createEmissiveMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {2, 2},
@@ -173,7 +173,7 @@ auto createEmissiveMap(const panda::Context& context) -> panda::Texture
                          "Create the cube emissive map");
 }
 
-auto createNormalMap(const panda::Context& context) -> panda::Texture
+auto createNormalMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {4, 4},
@@ -183,7 +183,7 @@ auto createNormalMap(const panda::Context& context) -> panda::Texture
                          "Create the cube normal map");
 }
 
-auto createOcclusionMap(const panda::Context& context) -> panda::Texture
+auto createOcclusionMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {4, 4},
@@ -193,7 +193,7 @@ auto createOcclusionMap(const panda::Context& context) -> panda::Texture
                          "Create the cube occlusion map");
 }
 
-void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes, const SceneGeometry& geometry)
+void uploadSceneMeshes(const panda::Engine& context, const SceneMeshes& meshes, const SceneGeometry& geometry)
 {
     auto batch = panda::expect(context.getSubmissionManager().createUploadBatch(), "Create the upload batch");
     panda::expect(batch.write(meshes.cube, geometry.cube), "Stage the cube geometry");
@@ -255,7 +255,7 @@ auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
     };
 }
 
-auto createSceneMeshes(const panda::Context& context) -> SceneMeshes
+auto createSceneMeshes(const panda::Engine& context) -> SceneMeshes
 {
     const auto geometry = SceneGeometry {.cube = panda::createCubeGeometry(),
                                          .ground = panda::createPlaneGeometry(),
@@ -276,7 +276,7 @@ auto createSceneMeshes(const panda::Context& context) -> SceneMeshes
     return meshes;
 }
 
-void run(const panda::tools::Window& window, const panda::Context& context, const SceneMeshes& meshes)
+void run(const panda::tools::Window& window, const panda::Engine& context, const SceneMeshes& meshes)
 {
     static constexpr auto cameraPosition = glm::vec3 {3.0F, 2.5F, 4.0F};
     const auto renderer = panda::expect(context.getWindowRenderer(), "Window context has no window renderer");
@@ -317,8 +317,8 @@ auto main() -> int
         const auto window = panda::expect(panda::tools::Window::create(glm::uvec2 {1280, 720}, "Panda - Simple scene"),
                                           "Create the window");
         const auto context = panda::expect(
-            panda::Context::createWithSurface(window,
-                                              {.applicationName = "Panda simple scene", .enableValidation = true}),
+            panda::Engine::createWithSurface(window,
+                                             {.applicationName = "Panda simple scene", .enableValidation = true}),
             "Create the Vulkan context");
         const auto meshes = createSceneMeshes(context);
         run(window, context, meshes);

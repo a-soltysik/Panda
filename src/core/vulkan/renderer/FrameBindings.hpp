@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <vector>
@@ -31,7 +30,7 @@ struct FrameBindingsCreateInfo
     const vk::raii::Device& device;
     resources::MemoryPool& pool;
     std::size_t frameCount;
-    std::uint32_t maxLights {::panda::ContextOptions::defaultMaxLights};
+    std::uint32_t maxLights;
 };
 
 class FrameBindings final
@@ -127,7 +126,7 @@ private:
     resources::MemoryPool& _pool;
     std::uint64_t _maxStorageBufferRange {0};
     std::uint64_t _shadowViewStride {0};
-    std::uint32_t _maxLights {::panda::ContextOptions::defaultMaxLights};
+    std::uint32_t _maxLights {};
     vk::raii::DescriptorSetLayout _descriptorSetLayout {nullptr};
     vk::raii::DescriptorSetLayout _textureDescriptorSetLayout {nullptr};
     vk::raii::PipelineLayout _pipelineLayout {nullptr};

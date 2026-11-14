@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <expected>
 #include <limits>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 #include <span>

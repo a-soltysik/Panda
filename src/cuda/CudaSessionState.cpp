@@ -1,7 +1,7 @@
 #include "CudaSessionState.hpp"
 
 #include <panda/Assert.hpp>
-#include <panda/ExternalBuffer.hpp>
+#include <panda/VulkanDeviceUuid.hpp>
 #include <utility>
 
 #include "CudaAdapter.hpp"

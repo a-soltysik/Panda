@@ -10,7 +10,7 @@
 #include <optional>
 #include <panda/Assert.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
 #include <panda/Error.hpp>
 #include <panda/FrameResult.hpp>
 #include <panda/RenderView.hpp>
@@ -364,7 +364,7 @@ auto Presentation::releaseImage(std::uint32_t index) const -> std::expected<void
     const auto info = vk::ReleaseSwapchainImagesInfoKHR {.swapchain = *activeGeneration().swapchain,
                                                          .imageIndexCount = 1,
                                                          .pImageIndices = &index};
-    const auto result = _deviceInfo.swapchainMaintenance == ContextDeviceInfo::SwapchainMaintenance::Khr
+    const auto result = _deviceInfo.swapchainMaintenance == DeviceInfo::SwapchainMaintenance::Khr
                             ? _device.releaseSwapchainImagesKHR(info)
                             : _device.releaseSwapchainImagesEXT(info);
     if (result != vk::Result::eSuccess)
@@ -627,7 +627,7 @@ auto Presentation::presentFrame(SwapchainImage& image,
 auto Presentation::verifyReleaseFunction() const -> std::expected<void, Error>
 {
     const auto* const dispatcher = _device.getDispatcher();
-    const auto khr = _deviceInfo.swapchainMaintenance == ContextDeviceInfo::SwapchainMaintenance::Khr;
+    const auto khr = _deviceInfo.swapchainMaintenance == DeviceInfo::SwapchainMaintenance::Khr;
     const auto available =
         khr ? dispatcher->vkReleaseSwapchainImagesKHR != nullptr : dispatcher->vkReleaseSwapchainImagesEXT != nullptr;
     if (!available)

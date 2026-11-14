@@ -4,7 +4,7 @@
 #include <expected>
 #include <optional>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/tools/gui/Window.hpp>
 
@@ -28,16 +28,16 @@ public:
 
 private:
     [[nodiscard]] auto checkedWindow() const -> const panda::tools::Window&;
-    [[nodiscard]] auto checkedContext() -> panda::Context&;
+    [[nodiscard]] auto checkedEngine() -> panda::Engine&;
     [[nodiscard]] auto createWindow(const Options& options) -> std::expected<void, Failure>;
-    [[nodiscard]] auto createContext(const Options& options) -> std::expected<void, Failure>;
+    [[nodiscard]] auto createEngine(const Options& options) -> std::expected<void, Failure>;
     [[nodiscard]] auto checkPerformanceCapabilities() -> std::expected<void, Failure>;
     [[nodiscard]] auto captureEnvironment() -> std::expected<SmokeRunEnvironment, Failure>;
     [[nodiscard]] auto createStaticCube(panda::FramebufferExtent extent, std::uint32_t lightCount)
         -> std::expected<void, Failure>;
 
     std::optional<panda::tools::Window> _window;
-    std::optional<panda::Context> _context;
+    std::optional<panda::Engine> _engine;
     panda::RenderView _view;
     panda::CompletionPoint _lastCompletion;
     std::uint32_t _effectiveSampleCount {1};

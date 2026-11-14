@@ -9,7 +9,7 @@ and created its internal default image view. Initial texels are **undefined**.
 Creation submits no GPU work and does not upload or initialize contents.
 
 **Panda** owns the native image, its memory range and the default view. **The application** chooses extent, format and
-usage, and keeps `Context` alive
+usage, and keeps `Engine` alive
 for every `Texture` owner. The implemented scope follows
 [Allocation, uploads and resource lifetimes](../development/tasks/resource-lifetimes.md).
 
@@ -22,14 +22,14 @@ for every `Texture` owner. The implemented scope follows
 
 ## Preconditions
 
-1. **Context.** Use a live `Context` and serialize creation with its other
+1. **Engine.** Use a live `Engine` and serialize creation with its other
    operations on the context execution thread.
 
 ## Main flow
 
 1. **Request.** The application calls `ResourceManager::createTexture(description)`.
-   `Context` requires live internal state.
-2. **Release completed upload resources.** `Context::Impl::createResource`
+   `Engine` requires live internal state.
+2. **Release completed upload resources.** `Engine::Impl::createResource`
    calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
    explains which packets can be released; without an `UploadManager`, this is a no-op.
 3. **Validate.** `TextureResource::create` requires nonzero dimensions, a
@@ -49,13 +49,13 @@ for every `Texture` owner. The implemented scope follows
    the sole mip and layer. Its aspect comes from the format: stencil for
    stencil-only, depth for depth and combined depth/stencil, otherwise color.
 7. **Publish.** Only after the view succeeds does `TextureResource` return its
-   complete state. `Context` wraps it in the public `Texture` and returns it to
+   complete state. `Engine` wraps it in the public `Texture` and returns it to
    the application.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Context / Impl
+    participant C as Engine / Impl
     participant U as UploadManager
     participant T as TextureResource
     participant P as MemoryPool
@@ -100,7 +100,7 @@ the native image or view.
 
 **Contents and lifetime.** Image creation does not initialize texels or enqueue
 work. A copied `Texture` retains the same resource state; it does not copy image
-contents. `Context` must outlive every copy. The final owner must not release the
+contents. `Engine` must outlive every copy. The final owner must not release the
 image while submitted work still uses it;
 the [resource contract](../design/contracts/resources.md#frame-contexts-and-retirement)
 and [UC Return a resource memory range](release-memory-range.md) define those boundaries.
@@ -109,7 +109,7 @@ and [UC Return a resource memory range](release-memory-range.md) define those bo
 
 |                  | Point and condition                                                                    | Response                                                                                                                | Resulting state and next action                                              |
 |------------------|----------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
-| **Error&nbsp;1** | Step 1: moved-from `Context`                                                           | Checked fatal diagnostic                                                                                                | No recoverable result; use a live `Context`                                  |
+| **Error&nbsp;1** | Step 1: moved-from `Engine`                                                           | Checked fatal diagnostic                                                                                                | No recoverable result; use a live `Engine`                                  |
 | **Error&nbsp;2** | Step 2: completed-upload collection fails                                              | Propagate its error before validating or creating the image                                                             | No new image; follow the error category rather than retrying unconditionally |
 | **Error&nbsp;3** | Step 3: zero extent, undefined format, empty usage or usage without a view-capable bit | Return `InvalidArgument`                                                                                                | No native image is created; correct the description                          |
 | **Error&nbsp;4** | Step 3: unsupported usage bit or format/usage combination                              | Return `Unsupported`                                                                                                    | No native image is created; choose a supported usage or format               |
@@ -120,7 +120,7 @@ and [UC Return a resource memory range](release-memory-range.md) define those bo
 | **Error&nbsp;9** | Step 6: default view creation fails                                                    | [Destroy the image, then release its range](#error-8---cleanup-before-publication); do not adopt the failed view output | No `Texture` is published; the pool applies its empty-block policy           |
 
 **Errors 2–9** return `Result` errors, but not every category permits recovery
-on the same `Context`. **Error 1 is fatal.** Host allocation failure follows
+on the same `Engine`. **Error 1 is fatal.** Host allocation failure follows
 the [shared error policy](../design/contracts/resources.md#errors).
 
 ### Error 8 - Cleanup before publication
@@ -132,7 +132,7 @@ the resource may already own a range that was bound to the image. No public
 
 ```mermaid
 sequenceDiagram
-    participant C as Context / Impl
+    participant C as Engine / Impl
     participant T as TextureResource
     participant P as MemoryPool
     participant V as Vulkan device
@@ -172,7 +172,7 @@ but existing live ranges are not evicted.
 ## Related information
 
 - [UC Allocate a compatible device-memory range](allocate-memory-range.md) explains
-  how the image obtains an aligned range from the Context pool.
+  how the image obtains an aligned range from the Engine pool.
 - [UC Return a resource memory range](release-memory-range.md) explains destruction
   and range release after the last shared owner is gone.
 - [UC Create a buffer](create-buffer.md) shows the corresponding resource-creation

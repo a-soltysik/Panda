@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file
-/// Opaque completion of work submitted by one Context.
+/// Opaque completion of work submitted by one Engine.
 
 #include <cstdint>
 
@@ -12,9 +12,9 @@ namespace detail
 class SubmissionQueue;
 }
 
-/// @brief Copyable completion token; does not retain its Context or any resource.
-/// A default token represents no submitted work. Context outlives all uses of a
-/// token. Values are issued only after successful submission and survive Context moves.
+/// @brief Copyable completion token; does not retain its Engine or any resource.
+/// A default token represents no submitted work. Engine outlives all uses of a
+/// token. Values are issued only after successful submission and survive Engine moves.
 class CompletionPoint final
 {
 public:

@@ -242,7 +242,7 @@ auto SubmissionQueue::validatePoint(CompletionPoint point) const -> Result<void>
     if (!point.isValid() || point._contextId != _id || point._value > _committed)
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Completion point belongs to no work in this Context")};
+            makeError(ErrorCode::InvalidArgument, "Completion point belongs to no work in this Engine")};
     }
     return {};
 }

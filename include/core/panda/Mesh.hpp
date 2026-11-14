@@ -11,7 +11,7 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 class UploadBatch;
 
 namespace detail
@@ -89,7 +89,7 @@ struct MeshDesc
 };
 
 /// @brief Copyable owner of a mesh's vertex and optional index storage.
-/// Context outlives every copy. Copies retain the same mesh and do not synchronize
+/// Engine outlives every copy. Copies retain the same mesh and do not synchronize
 /// GPU access; no work is submitted by this handle. Vulkan buffers remain private.
 class Mesh final
 {
@@ -127,7 +127,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class Context;
+    friend class Engine;
     friend class detail::MeshResource;
     explicit Mesh(std::shared_ptr<detail::MeshResource> resource);
     std::shared_ptr<detail::MeshResource> _resource;

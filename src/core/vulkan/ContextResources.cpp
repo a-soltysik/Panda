@@ -6,8 +6,9 @@
 
 #include <memory>
 #include <optional>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
 
+#include "InstanceResources.hpp"
 #include "SubmissionQueue.hpp"
 #include "external/ExternalContext.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
@@ -67,13 +68,9 @@ auto ContextResources::presentation() noexcept -> std::unique_ptr<Presentation>&
     return _presentation;
 }
 
-auto ContextResources::info() noexcept -> ContextDeviceInfo&
+auto ContextResources::info() noexcept -> DeviceInfo&
 {
     return _info;
 }
 
-auto ContextResources::info() const noexcept -> const ContextDeviceInfo&
-{
-    return _info;
-}
 }

@@ -4,7 +4,7 @@
 #include <chrono>
 #include <cstddef>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Texture.hpp>
@@ -20,7 +20,7 @@ TEST(TextureSystem, UploadsTextureRegionsAndReleasesSharedImageOwnersWithoutVali
     auto records = panda::test::LogRecords {};
     const auto capture = panda::test::ProcessSinkRegistration {records};
     {
-        auto context = panda::Context::create({.applicationName = "Panda texture smoke", .enableValidation = true});
+        auto context = panda::Engine::create({.applicationName = "Panda texture smoke", .enableValidation = true});
         if (!context && context.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << context.error().message;

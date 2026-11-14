@@ -16,6 +16,6 @@ struct HostInfo
 };
 
 /// @brief Reads host hardware information supported by the current platform.
-/// @return Available host information. Does not create a Context or require a window.
+/// @return Available host information. Does not create an Engine or require a window.
 [[nodiscard]] auto getHostInfo() -> HostInfo;
 }

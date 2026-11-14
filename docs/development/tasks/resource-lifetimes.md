@@ -67,12 +67,12 @@ GPU retirement state: range lifetime follows ownership. The upload submission
 layer retains staging and destination owners until GPU completion, then releases
 them through normal RAII destruction. Pending-retirement accounting belongs to that layer.
 Current counters cover this manager's native allocations, committed blocks and
-live reserved ranges. Each Context owns one manager for Panda allocations.
+live reserved ranges. Each Engine owns one manager for Panda allocations.
 
 `ResourceManager::createBuffer` publishes a copyable `Buffer` only after native creation,
 memory-requirement selection, pooled/dedicated allocation and binding succeed.
 Shared resource state destroys `VkBuffer` before its `MemoryAllocation` releases
-the range. Context has stable heap-owned state; moving it preserves buffer owners.
+the range. Engine has stable heap-owned state; moving it preserves buffer owners.
 `ResourceManager::createTexture` rejects invalid dimensions, formats and unsupported usage,
 including usage that cannot support its required default image view. Before creating
 the optimal-tiled, single-mip, single-layer 2D image, it checks the requested format,
@@ -83,13 +83,13 @@ view spans the sole mip/layer and uses
 the format's color, depth or stencil aspect; combined depth/stencil formats use depth.
 Member order destroys `VkImageView` before `VkImage`, then `MemoryAllocation` releases
 its range. Vulkan device, buffer and image-view handles remain private to the backend.
-Queue submission and synchronization remain owned by Panda. Context destruction
+Queue submission and synchronization remain owned by Panda. Engine destruction
 drains submitted uploads before checking for external Buffer, Texture or Mesh owners
 and tearing down the device. Buffer memory intent selects device-local, upload or
 readback memory, without exposing CPU mapping.
 
 `ResourceManager::createMesh` builds one fixed vertex buffer and, when described, one index
-buffer from the same Context pool. `MeshDesc` uses a vertex count/byte stride and an
+buffer from the same Engine pool. `MeshDesc` uses a vertex count/byte stride and an
 optional index count/type; index width is 16 or 32 bits. Both buffers use device-local
 memory and transfer-destination usage. A failed second-buffer creation releases the
 first through RAII before returning an error. The copyable `Mesh` handle reports its
@@ -102,12 +102,12 @@ storage handle.
 Public Vulkan fields and window-surface signatures use Vulkan-Hpp flags and
 borrowed `vk` handles. `makeVulkanError` accepts `vk::Result`. Internally, surface
 queries and RAII adoption pass those handles directly; C types remain only at
-external ABI boundaries. Context initializes one stable physical-device wrapper
+external ABI boundaries. Engine initializes one stable physical-device wrapper
 before logical-device creation and shares it with its allocator.
 
-`CompletionPoint` identifies committed work without retaining Context or resources.
-Context owns one submission clock shared by presentation and uploads, initialized
-lazily without a window. Empty/foreign points are rejected; Context moves preserve
+`CompletionPoint` identifies committed work without retaining Engine or resources.
+Engine owns one submission clock shared by presentation and uploads, initialized
+lazily without a window. Empty/foreign points are rejected; Engine moves preserve
 issued points and unsubmitted batches. Failed submit does not consume a value,
 device loss stops new work, and outstanding values respect device limits. GPU
 completion and presentation completion are tracked separately.
@@ -121,13 +121,13 @@ and the format's texel-block byte size. Each `write` validates its destination,
 snapshots caller bytes and flushes noncoherent memory before queuing the copy.
 Ordered copies use conservative dependencies for earlier and later consumers.
 Success consumes the public batch and transfers command, staging-page and
-destination owners to Context's pending list. Only confirmed completion permits
+destination owners to Engine's pending list. Only confirmed completion permits
 reclamation, through ordinary RAII. A failed preparation or submission leaves the
 batch's writes and pages available for retry. Timeout and failed completion queries
 preserve pending owners. An in-flight page stays owned by its pending packet and
 cannot be reused early. Cancellation or confirmed completion releases the batch's
 staging pages through ordinary RAII and the memory pool. Pages are not cached across
-batches. Unsubmitted batch destruction cancels its writes. Context rejects live
+batches. Unsubmitted batch destruction cancels its writes. Engine rejects live
 unsubmitted batches and drains submitted packets before checking external buffer
 owners.
 
@@ -141,7 +141,7 @@ transfer destination to shader-read layout. Unwritten texels remain undefined,
 and a published sampled texture is immutable.
 
 Presentation checks clock capacity before acquire. Failed acquire retirement
-without a committed value rejects drain; current Context destruction treats
+without a committed value rejects drain; current Engine destruction treats
 unsafe teardown as fatal. After a cleanup submission commits, presentation retains
 the image index and completion until maintenance release succeeds; drain resumes
 that work after a timeout. Present-failure recovery also retains the pending

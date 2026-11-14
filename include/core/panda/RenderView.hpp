@@ -54,18 +54,18 @@ struct Material
     MaterialModel model {MaterialModel::Lit};
     /// Linear RGBA material color multiplied by base-color texture, draw tint and vertex color.
     glm::vec4 baseColor {1.0F, 1.0F, 1.0F, 1.0F};
-    /// Optional base-color map. If set, it must be uploaded RGBA8 sRGB, sampled, and from the rendered Context;
+    /// Optional base-color map. If set, it must be uploaded RGBA8 sRGB, sampled, and from the rendered Engine;
     /// the mesh must declare TexCoord0. An empty handle contributes white.
     Texture baseColorTexture;
     /// Optional Lit-only linear metallic-roughness map. If set, it must be uploaded RGBA8 UNORM, sampled, and from
-    /// the rendered Context; the mesh must declare TexCoord0. Blue scales metallic and green scales roughness.
+    /// the rendered Engine; the mesh must declare TexCoord0. Blue scales metallic and green scales roughness.
     /// An empty handle contributes white.
     Texture metallicRoughnessTexture;
-    /// Optional emissive map. If set, it must be uploaded RGBA8 sRGB, sampled, and from the rendered Context; the
+    /// Optional emissive map. If set, it must be uploaded RGBA8 sRGB, sampled, and from the rendered Engine; the
     /// mesh must declare TexCoord0. Its RGB multiplies emissive; alpha is ignored. An empty handle contributes white.
     Texture emissiveTexture;
     /// Optional Lit-only tangent-space normal map. If set, it must be uploaded RGBA8 UNORM, sampled, and from the
-    /// rendered Context. Without TexCoord0 or Tangent, the map is ignored with a warning.
+    /// rendered Engine. Without TexCoord0 or Tangent, the map is ignored with a warning.
     Texture normalTexture;
     /// Finite multiplier for tangent-space normal-map X and Y components.
     float normalScale {1.0F};
@@ -82,7 +82,7 @@ struct Material
     /// Linear alpha threshold used by Mask materials; must be in [0,1].
     float alphaCutoff {0.5F};
     /// Optional Lit-only linear occlusion map. If set, it must be uploaded RGBA8 UNORM, sampled, and from the rendered
-    /// Context; the mesh must declare TexCoord0. Its red channel scales ambient lighting. An empty handle contributes
+    /// Engine; the mesh must declare TexCoord0. Its red channel scales ambient lighting. An empty handle contributes
     /// white.
     Texture occlusionTexture;
     /// Finite multiplier for the occlusion map's effect, clamped to [0,1] when uploaded; defaults to full strength.

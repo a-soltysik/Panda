@@ -2,8 +2,8 @@
 
 #include <optional>
 #include <panda/Assert.hpp>
-#include <panda/Context.hpp>
 #include <panda/Cube.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/OffscreenTarget.hpp>
@@ -31,7 +31,7 @@ protected:
 
     void SetUp() override
     {
-        auto created = panda::Context::create({.applicationName = "Panda headless scene", .enableValidation = true});
+        auto created = panda::Engine::create({.applicationName = "Panda headless scene", .enableValidation = true});
         if (!created && created.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << created.error().message;
@@ -43,26 +43,26 @@ protected:
         renderTarget = std::move(*target);
     }
 
-    auto activeContext() -> panda::Context&
+    auto activeEngine() -> panda::Engine&
     {
         if (!context)
         {
-            panda::panic("Scene system test has no initialized Context");
+            panda::panic("Scene system test has no initialized Engine");
         }
         return *context;
     }
 
-    std::optional<panda::Context> context;
+    std::optional<panda::Engine> context;
     panda::OffscreenTarget renderTarget;
 };
 }
 
 TEST_F(SceneRenderingSystem, BuildsHeadlessSnapshotAndRetainsDeletedObjectMesh)
 {
-    auto scene = panda::scene::Scene::create(activeContext());
+    auto scene = panda::scene::Scene::create(activeEngine());
     ASSERT_TRUE(scene);
     selectCamera(*scene);
-    auto mesh = activeContext().getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = activeEngine().getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
     ASSERT_TRUE(mesh);
     const auto object = scene->createEntity({.name = {}, .transform = {.position = {2.0F, 0.0F, 0.0F}}});
     ASSERT_TRUE(object);
@@ -83,7 +83,7 @@ TEST_F(SceneRenderingSystem, BuildsHeadlessSnapshotAndRetainsDeletedObjectMesh)
 
 TEST_F(SceneRenderingSystem, StartsEmptyAndRendersExplicitlyCreatedCameraAndLight)
 {
-    auto scene = panda::scene::Scene::create(activeContext());
+    auto scene = panda::scene::Scene::create(activeEngine());
     ASSERT_TRUE(scene);
     EXPECT_FALSE(scene->createRenderView(16.0F / 9.0F));
 
@@ -120,7 +120,7 @@ TEST_F(SceneRenderingSystem, StartsEmptyAndRendersExplicitlyCreatedCameraAndLigh
 
 TEST(ScenePublicApi, ExercisesObjectIdentityAndOrthographicCameraApi)
 {
-    auto created = panda::Context::create({.applicationName = "Panda scene API", .enableValidation = false});
+    auto created = panda::Engine::create({.applicationName = "Panda scene API", .enableValidation = false});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
@@ -169,13 +169,13 @@ TEST(ScenePublicApi, ExercisesObjectIdentityAndOrthographicCameraApi)
     EXPECT_FALSE(scene->createEntity(panda::scene::ObjectId {99}));
 }
 
-TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherContextBeforeSubmission)
+TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherEngineBeforeSubmission)
 {
-    auto other = panda::Context::create();
+    auto other = panda::Engine::create();
     ASSERT_TRUE(other);
     auto mesh = other->getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
     ASSERT_TRUE(mesh);
-    auto scene = panda::scene::Scene::create(activeContext());
+    auto scene = panda::scene::Scene::create(activeEngine());
     ASSERT_TRUE(scene);
     selectCamera(*scene);
     const auto object = scene->createEntity();
@@ -184,16 +184,16 @@ TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherContextBeforeSubmission)
     const auto view = scene->createRenderView(1.0F);
     ASSERT_TRUE(view);
     ASSERT_TRUE(renderTarget.isValid());
-    const auto rendered = activeContext().getOffscreenRenderer().render(*view, renderTarget);
+    const auto rendered = activeEngine().getOffscreenRenderer().render(*view, renderTarget);
     ASSERT_FALSE(rendered);
     EXPECT_EQ(rendered.error().code, panda::ErrorCode::InvalidArgument);
     ASSERT_TRUE(scene->setVisible(*object, false));
     EXPECT_TRUE(scene->createRenderView(1.0F));
 }
 
-TEST_F(SceneRenderingSystem, RejectsTexturesFromAnotherContextBeforeSubmission)
+TEST_F(SceneRenderingSystem, RejectsTexturesFromAnotherEngineBeforeSubmission)
 {
-    auto other = panda::Context::create();
+    auto other = panda::Engine::create();
     ASSERT_TRUE(other);
     auto texture = other->getResourceManager().createTexture({
         .extent = vk::Extent2D {1, 1},
@@ -202,12 +202,12 @@ TEST_F(SceneRenderingSystem, RejectsTexturesFromAnotherContextBeforeSubmission)
     });
     ASSERT_TRUE(texture);
 
-    auto scene = panda::scene::Scene::create(activeContext());
+    auto scene = panda::scene::Scene::create(activeEngine());
     ASSERT_TRUE(scene);
     selectCamera(*scene);
     const auto object = scene->createEntity();
     ASSERT_TRUE(object);
-    auto mesh = activeContext().getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = activeEngine().getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
     ASSERT_TRUE(mesh);
     ASSERT_TRUE(scene->setMesh(*object, panda::scene::MeshInstance {.mesh = *mesh}));
     auto view = scene->createRenderView(1.0F);
@@ -215,19 +215,19 @@ TEST_F(SceneRenderingSystem, RejectsTexturesFromAnotherContextBeforeSubmission)
     view->meshes.front().material.baseColorTexture = *texture;
 
     ASSERT_TRUE(renderTarget.isValid());
-    const auto rendered = activeContext().getOffscreenRenderer().render(*view, renderTarget);
+    const auto rendered = activeEngine().getOffscreenRenderer().render(*view, renderTarget);
     ASSERT_FALSE(rendered);
     EXPECT_EQ(rendered.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST_F(SceneRenderingSystem, RejectsMovedFromSceneOperationsAndPreservesMovedIdentity)
 {
-    auto savedContext = std::move(activeContext());
-    const auto invalidContextScene = panda::scene::Scene::create(activeContext());
-    context.emplace(std::move(savedContext));
-    EXPECT_FALSE(invalidContextScene);
+    auto savedEngine = std::move(activeEngine());
+    const auto invalidEngineScene = panda::scene::Scene::create(activeEngine());
+    context.emplace(std::move(savedEngine));
+    EXPECT_FALSE(invalidEngineScene);
 
-    auto scene = panda::scene::Scene::create(activeContext());
+    auto scene = panda::scene::Scene::create(activeEngine());
     ASSERT_TRUE(scene);
     const auto entity = scene->createEntity();
     ASSERT_TRUE(entity);
@@ -269,7 +269,7 @@ TEST_F(SceneRenderingSystem, RejectsMovedFromSceneOperationsAndPreservesMovedIde
     EXPECT_EQ(*entity, *entity);
     EXPECT_EQ(panda::scene::Entity {}, panda::scene::Entity {});
 
-    auto otherScene = panda::scene::Scene::create(activeContext());
+    auto otherScene = panda::scene::Scene::create(activeEngine());
     ASSERT_TRUE(otherScene);
     const auto otherEntity = otherScene->createEntity();
     ASSERT_TRUE(otherEntity);
@@ -299,7 +299,7 @@ TEST_F(SceneRenderingSystem, RejectsMovedFromSceneOperationsAndPreservesMovedIde
     EXPECT_FALSE(scene->setActiveCamera(*entity));
     EXPECT_FALSE(scene->createRenderView(1.0F));
 
-    auto destination = panda::scene::Scene::create(activeContext());
+    auto destination = panda::scene::Scene::create(activeEngine());
     ASSERT_TRUE(destination);
     *destination = std::move(moved);
     EXPECT_TRUE(destination->isAlive(*entity));

@@ -36,7 +36,7 @@ class SharedCudaBufferState;
 }
 
 /// @brief Vulkan buffer with a retained CUDA memory import and mapped allocation.
-/// Context outlives every copy. Available paired timeline semaphores are also
+/// Engine outlives every copy. Available paired timeline semaphores are also
 /// imported and retained.
 class SharedCudaBuffer final
 {

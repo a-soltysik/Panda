@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file
-/// Context-owned renderer for a window surface.
+/// Engine-owned renderer for a window surface.
 
 #include <panda/Error.hpp>
 #include <panda/FrameResult.hpp>
@@ -10,11 +10,11 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 
-/// @brief Renders application views to the window associated with this Context.
-/// This facade is available only when the Context has a window surface and is
-/// borrowed from that Context.
+/// @brief Renders application views to the window associated with this Engine.
+/// This facade is available only when the Engine has a window surface and is
+/// borrowed from that Engine.
 class WindowRenderer final
 {
 public:
@@ -32,17 +32,17 @@ public:
 
     /// @brief Renders a view once, presents it, and copies the same color output to a target.
     /// @param view Transient render data used for both presentation and capture.
-    /// @param target Single-sample RGBA8 sRGB target created by this Context; its extent may differ from the window.
+    /// @param target Single-sample RGBA8 sRGB target created by this Engine; its extent may differ from the window.
     /// @return Checked frame result or a validation/backend/window error. The target
     /// and view resources are retained through GPU completion.
     [[nodiscard]] auto renderWithCapture(const RenderView& view, const OffscreenTarget& target) const
         -> Result<FrameResult>;
 
 private:
-    friend class Context;
+    friend class Engine;
 
-    explicit WindowRenderer(const Context& context) noexcept;
+    explicit WindowRenderer(const Engine& context) noexcept;
 
-    const Context* _context;
+    const Engine* _engine;
 };
 }

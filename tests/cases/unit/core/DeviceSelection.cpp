@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <panda/DeviceInfo.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <span>
@@ -366,7 +367,7 @@ TEST(DeviceSelection, SelectsExtSwapchainMaintenanceWhenKhrVariantIsUnavailable)
         panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = false, .hasExtMaintenance = true});
 
     ASSERT_TRUE(selected.has_value());
-    EXPECT_EQ(selected->info.swapchainMaintenance, panda::ContextDeviceInfo::SwapchainMaintenance::Ext);
+    EXPECT_EQ(selected->info.swapchainMaintenance, panda::DeviceInfo::SwapchainMaintenance::Ext);
 }
 
 TEST(DeviceSelection, SelectsSeparateGraphicsAndPresentQueueFamilies)

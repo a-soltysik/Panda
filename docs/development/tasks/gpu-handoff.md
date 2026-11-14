@@ -77,7 +77,7 @@ semaphore export; this does not remove the capability checks or Linux implementa
   ran with real CUDA on an RTX 4070 Ti (driver 617.14). Each pass uploads a distinct
   four-byte Vulkan tag, reverses its bytes using stream-ordered CUDA device copies,
   reacquires Vulkan ownership and copies the result into a separate Vulkan
-  readback slot on the Context queue. Both passes are queued before the final
+  readback slot on the Engine queue. Both passes are queued before the final
   fence wait and host inspection. Both results match; captured validation logs
   contain no errors. A separate run requested synchronization validation with
   `VK_VALIDATION_VALIDATE_SYNC=true`, as described by the

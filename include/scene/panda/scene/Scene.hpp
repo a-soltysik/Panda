@@ -19,7 +19,7 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 }
 
 namespace panda::scene
@@ -51,7 +51,7 @@ enum class ReparentMode : std::uint8_t
 /// @brief Mesh retained by a scene object; uploading remains the application's responsibility.
 struct MeshInstance
 {
-    /// Standard-format mesh from the scene's Context.
+    /// Standard-format mesh from the scene's Engine.
     Mesh mesh;
     /// Nonnegative finite linear RGBA tint.
     glm::vec4 tint {1.0F};
@@ -126,7 +126,7 @@ struct SpotLight
 using Light = std::variant<DirectionalLight, PointLight, SpotLight>;
 
 /// @brief Move-only owner of scene objects, transform hierarchy and retained mesh associations.
-/// A Scene borrows its Context, which must outlive it. Entities do not retain or
+/// A Scene borrows its Engine, which must outlive it. Entities do not retain or
 /// dereference a Scene and are resolved only through a live Scene.
 /// Calls must be serialized. Object operations reject stale and foreign handles
 /// with InvalidArgument. Failed edits leave logical state unchanged; world queries
@@ -135,10 +135,10 @@ using Light = std::variant<DirectionalLight, PointLight, SpotLight>;
 class Scene final
 {
 public:
-    /// @brief Creates an empty Scene associated with a live Context.
-    /// @param context Context that must outlive the returned Scene and remain at the same address.
-    /// @return An empty scene, or InvalidArgument if the Context is moved-from.
-    [[nodiscard]] static auto create(Context& context) -> Result<Scene>;
+    /// @brief Creates an empty Scene associated with a live Engine.
+    /// @param context Engine that must outlive the returned Scene and remain at the same address.
+    /// @return An empty scene, or InvalidArgument if the Engine is moved-from.
+    [[nodiscard]] static auto create(Engine& context) -> Result<Scene>;
 
     Scene(const Scene&) = delete;
     auto operator=(const Scene&) -> Scene& = delete;
@@ -228,15 +228,15 @@ public:
     /// @param aspectRatio Finite positive framebuffer width divided by height, supplied each frame.
     /// @return A snapshot retaining its meshes, or InvalidArgument for a missing camera or invalid pose.
     /// Visible lights retain their optional shadow settings in the returned render snapshot.
-    /// Context::render validates renderer input and the configured light budget.
+    /// Engine::render validates renderer input and the configured light budget.
     /// Camera/light poses require positive uniform world scale without shear.
-    /// Calls are serialized with scene mutation and Context operations; no GPU work is submitted.
+    /// Calls are serialized with scene mutation and Engine operations; no GPU work is submitted.
     [[nodiscard]] auto createRenderView(float aspectRatio) -> Result<RenderView>;
 
 private:
-    explicit Scene(Context& context, std::unique_ptr<detail::SceneState> state) noexcept;
+    explicit Scene(Engine& context, std::unique_ptr<detail::SceneState> state) noexcept;
 
-    Context* _context {nullptr};
+    Engine* _engine {nullptr};
     std::unique_ptr<detail::SceneState> _state;
 };
 }

@@ -262,7 +262,7 @@ auto UploadManager::validateWrite(const std::shared_ptr<BufferResource>& destina
     if (!destination || !destination->belongsTo(_pool) || size == 0)
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Upload needs a nonempty buffer and bytes from this Context")};
+            makeError(ErrorCode::InvalidArgument, "Upload needs a nonempty buffer and bytes from this Engine")};
     }
     if (destination->isExternallyOwned())
     {
@@ -283,8 +283,8 @@ auto UploadManager::validateTextureWrite(const std::shared_ptr<TextureResource>&
 {
     if (!destination || !destination->belongsTo(_pool) || size == 0)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument,
-                                          "Texture upload needs nonempty data and a texture from this Context")};
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Texture upload needs nonempty data and a texture from this Engine")};
     }
     if (!(destination->getUsage() & vk::ImageUsageFlagBits::eTransferDst) ||
         !(destination->getUsage() & vk::ImageUsageFlagBits::eSampled))

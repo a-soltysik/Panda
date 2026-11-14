@@ -40,7 +40,7 @@ struct TextureUploadLayout
     std::uint64_t bufferOffsetAlignment;
 };
 
-// Context owns this service and outlives its unsubmitted batches. Pending packets
+// Engine owns this service and outlives its unsubmitted batches. Pending packets
 // own all GPU uses; no allocation or fallible bookkeeping occurs after submit succeeds.
 class UploadManager final
 {

@@ -15,7 +15,7 @@ reader would otherwise have to infer from code.
 | Runnable examples      | Current application usage                                           |
 | Task cards and plan    | Delivery evidence, task status and acceptance                       |
 
-A contract is an authoritative rule, such as Context outliving its resources or
+A contract is an authoritative rule, such as Engine outliving its resources or
 submission not implying completion. Link its owning section from the relevant step.
 Explain the local consequence without copying the full rule. If a flow description
 moves from a contract to a scenario, replace it with a link and retain shared rules
@@ -66,7 +66,7 @@ Start from the [template](../use-cases/template.md) and compare the
   compact role map clarifies responsibilities beyond the goal, flow and diagram.
   Omit it when it repeats information already clear there.
 - Preconditions are optional. Include only short statements of state that must
-  already hold before the use case starts, such as a live `Context` before buffer
+  already hold before the use case starts, such as a live `Engine` before buffer
   creation. If present, use a numbered list. Put checked inputs and capabilities
   evaluated during the flow in its steps and variants; put later lifetime duties
   with ownership or outcomes.

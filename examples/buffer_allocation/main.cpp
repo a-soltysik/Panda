@@ -8,7 +8,7 @@
 #include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Logger.hpp>
 #include <panda/UploadBatch.hpp>
 #include <span>
@@ -21,7 +21,7 @@ auto main() -> int
     {
         std::ignore = panda::log::Logger::instance().addSink(std::make_unique<panda::log::StreamSink>(std::clog));
         const auto context = panda::expect(
-            panda::Context::create({.applicationName = "Panda buffer allocation", .enableValidation = true}),
+            panda::Engine::create({.applicationName = "Panda buffer allocation", .enableValidation = true}),
             "Create the Vulkan context");
         const auto buffer =
             panda::expect(context.getResourceManager().createBuffer({.size = 4096,

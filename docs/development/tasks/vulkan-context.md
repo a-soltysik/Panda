@@ -9,8 +9,8 @@ acquire/present/resize/minimize and bounded failure states.
 
 Non-goal: No CUDA, scene or general render graph.
 
-Interface: `Context::create` creates a context without a surface;
-`Context::createWithSurface` explicitly creates one with a borrowed window surface.
+Interface: `Engine::create` creates a context without a surface;
+`Engine::createWithSurface` explicitly creates one with a borrowed window surface.
 Both return the same checked context owner and use the shared `Result<T>` error
 contract. The surface and native window outlive their context.
 
@@ -44,7 +44,7 @@ Learning: Trace acquire, submission completion and presentation lifetime separat
   three noncoherent memory variants were skipped because the device did not expose
   that memory type.
 - Existing Windows Vulkan validation smoke presents, resizes, suspends/restores and
-  destroys a moved Context on an NVIDIA GeForce RTX 4070 Ti. WSL system tests are
+  destroys a moved Engine on an NVIDIA GeForce RTX 4070 Ti. WSL system tests are
   Linux lifecycle evidence, not proof of hardware-GPU behavior.
 - No new RenderDoc capture has been made. Previously observed capture-only
   `VUID-vkCmdDraw-None-09600` and

@@ -9,7 +9,8 @@
 #include <iostream>
 #include <memory>
 #include <panda/Assert.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/UploadBatch.hpp>
@@ -28,7 +29,7 @@ namespace
 {
 constexpr auto handoffPassCount = std::uint32_t {3};
 
-void runHandoffPass(panda::Context& context, panda::cuda::SharedCudaBuffer& sharedBuffer, std::uint32_t pass)
+void runHandoffPass(panda::Engine& context, panda::cuda::SharedCudaBuffer& sharedBuffer, std::uint32_t pass)
 {
     const auto values = std::array {pass};
     auto uploadBatch = panda::expect(context.getSubmissionManager().createUploadBatch(), "Create the upload batch");
@@ -61,8 +62,8 @@ void runHandoffPass(panda::Context& context, panda::cuda::SharedCudaBuffer& shar
 void runSharedBuffer()
 {
     auto context = panda::expect(
-        panda::Context::create({.applicationName = "Panda CUDA connection",
-                                .externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Required}),
+        panda::Engine::create({.applicationName = "Panda CUDA connection",
+                               .externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required}),
         "Create a context with external-buffer support");
     auto session = panda::expect(panda::cuda::CudaSession::create(context), "Create a matching CUDA session");
     auto buffer =

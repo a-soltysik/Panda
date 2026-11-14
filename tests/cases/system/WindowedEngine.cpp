@@ -16,8 +16,9 @@
 #include <panda/Assert.hpp>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
 #include <panda/Cube.hpp>
+#include <panda/DeviceInfo.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/FrameResult.hpp>
 #include <panda/Logger.hpp>
@@ -120,7 +121,7 @@ private:
     bool _returnNull;
 };
 
-void verifyCompletion(const panda::Context& context, panda::CompletionPoint point)
+void verifyCompletion(const panda::Engine& context, panda::CompletionPoint point)
 {
     EXPECT_TRUE(point.isValid());
     const auto completed = context.getSubmissionManager().wait(point, std::chrono::seconds {10});
@@ -131,17 +132,17 @@ void verifyCompletion(const panda::Context& context, panda::CompletionPoint poin
     EXPECT_TRUE(*polled);
 }
 
-auto windowRenderer(const panda::Context& context) -> const panda::WindowRenderer&
+auto windowRenderer(const panda::Engine& context) -> const panda::WindowRenderer&
 {
     return panda::expect(context.getWindowRenderer(), "Window context has no renderer").get();
 }
 
-auto createTestTarget(const panda::Context& context) -> panda::Result<panda::OffscreenTarget>
+auto createTestTarget(const panda::Engine& context) -> panda::Result<panda::OffscreenTarget>
 {
     return context.getResourceManager().createOffscreenTarget({.extent = renderExtent});
 }
 
-void expectInvalidLight(const panda::Context& context, const panda::OffscreenTarget& target, const panda::Light& light)
+void expectInvalidLight(const panda::Engine& context, const panda::OffscreenTarget& target, const panda::Light& light)
 {
     auto view = panda::RenderView {};
     view.lights.push_back(light);
@@ -150,7 +151,7 @@ void expectInvalidLight(const panda::Context& context, const panda::OffscreenTar
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-void expectInvalidPointLightData(const panda::Context& context, const panda::OffscreenTarget& target)
+void expectInvalidPointLightData(const panda::Engine& context, const panda::OffscreenTarget& target)
 {
     const auto infinity = std::numeric_limits<float>::infinity();
     const auto nan = std::numeric_limits<float>::quiet_NaN();
@@ -195,7 +196,7 @@ void expectInvalidPointLightData(const panda::Context& context, const panda::Off
     expectInvalidLight(context, target, panda::PointLight {.range = 0.0F, .shadow = {}});
 }
 
-void expectInvalidSpotLightData(const panda::Context& context, const panda::OffscreenTarget& target)
+void expectInvalidSpotLightData(const panda::Engine& context, const panda::OffscreenTarget& target)
 {
     const auto infinity = std::numeric_limits<float>::infinity();
     const auto nan = std::numeric_limits<float>::quiet_NaN();
@@ -243,7 +244,7 @@ struct SceneMeshes
     panda::Texture normalMap;
 };
 
-auto createCompactTriangle(const panda::Context& context) -> panda::Result<panda::Mesh>
+auto createCompactTriangle(const panda::Engine& context) -> panda::Result<panda::Mesh>
 {
     return context.getResourceManager().createMesh({
         .vertexCount = 3,
@@ -258,7 +259,7 @@ auto createCompactTriangle(const panda::Context& context) -> panda::Result<panda
     });
 }
 
-auto createSceneTexture(const panda::Context& context, vk::Format format) -> panda::Result<panda::Texture>
+auto createSceneTexture(const panda::Engine& context, vk::Format format) -> panda::Result<panda::Texture>
 {
     return context.getResourceManager().createTexture({
         .extent = vk::Extent2D {2, 2},
@@ -267,7 +268,7 @@ auto createSceneTexture(const panda::Context& context, vk::Format format) -> pan
     });
 }
 
-void expectInvalidEmissiveMap(const panda::Context& context,
+void expectInvalidEmissiveMap(const panda::Engine& context,
                               const panda::OffscreenTarget& target,
                               const panda::RenderCamera& camera,
                               const panda::Mesh& mesh,
@@ -283,7 +284,7 @@ void expectInvalidEmissiveMap(const panda::Context& context,
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-void expectInvalidNormalMap(const panda::Context& context,
+void expectInvalidNormalMap(const panda::Engine& context,
                             const panda::OffscreenTarget& target,
                             const panda::RenderCamera& camera,
                             const panda::Mesh& mesh,
@@ -300,7 +301,7 @@ void expectInvalidNormalMap(const panda::Context& context,
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-void expectInvalidOcclusionMap(const panda::Context& context,
+void expectInvalidOcclusionMap(const panda::Engine& context,
                                const panda::OffscreenTarget& target,
                                const panda::RenderCamera& camera,
                                const panda::Mesh& mesh,
@@ -317,7 +318,7 @@ void expectInvalidOcclusionMap(const panda::Context& context,
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-auto finishSceneMeshUpload(const panda::Context& context, panda::UploadBatch& batch) -> panda::Result<void>
+auto finishSceneMeshUpload(const panda::Engine& context, panda::UploadBatch& batch) -> panda::Result<void>
 {
     const auto completion = batch.submit();
     if (!completion)
@@ -402,7 +403,7 @@ auto writeSceneTextureMaps(panda::UploadBatch& batch, const SceneMeshes& meshes)
     return writeSceneNormalMap(batch, meshes.normalMap);
 }
 
-auto uploadSceneMeshes(const panda::Context& context,
+auto uploadSceneMeshes(const panda::Engine& context,
                        const SceneMeshes& meshes,
                        const panda::Geometry& cubeGeometry,
                        const panda::Geometry& groundGeometry) -> panda::Result<void>
@@ -434,7 +435,7 @@ auto uploadSceneMeshes(const panda::Context& context,
     return finishSceneMeshUpload(context, *batch);
 }
 
-auto createUploadedCubeGroundAndCompactTriangle(const panda::Context& context) -> panda::Result<SceneMeshes>
+auto createUploadedCubeGroundAndCompactTriangle(const panda::Engine& context) -> panda::Result<SceneMeshes>
 {
     const auto cubeGeometry = panda::createCubeGeometry();
     const auto groundGeometry = panda::createPlaneGeometry();
@@ -507,7 +508,7 @@ auto normalMapFallbackVertices(bool hasUv) -> std::span<const float>
     return hasUv ? std::span<const float> {withUv} : std::span<const float> {withoutUv};
 }
 
-auto createNormalMapFallbackMesh(const panda::Context& context, bool hasUv) -> panda::Result<panda::Mesh>
+auto createNormalMapFallbackMesh(const panda::Engine& context, bool hasUv) -> panda::Result<panda::Mesh>
 {
     auto attributes = std::vector<panda::VertexAttribute> {
         {.semantic = panda::VertexAttributeSemantic::Position, .format = panda::VertexAttributeFormat::Float3},
@@ -648,7 +649,7 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, const SceneMeshes& m
 
 }
 
-TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
+TEST(WindowedEngineSystem, CreatesValidatedSurfaceAndDevice)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda Vulkan window smoke");
     if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
@@ -658,7 +659,7 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
     ASSERT_TRUE(window.has_value());
     auto surface = SuspensibleSurface {*window};
     auto context =
-        panda::Context::createWithSurface(surface, {.applicationName = "Panda window smoke", .enableValidation = true});
+        panda::Engine::createWithSurface(surface, {.applicationName = "Panda window smoke", .enableValidation = true});
     if (!context && context.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << context.error().message;
@@ -666,57 +667,57 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
     ASSERT_TRUE(context.has_value()) << context.error().message;
     const auto beforeMove = windowRenderer(*context).render(panda::RenderView {});
     ASSERT_TRUE(beforeMove);
-    auto movedContext = std::move(*context);
-    verifyCompletion(movedContext, beforeMove->completion);
+    auto movedEngine = std::move(*context);
+    verifyCompletion(movedEngine, beforeMove->completion);
     EXPECT_FALSE(context->isValid());
-    EXPECT_NE(movedContext.getDeviceInfo().swapchainMaintenance, panda::ContextDeviceInfo::SwapchainMaintenance::None);
+    EXPECT_NE(movedEngine.getDeviceInfo().swapchainMaintenance, panda::DeviceInfo::SwapchainMaintenance::None);
     for (auto index = 0; index < 3; ++index)
     {
         ASSERT_TRUE(window->processInput().has_value());
-        const auto frame = windowRenderer(movedContext).render(panda::RenderView {});
+        const auto frame = windowRenderer(movedEngine).render(panda::RenderView {});
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
         EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
-        verifyCompletion(movedContext, frame->completion);
+        verifyCompletion(movedEngine, frame->completion);
     }
     ASSERT_TRUE(window->setSize({240, 180}).has_value());
     ASSERT_TRUE(window->processInput().has_value());
-    const auto resized = windowRenderer(movedContext).render(panda::RenderView {});
+    const auto resized = windowRenderer(movedEngine).render(panda::RenderView {});
     ASSERT_TRUE(resized.has_value()) << resized.error().message;
     EXPECT_EQ(resized->status, panda::FrameResult::Status::Presented);
     EXPECT_TRUE(resized->completion.isValid());
 
-    auto captureTarget = createTestTarget(movedContext);
+    auto captureTarget = createTestTarget(movedEngine);
     ASSERT_TRUE(captureTarget.has_value()) << captureTarget.error().message;
     const auto emptyTargetCapture =
-        windowRenderer(movedContext).renderWithCapture(panda::RenderView {}, panda::OffscreenTarget {});
+        windowRenderer(movedEngine).renderWithCapture(panda::RenderView {}, panda::OffscreenTarget {});
     ASSERT_FALSE(emptyTargetCapture);
     EXPECT_EQ(emptyTargetCapture.error().code, panda::ErrorCode::InvalidArgument);
     auto invalidCaptureView = panda::RenderView {};
     invalidCaptureView.camera.viewProjection = glm::mat4 {0.0F};
-    const auto invalidViewCapture = windowRenderer(movedContext).renderWithCapture(invalidCaptureView, *captureTarget);
+    const auto invalidViewCapture = windowRenderer(movedEngine).renderWithCapture(invalidCaptureView, *captureTarget);
     ASSERT_FALSE(invalidViewCapture);
     EXPECT_EQ(invalidViewCapture.error().code, panda::ErrorCode::InvalidArgument);
 
     // Native iconification is asynchronous and may be ignored by a window manager.
     // The surface reports the same zero framebuffer state deterministically.
     surface.setSuspended(true);
-    const auto suspended = windowRenderer(movedContext).render(panda::RenderView {});
+    const auto suspended = windowRenderer(movedEngine).render(panda::RenderView {});
     ASSERT_TRUE(suspended.has_value());
     EXPECT_EQ(suspended->status, panda::FrameResult::Status::Suspended);
     EXPECT_FALSE(suspended->completion.isValid());
-    const auto suspendedCapture = windowRenderer(movedContext).renderWithCapture(panda::RenderView {}, *captureTarget);
+    const auto suspendedCapture = windowRenderer(movedEngine).renderWithCapture(panda::RenderView {}, *captureTarget);
     ASSERT_TRUE(suspendedCapture.has_value()) << suspendedCapture.error().message;
     EXPECT_EQ(suspendedCapture->status, panda::FrameResult::Status::Suspended);
     EXPECT_FALSE(suspendedCapture->completion.isValid());
 
     surface.setSuspended(false);
-    const auto restored = windowRenderer(movedContext).render(panda::RenderView {});
+    const auto restored = windowRenderer(movedEngine).render(panda::RenderView {});
     ASSERT_TRUE(restored.has_value()) << restored.error().message;
     EXPECT_EQ(restored->status, panda::FrameResult::Status::Presented);
     EXPECT_TRUE(restored->completion.isValid());
 }
 
-TEST(WindowedContextSystem, CapturesPresentedViewIntoOffscreenTarget)
+TEST(WindowedEngineSystem, CapturesPresentedViewIntoOffscreenTarget)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda capture smoke");
     if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
@@ -725,8 +726,7 @@ TEST(WindowedContextSystem, CapturesPresentedViewIntoOffscreenTarget)
     }
     ASSERT_TRUE(window.has_value());
     auto created =
-        panda::Context::createWithSurface(*window,
-                                          {.applicationName = "Panda capture smoke", .enableValidation = true});
+        panda::Engine::createWithSurface(*window, {.applicationName = "Panda capture smoke", .enableValidation = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
@@ -771,7 +771,7 @@ TEST(WindowedContextSystem, CapturesPresentedViewIntoOffscreenTarget)
 
 TEST(HeadlessRendererSystem, RendersSixtyFiveDirectionalLightsWithinConfiguredBudget)
 {
-    auto created = panda::Context::create(
+    auto created = panda::Engine::create(
         {.applicationName = "Panda multi-light validation", .enableValidation = true, .maxLights = 65});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
@@ -799,8 +799,7 @@ TEST(HeadlessRendererSystem, RendersSixtyFiveDirectionalLightsWithinConfiguredBu
 
 TEST(HeadlessRendererSystem, RendersValidPointAndSpotLights)
 {
-    auto created =
-        panda::Context::create({.applicationName = "Panda local-light validation", .enableValidation = true});
+    auto created = panda::Engine::create({.applicationName = "Panda local-light validation", .enableValidation = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
@@ -835,8 +834,7 @@ TEST(HeadlessRendererSystem, RendersValidPointAndSpotLights)
 
 TEST(HeadlessRendererSystem, RejectsInvalidPointAndSpotLightData)
 {
-    auto created =
-        panda::Context::create({.applicationName = "Panda local-light validation", .enableValidation = true});
+    auto created = panda::Engine::create({.applicationName = "Panda local-light validation", .enableValidation = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
@@ -852,7 +850,7 @@ TEST(HeadlessRendererSystem, RejectsInvalidPointAndSpotLightData)
 
 TEST(HeadlessRendererSystem, RendersUnlitMeshWithZeroLightBudget)
 {
-    auto created = panda::Context::create(
+    auto created = panda::Engine::create(
         {.applicationName = "Panda unlit zero-light rendering", .enableValidation = true, .maxLights = 0});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
@@ -887,7 +885,7 @@ TEST(HeadlessRendererSystem, RendersUnlitMeshWithZeroLightBudget)
     EXPECT_EQ(overBudget.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
-TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
+TEST(WindowedEngineSystem, ReportsSurfaceCreationFailures)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda surface error smoke");
     if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
@@ -896,7 +894,7 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     }
     ASSERT_TRUE(window.has_value());
     auto failing = FailingSurface {*window, false};
-    const auto failed = panda::Context::createWithSurface(failing);
+    const auto failed = panda::Engine::createWithSurface(failing);
     ASSERT_FALSE(failed.has_value());
     EXPECT_EQ(failed.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(failed.error().native.has_value());
@@ -905,7 +903,7 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     EXPECT_EQ(native.code, 17);
 
     auto nullSurface = FailingSurface {*window, true};
-    const auto empty = panda::Context::createWithSurface(nullSurface);
+    const auto empty = panda::Engine::createWithSurface(nullSurface);
     ASSERT_FALSE(empty.has_value());
     EXPECT_EQ(empty.error().code, panda::ErrorCode::BackendFailure);
     EXPECT_NE(empty.error().message.find("null Vulkan surface"), std::string::npos);
@@ -917,7 +915,7 @@ TEST(HeadlessRendererSystem, RetainsTextureAfterApplicationReleasesItUntilFrameC
     auto capture = panda::test::ProcessSinkRegistration {records};
     {
         auto created =
-            panda::Context::create({.applicationName = "Panda texture retention smoke", .enableValidation = true});
+            panda::Engine::create({.applicationName = "Panda texture retention smoke", .enableValidation = true});
         if (!created && created.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << created.error().message;
@@ -979,7 +977,7 @@ TEST(HeadlessRendererSystem, RendersNormalMapsAndFallsBackWithoutUvOrTangents)
 {
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};
-    auto created = panda::Context::create({.applicationName = "Panda normal map smoke", .enableValidation = true});
+    auto created = panda::Engine::create({.applicationName = "Panda normal map smoke", .enableValidation = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
@@ -1046,7 +1044,7 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};
     {
-        auto created = panda::Context::create({.applicationName = "Panda mesh render smoke", .enableValidation = true});
+        auto created = panda::Engine::create({.applicationName = "Panda mesh render smoke", .enableValidation = true});
         if (!created && created.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << created.error().message;

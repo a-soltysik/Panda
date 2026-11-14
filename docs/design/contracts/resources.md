@@ -16,8 +16,8 @@ Implementation and device evidence follow [the plan](../../development/PLAN.md).
 - Do not expose long-lived raw pointers into relocatable component storage.
 
 The normal application owner establishes a clear RAII shutdown order. Callers release
-their Panda handles before Context destruction; they do not manually destroy Vulkan
-objects in dependency order. Context destruction drains submitted work and may wait
+their Panda handles before Engine destruction; they do not manually destroy Vulkan
+objects in dependency order. Engine destruction drains submitted work and may wait
 for it; per-object destruction must not turn into a global device idle.
 
 ## Lifetime is not synchronization
@@ -145,14 +145,14 @@ their public headers; entries without public declarations remain planned contrac
 
 | Type/operation | Semantics |
 | --- | --- |
-| `Context::create(ContextOptions) -> Result<Context>` | Move-only owner with stable, heap-owned internal state; operations on one context are serialized |
-| `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
-| `Context::getDeviceInfo() -> ContextDeviceInfo` | Copies selected-device information including external-memory and optional timeline-semaphore export support |
-| `Context::getResourceManager() -> ResourceManager&` | Borrows creation operations for buffers, textures, meshes and offscreen targets |
-| `Context::getSubmissionManager() -> SubmissionManager&` | Borrows upload-batch creation and completion observation operations |
-| `Context::getOffscreenRenderer() -> OffscreenRenderer&` | Borrows the renderer for explicit target-based rendering and pixel readback |
-| `Context::getWindowRenderer() -> optional<reference_wrapper<const WindowRenderer>>` | Exposes window rendering only for a Context created with a surface |
-| `Context::getExternalBufferManager() -> ExternalBufferManager&` | Borrows the Context-owned object for external-buffer creation and GPU ownership handoffs |
+| `Engine::create(EngineOptions) -> Result<Engine>` | Move-only owner with stable, heap-owned internal state; operations on one context are serialized |
+| `Engine::createWithSurface(WindowSurface&, EngineOptions) -> Result<Engine>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
+| `Engine::getDeviceInfo() -> DeviceInfo` | Copies selected-device information including external-memory and optional timeline-semaphore export support |
+| `Engine::getResourceManager() -> ResourceManager&` | Borrows creation operations for buffers, textures, meshes and offscreen targets |
+| `Engine::getSubmissionManager() -> SubmissionManager&` | Borrows upload-batch creation and completion observation operations |
+| `Engine::getOffscreenRenderer() -> OffscreenRenderer&` | Borrows the renderer for explicit target-based rendering and pixel readback |
+| `Engine::getWindowRenderer() -> optional<reference_wrapper<const WindowRenderer>>` | Exposes window rendering only for an Engine created with a surface |
+| `Engine::getExternalBufferManager() -> ExternalBufferManager&` | Borrows the Engine-owned object for external-buffer creation and GPU ownership handoffs |
 | `Buffer`, `Texture`, `Mesh`, `OffscreenTarget` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
 | `ResourceManager::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
 | `ExternalBufferManager::createBuffer(BufferDesc) -> Result<ExternalBuffer>` | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle |
@@ -177,28 +177,28 @@ handles must be detectable and rejected where a material is required; their publ
 creation and access API will be designed during implementation. See the
 [material contract](rendering.md#programs-materials-and-application-resources).
 
-`ContextDeviceInfo::externalBufferExportEnabled` is `true` only when the Context
+`DeviceInfo::externalBufferExportEnabled` is `true` only when the Engine
 enabled Vulkan external-memory export. It does not guarantee every requested usage
 can be exported; `ExternalBufferManager::createBuffer` checks the actual usage.
-`externalSemaphoreExportEnabled` separately reports whether the Context enabled
+`externalSemaphoreExportEnabled` separately reports whether the Engine enabled
 opaque timeline-semaphore export for external buffers. A buffer created on a device
 without that capability has no semaphore handle, and handoff requests return
 `Unsupported`.
 
-`ContextOptions::enableValidation` enables the installed Khronos validation layer and
+`EngineOptions::enableValidation` enables the installed Khronos validation layer and
 registers a `VK_EXT_debug_utils` callback that routes diagnostics to the Panda logger.
 It does not depend on Vulkan-layer environment variables. Requesting validation when
 the layer or debug-utils extension is unavailable returns an `Unsupported` error.
 
 `Result<T>` means `std::expected<T, Error>`, not another result framework.
-`CompletionPoint` is an opaque Context identity plus a committed value from its
+`CompletionPoint` is an opaque Engine identity plus a committed value from its
 `SubmissionQueue`. That queue owns one Vulkan timeline semaphore whose increasing
 integer counter orders all submissions sent through it, including upload, frame
 and presentation-recovery work. Each accepted submission signals the next value;
 when the counter reaches N, queue work through that signal is complete. The counter
 covers queue work only. Presentation-engine use of swapchain images is tracked
 separately by per-image present fences. A default token means no submitted work;
-empty and foreign tokens are rejected by poll/wait. Moving Context preserves its
+empty and foreign tokens are rejected by poll/wait. Moving Engine preserves its
 issued tokens.
 No public API lets a caller signal it, fabricate future values, or use it after
 context destruction. `Error` has an action category, owned message, optional native
@@ -224,14 +224,14 @@ device-local memory; `Upload` requires host visibility and prefers coherence;
 CPU mapping or GPU access permission.
 
 `ResourceManager::createBuffer` creates the native buffer, queries its ordinary and
-dedicated requirements, allocates from the Context's pool and binds at that range's
+dedicated requirements, allocates from the Engine's pool and binds at that range's
 offset. Failure publishes no handle. A last `Buffer` release destroys the native
-buffer before returning its range. The pool and device remain stable when Context
-moves; destroying Context with live Buffer, Texture or Mesh owners is a checked fatal violation.
+buffer before returning its range. The pool and device remain stable when Engine
+moves; destroying Engine with live Buffer, Texture or Mesh owners is a checked fatal violation.
 Upload submissions retain their staging, destination buffers and command pools
-until confirmed completion. Context drains these internal owners before checking
+until confirmed completion. Engine drains these internal owners before checking
 for remaining external resource owners. Unsubmitted upload batches still borrow
-Context and must be destroyed before it.
+Engine and must be destroyed before it.
 
 `TextureDesc` provides a 2D extent, Vulkan format and image usage. Texture creation
 fixes optimal tiling, one mip, one array layer and one sample, with undefined initial
@@ -239,7 +239,7 @@ contents. Because each texture owns a default image view, usage must include at 
 one supported view-capable bit. `ResourceManager::createTexture` checks optimal-tiling
 format/usage support and the requested extent against the physical device before
 creating the image. It then queries ordinary and dedicated requirements, requests
-device-local memory from the image partition of the Context pool and binds the image
+device-local memory from the image partition of the Engine pool and binds the image
 at that range's offset. Failure publishes no handle.
 A successful creation also gives the texture one internal default 2D image view
 spanning its sole mip and layer. The view selects color, depth or stencil from the
@@ -270,11 +270,11 @@ and draw validation belong to rendering.
 
 The Vulkan device and native resource handles remain private to the backend.
 Descriptor and pipeline interfaces belong to the later frame-rendering task.
-Selected-device diagnostics are available through `Context::getDeviceInfo()` without
+Selected-device diagnostics are available through `Engine::getDeviceInfo()` without
 exposing a device object.
 
-Context identity is checked when combining handles. Handles do not extend Context
-lifetime; external owners must be released before Context destruction. Its destructor
+Engine identity is checked when combining handles. Handles do not extend Engine
+lifetime; external owners must be released before Engine destruction. Its destructor
 drains internal in-flight retention before checking that requirement. Violating the
 ownership order or encountering unsafe teardown is fatal with diagnostics rather than
 use-after-free or an unbounded silent wait.
@@ -331,10 +331,10 @@ resources, defragmenter, residency manager, or allocator plugin API in version o
   owns the interop rules.
 
 Buffer uploads use the same graphics/compute submission clock as presentation,
-including when Context has no window. `SubmissionManager::createUploadBatch` initializes
+including when Engine has no window. `SubmissionManager::createUploadBatch` initializes
 this service lazily for headless contexts. `write` snapshots nonempty caller bytes
 into a persistently mapped, pooled staging page owned by the batch, validates
-Context, transfer-destination usage and destination bounds, then flushes
+Engine, transfer-destination usage and destination bounds, then flushes
 noncoherent memory. Writes share the current page when its remaining capacity and
 alignment permit; otherwise the batch adds a page large enough for the write.
 Buffer copies do not impose an artificial four-byte restriction. Texture source
@@ -350,7 +350,7 @@ no point and leaves earlier writes and their staging pages available for retry,
 except a lost device stops new work. Caller data may be released after `write`,
 staging only after completion.
 
-Context reclaims confirmed packets during poll/wait, frame attempts, buffer
+Engine reclaims confirmed packets during poll/wait, frame attempts, buffer
 creation and later upload activity; shutdown drains their last committed point.
 Timeout or a failed counter query keeps retention intact. Reclamation destroys
 command pools before dropping buffer owners. Internal upload statistics report
@@ -394,14 +394,14 @@ The pool algorithm and sizes above are Panda design choices, not Vulkan prescrip
 Two frame slots each own command pools/buffers, descriptor pools, transient
 parameter storage, optional timestamp query pools, and retained work packets.
 Frame-local data is reusable only after the slot's final `CompletionPoint`, defined
-by the Context submission queue. The first renderer chooses a minimal
+by the Engine submission queue. The first renderer chooses a minimal
 safe representation; a general arena is added only if representative measurements
 justify it. Explicit upload staging remains owned by its batch and submission until
 completion. Cross-API work does not currently join this completion queue; the
 [compute handoff task](../../development/tasks/gpu-handoff.md) defines that future
 integration.
 
-When GPU timestamp sampling is enabled, the Context-owned public
+When GPU timestamp sampling is enabled, the Engine-owned public
 `PerformanceManager` collects a slot's ready timestamps before that slot's query
 pool is reset and makes the results available without an additional GPU wait. The
 [benchmarking contract](../../development/benchmarking.md#public-performance-collection)

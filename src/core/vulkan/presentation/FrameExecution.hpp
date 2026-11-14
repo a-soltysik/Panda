@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/RenderView.hpp>
@@ -52,7 +51,7 @@ struct FrameExecutionCreateInfo
     ::panda::detail::SubmissionQueue& submissions;
     resources::MemoryPool* pool {nullptr};
     ::panda::detail::PerformanceManagerImpl* performance {nullptr};
-    std::uint32_t maxLights {::panda::ContextOptions::defaultMaxLights};
+    std::uint32_t maxLights;
     /// First query slot in the shared PerformanceManager array; separate executors need disjoint ranges.
     std::size_t performanceSlotBase {0};
 };

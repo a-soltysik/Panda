@@ -28,7 +28,7 @@ auto ExternalBufferManager::createBuffer(const BufferDesc& description) const ->
 {
     if (!_implementation)
     {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "Context has no external-buffer support")};
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Engine has no external-buffer support")};
     }
     return _implementation->get().createBuffer(description);
 }
@@ -37,7 +37,7 @@ auto ExternalBufferManager::releaseToExternal(const Buffer& buffer) -> Result<Ex
 {
     if (!_implementation)
     {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "Context has no external-buffer support")};
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Engine has no external-buffer support")};
     }
     return _implementation->get().release(buffer).transform([](std::uint64_t value) {
         return ExternalTimelineValue {value};
@@ -49,7 +49,7 @@ auto ExternalBufferManager::acquireFromExternal(const Buffer& buffer, ExternalTi
 {
     if (!_implementation)
     {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "Context has no external-buffer support")};
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Engine has no external-buffer support")};
     }
     return _implementation->get().acquire(buffer, externalSignalValue.getValue());
 }

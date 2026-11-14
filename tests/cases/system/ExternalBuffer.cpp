@@ -2,7 +2,8 @@
 
 #include <array>
 #include <cstddef>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
@@ -18,8 +19,8 @@ TEST(ExternalBufferSystem, DefaultConstructsAnEmptyOwner)
 TEST(ExternalBufferSystem, CreatesDedicatedBufferAndOwnsPlatformHandle)
 {
     auto context =
-        panda::Context::create({.applicationName = "Panda external buffer smoke",
-                                .externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Required});
+        panda::Engine::create({.applicationName = "Panda external buffer smoke",
+                               .externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required});
     if (!context && context.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << context.error().message;
@@ -56,8 +57,8 @@ TEST(ExternalBufferSystem, CreatesDedicatedBufferAndOwnsPlatformHandle)
 TEST(ExternalBufferSystem, ReleaseSignalsTimelineAndPreventsVulkanUploadsUntilAcquire)
 {
     auto context =
-        panda::Context::create({.applicationName = "Panda external handoff smoke",
-                                .externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Required});
+        panda::Engine::create({.applicationName = "Panda external handoff smoke",
+                               .externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required});
     if (!context && context.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << context.error().message;

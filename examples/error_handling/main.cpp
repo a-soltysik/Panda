@@ -5,7 +5,7 @@
 #include <memory>
 #include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <tuple>
@@ -28,7 +28,7 @@ void reportError(const panda::Error& error)
     }
 }
 
-auto allocateWithRetry(const panda::Context& context) -> panda::Result<void>
+auto allocateWithRetry(const panda::Engine& context) -> panda::Result<void>
 {
     auto description = panda::BufferDesc {.size = 0, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto buffer = context.getResourceManager().createBuffer(description);
@@ -55,9 +55,8 @@ auto main() -> int
     try
     {
         std::ignore = panda::log::Logger::instance().addSink(std::make_unique<panda::log::StreamSink>(std::clog));
-        const auto result =
-            panda::Context::create({.applicationName = "Panda error handling", .enableValidation = true})
-                .and_then(allocateWithRetry);
+        const auto result = panda::Engine::create({.applicationName = "Panda error handling", .enableValidation = true})
+                                .and_then(allocateWithRetry);
         if (!result)
         {
             reportError(result.error());

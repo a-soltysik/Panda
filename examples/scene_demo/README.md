@@ -19,7 +19,7 @@ then associates them with scene objects. The sphere uses 48 longitude segments a
 latitude rings. Each frame supplies the current framebuffer aspect ratio to
 `Scene::createRenderView()` and passes the returned snapshot to
 `WindowRenderer::render()`. The application owns the loop and uploads; scene objects and
-snapshots retain mesh handles. Context outlives all of them.
+snapshots retain mesh handles. Engine outlives all of them.
 
 Requires `PANDA_BUILD_SCENE=ON`, Tools, a display, Vulkan 1.3 with swapchain
 maintenance1, and the Khronos validation layer. The development presets enable the

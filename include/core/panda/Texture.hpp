@@ -8,7 +8,7 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 
 namespace detail
 {
@@ -27,8 +27,8 @@ struct TextureDesc
     vk::ImageUsageFlags usage;
 };
 
-/// @brief Copyable resource owner. Context outlives every copy.
-/// Creation and final release are serialized with Context operations. Copies retain
+/// @brief Copyable resource owner. Engine outlives every copy.
+/// Creation and final release are serialized with Engine operations. Copies retain
 /// the same image and do not synchronize GPU use; no GPU work is submitted here.
 class Texture final
 {
@@ -57,7 +57,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class Context;
+    friend class Engine;
     friend class detail::TextureResource;
     explicit Texture(std::shared_ptr<detail::TextureResource> resource);
     std::shared_ptr<detail::TextureResource> _resource;

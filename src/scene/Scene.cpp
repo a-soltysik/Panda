@@ -2,7 +2,7 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <memory>
 #include <optional>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Transform.hpp>
@@ -16,24 +16,24 @@
 
 namespace panda::scene
 {
-Scene::Scene(Context& context, std::unique_ptr<detail::SceneState> state) noexcept
-    : _context {&context},
+Scene::Scene(Engine& context, std::unique_ptr<detail::SceneState> state) noexcept
+    : _engine {&context},
       _state {std::move(state)}
 {
 }
 
-auto Scene::create(Context& context) -> Result<Scene>
+auto Scene::create(Engine& context) -> Result<Scene>
 {
     if (!context.isValid())
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Cannot create a Scene from a moved-from Context")};
+            makeError(ErrorCode::InvalidArgument, "Cannot create a Scene from a moved-from Engine")};
     }
     return Scene {context, std::make_unique<detail::SceneState>()};
 }
 
 Scene::Scene(Scene&& other) noexcept
-    : _context {std::exchange(other._context, nullptr)},
+    : _engine {std::exchange(other._engine, nullptr)},
       _state {std::move(other._state)}
 {
 }
@@ -42,7 +42,7 @@ auto Scene::operator=(Scene&& other) noexcept -> Scene&
 {
     if (this != &other)
     {
-        _context = std::exchange(other._context, nullptr);
+        _engine = std::exchange(other._engine, nullptr);
         _state = std::move(other._state);
     }
     return *this;
@@ -233,9 +233,9 @@ auto Scene::setActiveCamera(const Entity& entity) -> Result<void>
 
 auto Scene::createRenderView(float aspectRatio) -> Result<RenderView>
 {
-    if (!_state || _context == nullptr || !_context->isValid())
+    if (!_state || _engine == nullptr || !_engine->isValid())
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene requires a live Context")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Scene requires a live Engine")};
     }
     return _state->createRenderView(aspectRatio);
 }

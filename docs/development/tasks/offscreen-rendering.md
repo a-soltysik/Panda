@@ -23,7 +23,7 @@ Specifications: [renderer](../../design/contracts/rendering.md#offscreen-output)
 
 ## Acceptance
 
-- A Context without a window surface renders a supplied view to an offscreen target
+- An Engine without a window surface renders a supplied view to an offscreen target
   and returns completion information without presenting a frame.
 - A window renderer can render once, present the view and copy that same output to
   a compatible offscreen target for capture.

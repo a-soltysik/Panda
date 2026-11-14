@@ -7,21 +7,21 @@ Panda renders and presents that view without requiring a scene or entity system.
 empty `RenderView::meshes` list is a valid view that presents only the background.
 This flow ends with a `FrameResult` or an `Error`.
 
-**The application** owns scene data, transforms and the lifetime of its `Context`.
+**The application** owns scene data, transforms and the lifetime of its `Engine`.
 **Panda** validates the view, records the built-in mesh rendering path, retains mesh
 and selected texture handles through GPU use, and owns frame-slot and swapchain synchronization. A returned
 `CompletionPoint` identifies submitted GPU work; it does not mean the image has been displayed.
 
 ## Preconditions
 
-1. A live windowed `Context` exists. Calls to it are serialized on its execution thread.
-2. Every mesh draw refers to a valid, uploaded mesh from that Context and declares a
+1. A live windowed `Engine` exists. Calls to it are serialized on its execution thread.
+2. Every mesh draw refers to a valid, uploaded mesh from that Engine and declares a
    layout compatible with its material. All draws require Position; Lit also requires
    Normal. Color is optional and defaults to white. A base-color map is optional; if
-   set, it must be a sampled RGBA8 sRGB texture from the same Context. Lit
+   set, it must be a sampled RGBA8 sRGB texture from the same Engine. Lit
    metallic-roughness, emissive, normal and occlusion maps are also optional; they
    require sampled RGBA8 UNORM, RGBA8 sRGB, RGBA8 UNORM and RGBA8 UNORM textures
-   respectively. All maps must be from the same Context and need a submitted upload.
+   respectively. All maps must be from the same Engine and need a submitted upload.
    Base-color, metallic-roughness, emissive and occlusion maps require TexCoord0; a
    normal map is ignored with a warning if TexCoord0 or Tangent is missing.
 3. Camera, light, transform, tint and material values are finite and valid for the
@@ -41,27 +41,27 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    [0,1] depth before comparison. `normalOffset` moves the receiver along its
    world-space normal in meters. Increasing either can reduce self-shadowing, but
    excessive values detach shadows from their casters.
-   `ContextOptions::maxLights` controls the total light budget; zero supports a view
+   `EngineOptions::maxLights` controls the total light budget; zero supports a view
    with no lights.
    Mesh handles are ordinary values; Panda does not create entities or own application
    transforms.
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
 2. **Request the window render.** The application obtains the window renderer from
-   `Context::getWindowRenderer()` and calls `WindowRenderer::render(view)`. This
-   renderer is available only for a Context created with a window surface.
-3. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, all
+   `Engine::getWindowRenderer()` and calls `WindowRenderer::render(view)`. This
+   renderer is available only for an Engine created with a window surface.
+3. **Validate and collect uploads.** `Engine::Impl::render()` checks matrices, all
    light variants, optional shadow settings, atlas resolutions/capacity, and the
    configured light budget,
    tint, material alpha mode, cutoff, and finite normal-map scale and occlusion
-   strength, then verifies each mesh's Context and required attributes. If a base-color,
+   strength, then verifies each mesh's Engine and required attributes. If a base-color,
    Lit metallic-roughness, emissive, Lit normal or Lit occlusion map is set, it checks
-   the texture's Context, sampled usage and required format. Base-color,
+   the texture's Engine, sampled usage and required format. Base-color,
    metallic-roughness, emissive and occlusion maps also require TexCoord0; the normal
    map falls back with a warning when UVs or tangents are missing. It polls and
    reclaims completed upload packets, then rejects a texture whose upload was never
    submitted. Rendering remains queued
-   after any in-flight upload on the Context submission queue.
+   after any in-flight upload on the Engine submission queue.
 4. **Prepare the window frame.** `Presentation::prepareWindowFrame()` checks the
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
    without acquiring an image. See [UC Suspend presentation and recreate the
@@ -105,11 +105,11 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    transition to present layout and ends the command buffer.
 7. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
-   Context timeline. Only after submission succeeds does `FrameExecution` store the
+   Engine timeline. Only after submission succeeds does `FrameExecution` store the
    completion value and commit renderer and performance state. `Presentation` then
    marks the image initialized and advances its slot. Mesh and texture handles remain
    retained in the execution slot until reuse after completion. See
-   [UC Commit work to the Context submission timeline](commit-context-submission.md).
+   [UC Commit work to the Engine submission timeline](commit-context-submission.md).
 8. **Queue presentation.** `Presentation::presentFrame()` queues the image with its
    per-image presentation fence. Normal presentation returns `Presented`; a
    suboptimal/out-of-date result returns `RecreatePending` with the accepted submission's
@@ -120,7 +120,7 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 sequenceDiagram
     participant A as Application
     participant W as WindowRenderer
-    participant C as Context / Impl
+    participant C as Engine / Impl
     participant U as UploadManager
     participant P as Presentation
     participant E as FrameExecution
@@ -281,10 +281,10 @@ A frame error does not imply that already submitted work was rolled back.
 | Acquire reports out-of-date                                      | Return `RecreatePending` without a completion point; the next call attempts recreation.      |
 | Acquire or present is suboptimal, or present reports out-of-date | Return `RecreatePending`; keep the accepted submission's completion point.                   |
 | Invalid view/material data, foreign mesh/texture, incompatible layout, or invalid material map | Return `InvalidArgument` before acquiring an image. |
-| Context has no window presentation service                       | Return `Unsupported`.                                                                        |
+| Engine has no window presentation service                       | Return `Unsupported`.                                                                        |
 | Capture is requested                                              | Use `WindowRenderer::renderWithCapture(view, target)`; capture may return `Unsupported` when the surface or formats cannot blit. |
 | Recording, submission or cleanup fails after acquire             | Return the relevant error; retire the acquired image. Failed retirement faults presentation. |
-| Surface or device is lost                                        | Return the Vulkan error and fault presentation; Context teardown still attempts its drain.   |
+| Surface or device is lost                                        | Return the Vulkan error and fault presentation; Engine teardown still attempts its drain.   |
 
 ## Related information
 

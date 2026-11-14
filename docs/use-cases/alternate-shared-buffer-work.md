@@ -23,16 +23,16 @@ callback on its session stream.
 ## Preconditions
 
 1. **Shared buffer.** [UC Create and import an external buffer](create-external-buffer.md)
-   has produced a live `SharedCudaBuffer`. The `Context` outlives the buffer and
+   has produced a live `SharedCudaBuffer`. The `Engine` outlives the buffer and
    its imported CUDA session.
 2. **Ownership and ordering.** Vulkan owns the buffer when a pass starts. The
    application serializes passes for this buffer; each next Vulkan submission uses
-   the same `Context` queue after the preceding acquire has been queued.
+   the same `Engine` queue after the preceding acquire has been queued.
 
 ## Main flow
 
 1. **Queue Vulkan work.** The application writes the next value to the same buffer
-   through an `UploadBatch` and submits it. The upload is queued on the `Context`
+   through an `UploadBatch` and submits it. The upload is queued on the `Engine`
    graphics/compute queue; the application does not wait for its completion.
 2. **Release to CUDA.** The application calls
    `ExternalBufferManager::releaseToExternal`. Core queues the Vulkan ownership
@@ -75,8 +75,8 @@ sequenceDiagram
 ## Notes
 
 **Ordering across passes.** Each release follows that pass's Vulkan upload on the
-Context queue. CUDA's wait and signal order its callback on the session stream.
-The next upload follows the queued Vulkan acquire on the same Context queue. These
+Engine queue. CUDA's wait and signal order its callback on the session stream.
+The next upload follows the queued Vulkan acquire on the same Engine queue. These
 queue dependencies let the application alternate APIs without a CPU wait.
 
 **Submission is not completion.** Each API call returning means its work was queued,

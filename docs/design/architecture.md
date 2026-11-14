@@ -37,7 +37,7 @@ without tools.
   promises.
 - A GPU cloud is one renderable with buffers and a conservative bound. Particle
   count must not create proportional CPU entities, updates or draw calls.
-- Context-bound resource handles retain GPU inputs until completion. Ownership
+- Engine-bound resource handles retain GPU inputs until completion. Ownership
   and synchronization are separate obligations; see
   [resources](contracts/resources.md).
 - The application owns compute algorithms, simulation time and update frequency.

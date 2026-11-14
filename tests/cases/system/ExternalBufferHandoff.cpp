@@ -13,7 +13,8 @@
 #include <cstddef>
 #include <expected>
 #include <memory>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/cuda/Cuda.hpp>
@@ -54,7 +55,7 @@ auto reverseOnCuda(cudaStream_t stream, std::span<std::byte, 4> buffer, std::spa
     return {};
 }
 
-void uploadTag(const panda::Context& context, const panda::cuda::SharedCudaBuffer& buffer, const Tag& tag)
+void uploadTag(const panda::Engine& context, const panda::cuda::SharedCudaBuffer& buffer, const Tag& tag)
 {
     auto upload = context.getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(upload);
@@ -62,7 +63,7 @@ void uploadTag(const panda::Context& context, const panda::cuda::SharedCudaBuffe
     ASSERT_TRUE(upload->submit());
 }
 
-void queueTaggedPass(panda::Context& context,
+void queueTaggedPass(panda::Engine& context,
                      panda::cuda::SharedCudaBuffer& buffer,
                      panda::test::VulkanBufferReadback& readback,
                      std::span<std::byte, 4> scratch,
@@ -81,7 +82,7 @@ void queueTaggedPass(panda::Context& context,
     ASSERT_TRUE(readback.submitCopy());
 }
 
-void exerciseBuffer(panda::Context& context,
+void exerciseBuffer(panda::Engine& context,
                     panda::cuda::CudaSession& session,
                     std::span<std::byte, 4> scratch,
                     Observations& observed)
@@ -108,7 +109,7 @@ void exerciseBuffer(panda::Context& context,
     observed = *result;
 }
 
-void exerciseWithScratch(panda::Context& context, panda::cuda::CudaSession& session, Observations& observed)
+void exerciseWithScratch(panda::Engine& context, panda::cuda::CudaSession& session, Observations& observed)
 {
     auto releaseScratch = [](std::byte* memory) {
         EXPECT_EQ(cudaFree(memory), cudaSuccess);
@@ -122,9 +123,9 @@ void exerciseWithScratch(panda::Context& context, panda::cuda::CudaSession& sess
 void runTaggedHandoffs(Observations& observed)
 {
     auto context =
-        panda::Context::create({.applicationName = "Panda tagged CUDA handoff",
-                                .enableValidation = true,
-                                .externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Required});
+        panda::Engine::create({.applicationName = "Panda tagged CUDA handoff",
+                               .enableValidation = true,
+                               .externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required});
     if (!context && context.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << context.error().message;

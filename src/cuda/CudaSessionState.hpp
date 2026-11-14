@@ -1,6 +1,6 @@
 #pragma once
 
-#include <panda/ExternalBuffer.hpp>
+#include <panda/VulkanDeviceUuid.hpp>
 #include <utility>
 
 #include "CudaAdapter.hpp"

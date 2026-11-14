@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file
-/// Context-owned upload submission and completion operations.
+/// Engine-owned upload submission and completion operations.
 
 #include <chrono>
 #include <panda/CompletionPoint.hpp>
@@ -10,11 +10,11 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 
-/// @brief Creates upload batches and observes submitted work for one Context.
-/// This facade is borrowed from Context and must not outlive it. Calls are serialized
-/// with other operations on the owning Context.
+/// @brief Creates upload batches and observes submitted work for one Engine.
+/// This facade is borrowed from Engine and must not outlive it. Calls are serialized
+/// with other operations on the owning Engine.
 class SubmissionManager final
 {
 public:
@@ -24,9 +24,9 @@ public:
     auto operator=(SubmissionManager&&) -> SubmissionManager& = delete;
     ~SubmissionManager() = default;
 
-    /// @brief Creates an empty batch borrowing this Context; may allocate.
+    /// @brief Creates an empty batch borrowing this Engine; may allocate.
     /// @return A batch or an initialization/backend error. Submits no work and performs no completion wait.
-    /// Unsubmitted batches must be destroyed before Context; successful submit consumes the batch.
+    /// Unsubmitted batches must be destroyed before Engine; successful submit consumes the batch.
     [[nodiscard]] auto createUploadBatch() const -> Result<UploadBatch>;
 
     /// @brief Queries GPU completion without waiting; does not indicate display/presentation completion.
@@ -38,10 +38,10 @@ public:
     [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>;
 
 private:
-    friend class Context;
+    friend class Engine;
 
-    explicit SubmissionManager(const Context& context) noexcept;
+    explicit SubmissionManager(const Engine& context) noexcept;
 
-    const Context* _context;
+    const Engine* _engine;
 };
 }

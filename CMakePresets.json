@@ -98,7 +98,8 @@
       "cacheVariables": {
         "PANDA_BUILD_EXAMPLES": "ON",
         "PANDA_BUILD_BENCHMARKS": "ON",
-        "PANDA_VERIFY_PUBLIC_HEADERS": "ON"
+        "PANDA_VERIFY_PUBLIC_HEADERS": "ON",
+        "PANDA_SEPARATE_STATIC_ANALYSIS": "OFF"
       }
     },
     {
@@ -169,7 +170,8 @@
         "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT": "Embedded",
         "PANDA_BUILD_EXAMPLES": "ON",
         "PANDA_BUILD_BENCHMARKS": "ON",
-        "PANDA_VERIFY_PUBLIC_HEADERS": "ON"
+        "PANDA_VERIFY_PUBLIC_HEADERS": "ON",
+        "PANDA_SEPARATE_STATIC_ANALYSIS": "OFF"
       }
     },
     {
@@ -409,8 +411,7 @@
     },
     {
       "name": "gcc-quality",
-      "configurePreset": "gcc-quality",
-      "jobs": 4
+      "configurePreset": "gcc-quality"
     },
     {
       "name": "msvc-development",
@@ -418,8 +419,7 @@
     },
     {
       "name": "msvc-quality",
-      "configurePreset": "msvc-quality",
-      "jobs": 4
+      "configurePreset": "msvc-quality"
     },
     {
       "name": "gcc-sanitizers",
@@ -461,13 +461,11 @@
     },
     {
       "name": "gcc-quality-ci",
-      "configurePreset": "gcc-quality-ci",
-      "jobs": 4
+      "configurePreset": "gcc-quality-ci"
     },
     {
       "name": "msvc-quality-ci",
-      "configurePreset": "msvc-quality-ci",
-      "jobs": 4
+      "configurePreset": "msvc-quality-ci"
     },
     {
       "name": "gcc-tests-ci",

@@ -13,7 +13,7 @@
 
 namespace panda::detail
 {
-// One serialized graphics/compute submission clock per Context. The borrowed
+// One serialized graphics/compute submission clock per Engine. The borrowed
 // device outlives it. It owns no resource packets; callers retain submitted uses.
 class SubmissionQueue final
 {

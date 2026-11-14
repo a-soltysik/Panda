@@ -2,8 +2,8 @@ panda_add_test(panda_system_application_startup system
     SOURCES ApplicationStartup.cpp
     LIBRARIES Panda::Tools PandaTest::Support glfw)
 
-panda_add_test(panda_system_vulkan_context system
-    SOURCES VulkanContext.cpp
+panda_add_test(panda_system_vulkan_engine system
+    SOURCES VulkanEngine.cpp
     LIBRARIES Panda::Panda Vulkan::Headers)
 
 panda_add_test(panda_system_offscreen_rendering system
@@ -58,6 +58,6 @@ panda_add_test(panda_system_memory_allocation system
     SOURCES MemoryAllocation.cpp
     LIBRARIES Panda::Panda Vulkan::Headers)
 
-panda_add_test(panda_system_windowed_context system
-    SOURCES WindowedContext.cpp
+panda_add_test(panda_system_windowed_engine system
+    SOURCES WindowedEngine.cpp
     LIBRARIES Panda::Tools PandaTest::Support PandaTest::LogCapture glfw)

@@ -11,7 +11,7 @@
 #include <expected>
 #include <iterator>
 #include <optional>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/WindowSurface.hpp>
@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "InstanceResources.hpp"
 #include "VulkanError.hpp"
 
 namespace panda::core::vulkan
@@ -200,7 +201,7 @@ auto instanceExtensions(const WindowSurface* surface, bool enableValidation) -> 
 
 namespace
 {
-using Maintenance = ContextDeviceInfo::SwapchainMaintenance;
+using Maintenance = DeviceInfo::SwapchainMaintenance;
 
 auto chooseMaintenance(const std::vector<vk::ExtensionProperties>& listed, const InstanceExtensions& extensions)
     -> std::optional<Maintenance>

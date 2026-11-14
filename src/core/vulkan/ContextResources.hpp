@@ -7,9 +7,9 @@
 
 #include <memory>
 #include <optional>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
 
-#include "DeviceSelection.hpp"
+#include "InstanceResources.hpp"
 #include "SubmissionQueue.hpp"
 #include "external/ExternalContext.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
@@ -19,14 +19,6 @@
 
 namespace panda::core::vulkan
 {
-struct InstanceResources
-{
-    InstanceExtensions extensions;
-    vk::raii::Instance instance {nullptr};
-    std::optional<vk::raii::DebugUtilsMessengerEXT> debugMessenger;
-    std::optional<vk::raii::SurfaceKHR> surface;
-};
-
 class ContextResources final
 {
 public:
@@ -47,8 +39,7 @@ public:
     [[nodiscard]] auto externalContext() noexcept -> std::unique_ptr<detail::ExternalContext>&;
     [[nodiscard]] auto performanceManagerImplementation() noexcept -> std::unique_ptr<detail::PerformanceManagerImpl>&;
     [[nodiscard]] auto presentation() noexcept -> std::unique_ptr<Presentation>&;
-    [[nodiscard]] auto info() noexcept -> ContextDeviceInfo&;
-    [[nodiscard]] auto info() const noexcept -> const ContextDeviceInfo&;
+    [[nodiscard]] auto info() noexcept -> DeviceInfo&;
 
 private:
     vk::raii::Context _loader {vkGetInstanceProcAddr};
@@ -61,6 +52,6 @@ private:
     std::unique_ptr<detail::ExternalContext> _externalContext;
     std::unique_ptr<detail::PerformanceManagerImpl> _performanceManagerImplementation;
     std::unique_ptr<Presentation> _presentation;
-    ContextDeviceInfo _info;
+    DeviceInfo _info;
 };
 }

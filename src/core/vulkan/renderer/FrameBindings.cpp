@@ -886,7 +886,7 @@ auto FrameBindings::updateFrame(std::size_t frameIndex, const RenderView& view, 
     if (requestedLightCount > _maxLights)
     {
         return std::unexpected {
-            makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds the Context maxLights budget")};
+            makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds the Engine maxLights budget")};
     }
     auto plan = buildShadowAtlasPlan(view);
     if (!plan)

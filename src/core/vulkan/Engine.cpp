@@ -14,7 +14,9 @@
 #include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
+#include <panda/Engine.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/FrameResult.hpp>
@@ -31,8 +33,8 @@
 #include <variant>
 #include <vector>
 
-#include "ContextCreation.hpp"
 #include "ContextResources.hpp"
+#include "EngineCreation.hpp"
 #include "SubmissionQueue.hpp"
 #include "external/ExternalContext.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
@@ -64,7 +66,7 @@ auto borrowIfPresent(const std::unique_ptr<T>& owner) noexcept -> std::optional<
 }
 }
 
-class Context::Impl
+class Engine::Impl
 {
 public:
     explicit Impl(std::unique_ptr<vulkan::ContextResources> resources, std::uint32_t maxLights) noexcept
@@ -73,7 +75,7 @@ public:
     {
     }
 
-    [[nodiscard]] auto getDeviceInfo() const -> const ContextDeviceInfo&;
+    [[nodiscard]] auto getDeviceInfo() const -> const DeviceInfo&;
     [[nodiscard]] auto hasWindowSurface() const noexcept -> bool;
     [[nodiscard]] auto getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&;
     [[nodiscard]] auto render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
@@ -119,7 +121,7 @@ private:
     std::uint32_t _maxLights;
 };
 
-auto Context::Impl::ensureUploads() -> Result<void>
+auto Engine::Impl::ensureUploads() -> Result<void>
 {
     if (_resources->uploads())
     {
@@ -136,7 +138,7 @@ auto Context::Impl::ensureUploads() -> Result<void>
     return {};
 }
 
-auto Context::Impl::ensureSubmissions() -> Result<void>
+auto Engine::Impl::ensureSubmissions() -> Result<void>
 {
     if (_resources->submissions())
     {
@@ -156,7 +158,7 @@ auto Context::Impl::ensureSubmissions() -> Result<void>
     return {};
 }
 
-auto Context::Impl::ensureOffscreenRendering() -> Result<void>
+auto Engine::Impl::ensureOffscreenRendering() -> Result<void>
 {
     if (_offscreenRendering)
     {
@@ -182,13 +184,13 @@ auto Context::Impl::ensureOffscreenRendering() -> Result<void>
     return {};
 }
 
-auto Context::Impl::collectUploads() -> Result<void>
+auto Engine::Impl::collectUploads() -> Result<void>
 {
     auto& uploads = _resources->uploads();
     return uploads ? uploads->collect() : Result<void> {};
 }
 
-void Context::Impl::collectCompletedUploads()
+void Engine::Impl::collectCompletedUploads()
 {
     auto& uploads = _resources->uploads();
     if (uploads)
@@ -197,22 +199,22 @@ void Context::Impl::collectCompletedUploads()
     }
 }
 
-auto Context::Impl::getDeviceInfo() const -> const ContextDeviceInfo&
+auto Engine::Impl::getDeviceInfo() const -> const DeviceInfo&
 {
     return _resources->info();
 }
 
-auto Context::Impl::hasWindowSurface() const noexcept -> bool
+auto Engine::Impl::hasWindowSurface() const noexcept -> bool
 {
     return _resources->presentation() != nullptr;
 }
 
-auto Context::Impl::getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&
+auto Engine::Impl::getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&
 {
     return *_resources->performanceManagerImplementation();
 }
 
-auto Context::Impl::render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
+auto Engine::Impl::render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
     -> Result<FrameResult>
 {
     if (const auto valid = vulkan::renderer::validateRenderView(view, _maxLights, *_resources->memoryPool()); !valid)
@@ -232,15 +234,15 @@ auto Context::Impl::render(const RenderView& view, std::optional<std::size_t>& s
     });
 }
 
-auto Context::Impl::render(const RenderView& view,
-                           const OffscreenTarget& target,
-                           std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>
+auto Engine::Impl::render(const RenderView& view,
+                          const OffscreenTarget& target,
+                          std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>
 {
     const auto& targetResource = detail::OffscreenTargetResource::getResource(target);
     if (!targetResource || !targetResource->belongsTo(*_resources->memoryPool()))
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Context")};
+            makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Engine")};
     }
     if (const auto valid = vulkan::renderer::validateRenderView(view, _maxLights, *_resources->memoryPool()); !valid)
     {
@@ -259,9 +261,9 @@ auto Context::Impl::render(const RenderView& view,
     });
 }
 
-auto Context::Impl::renderWithCapture(const RenderView& view,
-                                      const OffscreenTarget& target,
-                                      std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>
+auto Engine::Impl::renderWithCapture(const RenderView& view,
+                                     const OffscreenTarget& target,
+                                     std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>
 {
     submittedPerformanceSlot.reset();
     if (const auto valid = validateCaptureTarget(target); !valid)
@@ -288,13 +290,13 @@ auto Context::Impl::renderWithCapture(const RenderView& view,
     });
 }
 
-auto Context::Impl::validateCaptureTarget(const OffscreenTarget& target) const -> Result<void>
+auto Engine::Impl::validateCaptureTarget(const OffscreenTarget& target) const -> Result<void>
 {
     const auto& targetResource = detail::OffscreenTargetResource::getResource(target);
     if (!targetResource || !targetResource->belongsTo(*_resources->memoryPool()))
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Context")};
+            makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Engine")};
     }
     if (!_resources->presentation())
     {
@@ -303,13 +305,13 @@ auto Context::Impl::validateCaptureTarget(const OffscreenTarget& target) const -
     return {};
 }
 
-auto Context::Impl::readPixels(const OffscreenTarget& target, CompletionPoint completion) -> Result<ImageReadback>
+auto Engine::Impl::readPixels(const OffscreenTarget& target, CompletionPoint completion) -> Result<ImageReadback>
 {
     const auto& targetResource = detail::OffscreenTargetResource::getResource(target);
     if (!targetResource || !targetResource->belongsTo(*_resources->memoryPool()))
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Context")};
+            makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Engine")};
     }
     if (!targetResource->isInitialized())
     {
@@ -322,46 +324,46 @@ auto Context::Impl::readPixels(const OffscreenTarget& target, CompletionPoint co
     return _offscreenRendering->readPixels(target, completion);
 }
 
-auto Context::Impl::createBufferResource(const BufferDesc& description)
+auto Engine::Impl::createBufferResource(const BufferDesc& description)
     -> Result<std::shared_ptr<detail::BufferResource>>
 {
     return createResource<detail::BufferResource>(description);
 }
 
-auto Context::Impl::getExternalContext() noexcept -> std::optional<std::reference_wrapper<detail::ExternalContext>>
+auto Engine::Impl::getExternalContext() noexcept -> std::optional<std::reference_wrapper<detail::ExternalContext>>
 {
     return borrowIfPresent(_resources->externalContext());
 }
 
-auto Context::Impl::createTextureResource(const TextureDesc& description)
+auto Engine::Impl::createTextureResource(const TextureDesc& description)
     -> Result<std::shared_ptr<detail::TextureResource>>
 {
     return createResource<detail::TextureResource>(description);
 }
 
-auto Context::Impl::createOffscreenTargetResource(const OffscreenTargetDesc& description)
+auto Engine::Impl::createOffscreenTargetResource(const OffscreenTargetDesc& description)
     -> Result<std::shared_ptr<detail::OffscreenTargetResource>>
 {
     return createResource<detail::OffscreenTargetResource>(description);
 }
 
-auto Context::Impl::createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>
+auto Engine::Impl::createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>
 {
     return createResource<detail::MeshResource>(description);
 }
 
-auto Context::Impl::createUploadBatch() -> Result<std::unique_ptr<detail::UploadBatchImpl>>
+auto Engine::Impl::createUploadBatch() -> Result<std::unique_ptr<detail::UploadBatchImpl>>
 {
     return ensureUploads().transform([&] {
         return _resources->uploads()->createBatch();
     });
 }
 
-auto Context::Impl::poll(CompletionPoint point) -> Result<bool>
+auto Engine::Impl::poll(CompletionPoint point) -> Result<bool>
 {
     if (!_resources->submissions())
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Context")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Engine")};
     }
     return _resources->submissions()->poll(point).transform([&](bool completed) {
         collectCompletedUploads();
@@ -369,11 +371,11 @@ auto Context::Impl::poll(CompletionPoint point) -> Result<bool>
     });
 }
 
-auto Context::Impl::wait(CompletionPoint point, std::chrono::nanoseconds timeout) -> Result<WaitStatus>
+auto Engine::Impl::wait(CompletionPoint point, std::chrono::nanoseconds timeout) -> Result<WaitStatus>
 {
     if (timeout.count() < 0 || !_resources->submissions())
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Context")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Engine")};
     }
     return _resources->submissions()
         ->wait(point, static_cast<std::uint64_t>(timeout.count()))
@@ -383,13 +385,13 @@ auto Context::Impl::wait(CompletionPoint point, std::chrono::nanoseconds timeout
         });
 }
 
-void Context::Impl::drain()
+void Engine::Impl::drain()
 {
     static constexpr auto timeoutNanoseconds = std::uint64_t {10'000'000'000};
     auto& uploads = _resources->uploads();
     if (uploads)
     {
-        expect(!uploads->hasActiveBatches(), "Context destroyed with live upload batches");
+        expect(!uploads->hasActiveBatches(), "Engine destroyed with live upload batches");
         expect(uploads->drain(timeoutNanoseconds), "Cannot safely drain upload submissions");
     }
     if (_resources->presentation())
@@ -408,10 +410,10 @@ void Context::Impl::drain()
                "Cannot safely drain external handoff submissions");
     }
     expect(_resources->memoryPool()->getStats().liveBytes == 0,
-           "Context destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
+           "Engine destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
 }
 
-Context::Context(std::unique_ptr<Impl> implementation) noexcept
+Engine::Engine(std::unique_ptr<Impl> implementation) noexcept
     : _implementation {std::move(implementation)},
       _resourceManager {*this},
       _submissionManager {*this},
@@ -422,7 +424,7 @@ Context::Context(std::unique_ptr<Impl> implementation) noexcept
 {
 }
 
-Context::Context(Context&& other) noexcept
+Engine::Engine(Engine&& other) noexcept
     : _implementation {std::move(other._implementation)},
       _resourceManager {*this},
       _submissionManager {*this},
@@ -435,7 +437,7 @@ Context::Context(Context&& other) noexcept
 {
 }
 
-Context::~Context() noexcept
+Engine::~Engine() noexcept
 {
     if (_implementation)
     {
@@ -443,54 +445,54 @@ Context::~Context() noexcept
     }
 }
 
-auto Context::create(const ContextOptions& options) -> Result<Context>
+auto Engine::create(const EngineOptions& options) -> Result<Engine>
 {
     return createInternal(nullptr, options);
 }
 
-auto Context::createWithSurface(const WindowSurface& surface, const ContextOptions& options) -> Result<Context>
+auto Engine::createWithSurface(const WindowSurface& surface, const EngineOptions& options) -> Result<Engine>
 {
     return createInternal(&surface, options);
 }
 
-auto Context::createInternal(const WindowSurface* surface, const ContextOptions& options) -> Result<Context>
+auto Engine::createInternal(const WindowSurface* surface, const EngineOptions& options) -> Result<Engine>
 {
-    auto resources = vulkan::context::createResources(surface, options);
+    auto resources = vulkan::engine::createResources(surface, options);
     if (!resources)
     {
         return std::unexpected {resources.error()};
     }
     auto implementation = std::make_unique<Impl>(std::move(*resources), options.maxLights);
-    return Context {std::move(implementation)};
+    return Engine {std::move(implementation)};
 }
 
-auto Context::isValid() const noexcept -> bool
+auto Engine::isValid() const noexcept -> bool
 {
     return _implementation != nullptr;
 }
 
-auto Context::getDeviceInfo() const -> ContextDeviceInfo
+auto Engine::getDeviceInfo() const -> DeviceInfo
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     return _implementation->getDeviceInfo();
 }
 
-auto Context::getResourceManager() const -> const ResourceManager&
+auto Engine::getResourceManager() const -> const ResourceManager&
 {
     return _resourceManager;
 }
 
-auto Context::getSubmissionManager() const -> const SubmissionManager&
+auto Engine::getSubmissionManager() const -> const SubmissionManager&
 {
     return _submissionManager;
 }
 
-auto Context::getOffscreenRenderer() const -> const OffscreenRenderer&
+auto Engine::getOffscreenRenderer() const -> const OffscreenRenderer&
 {
     return _offscreenRenderer;
 }
 
-auto Context::getWindowRenderer() const -> std::optional<std::reference_wrapper<const WindowRenderer>>
+auto Engine::getWindowRenderer() const -> std::optional<std::reference_wrapper<const WindowRenderer>>
 {
     if (!_implementation || !_implementation->hasWindowSurface())
     {
@@ -499,21 +501,21 @@ auto Context::getWindowRenderer() const -> std::optional<std::reference_wrapper<
     return std::cref(_windowRenderer);
 }
 
-auto Context::getPerformanceManager() -> PerformanceManager&
+auto Engine::getPerformanceManager() -> PerformanceManager&
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     return _performanceManager;
 }
 
-auto Context::getExternalBufferManager() -> ExternalBufferManager&
+auto Engine::getExternalBufferManager() -> ExternalBufferManager&
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     return _externalBufferManager;
 }
 
-auto Context::renderWindow(const RenderView& view) const -> Result<FrameResult>
+auto Engine::renderWindow(const RenderView& view) const -> Result<FrameResult>
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     auto frameStart = std::optional<std::chrono::steady_clock::time_point> {};
     if (_performanceManager.getCapabilities().isGpuTimestampSamplingEnabled)
     {
@@ -531,9 +533,9 @@ auto Context::renderWindow(const RenderView& view) const -> Result<FrameResult>
     return result;
 }
 
-auto Context::renderOffscreen(const RenderView& view, const OffscreenTarget& target) const -> Result<FrameResult>
+auto Engine::renderOffscreen(const RenderView& view, const OffscreenTarget& target) const -> Result<FrameResult>
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     auto frameStart = std::optional<std::chrono::steady_clock::time_point> {};
     if (_performanceManager.getCapabilities().isGpuTimestampSamplingEnabled)
     {
@@ -551,10 +553,9 @@ auto Context::renderOffscreen(const RenderView& view, const OffscreenTarget& tar
     return result;
 }
 
-auto Context::renderWindowWithCapture(const RenderView& view, const OffscreenTarget& target) const
-    -> Result<FrameResult>
+auto Engine::renderWindowWithCapture(const RenderView& view, const OffscreenTarget& target) const -> Result<FrameResult>
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     auto frameStart = std::optional<std::chrono::steady_clock::time_point> {};
     if (_performanceManager.getCapabilities().isGpuTimestampSamplingEnabled)
     {
@@ -572,52 +573,52 @@ auto Context::renderWindowWithCapture(const RenderView& view, const OffscreenTar
     return result;
 }
 
-auto Context::readPixels(const OffscreenTarget& target, CompletionPoint completion) const -> Result<ImageReadback>
+auto Engine::readPixels(const OffscreenTarget& target, CompletionPoint completion) const -> Result<ImageReadback>
 {
     if (!_implementation)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot read pixels from a moved-from Context")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot read pixels from a moved-from Engine")};
     }
     return _implementation->readPixels(target, completion);
 }
 
-auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer>
+auto Engine::createBuffer(const BufferDesc& description) const -> Result<Buffer>
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     return _implementation->createBufferResource(description)
         .transform([](std::shared_ptr<detail::BufferResource> resource) {
             return Buffer {std::move(resource)};
         });
 }
 
-auto Context::createTexture(const TextureDesc& description) const -> Result<Texture>
+auto Engine::createTexture(const TextureDesc& description) const -> Result<Texture>
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     return _implementation->createTextureResource(description)
         .transform([](std::shared_ptr<detail::TextureResource> resource) {
             return Texture {std::move(resource)};
         });
 }
 
-auto Context::createOffscreenTarget(const OffscreenTargetDesc& description) const -> Result<OffscreenTarget>
+auto Engine::createOffscreenTarget(const OffscreenTargetDesc& description) const -> Result<OffscreenTarget>
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     return _implementation->createOffscreenTargetResource(description)
         .transform([](std::shared_ptr<detail::OffscreenTargetResource> resource) {
             return OffscreenTarget {std::move(resource)};
         });
 }
 
-auto Context::createMesh(const MeshDesc& description) const -> Result<Mesh>
+auto Engine::createMesh(const MeshDesc& description) const -> Result<Mesh>
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
     return _implementation->createMeshResource(description)
         .transform([](std::shared_ptr<detail::MeshResource> resource) {
             return Mesh {std::move(resource)};
         });
 }
 
-auto Context::createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>
+auto Engine::createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>
 {
     if (geometry.indices.valueless_by_exception() ||
         geometry.vertices.size() > std::numeric_limits<std::uint32_t>::max())
@@ -645,32 +646,32 @@ auto Context::createMeshFromGeometry(const Geometry& geometry) const -> Result<M
                        .attributes = std::ranges::to<std::vector<VertexAttribute>>(standardMeshVertexAttributes)});
 }
 
-auto Context::createUploadBatch() const -> Result<UploadBatch>
+auto Engine::createUploadBatch() const -> Result<UploadBatch>
 {
     if (!_implementation)
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Cannot create a batch from a moved-from Context")};
+            makeError(ErrorCode::InvalidArgument, "Cannot create a batch from a moved-from Engine")};
     }
     return _implementation->createUploadBatch().transform([](std::unique_ptr<detail::UploadBatchImpl> batch) {
         return UploadBatch {std::move(batch)};
     });
 }
 
-auto Context::poll(CompletionPoint point) const -> Result<bool>
+auto Engine::poll(CompletionPoint point) const -> Result<bool>
 {
     if (!_implementation)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Context")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Engine")};
     }
     return _implementation->poll(point);
 }
 
-auto Context::wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>
+auto Engine::wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>
 {
     if (!_implementation)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Context")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Engine")};
     }
     return _implementation->wait(point, timeout);
 }

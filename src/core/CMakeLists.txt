@@ -27,8 +27,8 @@ panda_add_component(panda_core
         vulkan/external/ExternalSemaphoreResource.cpp
         CompletionPoint.cpp
         UploadBatch.cpp
-        vulkan/Context.cpp
-        vulkan/ContextCreation.cpp
+        vulkan/Engine.cpp
+        vulkan/EngineCreation.cpp
         vulkan/ContextResources.cpp
         vulkan/InstanceCreation.cpp
         vulkan/DeviceSelection.cpp
@@ -64,7 +64,9 @@ panda_add_component(panda_core
         panda/Buffer.hpp
         panda/Camera.hpp
         panda/CompletionPoint.hpp
-        panda/Context.hpp
+        panda/Engine.hpp
+        panda/DeviceInfo.hpp
+        panda/EngineOptions.hpp
         panda/Error.hpp
         panda/FrameResult.hpp
         panda/ExternalBuffer.hpp
@@ -72,6 +74,7 @@ panda_add_component(panda_core
         panda/ExternalMemoryHandle.hpp
         panda/ExternalSemaphoreHandle.hpp
         panda/ExternalTimelineValue.hpp
+        panda/VulkanDeviceUuid.hpp
         panda/StrongAlias.hpp
         panda/Mesh.hpp
         panda/Panda.hpp
@@ -94,9 +97,10 @@ panda_add_component(panda_core
         panda/RenderView.hpp
     PRIVATE_HEADERS
         Math.hpp
-        vulkan/ContextCreation.hpp
+        vulkan/EngineCreation.hpp
         vulkan/ContextResources.hpp
         vulkan/DeviceSelection.hpp
+        vulkan/InstanceResources.hpp
         vulkan/InstanceCreation.hpp
         vulkan/external/ExternalContext.hpp
         vulkan/external/ExternalSemaphoreResource.hpp
