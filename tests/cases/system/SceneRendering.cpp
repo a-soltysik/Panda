@@ -6,6 +6,7 @@
 #include <panda/Cube.hpp>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/OffscreenTarget.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
 #include <panda/scene/Entity.hpp>
@@ -15,6 +16,8 @@
 
 namespace
 {
+constexpr auto renderExtent = vk::Extent2D {160, 120};
+
 class SceneRenderingSystem : public testing::Test
 {
 protected:
@@ -35,6 +38,9 @@ protected:
         }
         ASSERT_TRUE(created) << created.error().message;
         context.emplace(std::move(*created));
+        auto target = context->getResourceManager().createOffscreenTarget({.extent = renderExtent});
+        ASSERT_TRUE(target) << target.error().message;
+        renderTarget = std::move(*target);
     }
 
     auto activeContext() -> panda::Context&
@@ -47,6 +53,7 @@ protected:
     }
 
     std::optional<panda::Context> context;
+    panda::OffscreenTarget renderTarget;
 };
 }
 
@@ -55,7 +62,7 @@ TEST_F(SceneRenderingSystem, BuildsHeadlessSnapshotAndRetainsDeletedObjectMesh)
     auto scene = panda::scene::Scene::create(activeContext());
     ASSERT_TRUE(scene);
     selectCamera(*scene);
-    auto mesh = activeContext().createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = activeContext().getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
     ASSERT_TRUE(mesh);
     const auto object = scene->createEntity({.name = {}, .transform = {.position = {2.0F, 0.0F, 0.0F}}});
     ASSERT_TRUE(object);
@@ -148,7 +155,7 @@ TEST(ScenePublicApi, ExercisesObjectIdentityAndOrthographicCameraApi)
 
     const auto child = scene->createEntity({.name = "Mesh and light"});
     ASSERT_TRUE(child);
-    auto mesh = created->createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = created->getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
     ASSERT_TRUE(mesh);
     ASSERT_TRUE(scene->setParent(*child, *camera));
     ASSERT_TRUE(scene->setMesh(*child, panda::scene::MeshInstance {.mesh = *mesh}));
@@ -166,7 +173,7 @@ TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherContextBeforeSubmission)
 {
     auto other = panda::Context::create();
     ASSERT_TRUE(other);
-    auto mesh = other->createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = other->getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
     ASSERT_TRUE(mesh);
     auto scene = panda::scene::Scene::create(activeContext());
     ASSERT_TRUE(scene);
@@ -176,7 +183,8 @@ TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherContextBeforeSubmission)
     ASSERT_TRUE(scene->setMesh(*object, panda::scene::MeshInstance {.mesh = *mesh}));
     const auto view = scene->createRenderView(1.0F);
     ASSERT_TRUE(view);
-    const auto rendered = activeContext().render(*view);
+    ASSERT_TRUE(renderTarget.isValid());
+    const auto rendered = activeContext().getOffscreenRenderer().render(*view, renderTarget);
     ASSERT_FALSE(rendered);
     EXPECT_EQ(rendered.error().code, panda::ErrorCode::InvalidArgument);
     ASSERT_TRUE(scene->setVisible(*object, false));
@@ -187,7 +195,7 @@ TEST_F(SceneRenderingSystem, RejectsTexturesFromAnotherContextBeforeSubmission)
 {
     auto other = panda::Context::create();
     ASSERT_TRUE(other);
-    auto texture = other->createTexture({
+    auto texture = other->getResourceManager().createTexture({
         .extent = vk::Extent2D {1, 1},
         .format = vk::Format::eR8G8B8A8Srgb,
         .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
@@ -199,14 +207,15 @@ TEST_F(SceneRenderingSystem, RejectsTexturesFromAnotherContextBeforeSubmission)
     selectCamera(*scene);
     const auto object = scene->createEntity();
     ASSERT_TRUE(object);
-    auto mesh = activeContext().createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = activeContext().getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
     ASSERT_TRUE(mesh);
     ASSERT_TRUE(scene->setMesh(*object, panda::scene::MeshInstance {.mesh = *mesh}));
     auto view = scene->createRenderView(1.0F);
     ASSERT_TRUE(view);
     view->meshes.front().material.baseColorTexture = *texture;
 
-    const auto rendered = activeContext().render(*view);
+    ASSERT_TRUE(renderTarget.isValid());
+    const auto rendered = activeContext().getOffscreenRenderer().render(*view, renderTarget);
     ASSERT_FALSE(rendered);
     EXPECT_EQ(rendered.error().code, panda::ErrorCode::InvalidArgument);
 }

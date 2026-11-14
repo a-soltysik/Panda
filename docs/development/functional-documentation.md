@@ -106,7 +106,7 @@ Follow the [project text and markup conventions](conventions.md#text-and-markup)
 | Format      | Use                                                            | Example                                                                 |
 |-------------|----------------------------------------------------------------|-------------------------------------------------------------------------|
 | **Bold**    | Responsible party, key guarantee or important restriction      | **Panda** owns native creation; initial contents are **undefined**      |
-| `Monospace` | Exact code symbols: types, methods, parameters and enum values | `MemoryPool`, `Context::createBuffer()`, `BufferMemory::Upload`         |
+| `Monospace` | Exact code symbols: types, methods, parameters and enum values | `MemoryPool`, `ResourceManager::createBuffer()`, `BufferMemory::Upload`         |
 | *Italics*   | A conceptual term when first introduced                        | The *publication point* is the moment a prepared result becomes visible |
 | Plain text  | Explanations and ordinary domain words                         | A memory pool can serve several resources                               |
 

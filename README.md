@@ -120,8 +120,8 @@ To include the optional scene module, enable `PANDA_BUILD_SCENE` and link
 their C++23 and include-directory requirements.
 
 See [the documentation](docs/README.md) for API contracts and build
-configuration, and [the example](examples/simple_scene/main.cpp) for window and
-Vulkan context lifetimes. The Quality workflow also provides generated API HTML
+configuration, the [window example](examples/simple_scene/README.md), and the
+[headless offscreen example](examples/offscreen_rendering/README.md). The Quality workflow also provides generated API HTML
 as the `panda-api-docs` downloadable artifact. Locally, run
 `cmake --preset gcc-docs` and `cmake --build --preset gcc-docs`, then open
 `build-gcc-docs-Linux/docs/api/generated/html/index.html`.

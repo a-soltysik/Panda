@@ -93,5 +93,14 @@ auto SubmissionQueue::waitValue(std::uint64_t value, std::uint64_t timeout) -> R
     return test::ScopedMock<test::SubmissionQueueMock>::getActiveMock().waitValue(value, timeout);
 }
 
+// cppcheck-suppress functionStatic
+auto SubmissionQueue::validateCompletionCoversRender(CompletionPoint point, std::uint64_t renderCompletionValue) const
+    -> Result<void>
+{
+    return test::ScopedMock<test::SubmissionQueueMock>::getActiveMock().validateCompletionCoversRender(
+        point,
+        renderCompletionValue);
+}
+
 // NOLINTEND(readability-convert-member-functions-to-static)
 }

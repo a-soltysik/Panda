@@ -31,7 +31,7 @@ void reportError(const panda::Error& error)
 auto allocateWithRetry(const panda::Context& context) -> panda::Result<void>
 {
     auto description = panda::BufferDesc {.size = 0, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
-    auto buffer = context.createBuffer(description);
+    auto buffer = context.getResourceManager().createBuffer(description);
     panda::expect(!buffer, "A zero-byte buffer must be rejected");
     reportError(buffer.error());
     if (buffer.error().code != panda::ErrorCode::InvalidArgument)
@@ -40,7 +40,7 @@ auto allocateWithRetry(const panda::Context& context) -> panda::Result<void>
     }
     // Correct the request; backend or device failures need a different recovery policy.
     description.size = 4096;
-    buffer = context.createBuffer(description);
+    buffer = context.getResourceManager().createBuffer(description);
     if (!buffer)
     {
         return std::unexpected {buffer.error()};

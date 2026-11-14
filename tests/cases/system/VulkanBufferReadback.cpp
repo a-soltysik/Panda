@@ -34,7 +34,7 @@ VulkanBufferReadback::VulkanBufferReadback(Buffer source, Buffer destination)
 auto VulkanBufferReadback::create(const Context& context, const Buffer& source)
     -> Result<std::unique_ptr<VulkanBufferReadback>>
 {
-    auto destination = context.createBuffer(
+    auto destination = context.getResourceManager().createBuffer(
         {.size = 8, .usage = vk::BufferUsageFlagBits::eTransferDst, .memory = BufferMemory::Readback});
     if (!destination)
     {

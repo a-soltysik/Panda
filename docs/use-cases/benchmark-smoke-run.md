@@ -7,7 +7,7 @@ of Panda's public frame timings and save the run details. The flow starts with
 command-line arguments and ends with a JSON report and process outcome. Only the
 `smoke` profile is implemented; it uploads one standard cube before warmup and
 measurement, then submits a fixed one-mesh view with an optional fixed light list
-through `Context::render(view)`. It exercises the live mesh and lighting paths, but
+through `WindowRenderer::render(view)`. It exercises the live mesh and lighting paths, but
 is not a representative scene benchmark or performance baseline.
 
 **The benchmark** validates settings, drives the timed phases and checks that the

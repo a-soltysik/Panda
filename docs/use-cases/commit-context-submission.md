@@ -52,7 +52,7 @@ future accepted submission can use it. Callers must not publish or wait on an
 uncommitted value.
 
 **Completion is separate.** A committed value means the queue accepted work. Use
-`Context::poll()` or `Context::wait()` to observe completion. Presentation also
+`SubmissionManager::poll()` or `SubmissionManager::wait()` to observe completion. Presentation also
 uses a per-image present fence because the queue timeline alone does not retire
 presentation-engine references.
 

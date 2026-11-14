@@ -2,7 +2,7 @@
 
 ## Goal and boundary
 
-An application passes camera, lighting and mesh draw data to `Context::render(view)`.
+An application passes camera, lighting and mesh draw data to `WindowRenderer::render(view)`.
 Panda renders and presents that view without requiring a scene or entity system. An
 empty `RenderView::meshes` list is a valid view that presents only the background.
 This flow ends with a `FrameResult` or an `Error`.
@@ -47,7 +47,10 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    transforms.
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
-2. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, all
+2. **Request the window render.** The application obtains the window renderer from
+   `Context::getWindowRenderer()` and calls `WindowRenderer::render(view)`. This
+   renderer is available only for a Context created with a window surface.
+3. **Validate and collect uploads.** `Context::Impl::render()` checks matrices, all
    light variants, optional shadow settings, atlas resolutions/capacity, and the
    configured light budget,
    tint, material alpha mode, cutoff, and finite normal-map scale and occlusion
@@ -59,16 +62,16 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    reclaims completed upload packets, then rejects a texture whose upload was never
    submitted. Rendering remains queued
    after any in-flight upload on the Context submission queue.
-3. **Prepare the window frame.** `Presentation::prepareWindowFrame()` checks the
+4. **Prepare the window frame.** `Presentation::prepareWindowFrame()` checks the
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
    without acquiring an image. See [UC Suspend presentation and recreate the
    swapchain](recreate-swapchain.md).
-4. **Retain resources and acquire.** `Presentation` asks `FrameExecution::prepareSlot()`
+5. **Retain resources and acquire.** `Presentation` asks `FrameExecution::prepareSlot()`
    to wait for the selected slot's prior GPU completion, then retain the view's mesh
    and selected material texture handles in that slot. It checks submission capacity,
    acquires an image with its slot-owned semaphore and waits for that image's pending
    presentation fence before reuse.
-5. **Record the view.** `Presentation` begins the command buffer and transitions the
+6. **Record the view.** `Presentation` begins the command buffer and transitions the
    acquired image to color-attachment layout. It passes `FrameExecution` a borrowed
    `FrameOutput` containing that image view, extent and color format. An empty mesh
    list clears the output to the configured background. Otherwise, `FrameExecution`
@@ -100,14 +103,14 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    `FrameExecution` records content and its timing markers; it does not acquire or
    present images, or transition the output image. `Presentation` records the final
    transition to present layout and ends the command buffer.
-6. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
+7. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
    Context timeline. Only after submission succeeds does `FrameExecution` store the
    completion value and commit renderer and performance state. `Presentation` then
    marks the image initialized and advances its slot. Mesh and texture handles remain
    retained in the execution slot until reuse after completion. See
    [UC Commit work to the Context submission timeline](commit-context-submission.md).
-7. **Queue presentation.** `Presentation::presentFrame()` queues the image with its
+8. **Queue presentation.** `Presentation::presentFrame()` queues the image with its
    per-image presentation fence. Normal presentation returns `Presented`; a
    suboptimal/out-of-date result returns `RecreatePending` with the accepted submission's
    completion point. Other failures follow [UC Recover from a presentation failure
@@ -116,6 +119,7 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 ```mermaid
 sequenceDiagram
     participant A as Application
+    participant W as WindowRenderer
     participant C as Context / Impl
     participant U as UploadManager
     participant P as Presentation
@@ -126,7 +130,10 @@ sequenceDiagram
     participant K as MeshPipelineCache
     participant Q as SubmissionQueue
     participant V as Vulkan
-    A->>C: render(view)
+    A->>A: Step 1 - build the view
+    A->>W: Step 2 - render(view)
+    W->>C: Forward the request
+    Note over C,V: Steps 3 to 8 realize validation through presentation
     C->>C: Validate camera, light, mesh layouts and texture requirements
     opt UploadManager exists
         C->>U: Collect completed upload packets
@@ -175,7 +182,8 @@ sequenceDiagram
     P->>V: Present image and signal its present fence
     V-->>P: Present outcome
     P-->>C: FrameResult or Error
-    C-->>A: Result<FrameResult>
+    C-->>W: Result<FrameResult>
+    W-->>A: Result<FrameResult>
 ```
 
 ## Notes
@@ -183,6 +191,12 @@ sequenceDiagram
 **No scene requirement.** Applications can prepare `RenderView` data from their own
 architecture. An optional scene library may prepare the same render data, but Core
 does not depend on that library.
+
+**Capture the same frame.** `WindowRenderer::renderWithCapture(view, target)` uses
+the target as the render output, copies that image to the acquired swapchain image,
+and presents it. The scene is rendered once. See
+[UC Render a view to an image](render-offscreen-view.md) for the target and readback
+contract.
 
 **Camera construction.** `panda::tools::createPerspectiveCamera()` combines the
 checked perspective projection with right-handed look-at vectors and returns a
@@ -268,6 +282,7 @@ A frame error does not imply that already submitted work was rolled back.
 | Acquire or present is suboptimal, or present reports out-of-date | Return `RecreatePending`; keep the accepted submission's completion point.                   |
 | Invalid view/material data, foreign mesh/texture, incompatible layout, or invalid material map | Return `InvalidArgument` before acquiring an image. |
 | Context has no window presentation service                       | Return `Unsupported`.                                                                        |
+| Capture is requested                                              | Use `WindowRenderer::renderWithCapture(view, target)`; capture may return `Unsupported` when the surface or formats cannot blit. |
 | Recording, submission or cleanup fails after acquire             | Return the relevant error; retire the acquired image. Failed retirement faults presentation. |
 | Surface or device is lost                                        | Return the Vulkan error and fault presentation; Context teardown still attempts its drain.   |
 

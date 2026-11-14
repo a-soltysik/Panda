@@ -31,6 +31,7 @@ struct SwapchainGeneration
     std::vector<SwapchainImage> images;
     vk::Extent2D extent;
     vk::Format format {vk::Format::eUndefined};
+    bool supportsTransferDestination {false};
 };
 
 struct SurfaceConfig

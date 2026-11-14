@@ -22,6 +22,7 @@
 namespace panda::detail
 {
 class PerformanceManagerImpl;
+class OffscreenTargetResource;
 }
 
 namespace panda::core::vulkan::resources
@@ -52,6 +53,8 @@ struct FrameExecutionCreateInfo
     resources::MemoryPool* pool {nullptr};
     ::panda::detail::PerformanceManagerImpl* performance {nullptr};
     std::uint32_t maxLights {::panda::ContextOptions::defaultMaxLights};
+    /// First query slot in the shared PerformanceManager array; separate executors need disjoint ranges.
+    std::size_t performanceSlotBase {0};
 };
 
 class FrameExecution final
@@ -68,7 +71,10 @@ public:
     auto operator=(FrameExecution&&) -> FrameExecution& = delete;
     ~FrameExecution();
 
-    [[nodiscard]] auto prepareSlot(std::size_t index, const RenderView& view) -> std::expected<void, Error>;
+    [[nodiscard]] auto prepareSlot(std::size_t index,
+                                   const RenderView& view,
+                                   std::shared_ptr<::panda::detail::OffscreenTargetResource> target = {})
+        -> std::expected<void, Error>;
     [[nodiscard]] auto beginCommands(std::size_t index) -> std::expected<void, Error>;
     [[nodiscard]] auto recordContent(std::size_t index, const FrameOutput& output, const RenderView& view)
         -> std::expected<void, Error>;
@@ -89,12 +95,15 @@ private:
         std::uint64_t lastCompletion {0};
         std::vector<Mesh> retainedMeshes;
         std::vector<Texture> retainedTextures;
+        std::shared_ptr<::panda::detail::OffscreenTargetResource> retainedTarget;
     };
 
     explicit FrameExecution(const FrameExecutionCreateInfo& info);
 
     [[nodiscard]] auto initialize() -> std::expected<void, Error>;
-    [[nodiscard]] static auto retainViewResources(ExecutionSlot& slot, const RenderView& view)
+    [[nodiscard]] static auto retainViewResources(ExecutionSlot& slot,
+                                                  const RenderView& view,
+                                                  std::shared_ptr<::panda::detail::OffscreenTargetResource> target)
         -> std::expected<void, Error>;
     [[nodiscard]] auto recordViewContent(std::size_t index, const FrameOutput& output, const RenderView& view)
         -> std::expected<void, Error>;
@@ -112,6 +121,7 @@ private:
     resources::MemoryPool* _pool;
     ::panda::detail::PerformanceManagerImpl* _performance;
     std::uint32_t _maxLights;
+    std::size_t _performanceSlotBase;
     std::unique_ptr<renderer::MeshRenderer> _renderer;
     std::array<ExecutionSlot, slotCount> _slots;
 };

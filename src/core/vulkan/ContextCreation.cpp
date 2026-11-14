@@ -36,6 +36,12 @@ namespace api_detail = ::panda::detail;
 
 namespace
 {
+struct DeviceResourceOptions
+{
+    std::optional<api_detail::ExternalSupport> externalSupport;
+    bool enableFramePerformanceSampling {};
+};
+
 template <typename T>
 auto borrowIfPresent(const std::unique_ptr<T>& owner) noexcept -> std::optional<std::reference_wrapper<T>>
 {
@@ -124,7 +130,7 @@ auto initializeSelectedDevice(ContextResources& resources,
 auto initializeSelectedDeviceResources(ContextResources& resources,
                                        const WindowSurface* surface,
                                        const SelectedDevice& selected,
-                                       std::optional<api_detail::ExternalSupport> externalSupport) -> Result<void>;
+                                       DeviceResourceOptions options) -> Result<void>;
 auto initializePerformance(ContextResources& resources,
                            const SelectedDevice& selected,
                            bool enableFramePerformanceSampling) -> Result<void>;
@@ -216,8 +222,12 @@ auto initializeDevice(ContextResources& resources, const WindowSurface* surface,
     {
         return std::unexpected {initialized.error()};
     }
-    if (const auto initialized =
-            initializeSelectedDeviceResources(resources, surface, *selected, std::move(*externalSupport));
+    if (const auto initialized = initializeSelectedDeviceResources(
+            resources,
+            surface,
+            *selected,
+            DeviceResourceOptions {.externalSupport = std::move(*externalSupport),
+                                   .enableFramePerformanceSampling = options.enableFramePerformanceSampling});
         !initialized)
     {
         return std::unexpected {initialized.error()};
@@ -262,11 +272,13 @@ void updateDeviceInfo(ContextResources& resources, const SelectedDevice& selecte
 auto initializeSelectedDeviceResources(ContextResources& resources,
                                        const WindowSurface* surface,
                                        const SelectedDevice& selected,
-                                       std::optional<api_detail::ExternalSupport> externalSupport) -> Result<void>
+                                       DeviceResourceOptions options) -> Result<void>
 {
     resources.memoryPool() = resources::MemoryPool::create(resources.physicalDevice(), resources.device());
-    const auto needsExternalHandoff = externalSupport && externalSupport->semaphoreHandleType.has_value();
-    const auto needsSubmissionQueue = surface != nullptr || needsExternalHandoff;
+    const auto needsExternalHandoff =
+        options.externalSupport && options.externalSupport->semaphoreHandleType.has_value();
+    const auto needsSubmissionQueue =
+        surface != nullptr || needsExternalHandoff || options.enableFramePerformanceSampling;
     if (needsSubmissionQueue)
     {
         resources.submissions() =
@@ -279,7 +291,7 @@ auto initializeSelectedDeviceResources(ContextResources& resources,
             return std::unexpected {initialized.error()};
         }
     }
-    if (externalSupport)
+    if (options.externalSupport)
     {
         resources.externalContext() = std::make_unique<api_detail::ExternalContext>(
             api_detail::ExternalContext::CreateInfo {.physicalDevice = resources.physicalDevice(),
@@ -288,7 +300,7 @@ auto initializeSelectedDeviceResources(ContextResources& resources,
                                                      .submissions = borrowIfPresent(resources.submissions()),
                                                      .uploads = resources.uploads(),
                                                      .queueFamily = selected.info.queueFamily,
-                                                     .support = std::move(*externalSupport)});
+                                                     .support = std::move(*options.externalSupport)});
     }
     return {};
 }

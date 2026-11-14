@@ -14,6 +14,11 @@ panda_add_component(panda_core
         Buffer.cpp
         Mesh.cpp
         Texture.cpp
+        OffscreenTarget.cpp
+        ResourceManager.cpp
+        OffscreenRenderer.cpp
+        SubmissionManager.cpp
+        WindowRenderer.cpp
         vulkan/external/ExternalBuffer.cpp
         vulkan/external/ExternalBufferManager.cpp
         vulkan/external/ExternalBufferOwnershipTransferCommand.cpp
@@ -31,6 +36,7 @@ panda_add_component(panda_core
         vulkan/performance/PerformanceManager.cpp
         vulkan/performance/PerformanceManagerImpl.cpp
         vulkan/presentation/FrameExecution.cpp
+        vulkan/presentation/OffscreenRendering.cpp
         vulkan/presentation/Presentation.cpp
         vulkan/renderer/FrameBindings.cpp
         vulkan/renderer/MeshRenderer.cpp
@@ -53,12 +59,14 @@ panda_add_component(panda_core
         vulkan/resources/MeshLayout.cpp
         vulkan/resources/MeshResource.cpp
         vulkan/resources/TextureResource.cpp
+        vulkan/resources/OffscreenTargetResource.cpp
     PUBLIC_HEADERS
         panda/Buffer.hpp
         panda/Camera.hpp
         panda/CompletionPoint.hpp
         panda/Context.hpp
         panda/Error.hpp
+        panda/FrameResult.hpp
         panda/ExternalBuffer.hpp
         panda/ExternalBufferManager.hpp
         panda/ExternalMemoryHandle.hpp
@@ -68,6 +76,10 @@ panda_add_component(panda_core
         panda/Mesh.hpp
         panda/Panda.hpp
         panda/PerformanceManager.hpp
+        panda/OffscreenRenderer.hpp
+        panda/Renderer.hpp
+        panda/ResourceManager.hpp
+        panda/SubmissionManager.hpp
         panda/Projection.hpp
         panda/Transform.hpp
         panda/Cube.hpp
@@ -75,8 +87,10 @@ panda_add_component(panda_core
         panda/Plane.hpp
         panda/Sphere.hpp
         panda/Texture.hpp
+        panda/OffscreenTarget.hpp
         panda/UploadBatch.hpp
         panda/WindowSurface.hpp
+        panda/WindowRenderer.hpp
         panda/RenderView.hpp
     PRIVATE_HEADERS
         Math.hpp
@@ -91,6 +105,7 @@ panda_add_component(panda_core
         vulkan/performance/PerformanceManagerImpl.hpp
         vulkan/presentation/Presentation.hpp
         vulkan/presentation/FrameExecution.hpp
+        vulkan/presentation/OffscreenRendering.hpp
         vulkan/SubmissionQueue.hpp
         vulkan/presentation/SwapchainGeneration.hpp
         vulkan/upload/UploadBatchId.hpp
@@ -109,6 +124,7 @@ panda_add_component(panda_core
         vulkan/resources/MeshResource.hpp
         vulkan/resources/memory/RangeAllocator.hpp
         vulkan/resources/TextureResource.hpp
+        vulkan/resources/OffscreenTargetResource.hpp
         vulkan/renderer/MeshRenderer.hpp
         vulkan/renderer/FrameBindings.hpp
         vulkan/renderer/MaterialTextureSlots.hpp

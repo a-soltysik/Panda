@@ -70,7 +70,7 @@ private:
     PerformanceCapabilities _capabilities;
     std::uint32_t _timestampValidBits;
     float _timestampPeriodNanoseconds;
-    std::array<QuerySlot, 2> _slots;
+    std::array<QuerySlot, 4> _slots;
     std::vector<ReadySample> _readySamples;
     std::uint64_t _nextFrameIndex {0};
 };

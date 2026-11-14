@@ -23,15 +23,17 @@ auto main() -> int
         const auto context = panda::expect(
             panda::Context::create({.applicationName = "Panda buffer allocation", .enableValidation = true}),
             "Create the Vulkan context");
-        const auto buffer = panda::expect(context.createBuffer({.size = 4096,
-                                                                .usage = vk::BufferUsageFlagBits::eStorageBuffer |
-                                                                         vk::BufferUsageFlagBits::eTransferDst}),
-                                          "Allocate the storage buffer");
+        const auto buffer =
+            panda::expect(context.getResourceManager().createBuffer({.size = 4096,
+                                                                     .usage = vk::BufferUsageFlagBits::eStorageBuffer |
+                                                                              vk::BufferUsageFlagBits::eTransferDst}),
+                          "Allocate the storage buffer");
         static constexpr auto values = std::array<std::uint32_t, 4> {1, 2, 3, 4};
-        auto batch = panda::expect(context.createUploadBatch(), "Create the upload batch");
+        auto batch = panda::expect(context.getSubmissionManager().createUploadBatch(), "Create the upload batch");
         panda::expect(batch.write(buffer, 0, std::as_bytes(std::span {values})), "Stage four values");
         const auto completion = panda::expect(batch.submit(), "Submit the upload");
-        const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for the upload");
+        const auto status = panda::expect(context.getSubmissionManager().wait(completion, std::chrono::seconds {10}),
+                                          "Wait for the upload");
         panda::expect(status == panda::WaitStatus::Completed, "Buffer upload did not finish in time");
         panda::log::info("Uploaded four values to the {}-byte storage buffer on '{}'",
                          buffer.getSize(),

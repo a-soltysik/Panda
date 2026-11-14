@@ -6,16 +6,24 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBufferManager.hpp>
+#include <panda/FrameResult.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/OffscreenRenderer.hpp>
+#include <panda/OffscreenTarget.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <panda/RenderView.hpp>
+#include <panda/ResourceManager.hpp>
+#include <panda/SubmissionManager.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
+#include <panda/WindowRenderer.hpp>
 #include <string>
 #include <vulkan/vulkan.hpp>
 
@@ -90,31 +98,11 @@ struct ContextDeviceInfo
     SwapchainMaintenance swapchainMaintenance {SwapchainMaintenance::None};
 };
 
-/// @brief Result of one window-frame attempt.
-struct FrameResult
-{
-    /// @brief Window-frame outcome.
-    enum class Status : std::uint8_t
-    {
-        Presented,
-        Skipped,
-        Suspended,
-        RecreatePending
-    };
-
-    /// Outcome; RecreatePending can still carry an already submitted frame.
-    Status status {Status::Skipped};
-    /// Committed work; empty when no GPU work was submitted. Does not mean presentation completed.
-    CompletionPoint completion;
-    /// Selected color/depth sample count: e1, e2 or e4. A mesh view initializes the renderer and reports its choice.
-    vk::SampleCountFlagBits effectiveSampleCount {vk::SampleCountFlagBits::e1};
-};
-
 /// @brief Move-only owner of a Vulkan instance, device and optional swapchain.
 /// Calls on one Context must be serialized. A quiescent Context may move between
 /// threads. A borrowed WindowSurface and its native window must outlive this Context;
 /// windowed calls follow that surface's thread requirements.
-/// Context outlives every Buffer, Texture and Mesh owner created from it, including copied handles.
+/// Context outlives every Buffer, Texture, Mesh and OffscreenTarget owner created from it, including copied handles.
 class Context final
 {
 public:
@@ -179,6 +167,22 @@ public:
     /// @return Device information. Moved-from use is a fatal contract error.
     [[nodiscard]] auto getDeviceInfo() const -> ContextDeviceInfo;
 
+    /// @brief Borrows this Context's resource creation operations.
+    /// @return A manager that must not outlive this Context.
+    [[nodiscard]] auto getResourceManager() const -> const ResourceManager&;
+
+    /// @brief Borrows this Context's upload and completion operations.
+    /// @return A manager that must not outlive this Context.
+    [[nodiscard]] auto getSubmissionManager() const -> const SubmissionManager&;
+
+    /// @brief Borrows this Context's offscreen renderer.
+    /// @return A renderer that can target any compatible OffscreenTarget from this Context.
+    [[nodiscard]] auto getOffscreenRenderer() const -> const OffscreenRenderer&;
+
+    /// @brief Borrows this Context's window renderer when it has a window surface.
+    /// @return A renderer reference, or an empty optional for a headless Context.
+    [[nodiscard]] auto getWindowRenderer() const -> std::optional<std::reference_wrapper<const WindowRenderer>>;
+
     /// @brief Borrows the Context-owned performance data manager.
     /// @return A manager that exposes device capabilities and ready per-frame CPU/GPU samples;
     /// it must not outlive this Context. Calls remain serialized with Context operations.
@@ -187,60 +191,39 @@ public:
     /// @brief Borrows this Context's external-buffer creation and handoff operations.
     [[nodiscard]] auto getExternalBufferManager() -> ExternalBufferManager&;
 
-    /// @brief Creates an ordinary fixed-size buffer with undefined initial bytes.
-    /// @return A shared resource owner or a validation/allocation/backend error.
-    /// Context outlives all copies. May allocate; submits no work and does not wait.
-    [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
-
-    /// @brief Creates an optimal-tiled, single-mip, single-layer 2D image with undefined initial contents.
-    /// @return A shared image owner or a validation/allocation/backend error.
-    /// Context outlives all copies. May allocate; submits no work and does not wait.
-    [[nodiscard]] auto createTexture(const TextureDesc& description) const -> Result<Texture>;
-
-    /// @brief Creates fixed vertex storage and optional index storage for one mesh.
-    /// @return A shared mesh owner or a validation/allocation/backend error.
-    /// Context outlives all copies. May allocate; submits no work and does not wait.
-    [[nodiscard]] auto createMesh(const MeshDesc& description) const -> Result<Mesh>;
-
-    /// @brief Creates storage matching standard CPU geometry without uploading it.
-    /// @return A shared mesh owner or a validation/allocation/backend error.
-    /// Empty indices create a non-indexed mesh. Context outlives every mesh copy.
-    [[nodiscard]] auto createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>;
-
-    /// @brief Creates an empty batch borrowing this Context; may allocate.
-    /// @return A batch or an initialization/backend error. Submits no work and performs no completion wait.
-    /// Unsubmitted batches must be destroyed before Context; successful submit
-    /// consumes the batch and transfers GPU-use retention to Context.
-    [[nodiscard]] auto createUploadBatch() const -> Result<UploadBatch>;
-
-    /// @brief Queries GPU completion without waiting; does not indicate display/presentation completion.
-    /// @return Completion state or a backend error; empty/foreign tokens are InvalidArgument.
-    [[nodiscard]] auto poll(CompletionPoint point) const -> Result<bool>;
-
-    /// @brief Explicitly waits for GPU work; timeout is in nanoseconds and must be nonnegative.
-    /// @return Completed, Timeout, or a backend error; rejects empty/foreign tokens.
-    [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>;
-
-    /// @brief Renders and presents one application-supplied view.
-    /// @param view Camera, directional lights and mesh draws; an empty mesh list presents the background.
-    /// A light casts shadows only when its optional `shadow` settings are set; local shadow views use its range/cone.
-    /// Directional shadows use `shadowCoverageMeters` to set their orthographic width.
-    /// Meshes must belong to this Context, be uploaded, and declare a valid vertex layout.
-    /// Lit materials require Position and Normal; unlit materials require Position. Color is optional and defaults to white.
-    /// If a base-color texture is set, it must be uploaded, sampled, RGBA8 sRGB, and from this Context; its mesh must declare TexCoord0.
-    /// @return Checked frame result or a validation/backend/window error, including `ResourceExhausted` when the
-    /// view exceeds `ContextOptions::maxLights`. A valid completion token means submitted work, not completed
-    /// presentation. Meshes and selected textures are retained through their submitted GPU use.
-    [[nodiscard]] auto render(const RenderView& view) const -> Result<FrameResult>;
-
 private:
+    friend class ResourceManager;
+    friend class SubmissionManager;
+    friend class OffscreenRenderer;
+    friend class WindowRenderer;
+
     class Impl;
+
+    [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
+    [[nodiscard]] auto createTexture(const TextureDesc& description) const -> Result<Texture>;
+    [[nodiscard]] auto createOffscreenTarget(const OffscreenTargetDesc& description) const -> Result<OffscreenTarget>;
+    [[nodiscard]] auto createMesh(const MeshDesc& description) const -> Result<Mesh>;
+    [[nodiscard]] auto createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>;
+    [[nodiscard]] auto createUploadBatch() const -> Result<UploadBatch>;
+    [[nodiscard]] auto poll(CompletionPoint point) const -> Result<bool>;
+    [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>;
+    [[nodiscard]] auto renderWindow(const RenderView& view) const -> Result<FrameResult>;
+    [[nodiscard]] auto renderWindowWithCapture(const RenderView& view, const OffscreenTarget& target) const
+        -> Result<FrameResult>;
+    [[nodiscard]] auto renderOffscreen(const RenderView& view, const OffscreenTarget& target) const
+        -> Result<FrameResult>;
+    [[nodiscard]] auto readPixels(const OffscreenTarget& target, CompletionPoint completion) const
+        -> Result<ImageReadback>;
 
     [[nodiscard]] static auto createInternal(const WindowSurface* surface, const ContextOptions& options)
         -> Result<Context>;
     explicit Context(std::unique_ptr<Impl> implementation) noexcept;
 
     std::unique_ptr<Impl> _implementation;
+    ResourceManager _resourceManager;
+    SubmissionManager _submissionManager;
+    OffscreenRenderer _offscreenRenderer;
+    WindowRenderer _windowRenderer;
     PerformanceManager _performanceManager;
     ExternalBufferManager _externalBufferManager;
 };

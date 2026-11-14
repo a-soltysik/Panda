@@ -78,7 +78,7 @@ TEST(ExternalBufferSystem, ReleaseSignalsTimelineAndPreventsVulkanUploadsUntilAc
     ASSERT_TRUE(buffer) << buffer.error().message;
 
     {
-        auto batch = context->createUploadBatch();
+        auto batch = context->getSubmissionManager().createUploadBatch();
         ASSERT_TRUE(batch);
         const auto blocked = externalBuffers.releaseToExternal(buffer->getBuffer());
         ASSERT_FALSE(blocked);
@@ -96,7 +96,7 @@ TEST(ExternalBufferSystem, ReleaseSignalsTimelineAndPreventsVulkanUploadsUntilAc
     ASSERT_FALSE(wrongAcquire);
     EXPECT_EQ(wrongAcquire.error().code, panda::ErrorCode::InvalidArgument);
 
-    auto batch = context->createUploadBatch();
+    auto batch = context->getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     const auto bytes = std::array<std::byte, 4> {};
     const auto blockedUpload = batch->write(externalView, 0, bytes);

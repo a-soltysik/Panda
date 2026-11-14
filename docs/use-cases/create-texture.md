@@ -3,7 +3,7 @@
 ## Goal and boundary
 
 An application requests a fixed-size 2D GPU image through
-`Context::createTexture(TextureDesc)`. The implemented flow returns a copyable
+`ResourceManager::createTexture(TextureDesc)`. The implemented flow returns a copyable
 `Texture` only after Panda has validated the request, created and bound the image,
 and created its internal default image view. Initial texels are **undefined**.
 Creation submits no GPU work and does not upload or initialize contents.
@@ -15,7 +15,7 @@ for every `Texture` owner. The implemented scope follows
 
 | Boundary          | Meaning                                                                                     |
 |-------------------|---------------------------------------------------------------------------------------------|
-| Trigger and input | Application calls `Context::createTexture` with a `TextureDesc`                             |
+| Trigger and input | Application calls `ResourceManager::createTexture` with a `TextureDesc`                             |
 | Successful end    | `Result<Texture>` contains a shared owner of a bound 2D image and its internal default view |
 | Failure end       | An `Error` is returned with no published `Texture`, or a fatal caller-contract violation    |
 | Outside this flow | Uploading texels, submitting GPU work, later synchronization and texture sampling           |
@@ -27,7 +27,7 @@ for every `Texture` owner. The implemented scope follows
 
 ## Main flow
 
-1. **Request.** The application calls `Context::createTexture(description)`.
+1. **Request.** The application calls `ResourceManager::createTexture(description)`.
    `Context` requires live internal state.
 2. **Release completed upload resources.** `Context::Impl::createResource`
    calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)

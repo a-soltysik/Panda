@@ -17,8 +17,10 @@
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
+#include <panda/FrameResult.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/OffscreenTarget.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
@@ -34,10 +36,12 @@
 #include "SubmissionQueue.hpp"
 #include "external/ExternalContext.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
+#include "presentation/OffscreenRendering.hpp"
 #include "presentation/Presentation.hpp"
 #include "renderer/RenderViewValidation.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MeshResource.hpp"
+#include "resources/OffscreenTargetResource.hpp"
 #include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 #include "upload/UploadBatchImpl.hpp"
@@ -70,14 +74,24 @@ public:
     }
 
     [[nodiscard]] auto getDeviceInfo() const -> const ContextDeviceInfo&;
+    [[nodiscard]] auto hasWindowSurface() const noexcept -> bool;
     [[nodiscard]] auto getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&;
     [[nodiscard]] auto render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
         -> Result<FrameResult>;
+    [[nodiscard]] auto render(const RenderView& view,
+                              const OffscreenTarget& target,
+                              std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>;
+    [[nodiscard]] auto renderWithCapture(const RenderView& view,
+                                         const OffscreenTarget& target,
+                                         std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>;
+    [[nodiscard]] auto readPixels(const OffscreenTarget& target, CompletionPoint completion) -> Result<ImageReadback>;
     [[nodiscard]] auto createBufferResource(const BufferDesc& description)
         -> Result<std::shared_ptr<detail::BufferResource>>;
     [[nodiscard]] auto getExternalContext() noexcept -> std::optional<std::reference_wrapper<detail::ExternalContext>>;
     [[nodiscard]] auto createTextureResource(const TextureDesc& description)
         -> Result<std::shared_ptr<detail::TextureResource>>;
+    [[nodiscard]] auto createOffscreenTargetResource(const OffscreenTargetDesc& description)
+        -> Result<std::shared_ptr<detail::OffscreenTargetResource>>;
     [[nodiscard]] auto createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>;
     [[nodiscard]] auto createUploadBatch() -> Result<std::unique_ptr<detail::UploadBatchImpl>>;
     [[nodiscard]] auto poll(CompletionPoint point) -> Result<bool>;
@@ -86,8 +100,11 @@ public:
 
 private:
     [[nodiscard]] auto ensureUploads() -> Result<void>;
+    [[nodiscard]] auto ensureSubmissions() -> Result<void>;
+    [[nodiscard]] auto ensureOffscreenRendering() -> Result<void>;
     [[nodiscard]] auto collectUploads() -> Result<void>;
     void collectCompletedUploads();
+    [[nodiscard]] auto validateCaptureTarget(const OffscreenTarget& target) const -> Result<void>;
 
     template <typename Resource, typename Description>
     [[nodiscard]] auto createResource(const Description& description) -> Result<std::shared_ptr<Resource>>
@@ -98,12 +115,30 @@ private:
     }
 
     std::unique_ptr<vulkan::ContextResources> _resources;
+    std::unique_ptr<vulkan::presentation::OffscreenRendering> _offscreenRendering;
     std::uint32_t _maxLights;
 };
 
 auto Context::Impl::ensureUploads() -> Result<void>
 {
     if (_resources->uploads())
+    {
+        return {};
+    }
+    if (const auto submissions = ensureSubmissions(); !submissions)
+    {
+        return submissions;
+    }
+    _resources->uploads().emplace(_resources->device(),
+                                  *_resources->memoryPool(),
+                                  *_resources->submissions(),
+                                  _resources->info().queueFamily);
+    return {};
+}
+
+auto Context::Impl::ensureSubmissions() -> Result<void>
+{
+    if (_resources->submissions())
     {
         return {};
     }
@@ -118,10 +153,32 @@ auto Context::Impl::ensureUploads() -> Result<void>
         }
         _resources->submissions() = std::move(submissions);
     }
-    _resources->uploads().emplace(_resources->device(),
-                                  *_resources->memoryPool(),
-                                  *_resources->submissions(),
-                                  _resources->info().queueFamily);
+    return {};
+}
+
+auto Context::Impl::ensureOffscreenRendering() -> Result<void>
+{
+    if (_offscreenRendering)
+    {
+        return {};
+    }
+    if (const auto submissions = ensureSubmissions(); !submissions)
+    {
+        return submissions;
+    }
+    auto rendering = vulkan::presentation::OffscreenRendering::create(
+        {.physicalDevice = *_resources->physicalDevice(),
+         .device = _resources->device(),
+         .queueFamily = _resources->info().queueFamily,
+         .submissions = *_resources->submissions(),
+         .pool = *_resources->memoryPool(),
+         .performance = _resources->performanceManagerImplementation().get(),
+         .maxLights = _maxLights});
+    if (!rendering)
+    {
+        return std::unexpected {rendering.error()};
+    }
+    _offscreenRendering = std::move(*rendering);
     return {};
 }
 
@@ -143,6 +200,11 @@ void Context::Impl::collectCompletedUploads()
 auto Context::Impl::getDeviceInfo() const -> const ContextDeviceInfo&
 {
     return _resources->info();
+}
+
+auto Context::Impl::hasWindowSurface() const noexcept -> bool
+{
+    return _resources->presentation() != nullptr;
 }
 
 auto Context::Impl::getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&
@@ -170,6 +232,96 @@ auto Context::Impl::render(const RenderView& view, std::optional<std::size_t>& s
     });
 }
 
+auto Context::Impl::render(const RenderView& view,
+                           const OffscreenTarget& target,
+                           std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>
+{
+    const auto& targetResource = detail::OffscreenTargetResource::getResource(target);
+    if (!targetResource || !targetResource->belongsTo(*_resources->memoryPool()))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Context")};
+    }
+    if (const auto valid = vulkan::renderer::validateRenderView(view, _maxLights, *_resources->memoryPool()); !valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    return collectUploads().and_then([&]() -> Result<FrameResult> {
+        if (const auto valid = vulkan::renderer::validateRenderViewTextures(view); !valid)
+        {
+            return std::unexpected {valid.error()};
+        }
+        if (const auto initialized = ensureOffscreenRendering(); !initialized)
+        {
+            return std::unexpected {initialized.error()};
+        }
+        return _offscreenRendering->render(view, target, submittedPerformanceSlot);
+    });
+}
+
+auto Context::Impl::renderWithCapture(const RenderView& view,
+                                      const OffscreenTarget& target,
+                                      std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>
+{
+    submittedPerformanceSlot.reset();
+    if (const auto valid = validateCaptureTarget(target); !valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    if (const auto valid = vulkan::renderer::validateRenderView(view, _maxLights, *_resources->memoryPool()); !valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    return collectUploads().and_then([&]() -> Result<FrameResult> {
+        if (const auto valid = vulkan::renderer::validateRenderViewTextures(view); !valid)
+        {
+            return std::unexpected {valid.error()};
+        }
+        if (const auto initialized = ensureOffscreenRendering(); !initialized)
+        {
+            return std::unexpected {initialized.error()};
+        }
+        return _resources->presentation()->renderWithCapture({.view = view,
+                                                              .target = target,
+                                                              .rendering = *_offscreenRendering,
+                                                              .submittedPerformanceSlot = submittedPerformanceSlot});
+    });
+}
+
+auto Context::Impl::validateCaptureTarget(const OffscreenTarget& target) const -> Result<void>
+{
+    const auto& targetResource = detail::OffscreenTargetResource::getResource(target);
+    if (!targetResource || !targetResource->belongsTo(*_resources->memoryPool()))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Context")};
+    }
+    if (!_resources->presentation())
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to capture a frame")};
+    }
+    return {};
+}
+
+auto Context::Impl::readPixels(const OffscreenTarget& target, CompletionPoint completion) -> Result<ImageReadback>
+{
+    const auto& targetResource = detail::OffscreenTargetResource::getResource(target);
+    if (!targetResource || !targetResource->belongsTo(*_resources->memoryPool()))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Context")};
+    }
+    if (!targetResource->isInitialized())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Offscreen target has not been rendered")};
+    }
+    if (const auto initialized = ensureOffscreenRendering(); !initialized)
+    {
+        return std::unexpected {initialized.error()};
+    }
+    return _offscreenRendering->readPixels(target, completion);
+}
+
 auto Context::Impl::createBufferResource(const BufferDesc& description)
     -> Result<std::shared_ptr<detail::BufferResource>>
 {
@@ -185,6 +337,12 @@ auto Context::Impl::createTextureResource(const TextureDesc& description)
     -> Result<std::shared_ptr<detail::TextureResource>>
 {
     return createResource<detail::TextureResource>(description);
+}
+
+auto Context::Impl::createOffscreenTargetResource(const OffscreenTargetDesc& description)
+    -> Result<std::shared_ptr<detail::OffscreenTargetResource>>
+{
+    return createResource<detail::OffscreenTargetResource>(description);
 }
 
 auto Context::Impl::createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>
@@ -239,17 +397,26 @@ void Context::Impl::drain()
         expect(_resources->presentation()->drain(), "Cannot safely drain window presentation");
         _resources->presentation().reset();
     }
+    if (_offscreenRendering)
+    {
+        expect(_offscreenRendering->drain(), "Cannot safely drain offscreen rendering");
+        _offscreenRendering.reset();
+    }
     if (_resources->externalContext())
     {
         expect(_resources->externalContext()->drain(timeoutNanoseconds),
                "Cannot safely drain external handoff submissions");
     }
     expect(_resources->memoryPool()->getStats().liveBytes == 0,
-           "Context destroyed with live Buffer or Texture owners or Mesh storage");
+           "Context destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
 }
 
 Context::Context(std::unique_ptr<Impl> implementation) noexcept
     : _implementation {std::move(implementation)},
+      _resourceManager {*this},
+      _submissionManager {*this},
+      _offscreenRenderer {*this},
+      _windowRenderer {*this},
       _performanceManager {std::ref(_implementation->getPerformanceManagerImplementation())},
       _externalBufferManager {_implementation->getExternalContext()}
 {
@@ -257,6 +424,10 @@ Context::Context(std::unique_ptr<Impl> implementation) noexcept
 
 Context::Context(Context&& other) noexcept
     : _implementation {std::move(other._implementation)},
+      _resourceManager {*this},
+      _submissionManager {*this},
+      _offscreenRenderer {*this},
+      _windowRenderer {*this},
       _performanceManager {_implementation
                                ? std::optional {std::ref(_implementation->getPerformanceManagerImplementation())}
                                : std::nullopt},
@@ -304,6 +475,30 @@ auto Context::getDeviceInfo() const -> ContextDeviceInfo
     return _implementation->getDeviceInfo();
 }
 
+auto Context::getResourceManager() const -> const ResourceManager&
+{
+    return _resourceManager;
+}
+
+auto Context::getSubmissionManager() const -> const SubmissionManager&
+{
+    return _submissionManager;
+}
+
+auto Context::getOffscreenRenderer() const -> const OffscreenRenderer&
+{
+    return _offscreenRenderer;
+}
+
+auto Context::getWindowRenderer() const -> std::optional<std::reference_wrapper<const WindowRenderer>>
+{
+    if (!_implementation || !_implementation->hasWindowSurface())
+    {
+        return std::nullopt;
+    }
+    return std::cref(_windowRenderer);
+}
+
 auto Context::getPerformanceManager() -> PerformanceManager&
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
@@ -316,7 +511,7 @@ auto Context::getExternalBufferManager() -> ExternalBufferManager&
     return _externalBufferManager;
 }
 
-auto Context::render(const RenderView& view) const -> Result<FrameResult>
+auto Context::renderWindow(const RenderView& view) const -> Result<FrameResult>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
     auto frameStart = std::optional<std::chrono::steady_clock::time_point> {};
@@ -336,6 +531,56 @@ auto Context::render(const RenderView& view) const -> Result<FrameResult>
     return result;
 }
 
+auto Context::renderOffscreen(const RenderView& view, const OffscreenTarget& target) const -> Result<FrameResult>
+{
+    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    auto frameStart = std::optional<std::chrono::steady_clock::time_point> {};
+    if (_performanceManager.getCapabilities().isGpuTimestampSamplingEnabled)
+    {
+        frameStart = std::chrono::steady_clock::now();
+    }
+    auto submittedPerformanceSlot = std::optional<std::size_t> {};
+    auto result = _implementation->render(view, target, submittedPerformanceSlot);
+    if (frameStart && submittedPerformanceSlot)
+    {
+        const auto duration =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - *frameStart);
+        _implementation->getPerformanceManagerImplementation().recordCpuFrameDuration(*submittedPerformanceSlot,
+                                                                                      duration);
+    }
+    return result;
+}
+
+auto Context::renderWindowWithCapture(const RenderView& view, const OffscreenTarget& target) const
+    -> Result<FrameResult>
+{
+    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    auto frameStart = std::optional<std::chrono::steady_clock::time_point> {};
+    if (_performanceManager.getCapabilities().isGpuTimestampSamplingEnabled)
+    {
+        frameStart = std::chrono::steady_clock::now();
+    }
+    auto submittedPerformanceSlot = std::optional<std::size_t> {};
+    auto result = _implementation->renderWithCapture(view, target, submittedPerformanceSlot);
+    if (frameStart && submittedPerformanceSlot)
+    {
+        const auto duration =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - *frameStart);
+        _implementation->getPerformanceManagerImplementation().recordCpuFrameDuration(*submittedPerformanceSlot,
+                                                                                      duration);
+    }
+    return result;
+}
+
+auto Context::readPixels(const OffscreenTarget& target, CompletionPoint completion) const -> Result<ImageReadback>
+{
+    if (!_implementation)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot read pixels from a moved-from Context")};
+    }
+    return _implementation->readPixels(target, completion);
+}
+
 auto Context::createBuffer(const BufferDesc& description) const -> Result<Buffer>
 {
     expect(_implementation != nullptr, "Cannot use a moved-from Context");
@@ -351,6 +596,15 @@ auto Context::createTexture(const TextureDesc& description) const -> Result<Text
     return _implementation->createTextureResource(description)
         .transform([](std::shared_ptr<detail::TextureResource> resource) {
             return Texture {std::move(resource)};
+        });
+}
+
+auto Context::createOffscreenTarget(const OffscreenTargetDesc& description) const -> Result<OffscreenTarget>
+{
+    expect(_implementation != nullptr, "Cannot use a moved-from Context");
+    return _implementation->createOffscreenTargetResource(description)
+        .transform([](std::shared_ptr<detail::OffscreenTargetResource> resource) {
+            return OffscreenTarget {std::move(resource)};
         });
 }
 

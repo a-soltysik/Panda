@@ -183,6 +183,11 @@ window-frame preparation handles that state; see the
 service setup without querying window extensions, creating a surface or initializing
 presentation. Upload support is initialized when an upload batch is first requested.
 
+**Borrowed operations.** Both Context paths expose `ResourceManager`,
+`SubmissionManager` and `OffscreenRenderer` through Context getters. Only a windowed
+Context exposes `WindowRenderer`; a headless Context has no window-rendering entry
+point. These facades borrow their Context and cannot outlive it.
+
 ## Variants and errors
 
 |                    | Point and condition                                                                                                      | Response                                                                                                                                                    | Resulting state and next action                                                                               |

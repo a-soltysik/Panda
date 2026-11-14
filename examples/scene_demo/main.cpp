@@ -255,6 +255,7 @@ void drawLoop(const panda::tools::Window& window,
               const AnimatedObjects& objects)
 {
     const auto start = std::chrono::steady_clock::now();
+    const auto renderer = panda::expect(context.getWindowRenderer(), "Window context has no window renderer");
     while (!window.shouldClose())
     {
         const auto extent = panda::expect(window.getFramebufferExtent(), "Read framebuffer size");
@@ -268,14 +269,14 @@ void drawLoop(const panda::tools::Window& window,
         animateWave(scene, objects.objects, elapsed);
         const auto aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
         const auto view = panda::expect(scene.createRenderView(aspect), "Prepare scene");
-        const auto frame = panda::expect(context.render(view), "Render scene");
+        const auto frame = panda::expect(renderer.get().render(view), "Render scene");
         panda::expect(frame.status == panda::FrameResult::Status::Suspended ? panda::tools::Window::waitForInput()
                                                                             : window.processInput(),
                       "Process input");
     }
 }
 
-void run(const panda::tools::Window& window, panda::Context& context)
+auto createMeshes(const panda::Context& context) -> SceneMeshes
 {
     const auto cubeGeometry = panda::createCubeGeometry();
     const auto groundGeometry = panda::createPlaneGeometry();
@@ -284,18 +285,28 @@ void run(const panda::tools::Window& window, panda::Context& context)
                       "Create sphere geometry");
     const auto triangleGeometry = createTriangleGeometry();
     const auto meshes = SceneMeshes {
-        .cube = panda::expect(context.createMeshFromGeometry(cubeGeometry), "Create cube mesh"),
-        .ground = panda::expect(context.createMeshFromGeometry(groundGeometry), "Create ground mesh"),
-        .sphere = panda::expect(context.createMeshFromGeometry(sphereGeometry), "Create sphere mesh"),
-        .triangle = panda::expect(context.createMeshFromGeometry(triangleGeometry), "Create triangle mesh")};
-    auto batch = panda::expect(context.createUploadBatch(), "Create upload batch");
+        .cube = panda::expect(context.getResourceManager().createMeshFromGeometry(cubeGeometry), "Create cube mesh"),
+        .ground =
+            panda::expect(context.getResourceManager().createMeshFromGeometry(groundGeometry), "Create ground mesh"),
+        .sphere =
+            panda::expect(context.getResourceManager().createMeshFromGeometry(sphereGeometry), "Create sphere mesh"),
+        .triangle = panda::expect(context.getResourceManager().createMeshFromGeometry(triangleGeometry),
+                                  "Create triangle mesh")};
+    auto batch = panda::expect(context.getSubmissionManager().createUploadBatch(), "Create upload batch");
     panda::expect(batch.write(meshes.cube, cubeGeometry), "Stage cube");
     panda::expect(batch.write(meshes.ground, groundGeometry), "Stage ground");
     panda::expect(batch.write(meshes.sphere, sphereGeometry), "Stage sphere");
     panda::expect(batch.write(meshes.triangle, triangleGeometry), "Stage triangle");
     const auto completion = panda::expect(batch.submit(), "Submit geometry upload");
-    const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for geometry upload");
+    const auto status = panda::expect(context.getSubmissionManager().wait(completion, std::chrono::seconds {10}),
+                                      "Wait for geometry upload");
     panda::expect(status == panda::WaitStatus::Completed, "Geometry upload did not finish in time");
+    return meshes;
+}
+
+void run(const panda::tools::Window& window, panda::Context& context)
+{
+    const auto meshes = createMeshes(context);
     auto scene = panda::expect(panda::scene::Scene::create(context), "Create scene");
     addCamera(scene);
     addDirectionalLights(scene);

@@ -296,4 +296,18 @@ auto SubmissionQueue::wait(CompletionPoint point, std::uint64_t timeout) -> Resu
         return waitValue(point._value, timeout);
     });
 }
+
+auto SubmissionQueue::validateCompletionCoversRender(CompletionPoint point, std::uint64_t renderCompletionValue) const
+    -> Result<void>
+{
+    if (const auto valid = validatePoint(point); !valid)
+    {
+        return valid;
+    }
+    if (point._value < renderCompletionValue)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Completion point predates the target render")};
+    }
+    return {};
+}
 }

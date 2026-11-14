@@ -21,7 +21,7 @@ buffer-only writes; texture and mesh writes add layout and atomicity rules.
 
 ## Main flow
 
-1. **Create a batch.** The application calls `Context::createUploadBatch()`.
+1. **Create a batch.** The application calls `SubmissionManager::createUploadBatch()`.
    Context lazily creates its upload manager and, when needed, the shared queue
    timeline. The returned move-only batch borrows Context, submits no work and
    performs no completion wait.
@@ -106,13 +106,13 @@ that packet.
 **Completion.** The returned point identifies committed work on the Context's
 shared timeline. It is a copyable token and does not retain Context or resources;
 the issuing Context must remain alive while the application observes it. Use
-`Context::poll()` or `Context::wait()` to observe GPU completion when needed;
+`SubmissionManager::poll()` or `SubmissionManager::wait()` to observe GPU completion when needed;
 [UC Observe or wait for submitted GPU work](observe-completion.md) explains
 their results and limits.
 Submission itself does not block for completion. Uploads use explicit barriers
 around the copies, so queue order alone is not treated as a memory dependency.
 
-**Lazy service.** `Context::createUploadBatch()` creates the upload service on
+**Lazy service.** `SubmissionManager::createUploadBatch()` creates the upload service on
 first use. Headless Contexts also initialize their shared submission timeline at
 that point; windowed Contexts use the timeline already shared with presentation.
 

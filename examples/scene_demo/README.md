@@ -18,7 +18,7 @@ also creates and uploads the cube, ground, configurable sphere and triangle mesh
 then associates them with scene objects. The sphere uses 48 longitude segments and 24
 latitude rings. Each frame supplies the current framebuffer aspect ratio to
 `Scene::createRenderView()` and passes the returned snapshot to
-`Context::render()`. The application owns the loop and uploads; scene objects and
+`WindowRenderer::render()`. The application owns the loop and uploads; scene objects and
 snapshots retain mesh handles. Context outlives all of them.
 
 Requires `PANDA_BUILD_SCENE=ON`, Tools, a display, Vulkan 1.3 with swapchain

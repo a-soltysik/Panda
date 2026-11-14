@@ -12,6 +12,9 @@
 #include <memory>
 #include <optional>
 #include <panda/Context.hpp>
+#include <panda/FrameResult.hpp>
+#include <panda/OffscreenTarget.hpp>
+#include <panda/RenderView.hpp>
 #include <panda/WindowSurface.hpp>
 
 #include "SubmissionQueue.hpp"
@@ -24,6 +27,11 @@ namespace panda::core::vulkan
 {
 namespace api_detail = ::panda::detail;
 
+namespace presentation
+{
+class OffscreenRendering;
+}
+
 struct PresentationCreateInfo
 {
     vk::PhysicalDevice physicalDevice;
@@ -35,6 +43,14 @@ struct PresentationCreateInfo
     resources::MemoryPool* pool {nullptr};
     api_detail::PerformanceManagerImpl* performance {nullptr};
     std::uint32_t maxLights {ContextOptions::defaultMaxLights};
+};
+
+struct CaptureFrameRequest
+{
+    const RenderView& view;
+    const OffscreenTarget& target;
+    presentation::OffscreenRendering& rendering;
+    std::optional<std::size_t>& submittedPerformanceSlot;
 };
 
 class Presentation final
@@ -52,6 +68,7 @@ public:
     [[nodiscard]] auto render(const RenderView& view) -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
         -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto renderWithCapture(const CaptureFrameRequest& request) -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto drain() -> std::expected<void, Error>;
 
 private:
@@ -109,6 +126,10 @@ private:
                                            std::size_t slotIndex,
                                            const RenderView& view,
                                            std::optional<std::size_t>& submittedPerformanceSlot)
+        -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto executeAcquiredCaptureFrame(const CaptureFrameRequest& request)
+        -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto submitAcquiredCaptureFrame(const AcquiredImage& acquired, const CaptureFrameRequest& request)
         -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto acquireFrame(std::size_t slotIndex) -> std::expected<AcquiredImage, Error>;
     [[nodiscard]] auto interpretAcquiredImage(vk::Result result, std::uint32_t index)

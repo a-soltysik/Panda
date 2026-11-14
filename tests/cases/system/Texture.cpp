@@ -31,7 +31,7 @@ TEST(TextureSystem, UploadsTextureRegionsAndReleasesSharedImageOwnersWithoutVali
             .format = vk::Format::eR8G8B8A8Unorm,
             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
         };
-        auto created = context->createTexture(description);
+        auto created = context->getResourceManager().createTexture(description);
         if (!created && created.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << created.error().message;
@@ -43,7 +43,7 @@ TEST(TextureSystem, UploadsTextureRegionsAndReleasesSharedImageOwnersWithoutVali
         EXPECT_EQ(created->getFormat(), description.format);
         EXPECT_EQ(created->getUsage(), description.usage);
 
-        auto batch = context->createUploadBatch();
+        auto batch = context->getSubmissionManager().createUploadBatch();
         ASSERT_TRUE(batch) << batch.error().message;
         const auto top = std::vector<std::byte>(std::size_t {8} * 136, std::byte {0x25});
         const auto bottom = std::vector<std::byte>(std::size_t {32} * 8 * 4, std::byte {0x6a});
@@ -61,7 +61,7 @@ TEST(TextureSystem, UploadsTextureRegionsAndReleasesSharedImageOwnersWithoutVali
         ASSERT_TRUE(bottomUpload) << bottomUpload.error().message;
         const auto submitted = batch->submit();
         ASSERT_TRUE(submitted) << submitted.error().message;
-        const auto waited = context->wait(*submitted, std::chrono::seconds {10});
+        const auto waited = context->getSubmissionManager().wait(*submitted, std::chrono::seconds {10});
         ASSERT_TRUE(waited) << waited.error().message;
         ASSERT_EQ(*waited, panda::WaitStatus::Completed);
 
@@ -72,16 +72,16 @@ TEST(TextureSystem, UploadsTextureRegionsAndReleasesSharedImageOwnersWithoutVali
         EXPECT_TRUE(moved.isValid());
         moved.reset();
 
-        auto fullTexture = context->createTexture(description);
+        auto fullTexture = context->getResourceManager().createTexture(description);
         ASSERT_TRUE(fullTexture) << fullTexture.error().message;
-        auto fullBatch = context->createUploadBatch();
+        auto fullBatch = context->getSubmissionManager().createUploadBatch();
         ASSERT_TRUE(fullBatch) << fullBatch.error().message;
         const auto fullBytes = std::vector<std::byte>(std::size_t {32} * 16 * 4, std::byte {0x3c});
         const auto fullUpload = fullBatch->write(*fullTexture, fullBytes);
         ASSERT_TRUE(fullUpload) << fullUpload.error().message;
         const auto fullSubmitted = fullBatch->submit();
         ASSERT_TRUE(fullSubmitted) << fullSubmitted.error().message;
-        const auto fullWaited = context->wait(*fullSubmitted, std::chrono::seconds {10});
+        const auto fullWaited = context->getSubmissionManager().wait(*fullSubmitted, std::chrono::seconds {10});
         ASSERT_TRUE(fullWaited) << fullWaited.error().message;
         ASSERT_EQ(*fullWaited, panda::WaitStatus::Completed);
         fullTexture->reset();

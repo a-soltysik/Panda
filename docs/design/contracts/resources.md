@@ -148,24 +148,29 @@ their public headers; entries without public declarations remain planned contrac
 | `Context::create(ContextOptions) -> Result<Context>` | Move-only owner with stable, heap-owned internal state; operations on one context are serialized |
 | `Context::createWithSurface(WindowSurface&, ContextOptions) -> Result<Context>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
 | `Context::getDeviceInfo() -> ContextDeviceInfo` | Copies selected-device information including external-memory and optional timeline-semaphore export support |
+| `Context::getResourceManager() -> ResourceManager&` | Borrows creation operations for buffers, textures, meshes and offscreen targets |
+| `Context::getSubmissionManager() -> SubmissionManager&` | Borrows upload-batch creation and completion observation operations |
+| `Context::getOffscreenRenderer() -> OffscreenRenderer&` | Borrows the renderer for explicit target-based rendering and pixel readback |
+| `Context::getWindowRenderer() -> optional<reference_wrapper<const WindowRenderer>>` | Exposes window rendering only for a Context created with a surface |
 | `Context::getExternalBufferManager() -> ExternalBufferManager&` | Borrows the Context-owned object for external-buffer creation and GPU ownership handoffs |
-| `Buffer`, `Texture`, `Mesh` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
-| `Context::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
+| `Buffer`, `Texture`, `Mesh`, `OffscreenTarget` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
+| `ResourceManager::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
 | `ExternalBufferManager::createBuffer(BufferDesc) -> Result<ExternalBuffer>` | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle |
 | `ExternalBufferManager::releaseToExternal(const Buffer&) -> Result<ExternalTimelineValue>` | Submits a Vulkan ownership release and signals the paired timeline semaphore |
 | `ExternalBufferManager::acquireFromExternal(const Buffer&, ExternalTimelineValue) -> Result<void>` | Waits on the external timeline value and queues the Vulkan ownership acquire |
 | `ExternalBuffer` | Owns the Vulkan buffer, allocation handle and optional paired timeline-semaphore handle; handles alone do not synchronize access |
 | `CudaSession::importBuffer(ExternalBuffer) -> Result<SharedCudaBuffer>` | `Panda::Cuda` imports and maps a matching-device allocation once and imports its optional paired semaphore; it does not submit compute or synchronize with Vulkan |
 | `CudaSession::close() -> Result<void>` | Releases the session only after all `SharedCudaBuffer` owners are gone |
-| `Context::createTexture(TextureDesc) -> Result<Texture>` | Optimal-tiled 2D image with one mip and layer, sample count one, and undefined initial contents |
-| `Context::createMesh(MeshDesc) -> Result<Mesh>` | Fixed vertex storage and optional 16- or 32-bit index storage; does not submit work |
+| `ResourceManager::createTexture(TextureDesc) -> Result<Texture>` | Optimal-tiled 2D image with one mip and layer, sample count one, and undefined initial contents |
+| `ResourceManager::createOffscreenTarget(OffscreenTargetDesc) -> Result<OffscreenTarget>` | Single-sample RGBA8 sRGB color target for offscreen rendering and explicit readback |
+| `ResourceManager::createMesh(MeshDesc) -> Result<Mesh>` | Fixed vertex storage and optional 16- or 32-bit index storage; does not submit work |
 | `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates destination bounds and transfer usage |
 | `UploadBatch::write(Mesh, vertexBytes, indexBytes) -> Result<void>` | Snapshots the complete mesh payload; a failed call queues none of that mesh's buffers |
 | `UploadBatch::write(Texture, span<const byte>, rowPitchBytes) -> Result<void>` | Copies a full texture using tightly packed rows when pitch is zero |
 | `UploadBatch::write(Texture, span<const byte>, TextureUploadRegion) -> Result<void>` | Copies one validated region; multiple regions for one texture must use the same batch |
 | `UploadBatch::submit() -> Result<CompletionPoint>` | Submits on the same graphics/compute queue; no CPU wait for completion |
-| `Context::poll(CompletionPoint) -> Result<bool>` | Reports GPU completion or failure; not a presentation/display timestamp |
-| `Context::wait(CompletionPoint, timeout) -> Result<WaitStatus>` | Explicit administrative wait; timeout is distinct from completion and backend failure |
+| `SubmissionManager::poll(CompletionPoint) -> Result<bool>` | Reports GPU completion or failure; not a presentation/display timestamp |
+| `SubmissionManager::wait(CompletionPoint, timeout) -> Result<WaitStatus>` | Explicit administrative wait; timeout is distinct from completion and backend failure |
 
 Materials are planned context-bound resources with shared ownership. Empty material
 handles must be detectable and rejected where a material is required; their public
@@ -208,7 +213,7 @@ wait, invalidate and copy results. Exported buffers use a separate factory, not 
 option that changes ordinary buffer behavior.
 
 The implemented `BufferDesc` provides byte size, `vk::BufferUsageFlags` and
-`BufferMemory` intent. `Context::createBuffer` creates ordinary, non-exportable
+`BufferMemory` intent. `ResourceManager::createBuffer` creates ordinary, non-exportable
 buffers with undefined initial bytes. `ExternalBufferManager::createBuffer` is a separate
 operation that requires external-memory support and always uses device-local memory.
 Supported usages are transfer,
@@ -218,7 +223,7 @@ device-local memory; `Upload` requires host visibility and prefers coherence;
 `Readback` requires host visibility and prefers caching. These intents grant no
 CPU mapping or GPU access permission.
 
-`Context::createBuffer` creates the native buffer, queries its ordinary and
+`ResourceManager::createBuffer` creates the native buffer, queries its ordinary and
 dedicated requirements, allocates from the Context's pool and binds at that range's
 offset. Failure publishes no handle. A last `Buffer` release destroys the native
 buffer before returning its range. The pool and device remain stable when Context
@@ -231,7 +236,7 @@ Context and must be destroyed before it.
 `TextureDesc` provides a 2D extent, Vulkan format and image usage. Texture creation
 fixes optimal tiling, one mip, one array layer and one sample, with undefined initial
 contents. Because each texture owns a default image view, usage must include at least
-one supported view-capable bit. `Context::createTexture` checks optimal-tiling
+one supported view-capable bit. `ResourceManager::createTexture` checks optimal-tiling
 format/usage support and the requested extent against the physical device before
 creating the image. It then queries ordinary and dedicated requirements, requests
 device-local memory from the image partition of the Context pool and binds the image
@@ -251,7 +256,7 @@ layout. Texels not covered by the supplied regions remain undefined. Published s
 textures are immutable; edits publish a replacement handle.
 
 `MeshDesc` gives a nonzero vertex count and byte stride, plus an optional nonzero
-index count and `MeshIndexType` (`UInt16` or `UInt32`). `Context::createMesh` derives
+index count and `MeshIndexType` (`UInt16` or `UInt32`). `ResourceManager::createMesh` derives
 the byte sizes, creates device-local vertex and optional index buffers with transfer
 destination usage, and publishes one copyable `Mesh` only after all buffers are
 ready. If index-buffer creation fails, the unpublished vertex buffer is released.
@@ -326,7 +331,7 @@ resources, defragmenter, residency manager, or allocator plugin API in version o
   owns the interop rules.
 
 Buffer uploads use the same graphics/compute submission clock as presentation,
-including when Context has no window. `Context::createUploadBatch` initializes
+including when Context has no window. `SubmissionManager::createUploadBatch` initializes
 this service lazily for headless contexts. `write` snapshots nonempty caller bytes
 into a persistently mapped, pooled staging page owned by the batch, validates
 Context, transfer-destination usage and destination bounds, then flushes
@@ -401,6 +406,13 @@ When GPU timestamp sampling is enabled, the Context-owned public
 pool is reset and makes the results available without an additional GPU wait. The
 [benchmarking contract](../../development/benchmarking.md#public-performance-collection)
 defines the public sample shape and initial measurement boundary.
+
+An explicit `OffscreenTarget` is retained by the execution slot until the render
+completes. `OffscreenRenderer::render()` returns `FrameResult::Status::Rendered`
+without presentation. `readPixels()` accepts only a completion point covering that
+target's latest render, submits an image-to-buffer copy and waits for the copy before
+returning host pixels. `WindowRenderer::renderWithCapture()` renders into that same
+target and copies it to the acquired swapchain image before presentation.
 
 For a normal frame: reclaim completed work, wait/poll the selected slot, acquire an
 image, prepare and submit rendering, then present. Do not submit frame work after an

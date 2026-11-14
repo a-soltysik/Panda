@@ -3,7 +3,7 @@
 ## Goal and boundary
 
 An application requests fixed vertex storage and optional index storage through
-`Context::createMesh(MeshDesc)`. Panda derives the byte sizes and creates
+`ResourceManager::createMesh(MeshDesc)`. Panda derives the byte sizes and creates
 device-local buffers for the requested layout. A copyable `Mesh` is returned
 only after every required buffer is ready. Initial bytes are **undefined**;
 creation submits no GPU work and does not upload a mesh payload.
@@ -16,7 +16,7 @@ scope follows
 
 | Boundary          | Meaning                                                                                               |
 |-------------------|-------------------------------------------------------------------------------------------------------|
-| Trigger and input | Application calls `Context::createMesh` with vertex count/stride, optional attributes and optional indices |
+| Trigger and input | Application calls `ResourceManager::createMesh` with vertex count/stride, optional attributes and optional indices |
 | Successful end    | `Result<Mesh>` owns fixed vertex storage and, when requested, index storage                           |
 | Failure end       | An `Error` is returned with no published `Mesh`, or a fatal caller-contract violation                 |
 | Outside this flow | Vertex/index bytes, index-value validation, drawing and GPU synchronization                          |
@@ -28,7 +28,7 @@ scope follows
 
 ## Main flow
 
-1. **Request.** The application calls `Context::createMesh(description)`.
+1. **Request.** The application calls `ResourceManager::createMesh(description)`.
    `Context` requires live internal state.
 2. **Release completed upload resources.** `Context::Impl::createResource`
    calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)

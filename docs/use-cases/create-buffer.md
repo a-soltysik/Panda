@@ -3,7 +3,7 @@
 ## Goal and boundary
 
 An application requests fixed-size, ordinary GPU buffer storage by calling
-`Context::createBuffer(BufferDesc)`. This implemented flow ends with a published
+`ResourceManager::createBuffer(BufferDesc)`. This implemented flow ends with a published
 `Buffer` or an error. It may allocate host/device memory, but submits no GPU work
 and does not wait for GPU completion. Initial bytes are **undefined**; uploading and
 synchronizing future uses are separate operations.
@@ -14,7 +14,7 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 
 | Boundary          | Meaning                                                                              |
 |-------------------|--------------------------------------------------------------------------------------|
-| Trigger and input | Application calls `Context::createBuffer` with a `BufferDesc`                        |
+| Trigger and input | Application calls `ResourceManager::createBuffer` with a `BufferDesc`                        |
 | Successful end    | A `Result<Buffer>` containing an owning, memory-bound `Buffer`                       |
 | Failure end       | A returned `Error` with no new `Buffer`, or a fatal caller-contract violation        |
 | Outside this flow | Uploading bytes, submitting GPU work, synchronization of later uses and CUDA sharing |
@@ -26,7 +26,7 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 
 ## Main flow
 
-1. **Request.** The application calls `Context::createBuffer(description)`.
+1. **Request.** The application calls `ResourceManager::createBuffer(description)`.
    `Context` requires live internal state.
 2. **Release completed upload resources.** `Context::Impl::createResource`
    calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)

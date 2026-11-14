@@ -52,17 +52,17 @@ protected:
 
     auto makeDestination(panda::BufferMemory intent = panda::BufferMemory::Readback) -> panda::Buffer
     {
-        auto buffer = activeContext().createBuffer(
+        auto buffer = activeContext().getResourceManager().createBuffer(
             {.size = 512, .usage = vk::BufferUsageFlagBits::eTransferDst, .memory = intent});
         return panda::expect(std::move(buffer), "Test upload destination creation failed");
     }
 
     void finish(panda::CompletionPoint point)
     {
-        const auto waited = activeContext().wait(point, std::chrono::seconds {10});
+        const auto waited = activeContext().getSubmissionManager().wait(point, std::chrono::seconds {10});
         ASSERT_TRUE(waited) << waited.error().message;
         ASSERT_EQ(*waited, panda::WaitStatus::Completed);
-        const auto polled = activeContext().poll(point);
+        const auto polled = activeContext().getSubmissionManager().poll(point);
         ASSERT_TRUE(polled);
         EXPECT_TRUE(*polled);
     }
@@ -96,7 +96,7 @@ protected:
 TEST_F(UploadSystem, CopiesByteRangesAndPreservesSnapshotAfterCallerChangesData)
 {
     auto target = makeDestination();
-    auto batch = activeContext().createUploadBatch();
+    auto batch = activeContext().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     auto bytes = std::vector<std::byte>(257, std::byte {0x5a});
     const auto expected = bytes;
@@ -112,7 +112,7 @@ TEST_F(UploadSystem, CopiesByteRangesAndPreservesSnapshotAfterCallerChangesData)
 TEST_F(UploadSystem, OverlappingWritesAndLaterBatchesFollowSubmissionOrder)
 {
     auto target = makeDestination();
-    auto initial = activeContext().createUploadBatch();
+    auto initial = activeContext().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(initial);
     const auto zeros = std::array<std::byte, 16> {};
     const auto first = std::array {std::byte {1}, std::byte {2}, std::byte {3}, std::byte {4}};
@@ -122,7 +122,7 @@ TEST_F(UploadSystem, OverlappingWritesAndLaterBatchesFollowSubmissionOrder)
     ASSERT_TRUE(initial->write(target, 5, second));
     const auto initialPoint = initial->submit();
     ASSERT_TRUE(initialPoint);
-    auto later = activeContext().createUploadBatch();
+    auto later = activeContext().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(later);
     const auto final = std::array {std::byte {0x42}};
     ASSERT_TRUE(later->write(target, 4, final));
@@ -141,7 +141,7 @@ TEST_F(UploadSystem, SubmittedOwnerSurvivesResetAndIsReleasedAfterCompletion)
 {
     auto target = makeDestination(panda::BufferMemory::Device);
     const auto weak = std::weak_ptr {panda::detail::BufferResource::getResource(target)};
-    auto batch = activeContext().createUploadBatch();
+    auto batch = activeContext().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     const auto bytes = std::array {std::byte {1}, std::byte {2}, std::byte {3}};
     ASSERT_TRUE(batch->write(target, 1, bytes));
@@ -157,7 +157,7 @@ TEST_F(UploadSystem, DestructionDrainsPendingUploadsAfterApplicationOwnersAreGon
 {
     auto target = makeDestination(panda::BufferMemory::Device);
     const auto weak = std::weak_ptr {panda::detail::BufferResource::getResource(target)};
-    auto batch = activeContext().createUploadBatch();
+    auto batch = activeContext().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     const auto bytes = std::array {std::byte {1}, std::byte {2}};
     ASSERT_TRUE(batch->write(target, 0, bytes));
@@ -171,14 +171,14 @@ TEST_F(UploadSystem, DestructionDrainsPendingUploadsAfterApplicationOwnersAreGon
 TEST_F(UploadSystem, BatchAndPointRemainUsableAfterMovingContext)
 {
     auto target = makeDestination();
-    auto batch = activeContext().createUploadBatch();
+    auto batch = activeContext().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     auto moved = std::move(activeContext());
     const auto bytes = std::array {std::byte {4}, std::byte {5}, std::byte {6}};
     ASSERT_TRUE(batch->write(target, 3, bytes));
     const auto point = batch->submit();
     ASSERT_TRUE(point);
-    const auto waited = moved.wait(*point, std::chrono::seconds {10});
+    const auto waited = moved.getSubmissionManager().wait(*point, std::chrono::seconds {10});
     ASSERT_TRUE(waited);
     ASSERT_EQ(*waited, panda::WaitStatus::Completed);
     verifyBytes(target, 3, bytes);
