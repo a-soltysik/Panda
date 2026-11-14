@@ -375,7 +375,7 @@ protected:
             });
     }
 
-    void expectExternalHandoffQueue()
+    void expectSubmissionQueue()
     {
         auto* const queue = fakeVulkanHandle<VkQueue>(30);
         auto* const semaphore = fakeVulkanHandle<VkSemaphore>(31);
@@ -839,7 +839,7 @@ TEST_F(ContextLifecycleTest, EnablesTimelineSemaphoreExportWhenTheTimelineQueryI
     expectExternalMemoryExtensions(true, true);
     expectTimelineSemaphoreSupport(true);
     expectDevice(false, success, false, true, true);
-    expectExternalHandoffQueue();
+    expectSubmissionQueue();
     expectParentsDestroyed(true, false);
 
     auto context =
@@ -872,6 +872,7 @@ TEST_F(ContextLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePubli
     expectInstance();
     expectAdapter(false, false, TimestampScenario {.validBits = 64, .periodNanoseconds = 2.5F});
     expectDevice(false);
+    expectSubmissionQueue();
     expectPerformancePools();
     expectParentsDestroyed(true, false);
     auto context = panda::Context::create({.enableFramePerformanceSampling = true});

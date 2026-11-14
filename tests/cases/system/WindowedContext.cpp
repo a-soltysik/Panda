@@ -685,6 +685,18 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
     EXPECT_EQ(resized->status, panda::FrameResult::Status::Presented);
     EXPECT_TRUE(resized->completion.isValid());
 
+    auto captureTarget = createTestTarget(movedContext);
+    ASSERT_TRUE(captureTarget.has_value()) << captureTarget.error().message;
+    const auto emptyTargetCapture =
+        windowRenderer(movedContext).renderWithCapture(panda::RenderView {}, panda::OffscreenTarget {});
+    ASSERT_FALSE(emptyTargetCapture);
+    EXPECT_EQ(emptyTargetCapture.error().code, panda::ErrorCode::InvalidArgument);
+    auto invalidCaptureView = panda::RenderView {};
+    invalidCaptureView.camera.viewProjection = glm::mat4 {0.0F};
+    const auto invalidViewCapture = windowRenderer(movedContext).renderWithCapture(invalidCaptureView, *captureTarget);
+    ASSERT_FALSE(invalidViewCapture);
+    EXPECT_EQ(invalidViewCapture.error().code, panda::ErrorCode::InvalidArgument);
+
     // Native iconification is asynchronous and may be ignored by a window manager.
     // The surface reports the same zero framebuffer state deterministically.
     surface.setSuspended(true);
@@ -692,6 +704,10 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
     ASSERT_TRUE(suspended.has_value());
     EXPECT_EQ(suspended->status, panda::FrameResult::Status::Suspended);
     EXPECT_FALSE(suspended->completion.isValid());
+    const auto suspendedCapture = windowRenderer(movedContext).renderWithCapture(panda::RenderView {}, *captureTarget);
+    ASSERT_TRUE(suspendedCapture.has_value()) << suspendedCapture.error().message;
+    EXPECT_EQ(suspendedCapture->status, panda::FrameResult::Status::Suspended);
+    EXPECT_FALSE(suspendedCapture->completion.isValid());
 
     surface.setSuspended(false);
     const auto restored = windowRenderer(movedContext).render(panda::RenderView {});

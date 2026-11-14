@@ -222,6 +222,26 @@ TEST_F(OffscreenRenderingSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
     ASSERT_EQ(firstReadback->rgba.size(), 32U * 32U * 4U);
     ASSERT_EQ(secondReadback->rgba.size(), firstReadback->rgba.size());
 
+    auto smallerTarget = activeContext().getResourceManager().createOffscreenTarget({
+        .extent = {.width = 16, .height = 24}
+    });
+    ASSERT_TRUE(smallerTarget) << smallerTarget.error().message;
+    const auto resizedFrame = activeContext().getOffscreenRenderer().render(*secondView, *smallerTarget);
+    ASSERT_TRUE(resizedFrame) << resizedFrame.error().message;
+    const auto resizedReadback =
+        activeContext().getOffscreenRenderer().readPixels(*smallerTarget, resizedFrame->completion);
+    ASSERT_TRUE(resizedReadback) << resizedReadback.error().message;
+    const auto smallerExtent = vk::Extent2D {.width = 16, .height = 24};
+    EXPECT_EQ(resizedReadback->extent, smallerExtent);
+    EXPECT_EQ(resizedReadback->rgba.size(), 16U * 24U * 4U);
+    auto& performance = activeContext().getPerformanceManager();
+    if (performance.getCapabilities().isGpuTimestampSamplingEnabled)
+    {
+        const auto samples = performance.takeAvailableSamples();
+        ASSERT_TRUE(samples) << samples.error().message;
+        EXPECT_EQ(samples->size(), 3U);
+    }
+
     const auto expected = expectedCenterPixel();
     const auto first = centerPixel(*firstReadback);
     const auto second = centerPixel(*secondReadback);
@@ -241,6 +261,14 @@ TEST_F(OffscreenRenderingSystem, ValidatesTargetExtentOwnershipAndLifetime)
     ASSERT_FALSE(zeroExtent);
     EXPECT_EQ(zeroExtent.error().code, panda::ErrorCode::InvalidArgument);
 
+    auto emptyTarget = panda::OffscreenTarget {};
+    EXPECT_FALSE(emptyTarget.isValid());
+    EXPECT_EQ(emptyTarget.getExtent(), vk::Extent2D {});
+    EXPECT_EQ(emptyTarget.getFormat(), vk::Format::eUndefined);
+    const auto emptyReadback = activeContext().getOffscreenRenderer().readPixels(emptyTarget, {});
+    ASSERT_FALSE(emptyReadback);
+    EXPECT_EQ(emptyReadback.error().code, panda::ErrorCode::InvalidArgument);
+
     auto other = panda::Context::create();
     ASSERT_TRUE(other);
     auto foreignTarget = other->getResourceManager().createOffscreenTarget({
@@ -254,16 +282,40 @@ TEST_F(OffscreenRenderingSystem, ValidatesTargetExtentOwnershipAndLifetime)
     const auto foreignRender = activeContext().getOffscreenRenderer().render(panda::RenderView {}, *foreignTarget);
     ASSERT_FALSE(foreignRender);
     EXPECT_EQ(foreignRender.error().code, panda::ErrorCode::InvalidArgument);
+    const auto foreignFrame = other->getOffscreenRenderer().render(panda::RenderView {}, *foreignTarget);
+    ASSERT_TRUE(foreignFrame) << foreignFrame.error().message;
 
     auto target = activeContext().getResourceManager().createOffscreenTarget({
         .extent = {.width = 16, .height = 16}
     });
     ASSERT_TRUE(target) << target.error().message;
+    const auto targetExtent = vk::Extent2D {.width = 16, .height = 16};
+    EXPECT_EQ(target->getExtent(), targetExtent);
     EXPECT_EQ(target->getFormat(), vk::Format::eR8G8B8A8Srgb);
+
+    const auto unrenderedReadback = activeContext().getOffscreenRenderer().readPixels(*target, {});
+    ASSERT_FALSE(unrenderedReadback);
+    EXPECT_EQ(unrenderedReadback.error().code, panda::ErrorCode::InvalidArgument);
+    auto invalidView = panda::RenderView {};
+    invalidView.camera.viewProjection = glm::mat4 {0.0F};
+    const auto invalidFrame = activeContext().getOffscreenRenderer().render(invalidView, *target);
+    ASSERT_FALSE(invalidFrame);
+    EXPECT_EQ(invalidFrame.error().code, panda::ErrorCode::InvalidArgument);
+
     const auto weak = std::weak_ptr {panda::detail::OffscreenTargetResource::getResource(*target)};
+    auto copiedTarget = *target;
+    auto assignedTarget = panda::OffscreenTarget {};
+    assignedTarget = copiedTarget;
     const auto frame = activeContext().getOffscreenRenderer().render(panda::RenderView {}, *target);
     ASSERT_TRUE(frame) << frame.error().message;
+    const auto foreignCompletionReadback =
+        activeContext().getOffscreenRenderer().readPixels(*target, foreignFrame->completion);
+    ASSERT_FALSE(foreignCompletionReadback);
+    EXPECT_EQ(foreignCompletionReadback.error().code, panda::ErrorCode::InvalidArgument);
     target->reset();
+    EXPECT_FALSE(weak.expired());
+    copiedTarget.reset();
+    assignedTarget.reset();
     EXPECT_FALSE(weak.expired());
     const auto waited = activeContext().getSubmissionManager().wait(frame->completion, std::chrono::seconds {10});
     ASSERT_TRUE(waited) << waited.error().message;
