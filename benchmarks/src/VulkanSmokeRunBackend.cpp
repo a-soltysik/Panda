@@ -12,8 +12,9 @@
 #include <numbers>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
 #include <panda/Cube.hpp>
+#include <panda/Engine.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/FrameResult.hpp>
 #include <panda/Geometry.hpp>
@@ -117,7 +118,7 @@ void configureLights(panda::RenderView& view, std::uint32_t lightCount)
     }
 }
 
-auto waitForCubeUpload(const panda::Context& context, const panda::CompletionPoint& completion)
+auto waitForCubeUpload(const panda::Engine& context, const panda::CompletionPoint& completion)
     -> std::expected<void, Failure>
 {
     const auto waited = context.getSubmissionManager().wait(completion, std::chrono::seconds {30});
@@ -132,7 +133,7 @@ auto waitForCubeUpload(const panda::Context& context, const panda::CompletionPoi
     return {};
 }
 
-auto uploadCube(const panda::Context& context, panda::Mesh& mesh, const panda::Geometry& geometry)
+auto uploadCube(const panda::Engine& context, panda::Mesh& mesh, const panda::Geometry& geometry)
     -> std::expected<void, Failure>
 {
     auto uploadBatch = context.getSubmissionManager().createUploadBatch();
@@ -152,7 +153,7 @@ auto uploadCube(const panda::Context& context, panda::Mesh& mesh, const panda::G
     return waitForCubeUpload(context, *completion);
 }
 
-auto addUploadedCube(const panda::Context& context, panda::RenderView& view) -> std::expected<void, Failure>
+auto addUploadedCube(const panda::Engine& context, panda::RenderView& view) -> std::expected<void, Failure>
 {
     const auto geometry = panda::createCubeGeometry();
     auto mesh = context.getResourceManager().createMeshFromGeometry(geometry);
@@ -171,7 +172,7 @@ auto VulkanSmokeRunBackend::initialize(const Options& options) -> std::expected<
     {
         return std::unexpected {window.error()};
     }
-    if (const auto context = createContext(options); !context)
+    if (const auto context = createEngine(options); !context)
     {
         return std::unexpected {context.error()};
     }
@@ -209,7 +210,7 @@ auto VulkanSmokeRunBackend::effectiveSampleCount() const noexcept -> std::uint32
 
 auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
 {
-    const auto renderer = checkedContext().getWindowRenderer();
+    const auto renderer = checkedEngine().getWindowRenderer();
     if (!renderer)
     {
         return std::unexpected {backendFailure("The benchmark context has no window renderer")};
@@ -233,7 +234,7 @@ auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
 
 auto VulkanSmokeRunBackend::takeAvailableSamples() -> std::expected<std::vector<panda::FramePerformanceSample>, Failure>
 {
-    const auto samples = checkedContext().getPerformanceManager().takeAvailableSamples();
+    const auto samples = checkedEngine().getPerformanceManager().takeAvailableSamples();
     if (!samples)
     {
         return std::unexpected {failFromPanda(samples.error())};
@@ -253,7 +254,7 @@ auto VulkanSmokeRunBackend::processInput() -> std::expected<void, Failure>
 
 auto VulkanSmokeRunBackend::waitForLastFrame(std::chrono::nanoseconds timeout) -> std::expected<void, Failure>
 {
-    const auto waited = checkedContext().getSubmissionManager().wait(_lastCompletion, timeout);
+    const auto waited = checkedEngine().getSubmissionManager().wait(_lastCompletion, timeout);
     if (!waited)
     {
         return std::unexpected {failFromPanda(waited.error())};
@@ -268,7 +269,7 @@ auto VulkanSmokeRunBackend::waitForLastFrame(std::chrono::nanoseconds timeout) -
 void VulkanSmokeRunBackend::teardown()
 {
     _view.meshes.clear();
-    _context.reset();
+    _engine.reset();
     _window.reset();
     _lastCompletion = {};
     _effectiveSampleCount = 1;
@@ -283,13 +284,13 @@ auto VulkanSmokeRunBackend::checkedWindow() const -> const panda::tools::Window&
     return *_window;
 }
 
-auto VulkanSmokeRunBackend::checkedContext() -> panda::Context&
+auto VulkanSmokeRunBackend::checkedEngine() -> panda::Engine&
 {
-    if (!_context.has_value())
+    if (!_engine.has_value())
     {
         throw std::logic_error {"The benchmark context is not initialized"};
     }
-    return *_context;
+    return *_engine;
 }
 
 auto VulkanSmokeRunBackend::createWindow(const Options& options) -> std::expected<void, Failure>
@@ -304,25 +305,25 @@ auto VulkanSmokeRunBackend::createWindow(const Options& options) -> std::expecte
     return {};
 }
 
-auto VulkanSmokeRunBackend::createContext(const Options& options) -> std::expected<void, Failure>
+auto VulkanSmokeRunBackend::createEngine(const Options& options) -> std::expected<void, Failure>
 {
-    auto createdContext = panda::Context::createWithSurface(
+    auto createdEngine = panda::Engine::createWithSurface(
         checkedWindow(),
         {.applicationName = "Panda benchmark",
          .enableValidation = false,
          .enableFramePerformanceSampling = true,
-         .maxLights = std::max(panda::ContextOptions::defaultMaxLights, options.lightCount)});
-    if (!createdContext)
+         .maxLights = std::max(panda::EngineOptions::defaultMaxLights, options.lightCount)});
+    if (!createdEngine)
     {
-        return std::unexpected {failFromPanda(createdContext.error())};
+        return std::unexpected {failFromPanda(createdEngine.error())};
     }
-    _context.emplace(std::move(*createdContext));
+    _engine.emplace(std::move(*createdEngine));
     return checkPerformanceCapabilities();
 }
 
 auto VulkanSmokeRunBackend::checkPerformanceCapabilities() -> std::expected<void, Failure>
 {
-    const auto capabilities = checkedContext().getPerformanceManager().getCapabilities();
+    const auto capabilities = checkedEngine().getPerformanceManager().getCapabilities();
     if (!capabilities.hasGpuTimestampQueries || !capabilities.isGpuTimestampSamplingEnabled)
     {
         return std::unexpected {unsupported("The selected graphics queue does not support GPU timestamp sampling")};
@@ -337,7 +338,7 @@ auto VulkanSmokeRunBackend::captureEnvironment() -> std::expected<SmokeRunEnviro
     {
         return std::unexpected {extent.error()};
     }
-    const auto deviceInfo = checkedContext().getDeviceInfo();
+    const auto deviceInfo = checkedEngine().getDeviceInfo();
     auto environment = SmokeRunEnvironment {.framebufferExtent = *extent,
                                             .gpuModel = deviceInfo.name,
                                             .driver = {},
@@ -365,7 +366,7 @@ auto VulkanSmokeRunBackend::createStaticCube(panda::FramebufferExtent extent, st
     }
     configureLights(view, lightCount);
 
-    if (const auto cube = addUploadedCube(checkedContext(), view); !cube)
+    if (const auto cube = addUploadedCube(checkedEngine(), view); !cube)
     {
         return cube;
     }

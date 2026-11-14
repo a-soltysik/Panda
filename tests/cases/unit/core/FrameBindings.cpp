@@ -20,7 +20,7 @@
 #include <limits>
 #include <memory>
 #include <panda/Buffer.hpp>
-#include <panda/Context.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <span>
@@ -106,7 +106,7 @@ protected:
         std::ignore = instance.release();
     }
 
-    auto createBindings(std::uint32_t maxLights = panda::ContextOptions::defaultMaxLights)
+    auto createBindings(std::uint32_t maxLights = panda::EngineOptions::defaultMaxLights)
         -> std::expected<std::unique_ptr<FrameBindings>, panda::Error>
     {
         return FrameBindings::create(
@@ -121,7 +121,8 @@ protected:
             .pool = *pool,
             .extent = {.width = 64, .height = 64},
             .colorFormat = vk::Format::eR8G8B8A8Unorm,
-            .frameCount = 1
+            .frameCount = 1,
+            .maxLights = panda::EngineOptions::defaultMaxLights
         };
     }
 
@@ -571,13 +572,14 @@ TEST_F(FrameBindingsTest, RejectsInsufficientStorageLimitAndInvalidFrameCounts)
     ASSERT_FALSE(unsupported);
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 
-    const auto empty =
-        FrameBindings::create({.physicalDevice = physical, .device = device, .pool = *pool, .frameCount = 0});
+    const auto empty = FrameBindings::create(
+        {.physicalDevice = physical, .device = device, .pool = *pool, .frameCount = 0, .maxLights = 0});
     const auto oversized =
         FrameBindings::create({.physicalDevice = physical,
                                .device = device,
                                .pool = *pool,
-                               .frameCount = static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 1});
+                               .frameCount = static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 1,
+                               .maxLights = 0});
     EXPECT_FALSE(empty);
     EXPECT_FALSE(oversized);
     EXPECT_EQ(empty.error().code, panda::ErrorCode::InvalidArgument);

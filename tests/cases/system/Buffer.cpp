@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <panda/Buffer.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <utility>
@@ -12,7 +12,7 @@
 
 namespace
 {
-void exerciseOwnership(panda::Context& context, panda::BufferMemory intent)
+void exerciseOwnership(panda::Engine& context, panda::BufferMemory intent)
 {
     auto created = context.getResourceManager().createBuffer(
         {.size = 257, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = intent});
@@ -44,7 +44,7 @@ TEST_P(BufferSystem, CreatesAndReleasesPublicOwnersWithoutValidationErrors)
     auto records = panda::test::LogRecords {};
     const auto capture = panda::test::ProcessSinkRegistration {records};
     {
-        auto context = panda::Context::create({.applicationName = "Panda buffer smoke", .enableValidation = true});
+        auto context = panda::Engine::create({.applicationName = "Panda buffer smoke", .enableValidation = true});
         if (!context && context.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << context.error().message;

@@ -1,15 +1,15 @@
 #include <gtest/gtest.h>
 
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vulkan/vulkan.hpp>
 
-TEST(VulkanContextSystem, SelectsAndOwnsRequiredDevice)
+TEST(VulkanEngineSystem, SelectsAndOwnsRequiredDevice)
 {
-    auto created = panda::Context::create({.applicationName = "Panda Vulkan context smoke", .enableValidation = true});
+    auto created = panda::Engine::create({.applicationName = "Panda Vulkan context smoke", .enableValidation = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;

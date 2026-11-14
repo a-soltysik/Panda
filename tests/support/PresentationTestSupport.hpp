@@ -15,7 +15,6 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 #include <span>

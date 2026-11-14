@@ -35,7 +35,7 @@ case starts. Number the points when the section applies. Do not list
 inputs or capabilities that the flow checks; describe those in the relevant step
 and variant. Remove this section when there are no true preconditions.
 
-1. **Parent object.** A live `Context` exists before creating its buffer.
+1. **Parent object.** A live `Engine` exists before creating its buffer.
 
 ## Main flow
 

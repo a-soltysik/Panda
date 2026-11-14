@@ -15,7 +15,7 @@
 #include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/UploadBatch.hpp>
@@ -33,7 +33,7 @@ class UploadSystem : public testing::Test
 protected:
     void SetUp() override
     {
-        auto created = panda::Context::create({.applicationName = "Panda upload smoke", .enableValidation = true});
+        auto created = panda::Engine::create({.applicationName = "Panda upload smoke", .enableValidation = true});
         if (!created && created.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << created.error().message;
@@ -52,17 +52,17 @@ protected:
 
     auto makeDestination(panda::BufferMemory intent = panda::BufferMemory::Readback) -> panda::Buffer
     {
-        auto buffer = activeContext().getResourceManager().createBuffer(
+        auto buffer = activeEngine().getResourceManager().createBuffer(
             {.size = 512, .usage = vk::BufferUsageFlagBits::eTransferDst, .memory = intent});
         return panda::expect(std::move(buffer), "Test upload destination creation failed");
     }
 
     void finish(panda::CompletionPoint point)
     {
-        const auto waited = activeContext().getSubmissionManager().wait(point, std::chrono::seconds {10});
+        const auto waited = activeEngine().getSubmissionManager().wait(point, std::chrono::seconds {10});
         ASSERT_TRUE(waited) << waited.error().message;
         ASSERT_EQ(*waited, panda::WaitStatus::Completed);
-        const auto polled = activeContext().getSubmissionManager().poll(point);
+        const auto polled = activeEngine().getSubmissionManager().poll(point);
         ASSERT_TRUE(polled);
         EXPECT_TRUE(*polled);
     }
@@ -78,25 +78,25 @@ protected:
         EXPECT_TRUE(std::ranges::equal(actual, expected));
     }
 
-    auto activeContext() -> panda::Context&
+    auto activeEngine() -> panda::Engine&
     {
         if (!context)
         {
-            panda::panic("Upload system test has no initialized Context");
+            panda::panic("Upload system test has no initialized Engine");
         }
         return *context;
     }
 
     panda::test::LogRecords records;
     panda::test::ProcessSinkRegistration capture {records};
-    std::optional<panda::Context> context;
+    std::optional<panda::Engine> context;
 };
 }
 
 TEST_F(UploadSystem, CopiesByteRangesAndPreservesSnapshotAfterCallerChangesData)
 {
     auto target = makeDestination();
-    auto batch = activeContext().getSubmissionManager().createUploadBatch();
+    auto batch = activeEngine().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     auto bytes = std::vector<std::byte>(257, std::byte {0x5a});
     const auto expected = bytes;
@@ -112,7 +112,7 @@ TEST_F(UploadSystem, CopiesByteRangesAndPreservesSnapshotAfterCallerChangesData)
 TEST_F(UploadSystem, OverlappingWritesAndLaterBatchesFollowSubmissionOrder)
 {
     auto target = makeDestination();
-    auto initial = activeContext().getSubmissionManager().createUploadBatch();
+    auto initial = activeEngine().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(initial);
     const auto zeros = std::array<std::byte, 16> {};
     const auto first = std::array {std::byte {1}, std::byte {2}, std::byte {3}, std::byte {4}};
@@ -122,7 +122,7 @@ TEST_F(UploadSystem, OverlappingWritesAndLaterBatchesFollowSubmissionOrder)
     ASSERT_TRUE(initial->write(target, 5, second));
     const auto initialPoint = initial->submit();
     ASSERT_TRUE(initialPoint);
-    auto later = activeContext().getSubmissionManager().createUploadBatch();
+    auto later = activeEngine().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(later);
     const auto final = std::array {std::byte {0x42}};
     ASSERT_TRUE(later->write(target, 4, final));
@@ -141,7 +141,7 @@ TEST_F(UploadSystem, SubmittedOwnerSurvivesResetAndIsReleasedAfterCompletion)
 {
     auto target = makeDestination(panda::BufferMemory::Device);
     const auto weak = std::weak_ptr {panda::detail::BufferResource::getResource(target)};
-    auto batch = activeContext().getSubmissionManager().createUploadBatch();
+    auto batch = activeEngine().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     const auto bytes = std::array {std::byte {1}, std::byte {2}, std::byte {3}};
     ASSERT_TRUE(batch->write(target, 1, bytes));
@@ -157,7 +157,7 @@ TEST_F(UploadSystem, DestructionDrainsPendingUploadsAfterApplicationOwnersAreGon
 {
     auto target = makeDestination(panda::BufferMemory::Device);
     const auto weak = std::weak_ptr {panda::detail::BufferResource::getResource(target)};
-    auto batch = activeContext().getSubmissionManager().createUploadBatch();
+    auto batch = activeEngine().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     const auto bytes = std::array {std::byte {1}, std::byte {2}};
     ASSERT_TRUE(batch->write(target, 0, bytes));
@@ -168,12 +168,12 @@ TEST_F(UploadSystem, DestructionDrainsPendingUploadsAfterApplicationOwnersAreGon
     EXPECT_TRUE(weak.expired());
 }
 
-TEST_F(UploadSystem, BatchAndPointRemainUsableAfterMovingContext)
+TEST_F(UploadSystem, BatchAndPointRemainUsableAfterMovingEngine)
 {
     auto target = makeDestination();
-    auto batch = activeContext().getSubmissionManager().createUploadBatch();
+    auto batch = activeEngine().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
-    auto moved = std::move(activeContext());
+    auto moved = std::move(activeEngine());
     const auto bytes = std::array {std::byte {4}, std::byte {5}, std::byte {6}};
     ASSERT_TRUE(batch->write(target, 3, bytes));
     const auto point = batch->submit();

@@ -9,7 +9,7 @@ that ordinary applications and `panda-bench` can both use.
 
 Non-goal: No complete scene, shadow system or measured performance promise.
 
-Interface: Context-owned `PerformanceManager` for capabilities and asynchronous samples; the benchmark is a normal
+Interface: Engine-owned `PerformanceManager` for capabilities and asynchronous samples; the benchmark is a normal
 public-API client.
 
 Paths: `include/core/panda/PerformanceManager.hpp`, `src/core/vulkan/performance/`, `src/core/vulkan/presentation/`,

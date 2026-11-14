@@ -15,21 +15,21 @@ allocation and, when available, its paired timeline semaphore.
 
 | Boundary          | Meaning                                                                                 |
 |-------------------|-----------------------------------------------------------------------------------------|
-| Trigger and input | Application has a live Context and requests a shareable buffer                          |
+| Trigger and input | Application has a live Engine and requests a shareable buffer                          |
 | Successful end    | A SharedCudaBuffer retains the Vulkan resource and CUDA mapping; Vulkan owns the buffer |
 | Failure end       | An error is returned and no partially initialized wrapper escapes                       |
 | Outside this flow | GPU work, ownership transfers, application compute policy                               |
 
 ## Main flow
 
-1. **Check capabilities.** The application creates `Context` with
-   `ContextOptions::ExternalBufferSupport::Optional` and checks
+1. **Check capabilities.** The application creates `Engine` with
+   `EngineOptions::ExternalBufferSupport::Optional` and checks
    `externalBufferExportEnabled` and `externalSemaphoreExportEnabled`. Without
    external-memory export it uses its fallback. Semaphore support is checked
    separately because memory can be shared without a safe cross-API handoff.
 2. **Match CUDA.** For the CUDA path, the application calls
    `CudaSession::create` before allocating. The session selects the CUDA device
-   with the Context's UUID and creates its stream.
+   with the Engine's UUID and creates its stream.
 3. **Request a buffer.** The application calls
    `ExternalBufferManager::createBuffer`. Core validates size, usage and
    device-local memory intent before creating native resources.
@@ -45,7 +45,7 @@ allocation and, when available, its paired timeline semaphore.
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Context
+    participant C as Engine
     participant X as ExternalBufferManager
     participant E as ExternalContext
     participant B as BufferResource
@@ -53,10 +53,10 @@ sequenceDiagram
     participant V as Vulkan device
     participant S as CudaSession
     participant R as CUDA Runtime
-    A->>C: Step 1 - create Context with optional external support
+    A->>C: Step 1 - create Engine with optional external support
     C->>V: Step 1 - query and enable memory and semaphore export
     C-->>A: Step 1 - return device capability flags
-    A->>S: Step 2 - create(Context)
+    A->>S: Step 2 - create(Engine)
     S->>R: Step 2 - match device UUID and create stream
     R-->>S: Step 2 - matching CUDA session
     S-->>A: Step 2 - return CudaSession
@@ -82,7 +82,7 @@ sequenceDiagram
 
 ## Notes
 
-**Ownership.** `Context` must outlive the `ExternalBuffer` and every copied
+**Ownership.** `Engine` must outlive the `ExternalBuffer` and every copied
 `Buffer` it returns. `SharedCudaBuffer` retains the imported allocation, optional
 semaphore and CUDA session. `CudaSession::close()` returns `ResourcesInUse` while
 a shared-buffer owner remains. Linux transfers imported allocation and semaphore
@@ -96,9 +96,9 @@ that flow requires the timeline semaphore.
 
 |                    | Point and condition                                             | Response                                                                                          | Resulting state and next action                                                |
 |--------------------|-----------------------------------------------------------------|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------|
-| **Variant&nbsp;1** | Step 1: optional external-memory support is unavailable         | Context creation succeeds and reports export disabled                                             | Use the application's fallback before requesting a shared buffer               |
+| **Variant&nbsp;1** | Step 1: optional external-memory support is unavailable         | Engine creation succeeds and reports export disabled                                             | Use the application's fallback before requesting a shared buffer               |
 | **Variant&nbsp;2** | Step 1: memory export is available but semaphore export is not  | Buffer creation and memory import remain available, but no timeline handoff value can be produced | Use memory-sharing only; do not submit cross-API work                          |
-| **Error&nbsp;1**   | Step 1: required Context/device initialization fails            | Return the initialization error                                                                   | No Context or external buffer is published; choose a compatible runtime/device |
+| **Error&nbsp;1**   | Step 1: required Engine/device initialization fails            | Return the initialization error                                                                   | No Engine or external buffer is published; choose a compatible runtime/device |
 | **Error&nbsp;2**   | Step 2: no CUDA device matches the Vulkan UUID                  | Return `Unsupported`                                                                              | No CUDA session is published; use the application's fallback                   |
 | **Error&nbsp;3**   | Step 3: size, usage or memory intent is invalid                 | Return the validation error before native buffer creation                                         | No native resource is published; correct the description                       |
 | **Error&nbsp;4**   | Step 4: requested memory usage or handle cannot be exported     | Return `Unsupported` and release unpublished state                                                | No ExternalBuffer is published; choose a supported usage/device                |
@@ -118,7 +118,7 @@ Cleanup failures preserve the originating backend status where available.
   describes repeated Vulkan/CUDA use after this setup.
 - [UC Create a buffer](create-buffer.md) covers ordinary Vulkan buffer creation.
 - [Resource ownership](../design/contracts/resources.md#ownership) defines the
-  Context and resource lifetime requirements.
+  Engine and resource lifetime requirements.
 - [Compute and external-buffer contract](../design/contracts/compute.md) defines
   the API boundary for later CUDA work.
 - [CUDA external resources](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__EXTRES__INTEROP.html)

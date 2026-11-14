@@ -22,9 +22,9 @@ struct FramebufferExtent
     std::uint32_t height {0};
 };
 
-/// @brief Window-system operations borrowed by a windowed Context.
+/// @brief Window-system operations borrowed by a windowed Engine.
 /// Calls follow the implementation's thread requirements, outside callbacks.
-/// The object and its native window must outlive every Context created from it.
+/// The object and its native window must outlive every Engine created from it.
 class WindowSurface
 {
 public:
@@ -41,8 +41,8 @@ public:
     [[nodiscard]] virtual auto getRequiredInstanceExtensions() const -> Result<std::vector<std::string>> = 0;
 
     /// @brief Creates a surface for a live instance and transfers its ownership.
-    /// @param instance Instance supplied by Context; valid only during this call.
-    /// @return A surface destroyed by Context or a native failure.
+    /// @param instance Instance supplied by Engine; valid only during this call.
+    /// @return A surface destroyed by Engine or a native failure.
     [[nodiscard]] virtual auto createSurface(vk::Instance instance) const -> Result<vk::SurfaceKHR> = 0;
 
     /// @brief Queries the actual framebuffer size, including zero while minimized.

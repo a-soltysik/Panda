@@ -10,7 +10,7 @@ remain caller-owned results; the application decides whether to log them.
 
 **The application** selects the minimum severity and registers sinks. **Panda** owns each registered sink and delivers
 entries from the logger and,
-when Context validation is enabled, the Vulkan validation callback. Fatal
+when Engine validation is enabled, the Vulkan validation callback. Fatal
 `expect`/`panic` diagnostics are a separate direct-to-stderr path.
 
 ## Main flow
@@ -22,7 +22,7 @@ when Context validation is enabled, the Vulkan validation callback. Fatal
    owns an append-only file.
 2. **Produce an entry.** An application calls a logging helper such as
    `log::info()` or `log::error()`. If Vulkan validation was enabled when the
-   `Context` was created, its debug callback maps the Vulkan severity and writes
+   `Engine` was created, its debug callback maps the Vulkan severity and writes
    the validation message through the same process logger.
 3. **Filter and capture the entry.** The logger checks the current severity
    threshold. An enabled entry owns its formatted message, call-site location,
@@ -41,7 +41,7 @@ sequenceDiagram
     participant S as Registered sink
     A ->> L: Step 1 - setLevel(), addSink()
     A ->> L: Step 2 - log::info() or log::error()
-    opt Context validation is enabled
+    opt Engine validation is enabled
         V ->> L: Step 2 - write(validation severity, message)
     end
     L ->> L: Step 3 - filter and capture enabled Entry
@@ -105,7 +105,7 @@ them through the logger's stderr fallback.
 
 - [Resource error contract](../design/contracts/resources.md#errors) defines
   returned errors, fatal diagnostics, stack traces and sink failure handling.
-- [UC Create a Context](create-context.md) explains Context creation and the
+- [UC Create an Engine](create-context.md) explains Engine creation and the
   optional validation setup that routes Vulkan messages here.
 - [Build foundation](../development/tasks/build-foundation.md) records the
   shared diagnostics component boundary and its current scope.

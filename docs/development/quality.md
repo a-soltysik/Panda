@@ -97,10 +97,9 @@ CMake's native-only code generation flags in Clang's host analysis pass. Each pl
 tree and a quality tree; the Clang CUDA analysis configuration is nested in the
 quality tree. MSVC fast and quality builds use embedded debug information for
 caching. CPU-only test and development presets retain their separate scope.
-Quality build presets limit parallelism to four jobs to bound analyzer memory use;
-omit `--parallel` to retain the preset limit. Run local Windows and WSL quality
-builds sequentially, without another build running. Fast builds retain automatic
-CPU-based parallelism; reduce concurrency if the environment requires it.
+Quality build presets leave worker count unset, allowing Ninja to use its default
+parallelism. Run local Windows and WSL quality builds sequentially, without another
+build running.
 
 ## Effective quality checks
 
@@ -172,9 +171,8 @@ from owned target source lists. Both tools read the real `compile_commands.json`
 Cppcheck filters it to each owned C++ source. Sources shared by targets are
 scheduled once, retaining their database configurations. Analysis needs
 configuration and dependency headers, without building Panda objects or linking
-executables. Four Ninja workers bound the total number of analyzer processes;
-clang-tidy and Cppcheck run sequentially for each source. Analyzer failures fail
-Quality independently of compilation and test failures in Tests.
+executables. Clang-tidy and Cppcheck run sequentially for each source. Analyzer
+failures fail Quality independently of compilation and test failures in Tests.
 
 Local quality presets retain integrated analysis through `CXX_CLANG_TIDY` and
 `CXX_CPPCHECK`. Analyzer options and source selection are owned by CMake in both

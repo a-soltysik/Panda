@@ -3,7 +3,7 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include "ContextCreation.hpp"
+#include "EngineCreation.hpp"
 
 #include <algorithm>
 #include <array>
@@ -13,7 +13,8 @@
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 #include <string>
@@ -30,7 +31,7 @@
 #include "renderer/FrameBindings.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
-namespace panda::core::vulkan::context
+namespace panda::core::vulkan::engine
 {
 namespace api_detail = ::panda::detail;
 
@@ -60,7 +61,7 @@ auto makeDeviceExtensions(const SelectedDevice& selected,
     if (windowed)
     {
         extensions.push_back(vk::KHRSwapchainExtensionName);
-        extensions.push_back(selected.info.swapchainMaintenance == ContextDeviceInfo::SwapchainMaintenance::Khr
+        extensions.push_back(selected.info.swapchainMaintenance == DeviceInfo::SwapchainMaintenance::Khr
                                  ? vk::KHRSwapchainMaintenance1ExtensionName
                                  : vk::EXTSwapchainMaintenance1ExtensionName);
     }
@@ -114,10 +115,10 @@ auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice,
     return createLogicalDevice(physicalDevice, deviceInfo);
 }
 
-auto initializeDevice(ContextResources& resources, const WindowSurface* surface, const ContextOptions& options)
+auto initializeDevice(ContextResources& resources, const WindowSurface* surface, const EngineOptions& options)
     -> Result<void>;
 auto selectPhysicalDevice(ContextResources& resources, std::uint32_t maxLights) -> Result<SelectedDevice>;
-auto queryExternalSupport(ContextResources& resources, const ContextOptions& options)
+auto queryExternalSupport(ContextResources& resources, const EngineOptions& options)
     -> Result<std::optional<api_detail::ExternalSupport>>;
 auto initializeLogicalDevice(ContextResources& resources,
                              const SelectedDevice& selected,
@@ -126,7 +127,7 @@ auto initializeLogicalDevice(ContextResources& resources,
 auto initializeSelectedDevice(ContextResources& resources,
                               const WindowSurface* surface,
                               const SelectedDevice& selected,
-                              const ContextOptions& options) -> Result<void>;
+                              const EngineOptions& options) -> Result<void>;
 auto initializeSelectedDeviceResources(ContextResources& resources,
                                        const WindowSurface* surface,
                                        const SelectedDevice& selected,
@@ -141,7 +142,7 @@ auto initializePresentation(ContextResources& resources,
 void updateDeviceInfo(ContextResources& resources, const SelectedDevice& selected);
 }
 
-auto createResources(const WindowSurface* surface, const ContextOptions& options)
+auto createResources(const WindowSurface* surface, const EngineOptions& options)
     -> Result<std::unique_ptr<ContextResources>>
 {
     auto resources = std::make_unique<ContextResources>();
@@ -177,14 +178,14 @@ auto selectPhysicalDevice(ContextResources& resources, std::uint32_t maxLights) 
     return selected;
 }
 
-auto queryExternalSupport(ContextResources& resources, const ContextOptions& options)
+auto queryExternalSupport(ContextResources& resources, const EngineOptions& options)
     -> Result<std::optional<api_detail::ExternalSupport>>
 {
-    if (options.externalBufferSupport != ContextOptions::ExternalBufferSupport::Disabled)
+    if (options.externalBufferSupport != EngineOptions::ExternalBufferSupport::Disabled)
     {
         return api_detail::ExternalContext::querySupport(
             resources.physicalDevice(),
-            options.externalBufferSupport == ContextOptions::ExternalBufferSupport::Required);
+            options.externalBufferSupport == EngineOptions::ExternalBufferSupport::Required);
     }
     return std::nullopt;
 }
@@ -204,7 +205,7 @@ auto initializeLogicalDevice(ContextResources& resources,
     return {};
 }
 
-auto initializeDevice(ContextResources& resources, const WindowSurface* surface, const ContextOptions& options)
+auto initializeDevice(ContextResources& resources, const WindowSurface* surface, const EngineOptions& options)
     -> Result<void>
 {
     auto selected = selectPhysicalDevice(resources, options.maxLights);
@@ -238,7 +239,7 @@ auto initializeDevice(ContextResources& resources, const WindowSurface* surface,
 auto initializeSelectedDevice(ContextResources& resources,
                               const WindowSurface* surface,
                               const SelectedDevice& selected,
-                              const ContextOptions& options) -> Result<void>
+                              const EngineOptions& options) -> Result<void>
 {
     if (const auto initialized = initializePerformance(resources, selected, options.enableFramePerformanceSampling);
         !initialized)

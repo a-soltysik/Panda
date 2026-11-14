@@ -1,15 +1,15 @@
 #pragma once
 
 #include <expected>
-#include <panda/Context.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 
-#include "ContextResources.hpp"
+#include "InstanceResources.hpp"
 
 namespace panda::core::vulkan::instance
 {
 [[nodiscard]] auto createResources(const vk::raii::Context& loader,
                                    const WindowSurface* surface,
-                                   const ContextOptions& options) -> Result<InstanceResources>;
+                                   const EngineOptions& options) -> Result<InstanceResources>;
 }

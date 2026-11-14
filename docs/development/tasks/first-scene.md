@@ -32,7 +32,7 @@ Learning: Explain the default light, shadow depth and effective MSAA choice.
 
 Checked perspective and orthographic projection matrices and CPU unit-cube
 geometry are available without a scene. The shared CPU Geometry owns the standard
-64-byte vertex format and optional 16- or 32-bit indices. Context creates matching
+64-byte vertex format and optional 16- or 32-bit indices. Engine creates matching
 mesh storage; UploadBatch copies Geometry into upload staging. `WindowRenderer::render(view)`
 accepts application camera, directional-light and mesh-draw values, validates mesh
 ownership and each draw's required attributes, and retains mesh handles through GPU completion. The

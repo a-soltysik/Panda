@@ -9,6 +9,7 @@
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
 #include <panda/Logger.hpp>
+#include <panda/VulkanDeviceUuid.hpp>
 #include <string>
 #include <string_view>
 #include <utility>

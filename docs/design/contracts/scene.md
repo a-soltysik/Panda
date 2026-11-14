@@ -55,7 +55,7 @@ invent an inverse.
 ## Public scene boundary
 
 Use a move-only `Scene` with stable internal storage, owned by the application and
-bound to one `Context`. The C++ scene types live in `panda::scene`; the context and
+bound to one `Engine`. The C++ scene types live in `panda::scene`; the context and
 shared renderer resources remain in `panda`. The context outlives the scene. Ordinary headers expose Panda
 object handles, descriptions and value snapshots, not an application registry. Scene
 storage types stay private; public `Transform` is a value, not a mutable registry

@@ -18,7 +18,8 @@
 #include <memory>
 #include <optional>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <panda/RenderView.hpp>
@@ -274,9 +275,9 @@ protected:
             });
     }
 
-    auto createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance maintenance =
-                                panda::ContextDeviceInfo::SwapchainMaintenance::Khr,
-                            bool enableFramePerformanceSampling = false)
+    auto createPresentation(
+        panda::DeviceInfo::SwapchainMaintenance maintenance = panda::DeviceInfo::SwapchainMaintenance::Khr,
+        bool enableFramePerformanceSampling = false)
         -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
     {
         auto& submissionQueue = _submissions.emplace(getDevice(), 0);
@@ -306,7 +307,8 @@ protected:
                                                   .presentQueueFamily = 0,
                                                   .swapchainMaintenance = maintenance},
             .submissions = submissionQueue,
-            .performance = _performance.get()
+            .performance = _performance.get(),
+            .maxLights = panda::EngineOptions::defaultMaxLights
         });
     }
 
@@ -326,11 +328,13 @@ protected:
                 return std::unexpected {initialized.error()};
             }
         }
-        return panda::core::vulkan::presentation::FrameExecution::create({.physicalDevice = vk::PhysicalDevice {},
-                                                                          .device = getDevice(),
-                                                                          .queueFamily = 0,
-                                                                          .submissions = submissionQueue,
-                                                                          .performance = _performance.get()});
+        return panda::core::vulkan::presentation::FrameExecution::create(
+            {.physicalDevice = vk::PhysicalDevice {},
+             .device = getDevice(),
+             .queueFamily = 0,
+             .submissions = submissionQueue,
+             .performance = _performance.get(),
+             .maxLights = panda::EngineOptions::defaultMaxLights});
     }
 
     auto performance() -> panda::detail::PerformanceManagerImpl&
@@ -567,7 +571,7 @@ TEST_F(PresentationTest, ReportsUnavailableExtReleaseFunction)
 {
     expectQueueLookup();
     EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesEXT"))).WillOnce(Return(nullptr));
-    const auto presentation = createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance::Ext);
+    const auto presentation = createPresentation(panda::DeviceInfo::SwapchainMaintenance::Ext);
     ASSERT_FALSE(presentation.has_value());
     EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(presentation.error().message.find("VK_EXT_swapchain_maintenance1"), std::string::npos);
@@ -659,7 +663,7 @@ TEST_F(PresentationTest, RetiresAcquiredImageWhenCommandRecordingCannotStart)
     EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
 }
 
-TEST_F(PresentationTest, RejectsMeshRenderingWithoutContextMemoryPool)
+TEST_F(PresentationTest, RejectsMeshRenderingWithoutEngineMemoryPool)
 {
     expectWindowFrame();
     auto flow = Sequence {};
@@ -976,7 +980,7 @@ TEST_F(PresentationTest, RecordsGpuTimestampsAroundFrameRenderingAndPublishesSub
         });
     expectCompletionPoint(flow);
 
-    auto presentation = createPresentation(panda::ContextDeviceInfo::SwapchainMaintenance::Khr, true);
+    auto presentation = createPresentation(panda::DeviceInfo::SwapchainMaintenance::Khr, true);
     ASSERT_TRUE(presentation);
     auto submittedPerformanceSlot = std::optional<std::size_t> {};
     const auto frame = presentation->get()->render(panda::RenderView {}, submittedPerformanceSlot);

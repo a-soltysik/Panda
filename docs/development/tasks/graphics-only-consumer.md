@@ -29,4 +29,4 @@ public API and documents the setup, upload lifetime and render loop. This consum
 must work before compute integration or replacement acceptance.
 
 Learning: Trace mesh ownership from the consumer through upload, rendering and
-Context shutdown.
+Engine shutdown.

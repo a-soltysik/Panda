@@ -39,25 +39,25 @@ sufficient for the initial default scene.
 
 Base color is the product of texture color, material tint, instance tint, and optional vertex color. A missing
 base-color texture, instance tint, or vertex color contributes white. If supplied, the first built-in base-color map
-must be an uploaded, sampled `R8G8B8A8Srgb` or `B8G8R8A8Srgb` texture from the same Context, and its mesh must declare
+must be an uploaded, sampled `R8G8B8A8Srgb` or `B8G8R8A8Srgb` texture from the same Engine, and its mesh must declare
 `TexCoord0`.
 Sampling uses linear filtering and repeat addressing. `TextureDesc` currently provides one mip level. sRGB texture
 formats decode color channels to linear values while alpha remains linear. The sampled alpha participates in Mask and
 Blend with material, draw, and vertex alpha.
 
 The optional Lit metallic-roughness map must be an uploaded, sampled `R8G8B8A8Unorm` or `B8G8R8A8Unorm` texture from
-the same Context, and its mesh must declare `TexCoord0`. Its blue channel multiplies the material metallic value and its
+the same Engine, and its mesh must declare `TexCoord0`. Its blue channel multiplies the material metallic value and its
 green channel multiplies roughness; a missing map contributes white. Numeric channels remain linear.
 
 The optional Lit tangent-space normal map must be an uploaded, sampled `R8G8B8A8Unorm` or `B8G8R8A8Unorm` texture from
-the same Context. Its mesh needs `TexCoord0` and `Tangent` for normal mapping; if either is absent, Panda ignores the
+the same Engine. Its mesh needs `TexCoord0` and `Tangent` for normal mapping; if either is absent, Panda ignores the
 map
 and logs a warning while rendering with the interpolated mesh normal. `normalScale` defaults to 1 and multiplies the
 normal's tangent-space X and Y components without a fixed range; it must be finite. Normal maps do not change geometry
 or the shadow silhouette.
 
 The optional Lit occlusion map must be an uploaded, sampled `R8G8B8A8Unorm` or `B8G8R8A8Unorm` texture from the same
-Context, and its mesh must declare `TexCoord0`. Its red channel stores ambient occlusion: white leaves ambient
+Engine, and its mesh must declare `TexCoord0`. Its red channel stores ambient occlusion: white leaves ambient
 illumination unchanged, while darker values reduce it. `occlusionStrength` defaults to 1, must be finite, and is
 clamped to [0,1] when uploaded. The shader multiplies the ambient term by
 `mix(1, occlusionTexture.r, occlusionStrength)`; direct lighting and dynamic shadows are unchanged. A missing map is
@@ -363,7 +363,7 @@ and shadow parameters as appropriate. Direction points from the light into the
 scene. Intensity is a nonnegative linear multiplier. Range is finite positive
 for local lights. Cone cosines satisfy inner >= outer. No fixed light array
 appears in GLSL: the storage is sized to the count, with an explicit default
-`maxLights=64` Context budget configurable at creation up to checked device
+`maxLights=64` Engine budget configurable at creation up to checked device
 buffer/descriptor limits. Exceeding the budget returns an error, never silently
 drops lights. Each shadow view supplies a world-to-shadow transform and
 normalized atlas region.
@@ -454,7 +454,7 @@ Use `R16G16B16A16_SFLOAT` HDR color and MSAA resolve attachments, checking
 required format/sample/usage support. Prefer `D32_SFLOAT` camera/shadow depth,
 allow `D16_UNORM` if sampled-depth/attachment capabilities support it, and
 report the effective format. If no required HDR/depth format is usable, fail
-Context creation with a diagnostic. Tone-map by the fixed ACES fitted curve
+Engine creation with a diagnostic. Tone-map by the fixed ACES fitted curve
 `clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0,1)` per channel with exposure
 1 then encode SDR sRGB. Prefer an SRGB swapchain format/colorspace, otherwise
 UNORM plus explicit sRGB encoding; reject a surface lacking either supported SDR

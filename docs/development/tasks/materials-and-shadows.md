@@ -22,7 +22,7 @@ behavior. Each slice needs its relevant visual or ABI evidence.
 
 `MeshDesc` declares per-mesh stride and standard semantic attributes; the renderer
 selects Lit or Unlit pipelines and accepts compact Position/Color meshes. Lit draws
-require Position and Normal. An optional, uploaded same-Context RGBA8 sRGB base-color
+require Position and Normal. An optional, uploaded same-Engine RGBA8 sRGB base-color
 map requires sampled usage and `TexCoord0`; filtering is linear with repeat addressing.
 Its color multiplies material and draw tint and optional vertex color, and its alpha
 is used by Blend and by the matching Mask camera/shadow cutoff. Per-frame slots retain
@@ -56,8 +56,8 @@ streak, and lowers the unshadowed fill and ground tint to preserve shadow contra
 shows a shadowed directional light, directional fill, point light and spot light. The built-in renderer
 packs all three light types in a per-frame SSBO. Point and spot contributions use
 inverse-square distance attenuation with a finite-range fade; spot lights also fade
-between their configured cone angles. `ContextOptions::maxLights` defaults to 64 and
-is checked against device storage-buffer limits at Context creation; a view that
+between their configured cone angles. `EngineOptions::maxLights` defaults to 64 and
+is checked against device storage-buffer limits at Engine creation; a view that
 exceeds the budget returns `ResourceExhausted`. A zero budget supports views without
 lights; Lit materials still receive the ambient term. Any directional, spot or point
 light may opt into shadows. Each directional/spot light receives one guarded 2D atlas

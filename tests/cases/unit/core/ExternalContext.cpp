@@ -169,7 +169,7 @@ protected:
         std::ignore = instance.release();
     }
 
-    auto makeContext(std::optional<panda::core::vulkan::upload::UploadManager>& uploads) -> ExternalContext
+    auto makeEngine(std::optional<panda::core::vulkan::upload::UploadManager>& uploads) -> ExternalContext
     {
         return ExternalContext {
             ExternalContext::CreateInfo {
@@ -375,7 +375,7 @@ TEST_F(ExternalContextTest, ReleaseAndAcquireRecordOwnershipBarriersAndTimelineS
     auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(42);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeContext(uploads);
+    auto externalContext = makeEngine(uploads);
     auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     EXPECT_TRUE(created->isValid());
@@ -414,7 +414,7 @@ TEST_F(ExternalContextTest, PropagatesMemoryHandleExportFailure)
     auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(44);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeContext(uploads);
+    auto externalContext = makeEngine(uploads);
     expectBufferResourceCreation(description, nativeMemory);
 #ifdef _WIN32
     EXPECT_CALL(vulkan, vkGetMemoryWin32HandleKHR(deviceHandle, NotNull(), NotNull()))
@@ -452,7 +452,7 @@ TEST_F(ExternalContextTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimeli
     auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(62);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeContext(uploads);
+    auto externalContext = makeEngine(uploads);
     auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     auto buffer = created->getBuffer();
@@ -481,7 +481,7 @@ TEST_F(ExternalContextTest, ReleaseRejectsTimelineValueWithoutRoomForExternalSig
     auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(67);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeContext(uploads);
+    auto externalContext = makeEngine(uploads);
     auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     const auto buffer = created->getBuffer();
@@ -503,7 +503,7 @@ TEST_F(ExternalContextTest, FailedAcquireSubmissionKeepsExternalOwnershipAndTime
     auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(72);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeContext(uploads);
+    auto externalContext = makeEngine(uploads);
     auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     auto buffer = created->getBuffer();

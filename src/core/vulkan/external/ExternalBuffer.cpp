@@ -8,6 +8,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
+#include <panda/VulkanDeviceUuid.hpp>
 
 #include "resources/BufferResource.hpp"
 

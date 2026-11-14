@@ -3,13 +3,12 @@
 /// @file
 /// Vulkan buffer and platform handle exported for another GPU API.
 
-#include <array>
 #include <cstdint>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
-#include <vulkan/vulkan.hpp>
+#include <panda/VulkanDeviceUuid.hpp>
 
 namespace panda
 {
@@ -17,9 +16,6 @@ namespace detail
 {
 class ExternalContext;
 }
-
-/// @brief UUID bytes identifying one selected Vulkan device.
-using VulkanDeviceUuid = std::array<std::uint8_t, VK_UUID_SIZE>;
 
 /// @brief Move-only Vulkan buffer plus exported allocation and optional semaphore handles.
 /// The memory handle identifies the dedicated allocation. A semaphore handle, when
@@ -59,7 +55,7 @@ public:
 
 private:
     friend class detail::ExternalContext;
-    friend class Context;
+    friend class Engine;
 
     Buffer _buffer;
     ExternalMemoryHandle _handle;

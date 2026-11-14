@@ -12,7 +12,7 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 
 namespace detail
 {
@@ -24,14 +24,14 @@ struct PerformanceCapabilities
 {
     /// Whether the graphics queue can record GPU timestamp queries.
     bool hasGpuTimestampQueries {false};
-    /// Whether GPU timestamp sampling is enabled for this Context.
+    /// Whether GPU timestamp sampling is enabled for this Engine.
     bool isGpuTimestampSamplingEnabled {false};
 };
 
 /// @brief Completed CPU and GPU timings for a submitted frame.
 struct FramePerformanceSample
 {
-    /// Zero-based index of the submitted frame within this Context.
+    /// Zero-based index of the submitted frame within this Engine.
     std::uint64_t frameIndex {0};
     /// CPU wall duration of Panda's frame call, including waits and queuing presentation; excludes caller work and display latency.
     std::chrono::nanoseconds cpuFrameDuration {};
@@ -39,9 +39,9 @@ struct FramePerformanceSample
     std::chrono::nanoseconds gpuExecutionDuration {};
 };
 
-/// @brief Context-owned access to available performance samples.
-/// Calls are serialized with other operations on the owning Context. This object
-/// is borrowed from Context and must not outlive it.
+/// @brief Engine-owned access to available performance samples.
+/// Calls are serialized with other operations on the owning Engine. This object
+/// is borrowed from Engine and must not outlive it.
 class PerformanceManager final
 {
 public:
@@ -51,7 +51,7 @@ public:
     auto operator=(PerformanceManager&&) -> PerformanceManager& = delete;
     ~PerformanceManager() = default;
 
-    /// @brief Copies timestamp support and sampling state for this Context.
+    /// @brief Copies timestamp support and sampling state for this Engine.
     /// @return GPU support and whether sampling is enabled; does not query or wait for GPU work.
     [[nodiscard]] auto getCapabilities() const noexcept -> PerformanceCapabilities;
 
@@ -73,12 +73,12 @@ public:
     [[nodiscard]] auto takeAvailableSamples() -> Result<std::vector<FramePerformanceSample>>;
 
 private:
-    friend class Context;
+    friend class Engine;
 
     explicit PerformanceManager(
         std::optional<std::reference_wrapper<detail::PerformanceManagerImpl>> implementation) noexcept;
 
-    // A moved-from Context may need an empty facade.
+    // A moved-from Engine may need an empty facade.
     std::optional<std::reference_wrapper<detail::PerformanceManagerImpl>> _implementation;
 };
 

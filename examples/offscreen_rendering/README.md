@@ -1,6 +1,6 @@
 # Headless offscreen rendering example
 
-`offscreen_rendering` creates a Vulkan Context without a window, uploads a cube,
+`offscreen_rendering` creates a Vulkan Engine without a window, uploads a cube,
 and renders four animated frames into one RGBA8 sRGB `OffscreenTarget`. Each frame
 uses `OffscreenRenderer::render()` followed by an explicit `readPixels()` call.
 This demonstrates GPU rendering and readback without a display or window-system

@@ -12,8 +12,8 @@ range and resource lifetime are part of this task.
 Non-goal: No compute callback/submission API, Vulkan/CUDA synchronization, solver,
 CPU bounce path or image sharing. Importing memory does not make cross-API access safe.
 
-Interface: `ContextOptions::ExternalBufferSupport`,
-`ContextDeviceInfo::externalBufferExportEnabled`, `Context::getExternalBufferManager`, `ExternalBuffer`,
+Interface: `EngineOptions::ExternalBufferSupport`,
+`DeviceInfo::externalBufferExportEnabled`, `Engine::getExternalBufferManager`, `ExternalBuffer`,
 `CudaSession::create`, `CudaSession::importBuffer` and
 `SharedCudaBuffer::getBuffer`.
 

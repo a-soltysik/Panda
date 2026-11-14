@@ -10,6 +10,7 @@
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
+#include <panda/VulkanDeviceUuid.hpp>
 #include <string>
 #include <utility>
 #include <vector>

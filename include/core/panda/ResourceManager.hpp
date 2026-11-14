@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file
-/// Context-owned creation of ordinary GPU resources.
+/// Engine-owned creation of ordinary GPU resources.
 
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
@@ -11,12 +11,12 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 struct Geometry;
 
-/// @brief Creates resources that belong to one Context.
-/// This facade is borrowed from Context and must not outlive it. Calls are serialized
-/// with other operations on the owning Context.
+/// @brief Creates resources that belong to one Engine.
+/// This facade is borrowed from Engine and must not outlive it. Calls are serialized
+/// with other operations on the owning Engine.
 class ResourceManager final
 {
 public:
@@ -51,10 +51,10 @@ public:
     [[nodiscard]] auto createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>;
 
 private:
-    friend class Context;
+    friend class Engine;
 
-    explicit ResourceManager(const Context& context) noexcept;
+    explicit ResourceManager(const Engine& context) noexcept;
 
-    const Context* _context;
+    const Engine* _engine;
 };
 }

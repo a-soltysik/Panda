@@ -11,7 +11,6 @@
 #include <memory>
 #include <optional>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
 #include <panda/Error.hpp>
 #include <panda/FrameResult.hpp>
 #include <panda/OffscreenTarget.hpp>
@@ -38,7 +37,7 @@ struct OffscreenRenderingCreateInfo
     ::panda::detail::SubmissionQueue& submissions;
     resources::MemoryPool& pool;
     ::panda::detail::PerformanceManagerImpl* performance {nullptr};
-    std::uint32_t maxLights {::panda::ContextOptions::defaultMaxLights};
+    std::uint32_t maxLights;
 };
 
 struct WindowCaptureOutput

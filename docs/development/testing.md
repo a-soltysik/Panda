@@ -51,7 +51,7 @@ replacement logger. `PandaTest::MockHeaders` exposes mock declarations, includin
 without selecting stub implementations. `PandaTest::VulkanMock` is the shared
 Vulkan boundary for Core unit tests; its stub forwards the entry points used by
 current scenarios to one strict mock and fails on any other Vulkan call used by
-Core. `Context`, `DeviceSelection`, `Presentation` and the resource unit suites
+Core. `Engine`, `DeviceSelection`, `Presentation` and the resource unit suites
 use it without a native window. `RangeAllocator` and `MeshLayout` are standalone
 CPU units. `MemoryBlock` replaces `RangeAllocator`, and `MemoryPool` replaces
 `MemoryBlock`; integration suites keep the real block and pool together to cover
@@ -69,7 +69,7 @@ retention across submission. Presentation unit tests replace SubmissionQueue at
 link time; the real queue and presentation collaborate only in their integration
 target. Shared presentation fixture setup and Vulkan entry-point conversions live
 in test support. Swapchain configuration policy has separate CPU unit tests. The
-`Context` executable substitutes the `SwapchainGeneration` archive member; its
+`Engine` executable substitutes the `SwapchainGeneration` archive member; its
 tests cannot create a real swapchain, while the `SwapchainGeneration` tests link
 that member unchanged.
 With CUDA enabled, `PandaTest::CudaRuntimeMock` replaces only the external

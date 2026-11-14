@@ -6,6 +6,7 @@
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
+#include <panda/VulkanDeviceUuid.hpp>
 #include <string>
 #include <string_view>
 

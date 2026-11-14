@@ -22,7 +22,7 @@ Requires a display, Vulkan 1.3 with swapchain maintenance1, and the Khronos vali
 layer. CUDA is not needed.
 
 The upload waits up to ten seconds before entering the loop. The loop does not
-wait after every frame or track a shutdown completion point; Context drains
+wait after every frame or track a shutdown completion point; Engine drains
 submitted GPU work and presentation during RAII destruction.
 
 The example adds a `StreamSink` to `std::clog` before starting Panda. The logger

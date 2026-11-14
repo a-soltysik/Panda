@@ -7,18 +7,18 @@ waits efficiently when presentation is suspended, and leaves the loop after a
 close request. The flow starts with a live `panda::tools::Window` and ends when
 the application loop exits. **The application** owns the loop and decides how to
 handle input and errors; `Window` only processes GLFW events and reports window
-state. If the application renders, a windowed `Context` borrows the `Window` for
+state. If the application renders, a windowed `Engine` borrows the `Window` for
 its lifetime.
 
 This scenario follows the optional Panda GLFW wrapper. A custom
 `WindowSurface` provides the Vulkan surface boundary; the application still owns
-its event handling. [UC Create a Context](create-context.md) explains how that
+its event handling. [UC Create an Engine](create-context.md) explains how that
 provider is borrowed.
 
 ## Preconditions
 
 1. **Live window.** Keep the `Window` alive while processing its events. If a
-   windowed `Context` exists, destroy it before the `Window`.
+   windowed `Engine` exists, destroy it before the `Window`.
 2. **Thread and callback context.** Call window operations on the GLFW-owning
    main thread, outside GLFW callbacks. `waitForInput()` also requires a live
    Panda window and can block indefinitely.
@@ -31,7 +31,7 @@ provider is borrowed.
    processed, so a close event handled in Step 3 is checked on the next
    iteration.
 2. **Check the render extent.** Before projection or frame work, an application
-   with a windowed `Context` reads `Window::getFramebufferExtent()`. If either
+   with a windowed `Engine` reads `Window::getFramebufferExtent()`. If either
    dimension is zero, it skips `WindowRenderer::render(view)`. Otherwise it renders;
    `WindowRenderer::render(view)` still returns `FrameResult::Status::Suspended` if the
    extent becomes zero between the query and image acquisition. [UC Render and
@@ -49,7 +49,7 @@ provider is borrowed.
 sequenceDiagram
     participant A as Application
     participant W as Window
-    participant C as Context
+    participant C as Engine
     participant G as GLFW
     loop Application event loop
         A->>W: Step 1 - shouldClose()
@@ -101,7 +101,7 @@ sequenceDiagram
 **A close request is not destruction.** `Window::shouldClose()` reads GLFW's
 close flag. It does not destroy the native window or choose how the application
 responds. Leaving the loop lets normal ownership cleanup run; a windowed
-`Context` must still be released before its borrowed `Window`.
+`Engine` must still be released before its borrowed `Window`.
 
 **Window changes are requests.** `Window::setSize()` requests content dimensions
 in screen coordinates, and `Window::setMinimized()` requests iconification or
@@ -133,7 +133,7 @@ swapchain if required; see [UC Suspend presentation and recreate the swapchain](
 iteration to check for a close request and observe current window state.
 
 **Close requested.** The application exits its loop. Its owners remain live until
-the application releases them; a windowed `Context` must be destroyed before its
+the application releases them; a windowed `Engine` must be destroyed before its
 borrowed `Window`.
 
 **Presentation suspended.** No frame work is submitted. The application waits for
@@ -147,8 +147,8 @@ an event and retries after the platform changes the window state.
   frame statuses and the active presentation path.
 - [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md)
   explains zero extents, resize detection and restoration.
-- [UC Shut down a Context safely](shutdown-context.md) explains resource release
-  and GPU draining when the application destroys its Context.
+- [UC Shut down an Engine safely](shutdown-context.md) explains resource release
+  and GPU draining when the application destroys its Engine.
 - [Window wrapper](../design/package-and-toolchain.md#window-wrapper) defines the
   wrapper's thread and GLFW ownership requirements.
 - [Vulkan window example](../../examples/simple_scene/README.md) documents the

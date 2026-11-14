@@ -16,8 +16,8 @@ ordinary staging and batch submission use the shared flows linked below.
 
 ## Preconditions
 
-1. **Live batch.** Use a valid `UploadBatch` borrowing a live `Context` and
-   serialize its operations on the Context execution thread.
+1. **Live batch.** Use a valid `UploadBatch` borrowing a live `Engine` and
+   serialize its operations on the Engine execution thread.
 
 ## Main flow
 
@@ -87,7 +87,7 @@ the final batch-capacity allocation also does not rewind staging.
 **Not GPU atomicity.** A successful call prepares writes in the batch; it does
 not submit them or publish a GPU completion point. Later submission and
 completion follow [UC Upload bytes into a buffer](upload-buffer.md) and
-[UC Commit work to the Context submission timeline](commit-context-submission.md).
+[UC Commit work to the Engine submission timeline](commit-context-submission.md).
 
 ## Variants and errors
 
@@ -95,7 +95,7 @@ completion follow [UC Upload bytes into a buffer](upload-buffer.md) and
 |--------------------|--------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
 | **Variant&nbsp;1** | Step 2: the mesh has no index buffer                                                                               | Validate and stage only vertex bytes; the index span must be empty                                                                    | One buffer write is appended after vertex staging succeeds                                                             |
 | **Error&nbsp;1**   | Step 1: the batch handle is empty or already submitted                                                             | Return `InvalidArgument`                                                                                                              | No write is added; create a new batch before retrying                                                                  |
-| **Error&nbsp;2**   | Step 2: the mesh is empty/from another Context, either payload size is not exact, or a component buffer is invalid | Return `InvalidArgument` before staging                                                                                               | The batch is unchanged; correct the mesh or byte spans                                                                 |
+| **Error&nbsp;2**   | Step 2: the mesh is empty/from another Engine, either payload size is not exact, or a component buffer is invalid | Return `InvalidArgument` before staging                                                                                               | The batch is unchanged; correct the mesh or byte spans                                                                 |
 | **Error&nbsp;3**   | Step 3: vertex collection, staging-page allocation, mapped copy or cache flush fails                               | Return the error without appending a mesh operation                                                                                   | Earlier batch writes remain; retry only when the error category permits it. Staging state from this attempt may remain |
 | **Error&nbsp;4**   | Step 3: index staging fails after vertex staging succeeds                                                          | Return the error without appending either mesh operation; see [failure after vertex staging](#error-4---failure-after-vertex-staging) | Earlier batch writes remain; retry only when the error category permits it. Vertex staging state may remain            |
 | **Error&nbsp;5**   | Step 4: the prepared operation count exceeds the batch's maximum capacity                                          | Return `ResourceExhausted` before appending them                                                                                      | Earlier batch writes remain; use another batch                                                                         |

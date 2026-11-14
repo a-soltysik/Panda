@@ -9,7 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <span>
@@ -179,7 +179,7 @@ void expectNoPhysicalDevices(panda::test::VulkanMock& vulkan, VkInstance instanc
         .WillOnce(DoAll(SetArgPointee<1>(0U), Return(static_cast<VkResult>(vk::Result::eSuccess))));
 }
 
-class ContextTest : public testing::Test
+class EngineTest : public testing::Test
 {
 protected:
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
@@ -187,21 +187,21 @@ protected:
 };
 }
 
-TEST_F(ContextTest, RejectsLoaderVersionBelow13BeforeCreatingAnInstance)
+TEST_F(EngineTest, RejectsLoaderVersionBelow13BeforeCreatingAnInstance)
 {
     EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
         .WillOnce(DoAll(SetArgPointee<0>(vk::ApiVersion12), Return(static_cast<VkResult>(vk::Result::eSuccess))));
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(context.error().message.find("1.3"), std::string::npos);
 }
 
-TEST_F(ContextTest, PreservesLoaderVersionQueryFailure)
+TEST_F(EngineTest, PreservesLoaderVersionQueryFailure)
 {
     EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
     ASSERT_TRUE(context.error().native.has_value());
@@ -210,7 +210,7 @@ TEST_F(ContextTest, PreservesLoaderVersionQueryFailure)
     EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
 }
 
-TEST_F(ContextTest, DoesNotDestroyInstanceWhenCreationFails)
+TEST_F(EngineTest, DoesNotDestroyInstanceWhenCreationFails)
 {
     EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
         .WillOnce(DoAll(SetArgPointee<0>(vk::ApiVersion13), Return(static_cast<VkResult>(vk::Result::eSuccess))));
@@ -222,32 +222,32 @@ TEST_F(ContextTest, DoesNotDestroyInstanceWhenCreationFails)
     EXPECT_CALL(vulkan, vkDestroyInstance(_, _)).Times(0);
     EXPECT_CALL(vulkan, vkGetInstanceProcAddr(fakeVulkanHandle<VkInstance>(1), _)).Times(0);
 
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
 
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
 }
 
-TEST_F(ContextTest, ReportsMissingRequestedValidationLayer)
+TEST_F(EngineTest, ReportsMissingRequestedValidationLayer)
 {
     EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
         .WillOnce(DoAll(SetArgPointee<0>(vk::ApiVersion13), Return(static_cast<VkResult>(vk::Result::eSuccess))));
     EXPECT_CALL(vulkan, vkEnumerateInstanceLayerProperties(NotNull(), _))
         .WillRepeatedly(DoAll(SetArgPointee<0>(0U), Return(static_cast<VkResult>(vk::Result::eSuccess))));
-    const auto context = panda::Context::create({.enableValidation = true});
+    const auto context = panda::Engine::create({.enableValidation = true});
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(context.error().message.find("VK_LAYER_KHRONOS_validation"), std::string::npos);
 }
 
-TEST_F(ContextTest, PreservesValidationLayerEnumerationFailure)
+TEST_F(EngineTest, PreservesValidationLayerEnumerationFailure)
 {
     EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
         .WillOnce(DoAll(SetArgPointee<0>(vk::ApiVersion13), Return(static_cast<VkResult>(vk::Result::eSuccess))));
     EXPECT_CALL(vulkan, vkEnumerateInstanceLayerProperties(NotNull(), _))
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
 
-    const auto context = panda::Context::create({.enableValidation = true});
+    const auto context = panda::Engine::create({.enableValidation = true});
 
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
@@ -256,18 +256,18 @@ TEST_F(ContextTest, PreservesValidationLayerEnumerationFailure)
     EXPECT_EQ(native.code, static_cast<int>(vk::Result::eErrorInitializationFailed));
 }
 
-TEST_F(ContextTest, ReportsMissingDebugUtilsExtensionWhenValidationIsRequested)
+TEST_F(EngineTest, ReportsMissingDebugUtilsExtensionWhenValidationIsRequested)
 {
     expectValidationPrerequisites(vulkan, false);
 
-    const auto context = panda::Context::create({.enableValidation = true});
+    const auto context = panda::Engine::create({.enableValidation = true});
 
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(context.error().message.find("VK_EXT_debug_utils"), std::string::npos);
 }
 
-TEST_F(ContextTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
+TEST_F(EngineTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
 {
     auto logRecords = panda::test::LogRecords {};
     auto logSink = panda::test::ProcessSinkRegistration {logRecords};
@@ -278,7 +278,7 @@ TEST_F(ContextTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
     expectValidationMessengerCreated(vulkan, instance, messenger);
     expectNoPhysicalDevices(vulkan, instance, messenger);
 
-    const auto context = panda::Context::create({.enableValidation = true});
+    const auto context = panda::Engine::create({.enableValidation = true});
 
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
@@ -287,7 +287,7 @@ TEST_F(ContextTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
     EXPECT_NE(logRecords.entries.front().message.find("mock validation warning"), std::string::npos);
 }
 
-TEST_F(ContextTest, DoesNotDestroyMessengerWhenCreationFails)
+TEST_F(EngineTest, DoesNotDestroyMessengerWhenCreationFails)
 {
     auto* const instance = fakeVulkanHandle<VkInstance>(1);
     auto* const output = fakeVulkanHandle<VkDebugUtilsMessengerEXT>(2);
@@ -295,13 +295,13 @@ TEST_F(ContextTest, DoesNotDestroyMessengerWhenCreationFails)
     expectValidationInstanceCreated(vulkan, instance);
     expectValidationMessengerCreationFailure(vulkan, instance, output);
 
-    const auto context = panda::Context::create({.enableValidation = true});
+    const auto context = panda::Engine::create({.enableValidation = true});
 
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
 }
 
-TEST_F(ContextTest, ReportsMissingDebugMessengerEntryPointBeforeCreation)
+TEST_F(EngineTest, ReportsMissingDebugMessengerEntryPointBeforeCreation)
 {
     auto* const instance = fakeVulkanHandle<VkInstance>(1);
     expectValidationPrerequisites(vulkan);
@@ -311,14 +311,14 @@ TEST_F(ContextTest, ReportsMissingDebugMessengerEntryPointBeforeCreation)
     EXPECT_CALL(vulkan, vkCreateDebugUtilsMessengerEXT(_, _, _, _)).Times(0);
     EXPECT_CALL(vulkan, vkDestroyInstance(instance, nullptr));
 
-    const auto context = panda::Context::create({.enableValidation = true});
+    const auto context = panda::Engine::create({.enableValidation = true});
 
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(context.error().message.find("VK_EXT_debug_utils"), std::string::npos);
 }
 
-TEST_F(ContextTest, RejectsWindowWithoutSurfaceExtensionBeforeNativeCreation)
+TEST_F(EngineTest, RejectsWindowWithoutSurfaceExtensionBeforeNativeCreation)
 {
     auto surface = testing::StrictMock<panda::test::WindowSurfaceMock> {};
     EXPECT_CALL(vulkan, vkEnumerateInstanceVersion(NotNull()))
@@ -326,7 +326,7 @@ TEST_F(ContextTest, RejectsWindowWithoutSurfaceExtensionBeforeNativeCreation)
     const auto extensions =
         panda::test::WindowSurfaceMock::ExtensionResult {std::vector<std::string> {"VK_EXT_debug_utils"}};
     EXPECT_CALL(surface, getRequiredInstanceExtensions()).WillOnce(Return(extensions));
-    const auto context = panda::Context::createWithSurface(surface);
+    const auto context = panda::Engine::createWithSurface(surface);
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_NE(context.error().message.find("VK_KHR_surface"), std::string::npos);

@@ -78,9 +78,9 @@ panda_add_test(panda_unit_camera unit
     SOURCES Camera.cpp
     LIBRARIES Panda::Panda)
 
-panda_add_test(panda_unit_context unit
+panda_add_test(panda_unit_engine unit
     VULKAN_INTERNAL
-    SOURCES Context.cpp ContextLifecycle.cpp
+    SOURCES Engine.cpp EngineLifecycle.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock PandaTest::SwapchainGenerationMock)
 

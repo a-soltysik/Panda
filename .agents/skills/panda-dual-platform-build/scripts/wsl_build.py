@@ -105,27 +105,8 @@ def synchronize(source, mirror):
         ])
 
 
-def available_memory_bytes():
-    available = None
-    for line in Path("/proc/meminfo").read_text().splitlines():
-        if line.startswith("MemAvailable:"):
-            available = int(line.split()[1]) * 1024
-            break
-    if available is None:
-        available = 6 * 1024**3
-
-    limit = Path("/sys/fs/cgroup/memory.max")
-    current = Path("/sys/fs/cgroup/memory.current")
-    if limit.is_file() and current.is_file():
-        limit_text = limit.read_text().strip()
-        if limit_text != "max":
-            available = min(available, max(1, int(limit_text) - int(current.read_text())))
-    return available
-
-
 def recommended_jobs():
-    cpus = os.cpu_count() or 1
-    return min(cpus, max(1, available_memory_bytes() // (3 * 1024**3)), 8)
+    return os.cpu_count() or 1
 
 
 def configure_environment(mirror):

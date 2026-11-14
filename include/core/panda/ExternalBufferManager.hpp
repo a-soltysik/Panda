@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file
-/// Context-owned external-buffer creation and GPU handoff operations.
+/// Engine-owned external-buffer creation and GPU handoff operations.
 
 #include <cstdint>
 #include <functional>
@@ -13,16 +13,16 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 
 namespace detail
 {
 class ExternalContext;
 }
 
-/// @brief Creates external buffers and queues ownership handoffs for one Context.
-/// This facade is borrowed from Context and must not outlive it. Calls are serialized
-/// with other operations on the owning Context.
+/// @brief Creates external buffers and queues ownership handoffs for one Engine.
+/// This facade is borrowed from Engine and must not outlive it. Calls are serialized
+/// with other operations on the owning Engine.
 class ExternalBufferManager final
 {
 public:
@@ -53,7 +53,7 @@ public:
         -> Result<void>;
 
 private:
-    friend class Context;
+    friend class Engine;
     explicit ExternalBufferManager(
         std::optional<std::reference_wrapper<detail::ExternalContext>> implementation) noexcept;
 

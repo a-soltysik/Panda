@@ -224,7 +224,7 @@ TEST_F(SubmissionQueueTest, CommitIsPublishedOnlyAfterSuccessAndFailedValuesAreR
     EXPECT_TRUE(*completed);
 }
 
-TEST_F(SubmissionQueueTest, ExternalTimelineWaitsAndSignalsUseTheContextSubmissionClock)
+TEST_F(SubmissionQueueTest, ExternalTimelineWaitsAndSignalsUseTheEngineSubmissionClock)
 {
     auto* const externalSemaphore = fakeVulkanHandle<VkSemaphore>(9);
     expectTimeline();

@@ -12,8 +12,8 @@ or submit work. [UC Upload bytes into a buffer](upload-buffer.md) and
 
 ## Preconditions
 
-1. **Live batch.** The batch borrows a live Context, and its operations are
-   serialized on the Context execution thread.
+1. **Live batch.** The batch borrows a live Engine, and its operations are
+   serialized on the Engine execution thread.
 2. **Validated write.** The caller has validated the destination and source
    layout and supplies nonempty bytes with a nonzero staging alignment.
 
@@ -25,7 +25,7 @@ or submit work. [UC Upload bytes into a buffer](upload-buffer.md) and
 2. **Find or create a page.** The batch reuses its last staging page when an
    aligned slice fits. Otherwise, `UploadManager` creates a mapped transfer-source
    `BufferResource` with `BufferMemory::Upload`, sized for at least the write and
-   a 4 KiB minimum page. The Context's `MemoryPool` supplies its host-visible
+   a 4 KiB minimum page. The Engine's `MemoryPool` supplies its host-visible
    memory; [UC Allocate a compatible device-memory range](allocate-memory-range.md)
    covers compatible range selection.
 3. **Copy and flush the source.** `BufferResource::writeMapped()` copies the
@@ -75,7 +75,7 @@ in [UC Allocate a compatible device-memory range](allocate-memory-range.md).
 
 **Snapshot ownership.** After staging succeeds, the batch owns the page and the
 queued operation retains its source slice. The application may change or release
-its source bytes after `write()` returns. On successful submission, Context's
+its source bytes after `write()` returns. On successful submission, Engine's
 pending packet retains the page until completion; see
 [UC Reclaim completed upload packets](reclaim-completed-uploads.md). Unsubmitted
 batch destruction releases its pages without GPU work.

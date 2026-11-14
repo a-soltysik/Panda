@@ -18,7 +18,7 @@ renderer use without Scene. Persistence remains in the
 
 ## Preconditions
 
-1. A live Context remains at the same address and outlives Scene and retained meshes.
+1. A live Engine remains at the same address and outlives Scene and retained meshes.
 2. The application has created a camera entity, attached a perspective or
    orthographic lens, selected it, and optionally created light entities. It has
    attached uploaded meshes to renderable objects. Mesh upload completes before rendering.
@@ -26,7 +26,7 @@ renderer use without Scene. Persistence remains in the
 ## Main flow
 
 1. **Request a snapshot.** The application calls `Scene::createRenderView()` with the
-   current framebuffer aspect ratio. Scene checks that its Context remains valid
+   current framebuffer aspect ratio. Scene checks that its Engine remains valid
    and delegates to `SceneState`.
 2. **Prepare the camera.** `SceneState::createRenderView()` delegates to a short-lived
    `SceneRenderViewBuilder` borrowing the state. The builder requires an active
@@ -42,7 +42,7 @@ renderer use without Scene. Persistence remains in the
    spot lights. Visibility applies to each object independently.
 4. **Publish the snapshot.** Scene returns a value independent of subsequent scene
    edits. The application passes it to `WindowRenderer::render()` in its frame loop.
-   Context performs renderer data and mesh-ownership validation before submission.
+   Engine performs renderer data and mesh-ownership validation before submission.
 
 ```mermaid
 sequenceDiagram
@@ -51,9 +51,9 @@ sequenceDiagram
     participant D as SceneState
     participant B as SceneRenderViewBuilder
     participant M as SceneTransformMath
-    participant C as Context
+    participant C as Engine
     A->>S: Step 1 - createRenderView(aspectRatio)
-    S->>C: Check live Context
+    S->>C: Check live Engine
     S->>D: Delegate snapshot request
     D->>B: Step 2 - build(aspectRatio), borrowing SceneState
     B->>D: Read active camera and updateWorld
@@ -88,7 +88,7 @@ world translation; entity scale does not change their range or color.
 
 **Snapshot lifetime.** A snapshot contains copies of matrices and light/camera
 values plus retained mesh handles. Deleting an object releases its Scene-owned mesh
-reference without invalidating an already prepared snapshot. Context outlives both.
+reference without invalidating an already prepared snapshot. Engine outlives both.
 The renderer retains submitted mesh uses through GPU completion.
 
 **Builder lifetime.** `SceneRenderViewBuilder` borrows SceneState only while building
@@ -115,7 +115,7 @@ Deleting the active camera clears selection instead of choosing another object.
 
 **Success.** The application receives prepared renderer input, with no GPU work yet
 submitted. Scene edits affect the next snapshot. Renderer-specific validation, such
-as rejecting a mesh from another Context, occurs in `WindowRenderer::render()`.
+as rejecting a mesh from another Engine, occurs in `WindowRenderer::render()`.
 
 **Failure.** No partial snapshot escapes. Updating derived caches does not change
 the authoritative transforms or component values.

@@ -16,7 +16,8 @@
 #include <limits>
 #include <memory>
 #include <panda/Buffer.hpp>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/WindowSurface.hpp>
@@ -143,7 +144,7 @@ void setDriverProperties(const VkPhysicalDeviceProperties2& output)
 
 // Explicit Action types avoid gMock's OnceAction ownership adapter, which
 // triggers a spurious leak diagnostic in clang-tidy with MSVC headers.
-class ContextLifecycleTest : public testing::Test
+class EngineLifecycleTest : public testing::Test
 {
 protected:
     void expectInstance()
@@ -681,24 +682,24 @@ protected:
 };
 }
 
-TEST_F(ContextLifecycleTest, CreatesContextWithZeroLightBudget)
+TEST_F(EngineLifecycleTest, CreatesEngineWithZeroLightBudget)
 {
     expectInstance();
     expectAdapter(false);
     expectDevice(false);
     expectParentsDestroyed(true, false);
-    const auto created = panda::Context::create({.maxLights = 0});
+    const auto created = panda::Engine::create({.maxLights = 0});
 
     ASSERT_TRUE(created);
 }
 
-TEST_F(ContextLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOrder)
+TEST_F(EngineLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOrder)
 {
     expectInstance();
     expectAdapter(false);
     expectDevice(false);
     expectParentsDestroyed(true, false);
-    auto context = panda::Context::create();
+    auto context = panda::Engine::create();
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
     EXPECT_FALSE(context->isValid());
@@ -710,13 +711,13 @@ TEST_F(ContextLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOr
     EXPECT_FALSE(moved.getWindowRenderer().has_value());
 }
 
-TEST_F(ContextLifecycleTest, ExposesTimestampSupportButKeepsSamplingDisabledByDefault)
+TEST_F(EngineLifecycleTest, ExposesTimestampSupportButKeepsSamplingDisabledByDefault)
 {
     expectInstance();
     expectAdapter(false, false, TimestampScenario {.validBits = 64, .periodNanoseconds = 2.5F});
     expectDevice(false);
     expectParentsDestroyed(true, false);
-    auto context = panda::Context::create();
+    auto context = panda::Engine::create();
     ASSERT_TRUE(context);
 
     auto& performance = context->getPerformanceManager();
@@ -734,7 +735,7 @@ TEST_F(ContextLifecycleTest, ExposesTimestampSupportButKeepsSamplingDisabledByDe
     EXPECT_TRUE(all->empty());
 }
 
-TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
+TEST_F(EngineLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
 {
     expectInstance();
     expectAdapter(false);
@@ -743,17 +744,17 @@ TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
     expectParentsDestroyed(true, false);
 
     auto context =
-        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+        panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
 
     ASSERT_TRUE(context);
     EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
 }
 
-TEST_F(ContextLifecycleTest, RejectsExternalBufferOperationsWhenExportIsUnavailable)
+TEST_F(EngineLifecycleTest, RejectsExternalBufferOperationsWhenExportIsUnavailable)
 {
     expectHeadless();
     expectParentsDestroyed(true, false);
-    auto context = panda::Context::create();
+    auto context = panda::Engine::create();
     ASSERT_TRUE(context);
 
     auto& externalBuffers = context->getExternalBufferManager();
@@ -768,7 +769,7 @@ TEST_F(ContextLifecycleTest, RejectsExternalBufferOperationsWhenExportIsUnavaila
     EXPECT_EQ(acquired.error().code, panda::ErrorCode::Unsupported);
 }
 
-TEST_F(ContextLifecycleTest, RejectsEmptyHandoffsWhenMemoryExportIsAvailable)
+TEST_F(EngineLifecycleTest, RejectsEmptyHandoffsWhenMemoryExportIsAvailable)
 {
     auto* const native = fakeVulkanHandle<VkBuffer>(42);
     auto* const memory = fakeVulkanHandle<VkDeviceMemory>(52);
@@ -781,7 +782,7 @@ TEST_F(ContextLifecycleTest, RejectsEmptyHandoffsWhenMemoryExportIsAvailable)
     expectDevice(false, success, false, true);
     expectParentsDestroyed(true, false);
     auto context =
-        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+        panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
     ASSERT_TRUE(context);
 
     auto& externalBuffers = context->getExternalBufferManager();
@@ -803,7 +804,7 @@ TEST_F(ContextLifecycleTest, RejectsEmptyHandoffsWhenMemoryExportIsAvailable)
     EXPECT_EQ(ordinaryAcquire.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityUnavailableAtStartup)
+TEST_F(EngineLifecycleTest, ReportsOptionalExternalBufferCapabilityUnavailableAtStartup)
 {
     expectInstance();
     expectAdapter(false);
@@ -812,13 +813,13 @@ TEST_F(ContextLifecycleTest, ReportsOptionalExternalBufferCapabilityUnavailableA
     expectParentsDestroyed(true, false);
 
     auto context =
-        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+        panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
 
     ASSERT_TRUE(context);
     EXPECT_FALSE(context->getDeviceInfo().externalBufferExportEnabled);
 }
 
-TEST_F(ContextLifecycleTest, RequiresExternalBufferCapabilityBeforePublishingContext)
+TEST_F(EngineLifecycleTest, RequiresExternalBufferCapabilityBeforePublishingEngine)
 {
     expectInstance();
     expectAdapter(false);
@@ -826,13 +827,13 @@ TEST_F(ContextLifecycleTest, RequiresExternalBufferCapabilityBeforePublishingCon
     expectParentsDestroyed(false, false);
 
     const auto context =
-        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Required});
+        panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required});
 
     ASSERT_FALSE(context);
     EXPECT_EQ(context.error().code, panda::ErrorCode::Unsupported);
 }
 
-TEST_F(ContextLifecycleTest, EnablesTimelineSemaphoreExportWhenTheTimelineQueryIsSupported)
+TEST_F(EngineLifecycleTest, EnablesTimelineSemaphoreExportWhenTheTimelineQueryIsSupported)
 {
     expectInstance();
     expectAdapter(false);
@@ -843,14 +844,14 @@ TEST_F(ContextLifecycleTest, EnablesTimelineSemaphoreExportWhenTheTimelineQueryI
     expectParentsDestroyed(true, false);
 
     auto context =
-        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+        panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
 
     ASSERT_TRUE(context);
     EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
     EXPECT_TRUE(context->getDeviceInfo().externalSemaphoreExportEnabled);
 }
 
-TEST_F(ContextLifecycleTest, DoesNotEnableBinaryOnlyExternalSemaphoreSupportForTimelineBuffers)
+TEST_F(EngineLifecycleTest, DoesNotEnableBinaryOnlyExternalSemaphoreSupportForTimelineBuffers)
 {
     expectInstance();
     expectAdapter(false);
@@ -860,14 +861,14 @@ TEST_F(ContextLifecycleTest, DoesNotEnableBinaryOnlyExternalSemaphoreSupportForT
     expectParentsDestroyed(true, false);
 
     auto context =
-        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Optional});
+        panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
 
     ASSERT_TRUE(context);
     EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
     EXPECT_FALSE(context->getDeviceInfo().externalSemaphoreExportEnabled);
 }
 
-TEST_F(ContextLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePublicManager)
+TEST_F(EngineLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePublicManager)
 {
     expectInstance();
     expectAdapter(false, false, TimestampScenario {.validBits = 64, .periodNanoseconds = 2.5F});
@@ -875,7 +876,7 @@ TEST_F(ContextLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePubli
     expectSubmissionQueue();
     expectPerformancePools();
     expectParentsDestroyed(true, false);
-    auto context = panda::Context::create({.enableFramePerformanceSampling = true});
+    auto context = panda::Engine::create({.enableFramePerformanceSampling = true});
     ASSERT_TRUE(context);
 
     auto& performance = context->getPerformanceManager();
@@ -893,11 +894,11 @@ TEST_F(ContextLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePubli
     EXPECT_TRUE(all->empty());
 }
 
-TEST_F(ContextLifecycleTest, EmptyBufferAndInvalidDescriptionsNeverCreateNativeResources)
+TEST_F(EngineLifecycleTest, EmptyBufferAndInvalidDescriptionsNeverCreateNativeResources)
 {
     expectHeadless();
     expectParentsDestroyed(true, false);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     auto empty = panda::Buffer {};
     EXPECT_FALSE(empty.isValid());
@@ -922,7 +923,7 @@ TEST_F(ContextLifecycleTest, EmptyBufferAndInvalidDescriptionsNeverCreateNativeR
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 }
 
-TEST_F(ContextLifecycleTest, SharedBuffersRetainNativeStateAndReuseReleasedRanges)
+TEST_F(EngineLifecycleTest, SharedBuffersRetainNativeStateAndReuseReleasedRanges)
 {
     expectHeadless();
     auto* const first = fakeVulkanHandle<VkBuffer>(40);
@@ -934,7 +935,7 @@ TEST_F(ContextLifecycleTest, SharedBuffersRetainNativeStateAndReuseReleasedRange
     expectBinding(first, memory);
     expectBinding(second, memory);
     expectParentsDestroyed(true, false);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     auto buffer =
         context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
@@ -950,7 +951,7 @@ TEST_F(ContextLifecycleTest, SharedBuffersRetainNativeStateAndReuseReleasedRange
     EXPECT_EQ(replacement->getSize(), 65);
 }
 
-TEST_F(ContextLifecycleTest, LiveBuffersRemainBoundAcrossContextAndHandleMoves)
+TEST_F(EngineLifecycleTest, LiveBuffersRemainBoundAcrossEngineAndHandleMoves)
 {
     expectHeadless();
     auto* const native = fakeVulkanHandle<VkBuffer>(40);
@@ -959,7 +960,7 @@ TEST_F(ContextLifecycleTest, LiveBuffersRemainBoundAcrossContextAndHandleMoves)
     expectBufferAllocation(memory);
     expectBinding(native, memory);
     expectParentsDestroyed(true, false);
-    auto created = panda::Context::create();
+    auto created = panda::Engine::create();
     ASSERT_TRUE(created);
     auto buffer =
         created->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
@@ -973,7 +974,7 @@ TEST_F(ContextLifecycleTest, LiveBuffersRemainBoundAcrossContextAndHandleMoves)
     moved.reset();
 }
 
-TEST_F(ContextLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutput)
+TEST_F(EngineLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutput)
 {
     expectHeadless();
     expectParentsDestroyed(true, false);
@@ -982,7 +983,7 @@ TEST_F(ContextLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutp
             *output = fakeVulkanHandle<VkBuffer>(40);
             return exhausted;
         });
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto buffer =
         context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
@@ -991,7 +992,7 @@ TEST_F(ContextLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutp
     EXPECT_EQ(buffer.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
 }
 
-TEST_F(ContextLifecycleTest, FailedBindingReleasesTheRangeAndPreservesTheNativeError)
+TEST_F(EngineLifecycleTest, FailedBindingReleasesTheRangeAndPreservesTheNativeError)
 {
     expectHeadless();
     auto* const first = fakeVulkanHandle<VkBuffer>(40);
@@ -1003,7 +1004,7 @@ TEST_F(ContextLifecycleTest, FailedBindingReleasesTheRangeAndPreservesTheNativeE
     expectBinding(first, memory, 0, exhausted);
     expectBinding(second, memory);
     expectParentsDestroyed(true, false);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto failed =
         context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
@@ -1015,7 +1016,7 @@ TEST_F(ContextLifecycleTest, FailedBindingReleasesTheRangeAndPreservesTheNativeE
     ASSERT_TRUE(retry);
 }
 
-TEST_F(ContextLifecycleTest, RequiredDedicatedBufferIsDestroyedBeforeItsExactAllocation)
+TEST_F(EngineLifecycleTest, RequiredDedicatedBufferIsDestroyedBeforeItsExactAllocation)
 {
     expectHeadless();
     auto* const native = fakeVulkanHandle<VkBuffer>(40);
@@ -1024,7 +1025,7 @@ TEST_F(ContextLifecycleTest, RequiredDedicatedBufferIsDestroyedBeforeItsExactAll
     expectBufferAllocation(memory, 0, true);
     expectBinding(native, memory);
     expectParentsDestroyed(true, false);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     auto buffer =
         context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
@@ -1033,7 +1034,7 @@ TEST_F(ContextLifecycleTest, RequiredDedicatedBufferIsDestroyedBeforeItsExactAll
     EXPECT_FALSE(buffer->isValid());
 }
 
-TEST_F(ContextLifecycleTest, LastSharedOwnerControlsNativeDestruction)
+TEST_F(EngineLifecycleTest, LastSharedOwnerControlsNativeDestruction)
 {
     expectHeadless();
     auto* const native = fakeVulkanHandle<VkBuffer>(40);
@@ -1046,7 +1047,7 @@ TEST_F(ContextLifecycleTest, LastSharedOwnerControlsNativeDestruction)
     expectParentsDestroyed(true, false);
     auto resetComplete = testing::MockFunction<void()> {};
     EXPECT_CALL(resetComplete, Call()).After(memoryCleanup);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     auto original =
         context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
@@ -1062,7 +1063,7 @@ TEST_F(ContextLifecycleTest, LastSharedOwnerControlsNativeDestruction)
     EXPECT_EQ(retained.getSize(), 0);
 }
 
-TEST_F(ContextLifecycleTest, DedicatedBindingFailureDestroysBufferBeforeFreeingItsAllocation)
+TEST_F(EngineLifecycleTest, DedicatedBindingFailureDestroysBufferBeforeFreeingItsAllocation)
 {
     expectHeadless();
     auto* const native = fakeVulkanHandle<VkBuffer>(40);
@@ -1071,7 +1072,7 @@ TEST_F(ContextLifecycleTest, DedicatedBindingFailureDestroysBufferBeforeFreeingI
     expectBufferAllocation(memory, 0, true);
     expectBinding(native, memory, 0, exhausted);
     expectParentsDestroyed(true, false);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto failed =
         context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
@@ -1081,7 +1082,7 @@ TEST_F(ContextLifecycleTest, DedicatedBindingFailureDestroysBufferBeforeFreeingI
     EXPECT_EQ(failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
 }
 
-TEST_F(ContextLifecycleTest, AllocationFailureDestroysTheUnboundBuffer)
+TEST_F(EngineLifecycleTest, AllocationFailureDestroysTheUnboundBuffer)
 {
     expectHeadless();
     expectBuffer(fakeVulkanHandle<VkBuffer>(40));
@@ -1089,7 +1090,7 @@ TEST_F(ContextLifecycleTest, AllocationFailureDestroysTheUnboundBuffer)
         .Times(2)
         .WillRepeatedly(Return(exhausted));
     expectParentsDestroyed(true, false);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto failed =
         context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
@@ -1097,7 +1098,7 @@ TEST_F(ContextLifecycleTest, AllocationFailureDestroysTheUnboundBuffer)
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
-TEST_F(ContextLifecycleTest, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
+TEST_F(EngineLifecycleTest, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
 {
     expectHeadless();
     auto* const first = fakeVulkanHandle<VkBuffer>(40);
@@ -1109,7 +1110,7 @@ TEST_F(ContextLifecycleTest, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
     expectBinding(first, memory);
     expectBinding(second, memory, 128);
     expectParentsDestroyed(true, false);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     auto source =
         context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
@@ -1126,7 +1127,7 @@ TEST_F(ContextLifecycleTest, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
     EXPECT_EQ(assigned.getSize(), 65);
 }
 
-TEST_F(ContextLifecycleTest, HostMemoryIntentsSelectCoherenceForUploadsAndCachingForReadback)
+TEST_F(EngineLifecycleTest, HostMemoryIntentsSelectCoherenceForUploadsAndCachingForReadback)
 {
     expectHeadless();
     auto* const upload = fakeVulkanHandle<VkBuffer>(40);
@@ -1142,7 +1143,7 @@ TEST_F(ContextLifecycleTest, HostMemoryIntentsSelectCoherenceForUploadsAndCachin
     expectBinding(upload, uploadMemory);
     expectBinding(readback, readbackMemory);
     expectParentsDestroyed(true, false);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto first = context->getResourceManager().createBuffer(
         {.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Upload});
@@ -1152,9 +1153,9 @@ TEST_F(ContextLifecycleTest, HostMemoryIntentsSelectCoherenceForUploadsAndCachin
     ASSERT_TRUE(second);
 }
 
-using ContextLifecycleDeathTest = ContextLifecycleTest;
+using EngineLifecycleDeathTest = EngineLifecycleTest;
 
-TEST_F(ContextLifecycleDeathTest, ContextRejectsDestructionBeforeTheLastResourceOwner)
+TEST_F(EngineLifecycleDeathTest, EngineRejectsDestructionBeforeTheLastResourceOwner)
 {
     expectHeadless();
     auto* const native = fakeVulkanHandle<VkBuffer>(40);
@@ -1163,18 +1164,18 @@ TEST_F(ContextLifecycleDeathTest, ContextRejectsDestructionBeforeTheLastResource
     expectBufferAllocation(memory);
     expectBinding(native, memory);
     expectParentsDestroyed(true, false);
-    auto context = panda::Context::create().transform([](panda::Context owner) {
-        return std::make_unique<panda::Context>(std::move(owner));
+    auto context = panda::Engine::create().transform([](panda::Engine owner) {
+        return std::make_unique<panda::Engine>(std::move(owner));
     });
     ASSERT_TRUE(context);
     auto buffer =
         (*context)->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(buffer);
-    EXPECT_DEATH(context->reset(), "Context destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
+    EXPECT_DEATH(context->reset(), "Engine destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
     buffer->reset();
 }
 
-TEST_F(ContextLifecycleTest, DeviceCreationFailurePreservesNativeErrorWithoutAdoptingTheOutput)
+TEST_F(EngineLifecycleTest, DeviceCreationFailurePreservesNativeErrorWithoutAdoptingTheOutput)
 {
     expectInstance();
     expectAdapter(false);
@@ -1182,53 +1183,53 @@ TEST_F(ContextLifecycleTest, DeviceCreationFailurePreservesNativeErrorWithoutAdo
     expectParentsDestroyed(false, false);
     EXPECT_CALL(vulkan, vkDestroyDevice(_, _)).Times(0);
     EXPECT_CALL(vulkan, vkGetDeviceProcAddr(device, _)).Times(0);
-    const auto context = panda::Context::create();
+    const auto context = panda::Engine::create();
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::ResourceExhausted);
     ASSERT_TRUE(context.error().native.has_value());
     EXPECT_EQ(context.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
 }
 
-TEST_F(ContextLifecycleTest, FailedSurfaceCreationReleasesInstanceAndPreservesFacadeError)
+TEST_F(EngineLifecycleTest, FailedSurfaceCreationReleasesInstanceAndPreservesFacadeError)
 {
     expectInstance();
     expectWindow(std::unexpected {panda::makeError(panda::ErrorCode::SurfaceLost, "surface lost")});
     expectParentsDestroyed(false, false);
-    const auto context = panda::Context::createWithSurface(window);
+    const auto context = panda::Engine::createWithSurface(window);
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::SurfaceLost);
     EXPECT_EQ(context.error().message, "surface lost");
 }
 
-TEST_F(ContextLifecycleTest, NullSurfaceIsRejectedBeforeDeviceSelection)
+TEST_F(EngineLifecycleTest, NullSurfaceIsRejectedBeforeDeviceSelection)
 {
     expectInstance();
     expectWindow(panda::test::WindowSurfaceMock::SurfaceResult {VkSurfaceKHR {}});
     expectParentsDestroyed(false, false);
-    const auto context = panda::Context::createWithSurface(window);
+    const auto context = panda::Engine::createWithSurface(window);
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
 }
 
-TEST_F(ContextLifecycleTest, WindowedDeviceFailureReleasesSurfaceBeforeInstance)
+TEST_F(EngineLifecycleTest, WindowedDeviceFailureReleasesSurfaceBeforeInstance)
 {
     expectInstance();
     expectWindow(panda::test::WindowSurfaceMock::SurfaceResult {surface});
     expectAdapter(true);
     expectDevice(true, exhausted);
     expectParentsDestroyed(false, true);
-    const auto context = panda::Context::createWithSurface(window);
+    const auto context = panda::Engine::createWithSurface(window);
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
-TEST_F(ContextLifecycleTest, MovedSuspendedContextRetainsItsDeviceUntilAllFrameResourcesAreDestroyed)
+TEST_F(EngineLifecycleTest, MovedSuspendedEngineRetainsItsDeviceUntilAllFrameResourcesAreDestroyed)
 {
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
         .Times(2)
         .WillRepeatedly(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
-    auto context = panda::Context::createWithSurface(window);
+    auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
     const auto renderer = moved.getWindowRenderer();
@@ -1242,31 +1243,31 @@ TEST_F(ContextLifecycleTest, MovedSuspendedContextRetainsItsDeviceUntilAllFrameR
     EXPECT_EQ(frame->status, panda::FrameResult::Status::Suspended);
 }
 
-TEST_F(ContextLifecycleTest, SeparatePresentFamilyProducesTwoDeviceQueueRequests)
+TEST_F(EngineLifecycleTest, SeparatePresentFamilyProducesTwoDeviceQueueRequests)
 {
     expectWindowed(true);
     EXPECT_CALL(window, getFramebufferExtent())
         .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
             Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}})});
-    const auto context = panda::Context::createWithSurface(window);
+    const auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
     EXPECT_EQ(context->getDeviceInfo().queueFamily, 0U);
     EXPECT_EQ(context->getDeviceInfo().presentQueueFamily, 1U);
 }
 
-TEST_F(ContextLifecycleTest, ExtentQueryFailureReleasesFrameResourcesAndAllParents)
+TEST_F(EngineLifecycleTest, ExtentQueryFailureReleasesFrameResourcesAndAllParents)
 {
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
         .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
             Return(panda::test::WindowSurfaceMock::ExtentResult {
                 std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "extent failed")}})});
-    const auto context = panda::Context::createWithSurface(window);
+    const auto context = panda::Engine::createWithSurface(window);
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().message, "extent failed");
 }
 
-TEST_F(ContextLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParents)
+TEST_F(EngineLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParents)
 {
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
@@ -1280,16 +1281,16 @@ TEST_F(ContextLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParent
             [](const auto&...) -> panda::Result<panda::core::vulkan::SwapchainGeneration> {
                 return std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "generation failed")};
             }});
-    const auto context = panda::Context::createWithSurface(window);
+    const auto context = panda::Engine::createWithSurface(window);
     ASSERT_FALSE(context.has_value());
     EXPECT_EQ(context.error().message, "generation failed");
 }
 
-TEST_F(ContextLifecycleTest, EmptyAndMovedFromContextsRejectCompletionOperations)
+TEST_F(EngineLifecycleTest, EmptyAndMovedFromEnginesRejectCompletionOperations)
 {
     expectHeadless();
     expectParentsDestroyed(true, false);
-    auto context = panda::Context::create();
+    auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     auto moved = std::move(*context);
     const auto empty = panda::CompletionPoint {};
@@ -1301,12 +1302,12 @@ TEST_F(ContextLifecycleTest, EmptyAndMovedFromContextsRejectCompletionOperations
     EXPECT_FALSE(context->getSubmissionManager().wait(empty, std::chrono::nanoseconds {0}));
 }
 
-TEST_F(ContextLifecycleTest, SuspendedContextRejectsEmptyPointsAndNegativeTimeout)
+TEST_F(EngineLifecycleTest, SuspendedEngineRejectsEmptyPointsAndNegativeTimeout)
 {
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
         .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
-    const auto context = panda::Context::createWithSurface(window);
+    const auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context);
     const auto empty = panda::CompletionPoint {};
     const auto polled = context->getSubmissionManager().poll(empty);

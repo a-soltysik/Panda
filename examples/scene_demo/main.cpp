@@ -10,8 +10,8 @@
 #include <memory>
 #include <panda/Assert.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Context.hpp>
 #include <panda/Cube.hpp>
+#include <panda/Engine.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
@@ -250,7 +250,7 @@ void animateWave(panda::scene::Scene& scene, std::span<const panda::scene::Entit
 }
 
 void drawLoop(const panda::tools::Window& window,
-              panda::Context& context,
+              panda::Engine& context,
               panda::scene::Scene& scene,
               const AnimatedObjects& objects)
 {
@@ -276,7 +276,7 @@ void drawLoop(const panda::tools::Window& window,
     }
 }
 
-auto createMeshes(const panda::Context& context) -> SceneMeshes
+auto createMeshes(const panda::Engine& context) -> SceneMeshes
 {
     const auto cubeGeometry = panda::createCubeGeometry();
     const auto groundGeometry = panda::createPlaneGeometry();
@@ -304,7 +304,7 @@ auto createMeshes(const panda::Context& context) -> SceneMeshes
     return meshes;
 }
 
-void run(const panda::tools::Window& window, panda::Context& context)
+void run(const panda::tools::Window& window, panda::Engine& context)
 {
     const auto meshes = createMeshes(context);
     auto scene = panda::expect(panda::scene::Scene::create(context), "Create scene");
@@ -325,8 +325,7 @@ auto main() -> int
         const auto window =
             panda::expect(panda::tools::Window::create(glm::uvec2 {1280, 720}, "Panda - Scene demo"), "Create window");
         auto context = panda::expect(
-            panda::Context::createWithSurface(window,
-                                              {.applicationName = "Panda scene demo", .enableValidation = true}),
+            panda::Engine::createWithSurface(window, {.applicationName = "Panda scene demo", .enableValidation = true}),
             "Create Vulkan context");
         run(window, context);
         return EXIT_SUCCESS;

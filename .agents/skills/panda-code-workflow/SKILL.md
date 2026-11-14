@@ -69,10 +69,10 @@ cmake --build --preset gcc-fast --parallel
 ctest --preset gcc-fast
 ```
 
-Fast builds use `--parallel` for Ninja's automatic CPU-based parallelism. Quality
-build presets limit parallelism to four jobs because analyzers use much more RAM;
-do not override them with `--parallel`. Run Windows and WSL quality sequentially,
-without another build running. Reduce concurrency further if memory is tight. Inspect
+Fast and quality build presets use all available logical CPUs. The WSL helper
+passes the CPU count to Ninja by default; use its `-Jobs` parameter only to
+override that count. Run Windows and WSL quality sequentially, without another
+build running. Inspect
 `ccache --dir .cache/ccache --show-config` and
 `ccache --dir .cache/ccache --show-stats`; caching must be enabled. For Windows/WSL operation, follow
 [panda-dual-platform-build](../panda-dual-platform-build/SKILL.md).

@@ -10,7 +10,7 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 
 namespace detail
 {
@@ -33,7 +33,7 @@ struct ImageReadback
     std::vector<std::uint8_t> rgba;
 };
 
-/// @brief Copyable owner of a single-sample SDR offscreen color target. Context
+/// @brief Copyable owner of a single-sample SDR offscreen color target. Engine
 /// outlives every copy; depth and in-flight use are retained by the renderer.
 class OffscreenTarget final
 {
@@ -61,7 +61,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class Context;
+    friend class Engine;
     friend class detail::OffscreenTargetResource;
     explicit OffscreenTarget(std::shared_ptr<detail::OffscreenTargetResource> resource);
     std::shared_ptr<detail::OffscreenTargetResource> _resource;

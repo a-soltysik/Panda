@@ -148,18 +148,18 @@ the build directory when replacing its recorded toolchain/SDK installation.
 ### Examples
 
 [`buffer_allocation`](../../examples/buffer_allocation/README.md) demonstrates
-headless Context-owned allocation, Buffer diagnostics and RAII shutdown through the public
+headless Engine-owned allocation, Buffer diagnostics and RAII shutdown through the public
 API. It uses Core only and submits no GPU work.
 
 `PANDA_BUILD_EXAMPLES` (OFF by default) adds the
 [`simple_scene`](../../examples/simple_scene/README.md) executable and
 requires Tools, enabled by `PANDA_BUILD_TOOLS=ON` or `PANDA_BUILD_TESTS=ON`.
 The example creates a local Window without an OpenGL context, then a Vulkan
-Context borrowing that window. It creates and uploads standard cube geometry,
+Engine borrowing that window. It creates and uploads standard cube geometry,
 then passes camera and draw data to the renderer each frame. The renderer uses
 Core only; no scene or ECS library is required. The loop polls events or waits
 for an event while the framebuffer is suspended. Closing the window ends the
-loop; destruction releases the Context before the Window, including failure or
+loop; destruction releases the Engine before the Window, including failure or
 exception unwinding. Creation, event and frame errors are logged and return a
 failing process exit status.
 

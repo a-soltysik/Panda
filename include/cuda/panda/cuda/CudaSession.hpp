@@ -7,7 +7,7 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 }
 
 namespace panda::cuda
@@ -17,14 +17,14 @@ namespace detail
 class CudaSessionState;
 }
 
-/// @brief Move-only CUDA session matched to one Context's selected Vulkan device.
-/// The Context outlives the session and every shared buffer created from it.
+/// @brief Move-only CUDA session matched to one Engine's selected Vulkan device.
+/// The Engine outlives the session and every shared buffer created from it.
 class CudaSession final
 {
 public:
     /// @brief Matches the selected Vulkan device and creates one non-blocking stream.
     /// @return A session, or an actionable Unsupported/initialization error.
-    [[nodiscard]] static auto create(const panda::Context& context) -> Result<CudaSession>;
+    [[nodiscard]] static auto create(const panda::Engine& context) -> Result<CudaSession>;
 
     CudaSession(const CudaSession&) = delete;
     auto operator=(const CudaSession&) -> CudaSession& = delete;

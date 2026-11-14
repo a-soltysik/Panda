@@ -5,11 +5,11 @@
 After successful GPU work submission, an application uses its `CompletionPoint` to
 check whether the GPU has finished or to wait for a bounded time. The point may
 come from `UploadBatch::submit()` or from a submitted `FrameResult`. The flow starts
-with that point and a live owning `Context`, and ends when `SubmissionManager::poll()` or
+with that point and a live owning `Engine`, and ends when `SubmissionManager::poll()` or
 `SubmissionManager::wait()` returns a completion state or error.
 
-**Panda** validates the point and observes the Context's shared submission timeline. **The application** chooses whether
-to poll or wait and keeps the owning Context
+**Panda** validates the point and observes the Engine's shared submission timeline. **The application** chooses whether
+to poll or wait and keeps the owning Engine
 alive. GPU completion does not establish that a frame has finished presenting or
 appeared on screen.
 
@@ -18,11 +18,11 @@ appeared on screen.
 1. **Choose an observation.** The application passes the point to
    `SubmissionManager::poll()` for a nonblocking query or to `SubmissionManager::wait()` with a
    nonnegative timeout for an explicit wait.
-2. **Check the submitted value.** Context asks its `SubmissionQueue` to validate
-   that the point belongs to this Context and identifies committed work. Polling
+2. **Check the submitted value.** Engine asks its `SubmissionQueue` to validate
+   that the point belongs to this Engine and identifies committed work. Polling
    reads the timeline without waiting; waiting returns immediately if the value is
    already known complete, otherwise it waits up to the requested duration.
-3. **Retire known-complete uploads.** After a successful query or wait, Context
+3. **Retire known-complete uploads.** After a successful query or wait, Engine
    calls `UploadManager` to collect completed
    packets; [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
    explains which owners this releases.
@@ -33,7 +33,7 @@ appeared on screen.
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Context
+    participant C as Engine
     participant Q as SubmissionQueue
     participant U as UploadManager
     alt Nonblocking query
@@ -55,19 +55,19 @@ sequenceDiagram
 
 ## Notes
 
-**Shared timeline.** The Context's `SubmissionQueue` owns a Vulkan timeline
+**Shared timeline.** The Engine's `SubmissionQueue` owns a Vulkan timeline
 semaphore, a GPU-updated integer counter. Each accepted queue submission signals
 the next value, and a point is complete when the counter reaches or exceeds its
 value. Upload and presentation submissions share this counter. Presentation
 completion is tracked separately, so this result does not mean a frame is
 displayed. See the [completion-point contract](../design/contracts/resources.md#handles-and-api-boundary).
 
-**Token lifetime.** `CompletionPoint` is copyable but retains neither the Context
-nor resources. The owning Context state must outlive its use, and moving a Context
+**Token lifetime.** `CompletionPoint` is copyable but retains neither the Engine
+nor resources. The owning Engine state must outlive its use, and moving an Engine
 preserves its issued points.
 
 **Upload ownership.** A successful `poll()` result includes `false`, and a
-successful `wait()` result includes `Timeout`. Context can still release packets
+successful `wait()` result includes `Timeout`. Engine can still release packets
 whose completion it already knows; [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
 defines that boundary.
 
@@ -77,7 +77,7 @@ defines that boundary.
 |--------------------|--------------------------------------------------------------------------------------------------|-----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
 | **Variant&nbsp;1** | Step 2: the timeline's completed value is less than the value in the submitted `CompletionPoint` | Return `false`                                      | The work may still be running; keep the point and poll again or wait                                                             |
 | **Variant&nbsp;2** | Step 2: the wait deadline expires first                                                          | Return `WaitStatus::Timeout` as a successful result | The work may still be running; keep the point and poll or wait again                                                             |
-| **Error&nbsp;1**   | Step 1 or 2: negative timeout, empty or foreign point, or no owning submission queue             | Return `InvalidArgument`                            | No completion is established; use the owning live Context and a valid point, or a nonnegative timeout                            |
+| **Error&nbsp;1**   | Step 1 or 2: negative timeout, empty or foreign point, or no owning submission queue             | Return `InvalidArgument`                            | No completion is established; use the owning live Engine and a valid point, or a nonnegative timeout                            |
 | **Error&nbsp;2**   | Step 2: timeline query or wait reports a backend failure, including device loss                  | Return the backend error                            | This call establishes no new completion; pending upload owners remain retained, and general device-loss recovery is not promised |
 
 ## Outcomes
@@ -95,7 +95,7 @@ submitted work and its retained upload owners.
 - [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains the
   staging, destination and command owners released after completion is observed.
 - [Handles and API boundary](../design/contracts/resources.md#handles-and-api-boundary)
-  defines token identity, Context moves and the `poll()`/`wait()` result contract.
+  defines token identity, Engine moves and the `poll()`/`wait()` result contract.
 - [Frame and window state](../design/contracts/resources.md#frame-and-window-state)
   explains why GPU completion and presentation completion are separate.
 - [Allocation, uploads and resource lifetimes](../development/tasks/resource-lifetimes.md)

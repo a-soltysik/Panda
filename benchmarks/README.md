@@ -2,7 +2,7 @@
 
 `panda-bench` is a standalone smoke benchmark for Panda's public frame and
 performance APIs. Its workload creates and uploads one static cube before warmup and
-measurement, then renders that view through Panda's normal Context path. `--lights N`
+measurement, then renders that view through Panda's normal Engine path. `--lights N`
 adds a fixed lighting fixture with one directional light and `N - 1` point lights;
 it defaults to the maximum `N = 65`; set `N = 0` for the cube-only workload. See the
 [benchmark specification](../docs/development/benchmarking.md) for measurement

@@ -7,7 +7,7 @@
 
 #include <cstdint>
 #include <expected>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
 #include <panda/WindowSurface.hpp>
 #include <span>
 #include <vector>
@@ -49,7 +49,7 @@ struct SwapchainGenerationRequest
     vk::SurfaceKHR surface;
     FramebufferExtent requested;
     vk::SwapchainKHR oldSwapchain;
-    ContextDeviceInfo deviceInfo;
+    DeviceInfo deviceInfo;
 };
 
 [[nodiscard]] auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,

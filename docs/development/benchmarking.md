@@ -32,11 +32,11 @@ with lights are distinct workloads. This remains a fixed-view smoke workload, no
 representative scene benchmark. With a zero-second warmup, the first measured frame
 may include first-use renderer or pipeline setup.
 
-For a positive light count, the Context budget is `max(defaultMaxLights, count)`.
+For a positive light count, the Engine budget is `max(defaultMaxLights, count)`.
 Thus `--lights 65` checks the enlarged budget while remaining independent of a
-device's absolute maximum; unsupported storage-buffer limits fail during Context
+device's absolute maximum; unsupported storage-buffer limits fail during Engine
 creation. The benchmark prepares `RenderView` once before timing, so CPU frame samples
-measure Panda's Context/render path and do not include Scene render-view preparation.
+measure Panda's Engine/render path and do not include Scene render-view preparation.
 
 `--width` and `--height` set the requested window extent in pixels. The defaults are
 1280 by 720; the report records both the requested and effective framebuffer extents.
@@ -51,7 +51,7 @@ the completion summary stays on the console and prints the paths to both the JSO
 report and engine log.
 The smoke report obtains the host CPU model through Panda's public `getHostInfo()`
 API and the selected Vulkan driver's name, description and vendor-specific version
-through `Context::getDeviceInfo()`. Environment values that cannot be collected are
+through `Engine::getDeviceInfo()`. Environment values that cannot be collected are
 omitted from JSON.
 
 The full reference run automatically:
@@ -70,18 +70,18 @@ Use the same renderer and synchronization path as applications, not a special fa
 path that bypasses production behavior.
 
 `panda-bench` is an ordinary Panda API consumer. It enables
-`ContextOptions::enableFramePerformanceSampling`, obtains the Context-owned
-`PerformanceManager` through `Context::getPerformanceManager()`, checks the public
+`EngineOptions::enableFramePerformanceSampling`, obtains the Engine-owned
+`PerformanceManager` through `Engine::getPerformanceManager()`, checks the public
 capabilities, and drains samples through `takeAvailableSamples()`. Applications use
 the same option and API; the benchmark has no private route to timestamp data.
 
 ## Public performance collection
 
-Every valid Context exposes a `PerformanceManager`, including a headless Context.
+Every valid Engine exposes a `PerformanceManager`, including a headless Engine.
 Frame performance sampling is disabled by default. Set
-`ContextOptions::enableFramePerformanceSampling` to enable it. `getCapabilities()` reports
+`EngineOptions::enableFramePerformanceSampling` to enable it. `getCapabilities()` reports
 both whether the selected graphics queue supports timestamp queries and whether
-sampling is enabled for this Context. The manager handles counter wrapping and
+sampling is enabled for this Engine. The manager handles counter wrapping and
 converts device ticks to nanoseconds internally. A queue without timestamp support
 reports the capability as unavailable, even if sampling was requested.
 
@@ -239,7 +239,7 @@ VSync/present waits are separately timed and excluded from active CPU preparatio
 GPU timestamps cover submitted shadow, camera and tone-map passes. Compare runs only
 with equal effective settings and present mode. A missing optional timestamp feature
 marks GPU duration unavailable rather than inventing zero; the GPU timing profile
-enables `ContextOptions::enableFramePerformanceSampling`, requires nonzero timestamp
+enables `EngineOptions::enableFramePerformanceSampling`, requires nonzero timestamp
 valid bits and fails clearly if unavailable.
 
 The built-in `reference-1080p-v1` fixture generates one indexed static grid mesh:
@@ -257,7 +257,7 @@ camera and shadow draws and culled entities. Camera is (0,12,16), looking at ori
 Lighting is one directional light with a 2048 shadow face and 64 unshadowed point
 lights on a radius-7 horizontal ring at y=3: point k=0..63 has position
 `(7*cos(2*pi*k/64),3,7*sin(2*pi*k/64))`, linear white color, intensity 2 and
-range 8 m. The profile sets `ContextOptions::maxLights` to 65 for this workload.
+range 8 m. The profile sets `EngineOptions::maxLights` to 65 for this workload.
 Directional direction is normalized `(-0.4,-1,-0.3)`, linear white at intensity 3;
 ambient/defaults follow the
 [renderer specification](../design/contracts/rendering.md#first-version-renderer-contract).

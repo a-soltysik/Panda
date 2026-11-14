@@ -2,31 +2,31 @@
 
 ## Goal and boundary
 
-An application opts into frame sampling when it creates a `Context`, then reads
-paired timings from that Context's borrowed `PerformanceManager`. This flow starts
-with a live Context and ends when the application peeks at or removes ready samples.
+An application opts into frame sampling when it creates a `Engine`, then reads
+paired timings from that Engine's borrowed `PerformanceManager`. This flow starts
+with a live Engine and ends when the application peeks at or removes ready samples.
 The submitted-frame path is `WindowRenderer::render(view)`. Timing markers cover either an
 empty background view or the mesh draws in a populated view.
 
 **Panda** owns timestamp queries, their association with submitted frames and
 nonblocking collection. **The application** chooses whether to request sampling,
 checks device support and drains samples regularly. The manager and its buffered
-samples are owned by the Context; the borrowed manager must not outlive it.
+samples are owned by the Engine; the borrowed manager must not outlive it.
 
 ## Preconditions
 
-1. A live windowed `Context` exists and calls on it are serialized. Sampling is
-   requested at creation with `ContextOptions::enableFramePerformanceSampling`; it
-   cannot be enabled later on that Context.
+1. A live windowed `Engine` exists and calls on it are serialized. Sampling is
+   requested at creation with `EngineOptions::enableFramePerformanceSampling`; it
+   cannot be enabled later on that Engine.
 
 ## Main flow
 
 1. **Check capabilities.** The application gets the manager from
-   `Context::getPerformanceManager()` and reads `getCapabilities()`. Sampling runs
+   `Engine::getPerformanceManager()` and reads `getCapabilities()`. Sampling runs
    only when `isGpuTimestampSamplingEnabled` is true; `hasGpuTimestampQueries`
    separately reports support on the selected graphics queue.
 2. **Submit a marked frame.** The application calls `WindowRenderer::render(view)`.
-   `Context` starts its CPU wall clock. In the frame command buffer,
+   `Engine` starts its CPU wall clock. In the frame command buffer,
    `FrameExecution` records two `vkCmdWriteTimestamp2` queries at the
    `eColorAttachmentOutput` stage: the start immediately before view rendering and
    the end immediately after it. For an empty view this brackets the background clear;
@@ -35,7 +35,7 @@ samples are owned by the Context; the borrowed manager must not outlive it.
    CPU does not itself measure GPU time. After the queue accepts the command buffer,
    `FrameExecution` then associates that slot's query pool with the committed
    `CompletionPoint` through the performance manager, which assigns a frame index.
-3. **Pair the CPU duration.** After the presentation operation returns, `Context`
+3. **Pair the CPU duration.** After the presentation operation returns, `Engine`
    records the elapsed wall duration for the submitted slot and returns the frame
    result. The duration covers the whole Panda frame call, including CPU waits and
    the presentation call; it excludes application work outside the call and display
@@ -59,7 +59,7 @@ samples are owned by the Context; the borrowed manager must not outlive it.
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Context
+    participant C as Engine
     participant P as Presentation
     participant E as FrameExecution
     participant M as PerformanceManager
@@ -117,7 +117,7 @@ removes all ready samples in frame-index order. A take call is needed to free
 buffered samples, so long-running applications should drain regularly.
 
 **Submitted frame with a presentation error.** The manager associates timestamps
-with the frame as soon as queue submission succeeds. `Context` records that frame's
+with the frame as soon as queue submission succeeds. `Engine` records that frame's
 CPU duration even if presentation then returns an error, so the submitted frame can
 still produce a sample. The error does not undo GPU work; see
 [UC Render and present an application view](render-view.md) for frame
@@ -127,16 +127,16 @@ recovery outcomes.
 
 |                    | Point and condition                                                                                                                     | Response                                                                                                                                                                                  | Resulting state and next action                                                                                        |
 |--------------------|-----------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| **Variant&nbsp;1** | Step 1: sampling was not requested, or the graphics queue has no timestamp support                                                      | Capabilities report sampling disabled; no timestamp pools or paired samples are produced                                                                                                  | Enable sampling when creating a new Context; unsupported hardware needs a queue with timestamp support                 |
+| **Variant&nbsp;1** | Step 1: sampling was not requested, or the graphics queue has no timestamp support                                                      | Capabilities report sampling disabled; no timestamp pools or paired samples are produced                                                                                                  | Enable sampling when creating a new Engine; unsupported hardware needs a queue with timestamp support                 |
 | **Variant&nbsp;2** | Step 2: the frame is suspended, skipped or fails before queue submission                                                                | No submitted slot is associated with a frame index and no paired sample is produced                                                                                                       | Follow [UC Render and present an application view](render-view.md); submit a later frame when presentation can proceed |
 | **Variant&nbsp;3** | Step 4: the submitted point is pending, or either query is not yet available                                                            | Return an empty optional/vector without waiting                                                                                                                                           | Keep running and query again later; the sample remains pending                                                         |
-| **Error&nbsp;1**   | Step 2: the previous slot submission is complete, but a timestamp remains unavailable when `FrameExecution` tries to reuse its query pool | Frame recording returns `BackendFailure`; after image acquisition, presentation retires that image through [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | The query pool is not reset over the pending result; inspect the error and Context state before continuing             |
+| **Error&nbsp;1**   | Step 2: the previous slot submission is complete, but a timestamp remains unavailable when `FrameExecution` tries to reuse its query pool | Frame recording returns `BackendFailure`; after image acquisition, presentation retires that image through [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | The query pool is not reset over the pending result; inspect the error and Engine state before continuing             |
 | **Error&nbsp;2**   | Step 4: completion polling, query readback or duration conversion fails                                                                 | Return the backend error rather than a fabricated timing                                                                                                                                  | No new sample is returned; device loss has no general recovery path                                                    |
 
 ## Outcomes
 
 **Ready sample.** The returned `FramePerformanceSample` pairs CPU and GPU durations
-for the same submitted frame and carries its Context-local frame index. Query
+for the same submitted frame and carries its Engine-local frame index. Query
 availability establishes that Panda can read the sample; it does not indicate that
 the image was displayed.
 
@@ -146,12 +146,12 @@ These cases are not represented as zero-duration measurements.
 
 ## Related information
 
-- [UC Create a Context](create-context.md) explains Context initialization and
+- [UC Create an Engine](create-context.md) explains Engine initialization and
   partial cleanup if requested sampling resources cannot be initialized.
 - [UC Render and present an application view](render-view.md) explains
   the submitted frame, its completion point and presentation failure outcomes.
 - [UC Observe or wait for submitted GPU work](observe-completion.md) explains the
-  Context timeline used to confirm GPU completion; sampling itself does not wait.
+  Engine timeline used to confirm GPU completion; sampling itself does not wait.
 - [Frame and window state](../design/contracts/resources.md#frame-and-window-state)
   defines query collection before frame-slot reuse.
 - [Frame rendering and benchmark smoke test](../development/tasks/frame-rendering.md)

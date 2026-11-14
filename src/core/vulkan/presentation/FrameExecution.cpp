@@ -243,7 +243,7 @@ auto FrameExecution::createOrResizeMeshRenderer(const FrameOutput& output) -> st
 {
     if (_pool == nullptr)
     {
-        return std::unexpected {makeError(ErrorCode::BackendFailure, "Mesh rendering requires a Context memory pool")};
+        return std::unexpected {makeError(ErrorCode::BackendFailure, "Mesh rendering requires an Engine memory pool")};
     }
     if (!_renderer)
     {

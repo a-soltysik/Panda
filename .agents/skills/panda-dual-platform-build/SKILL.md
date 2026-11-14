@@ -59,10 +59,10 @@ Run the code workflow's full Linux quality/CUDA sequence in that same mirror.
 Both platforms retain the fast and quality preset trees; CUDA analysis is nested
 inside quality. Presets share `.cache/ccache` within each native source tree;
 the Linux mirror keeps its cache on the Linux filesystem, outside `/mnt/c`.
-Fast builds use `--parallel` for Ninja's automatic CPU-based parallelism. Quality
-presets use four jobs; omit `--parallel` to preserve that limit. Run the two
-platforms' quality builds sequentially, without another build running, to avoid
-exhausting host memory. Reduce concurrency further when needed.
+Fast and quality presets use all available logical CPUs. The WSL helper passes the
+CPU count to Ninja by default; use its `-Jobs` parameter only to override that count.
+Run the two platforms' quality builds sequentially, without another build running,
+to avoid exhausting host memory.
 
 The older helper's optional uncached fallback and default `system` exclusion do
 not satisfy agent verification. Do not use `-Target` to reduce build scope.

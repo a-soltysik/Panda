@@ -4,7 +4,7 @@
 
 An application initializes a newly created `Texture` by copying a full image or
 one or more rectangles into it through an `UploadBatch`. The flow starts with a
-live `Context` and a texture created by that Context; it ends when the queue
+live `Engine` and a texture created by that Engine; it ends when the queue
 accepts the copies, the unsubmitted batch is cancelled, or an operation returns
 an error. Queue acceptance returns a `CompletionPoint`. The flow covers uploads
 to Panda's single-mip, single-layer 2D textures, not texture creation or later
@@ -19,20 +19,20 @@ ownership are described in [UC Upload bytes into a buffer](upload-buffer.md).
 
 ## Preconditions
 
-1. **Context and texture.** The `Context` is live, the `Texture` belongs to it,
-   and its operations are serialized on the Context execution thread.
+1. **Engine and texture.** The `Engine` is live, the `Texture` belongs to it,
+   and its operations are serialized on the Engine execution thread.
 2. **Texture is available for initialization.** It has not already been
    submitted for upload and is not reserved by another unsubmitted batch.
 
 ## Main flow
 
 1. **Create a batch.** The application calls `SubmissionManager::createUploadBatch()`.
-   The batch borrows the Context and owns no GPU work until submission; batch
+   The batch borrows the Engine and owns no GPU work until submission; batch
    creation and the shared submission queue are covered by
    [UC Upload bytes into a buffer](upload-buffer.md).
 2. **Validate and reserve the texture.** For a full upload, the application calls
    `UploadBatch::write(texture, bytes, rowPitchBytes)`; for a partial upload, it
-   supplies a `TextureUploadRegion`. `UploadManager` checks the Context, usage,
+   supplies a `TextureUploadRegion`. `UploadManager` checks the Engine, usage,
    format, region and source layout. The first valid write reserves the texture
    for this batch before staging begins. Further regions for that texture may be
    added to the same batch.
@@ -42,9 +42,9 @@ ownership are described in [UC Upload bytes into a buffer](upload-buffer.md).
    It transitions each image from `UNDEFINED` to `TRANSFER_DST_OPTIMAL` before
    its first region copy, records the copies, and transitions it to
    `SHADER_READ_ONLY_OPTIMAL` after the batch's copies. `SubmissionQueue` submits
-   the command using the shared Context timeline; only an accepted queue submit
+   the command using the shared Engine timeline; only an accepted queue submit
    commits the texture reservation and returns a `CompletionPoint`. See the
-   [UC Commit work to the Context submission timeline](commit-context-submission.md).
+   [UC Commit work to the Engine submission timeline](commit-context-submission.md).
 
 The shared byte-staging path is documented in
 [UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md).
@@ -52,7 +52,7 @@ The shared byte-staging path is documented in
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Context
+    participant C as Engine
     participant B as UploadBatch / Impl
     participant U as UploadManager
     participant T as TextureResource
@@ -60,7 +60,7 @@ sequenceDiagram
     participant Q as SubmissionQueue
     participant V as Vulkan
     A->>C: Step 1 - createUploadBatch()
-    C-->>A: Batch borrowing Context
+    C-->>A: Batch borrowing Engine
     loop Full image or one region per write
         A->>B: Step 2 - write(texture, bytes, layout)
         B->>U: Validate texture, usage, format and source layout
@@ -79,8 +79,8 @@ sequenceDiagram
     K->>V: Record first-use and sampled-layout transitions around copies
     V-->>K: Command buffer recorded
     U->>Q: Submit packet
-    Note over U,Q: Step 4 - UC Commit work to the Context submission timeline
-    Q-)V: Queue work and signal the Context timeline
+    Note over U,Q: Step 4 - UC Commit work to the Engine submission timeline
+    Q-)V: Queue work and signal the Engine timeline
     V-->>Q: Submission accepted
     Q-->>U: Committed CompletionPoint
     U-->>B: CompletionPoint
@@ -116,7 +116,7 @@ region transitions the whole texture to transfer-destination layout; after all
 batch copies, Panda makes transfer writes visible and transitions the image to
 shader-read layout. Texels outside the uploaded regions remain undefined. A
 successful submit means the queue accepted these commands, not that the GPU has
-finished them. Context retains the command, staging pages and destination until
+finished them. Engine retains the command, staging pages and destination until
 completion; see [UC Reclaim completed upload packets](reclaim-completed-uploads.md) and
 [UC Observe or wait for submitted GPU work](observe-completion.md).
 
@@ -128,7 +128,7 @@ completion; see [UC Reclaim completed upload packets](reclaim-completed-uploads.
 | **Error&nbsp;1**   | Step 2: the texture is empty or foreign, usage lacks transfer-destination or sampled, the format is unsupported, or the region/pitch/source size is invalid | Return `InvalidArgument` or `Unsupported` before reserving the texture or staging this region                               | Earlier batch operations remain; correct the request and retry                                                                                                                        |
 | **Error&nbsp;2**   | Step 2: another batch already reserved the texture, or a prior submission marked it uploaded                                                                | Reject the write                                                                                                            | No region is appended; cancel the earlier unsubmitted batch before trying another, or create a replacement texture after upload                                                       |
 | **Error&nbsp;3**   | Step 3: collection, staging allocation, mapped copy or cache flush fails                                                                                    | Return the error and do not append this region; see [first-region staging cleanup](#error-3---first-region-staging-failure) | If this was the first region, release its reservation; if earlier regions were accepted, keep their reservation and writes                                                            |
-| **Error&nbsp;4**   | Step 4: packet preparation or queue submission fails                                                                                                        | Return the error without a completion point; the batch retains its queued regions and reservation for a permitted retry     | Recoverable failures can be retried with the same batch; device loss does not promise recovery. See [UC Commit work to the Context submission timeline](commit-context-submission.md) |
+| **Error&nbsp;4**   | Step 4: packet preparation or queue submission fails                                                                                                        | Return the error without a completion point; the batch retains its queued regions and reservation for a permitted retry     | Recoverable failures can be retried with the same batch; device loss does not promise recovery. See [UC Commit work to the Engine submission timeline](commit-context-submission.md) |
 | **Error&nbsp;5**   | Step 4: the batch contains no accepted writes                                                                                                               | Return `InvalidArgument`                                                                                                    | The batch remains valid; add a valid write or destroy it                                                                                                                              |
 
 ### Error 3 - First-region staging failure
@@ -155,10 +155,10 @@ submission or cancellation.
 
 ## Outcomes
 
-**Submitted.** The Context queue accepted the batch and returned a
+**Submitted.** The Engine queue accepted the batch and returned a
 `CompletionPoint`. The public batch is consumed, the texture is immutable, and
 the application may use the point to observe queue completion. The point does
-not itself retain the Context or texture.
+not itself retain the Engine or texture.
 
 **Cancelled or failed before submission.** No completion point is issued. An
 unsubmitted batch can be destroyed to release its staging pages and reservations;
@@ -172,7 +172,7 @@ returned error.
 - [UC Upload bytes into a buffer](upload-buffer.md) shows the shared batch and
   submission path; [UC Snapshot caller bytes into batch-owned staging](snapshot-upload-staging.md)
   documents the common byte-staging operation.
-- [UC Commit work to the Context submission timeline](commit-context-submission.md)
+- [UC Commit work to the Engine submission timeline](commit-context-submission.md)
   explains queue acceptance and timeline publication.
 - [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains how
   submitted packets retain and release texture and staging owners.

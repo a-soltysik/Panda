@@ -7,25 +7,19 @@
 
 #include <cstdint>
 #include <expected>
-#include <panda/Context.hpp>
+#include <panda/DeviceInfo.hpp>
 #include <panda/WindowSurface.hpp>
 #include <string>
 #include <vector>
 
+#include "InstanceResources.hpp"
+
 namespace panda::core::vulkan
 {
-
-struct InstanceExtensions
-{
-    std::vector<std::string> names;
-    bool hasKhrMaintenance {false};
-    bool hasExtMaintenance {false};
-};
-
 struct SelectedDevice
 {
     vk::PhysicalDevice physicalDevice;
-    ContextDeviceInfo info;
+    DeviceInfo info;
     vk::PhysicalDeviceLimits limits;
     std::uint32_t timestampValidBits {0};
     float timestampPeriodNanoseconds {0.0F};

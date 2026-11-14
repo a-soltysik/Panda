@@ -2,29 +2,29 @@
 
 ## Goal and boundary
 
-An application renders a `RenderView` into a Context-owned `OffscreenTarget` with
+An application renders a `RenderView` into an Engine-owned `OffscreenTarget` with
 `OffscreenRenderer::render()`, then optionally calls `readPixels()` to obtain RGBA
 bytes. The render call submits GPU work without presenting a window frame. Reading
 pixels is a separate operation that waits for its copy to finish.
 
 **The application** supplies the view, chooses a target per render, and keeps the
-owning `Context` alive. **Panda** validates ownership and view resources, retains
+owning `Engine` alive. **Panda** validates ownership and view resources, retains
 them through GPU completion, and defines the readback layout. A target can be used
-with either a headless or windowed Context.
+with either a headless or windowed Engine.
 
 ## Main flow
 
 1. **Create the target.** The application calls
-   `Context::getResourceManager().createOffscreenTarget()` with a nonzero extent.
+   `Engine::getResourceManager().createOffscreenTarget()` with a nonzero extent.
    The current target format is RGBA8 sRGB.
 2. **Build and upload the view.** The application supplies camera, lights and mesh
    draws. Required mesh and texture data must be uploaded; see
    [UC Upload a complete mesh payload into a batch](upload-mesh-payload.md) and
    [UC Upload texture contents or regions](upload-texture.md).
 3. **Submit the render.** The application calls
-   `Context::getOffscreenRenderer().render(view, target)`. Panda validates the view
+   `Engine::getOffscreenRenderer().render(view, target)`. Panda validates the view
    and target, records the built-in rendering path into the target, retains the
-   target and view resources, then submits the command buffer on the Context queue.
+   target and view resources, then submits the command buffer on the Engine queue.
    Success returns `FrameResult::Status::Rendered` and a `CompletionPoint`; it does
    not present a frame or wait for rendering to finish.
 4. **Request pixels.** When CPU pixels are needed, the application calls
@@ -37,7 +37,7 @@ sequenceDiagram
     participant A as Application
     participant M as ResourceManager
     participant R as OffscreenRenderer
-    participant C as Context
+    participant C as Engine
     participant O as OffscreenRendering
     participant E as FrameExecution
     participant Q as SubmissionQueue
@@ -79,7 +79,7 @@ images across calls. The supplied completion must cover the latest render of the
 chosen target; submitted work retains the target until it is safe to release. See
 the [resource lifetime contract](../design/contracts/resources.md#frame-and-window-state).
 
-**Window capture.** A windowed Context can use
+**Window capture.** A windowed Engine can use
 `WindowRenderer::renderWithCapture(view, target)` to render once, present the same
 output and copy it into a target. See [UC Render and present an application
 view](render-view.md).
@@ -90,7 +90,7 @@ view](render-view.md).
 | --- | --- |
 | Target extent is zero | Return `InvalidArgument`; create a nonzero target. |
 | Device does not support the fixed RGBA8 sRGB target usage | Return `Unsupported`; use a compatible device. |
-| Target or view resource belongs to another Context | Return `InvalidArgument` before submission; create or upload it on the owning Context. |
+| Target or view resource belongs to another Engine | Return `InvalidArgument` before submission; create or upload it on the owning Engine. |
 | Target has not been rendered, or completion is stale/foreign | `readPixels()` returns `InvalidArgument`; render to this target and pass a point that covers its latest render. |
 | GPU submission, allocation or readback wait fails | Return the backend error; no pixels are returned. |
 
@@ -99,7 +99,7 @@ view](render-view.md).
 - [Rendering contract](../design/contracts/rendering.md#offscreen-output) defines
   the shared rendering and image boundary.
 - [Frame and window state](../design/contracts/resources.md#frame-and-window-state)
-  defines Context-scoped completion and resource retention.
+  defines Engine-scoped completion and resource retention.
 - [UC Observe or wait for submitted GPU work](observe-completion.md) explains the
   completion point returned by rendering.
 - [Offscreen rendering and image readback](../development/tasks/offscreen-rendering.md)

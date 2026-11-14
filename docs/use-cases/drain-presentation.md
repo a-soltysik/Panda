@@ -2,7 +2,7 @@
 
 ## Goal and boundary
 
-Before replacing a swapchain generation or destroying a windowed Context,
+Before replacing a swapchain generation or destroying a windowed Engine,
 `Presentation::drain()` waits for submitted frame work and outstanding present
 operations. It starts with the current slots and generation and ends when both
 queue work, acquired-image recovery and presentation references are drained or an
@@ -25,12 +25,12 @@ error prevents safe teardown.
    pending presentation fence. After each successful wait it clears that image's
    pending flag.
 5. **Continue the boundary.** Recreation may build and publish a replacement
-   generation after drain succeeds. Context destruction requires drain success
+   generation after drain succeeds. Engine destruction requires drain success
    before its presentation resources are released.
 
 ```mermaid
 sequenceDiagram
-    participant R as Recreation or Context teardown
+    participant R as Recreation or Engine teardown
     participant P as Presentation
     participant E as FrameExecution
     participant Q as SubmissionQueue
@@ -59,7 +59,7 @@ sequenceDiagram
 
 ## Notes
 
-**Two sources of completion.** `SubmissionQueue` tracks Context submissions with
+**Two sources of completion.** `SubmissionQueue` tracks Engine submissions with
 a Vulkan timeline semaphore that the GPU signals as queued work completes. A
 presentation fence retires resources referenced by a present request. A queue
 timeline value by itself does not make present wait semaphores safe to destroy.
@@ -76,8 +76,8 @@ instead of claiming the generation is safe or repeating an ambiguous release.
 See [UC Retire an acquired image after frame work fails](retire-acquired-image.md#notes) and
 [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md#notes).
 
-**Fatal caller boundary.** `Context::Impl::drain()` uses `expect` for presentation
-drain failure. Context teardown therefore treats an unprovable presentation drain
+**Fatal caller boundary.** `Engine::Impl::drain()` uses `expect` for presentation
+drain failure. Engine teardown therefore treats an unprovable presentation drain
 as fatal rather than destroying state under uncertain submitted work.
 
 ## Variants and errors
@@ -85,7 +85,7 @@ as fatal rather than destroying state under uncertain submitted work.
 |                    | Point and condition                                                                                                            | Response                                               | Resulting state and next action                                                              |
 |--------------------|--------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|----------------------------------------------------------------------------------------------|
 | **Variant&nbsp;1** | Step 2: the timeline's known completed value is greater than or equal to the maximum `lastCompletion` stored in any execution slot | Continue immediately without a GPU wait                | Pending acquired-image recovery and present fences still need their own checks               |
-| **Error&nbsp;1**   | Step 1: acquire retirement did not commit                                                                                      | Return `BackendFailure` before waiting                 | No safe retirement is claimed; Context teardown treats the failure as fatal                  |
+| **Error&nbsp;1**   | Step 1: acquire retirement did not commit                                                                                      | Return `BackendFailure` before waiting                 | No safe retirement is claimed; Engine teardown treats the failure as fatal                  |
 | **Error&nbsp;2**   | Step 2: timeline wait fails or times out                                                                                       | Return the wait error and preserve pending recovery    | Do not release the generation; a later drain may retry the wait if the device remains usable |
 | **Error&nbsp;3**   | Step 3: acquired-image recovery or release fails                                                                               | Return the cleanup error and preserve unresolved state | Do not claim successful drain; a release error is not repeated                               |
 | **Error&nbsp;4**   | Step 4: any pending present fence fails or times out                                                                           | Return the Vulkan error and leave that image pending   | The presentation resources remain unretired; do not claim successful drain                   |
@@ -99,7 +99,7 @@ as fatal rather than destroying state under uncertain submitted work.
 - [UC Recover from a presentation failure after GPU submission](recover-presentation-failure.md)
   describes the submitted-work cleanup
   state. [UC Suspend presentation and recreate the swapchain](recreate-swapchain.md)
-  and [UC Shut down a Context safely](shutdown-context.md) call this drain before
+  and [UC Shut down an Engine safely](shutdown-context.md) call this drain before
   releasing presentation resources.
 - [Resources and frames](../design/contracts/resources.md#frame-and-window-state)
   defines the intended image-release and generation-drain rules.

@@ -87,13 +87,13 @@ auto validateMeshDraw(const MeshDraw& draw, const resources::MemoryPool& pool) -
     if (!draw.mesh.isValid() || !::panda::detail::MeshResource::getResource(draw.mesh)->belongsTo(pool))
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Context")};
+            makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Engine")};
     }
     if (!hasAttribute(draw.mesh, VertexAttributeSemantic::Position) ||
         (draw.material.model == MaterialModel::Lit && !hasAttribute(draw.mesh, VertexAttributeSemantic::Normal)))
     {
         return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Context")};
+            makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Engine")};
     }
     return {};
 }
@@ -124,7 +124,7 @@ auto validateSrgbMaps(const MeshDraw& draw, const resources::MemoryPool& pool) -
     }
     return std::unexpected {makeError(ErrorCode::InvalidArgument,
                                       "Base-color and emissive maps require UVs and a sampled RGBA8 sRGB texture "
-                                      "from this Context")};
+                                      "from this Engine")};
 }
 
 auto validateMetallicRoughnessTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> Result<void>
@@ -139,7 +139,7 @@ auto validateMetallicRoughnessTexture(const MeshDraw& draw, const resources::Mem
     return std::unexpected {
         makeError(ErrorCode::InvalidArgument,
                   "Metallic-roughness map requires UVs and a sampled RGBA8 UNORM texture for a Lit material from "
-                  "this Context")};
+                  "this Engine")};
 }
 
 auto validateNormalTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> Result<void>
@@ -152,7 +152,7 @@ auto validateNormalTexture(const MeshDraw& draw, const resources::MemoryPool& po
     }
     return std::unexpected {
         makeError(ErrorCode::InvalidArgument,
-                  "Normal map requires a sampled RGBA8 UNORM texture for a Lit material from this Context")};
+                  "Normal map requires a sampled RGBA8 UNORM texture for a Lit material from this Engine")};
 }
 
 auto validateOcclusionTexture(const MeshDraw& draw, const resources::MemoryPool& pool) -> Result<void>
@@ -167,7 +167,7 @@ auto validateOcclusionTexture(const MeshDraw& draw, const resources::MemoryPool&
     return std::unexpected {
         makeError(ErrorCode::InvalidArgument,
                   "Occlusion map requires UVs and a sampled RGBA8 UNORM texture for a Lit material from this "
-                  "Context")};
+                  "Engine")};
 }
 
 auto isUploadedTexture(const Texture& texture) -> bool
@@ -380,7 +380,7 @@ auto validateRenderViewLightCount(const RenderView& view, std::uint32_t maxLight
     if (view.lights.size() > maxLights)
     {
         return std::unexpected {
-            makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds the Context maxLights budget")};
+            makeError(ErrorCode::ResourceExhausted, "Render view light count exceeds the Engine maxLights budget")};
     }
     return {};
 }

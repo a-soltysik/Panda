@@ -1,15 +1,15 @@
 # Buffer allocation example
 
-`buffer_allocation` creates a headless Context and a 4096-byte device-local storage
+`buffer_allocation` creates a headless Engine and a 4096-byte device-local storage
 buffer, copies four integer values into an upload batch, submits the copy and
 waits for its completion point before closing through RAII.
-The buffer's scope ends before the Context's scope. Requires
+The buffer's scope ends before the Engine's scope. Requires
 Vulkan 1.3 and the Khronos validation layer; no display or CUDA toolkit is needed.
 
 `BufferMemory::Upload` and `Readback` select host-visible memory; they do not
 expose a mapper or grant permission to access memory used by the GPU.
 
-The example adds a `StreamSink` to `std::clog` before creating the Context. The
+The example adds a `StreamSink` to `std::clog` before creating the Engine. The
 logger starts with no sinks, so applications choose where engine logs are written.
 
 Essential operations use `panda::expect`: a failed operation aborts with context,

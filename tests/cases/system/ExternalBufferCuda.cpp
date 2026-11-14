@@ -7,7 +7,8 @@
 #include <cstdint>
 #include <expected>
 #include <limits>
-#include <panda/Context.hpp>
+#include <panda/Engine.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/cuda/CudaSession.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
@@ -35,7 +36,7 @@ auto fakeHandle(std::max_align_t& token) -> Handle
 TEST(ExternalBufferCudaSystem, ReleasesImportedMemoryWhenSemaphoreImportFails)
 {
     auto context =
-        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Required});
+        panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required});
     if (!context && context.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << context.error().message;
@@ -127,7 +128,7 @@ TEST(ExternalBufferCudaSystem, ReleasesImportedMemoryWhenSemaphoreImportFails)
 TEST(ExternalBufferCudaSystem, QueuesWorkBetweenTimelineWaitAndSignal)
 {
     auto context =
-        panda::Context::create({.externalBufferSupport = panda::ContextOptions::ExternalBufferSupport::Required});
+        panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required});
     if (!context && context.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << context.error().message;

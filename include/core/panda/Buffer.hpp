@@ -9,7 +9,7 @@
 
 namespace panda
 {
-class Context;
+class Engine;
 
 namespace detail
 {
@@ -40,8 +40,8 @@ struct BufferDesc
     BufferMemory memory {BufferMemory::Device};
 };
 
-/// @brief Copyable resource owner. Context outlives every copy.
-/// Creation, native access and final release are serialized with Context operations.
+/// @brief Copyable resource owner. Engine outlives every copy.
+/// Creation, native access and final release are serialized with Engine operations.
 /// Copies retain the buffer; they do not synchronize access. No GPU work is submitted
 /// by this handle. The last owner releases the resource without a device-wide wait.
 class Buffer final
@@ -67,7 +67,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class Context;
+    friend class Engine;
     friend class detail::BufferResource;
     friend class detail::ExternalContext;
     explicit Buffer(std::shared_ptr<detail::BufferResource> resource);

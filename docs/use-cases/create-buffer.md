@@ -9,7 +9,7 @@ and does not wait for GPU completion. Initial bytes are **undefined**; uploading
 synchronizing future uses are separate operations.
 
 **Panda** owns native creation, memory selection, binding and cleanup. **The application**
-chooses size, usage and memory intent, and keeps `Context` alive for every buffer owner.
+chooses size, usage and memory intent, and keeps `Engine` alive for every buffer owner.
 The implemented scope follows [Allocation, uploads and resource lifetimes](../development/tasks/resource-lifetimes.md).
 
 | Boundary          | Meaning                                                                              |
@@ -21,14 +21,14 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 
 ## Preconditions
 
-1. **Context.** Use a live `Context` and serialize creation with its other
+1. **Engine.** Use a live `Engine` and serialize creation with its other
    operations on the context execution thread.
 
 ## Main flow
 
 1. **Request.** The application calls `ResourceManager::createBuffer(description)`.
-   `Context` requires live internal state.
-2. **Release completed upload resources.** `Context::Impl::createResource`
+   `Engine` requires live internal state.
+2. **Release completed upload resources.** `Engine::Impl::createResource`
    calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
    explains which packets can be released; without an `UploadManager`, this is a no-op.
 3. **Validate.** `BufferResource::create` checks that size is nonzero, usage is
@@ -45,13 +45,13 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
    pool policy remains in the
    [allocation contract](../design/contracts/resources.md#allocation-uploads-and-descriptors).
 6. **Bind.** `bindBufferMemory2` binds the buffer at the allocation's offset.
-7. **Publish.** Only after successful binding does `Context` wrap the shared
+7. **Publish.** Only after successful binding does `Engine` wrap the shared
    resource state in a public `Buffer` and return it.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Context / Impl
+    participant C as Engine / Impl
     participant U as UploadManager
     participant R as BufferResource
     participant P as MemoryPool
@@ -84,11 +84,11 @@ sequenceDiagram
 **Publication guarantee.** The *publication point* is Step 7: no application handle escapes
 before allocation and binding succeed. Earlier native success does not imply operation success.
 
-**Lazy initialization.** `Context` creates its `UploadManager` on the first successful
-`createUploadBatch()` request through `Context::Impl::ensureUploads()`. Creating a
+**Lazy initialization.** `Engine` creates its `UploadManager` on the first successful
+`createUploadBatch()` request through `Engine::Impl::ensureUploads()`. Creating a
 buffer alone does not create that service. Before the first batch, Step 2 succeeds
 without collection; afterwards it uses the existing manager to reclaim finished
-uploads. The manager remains owned by `Context` even when no batches are pending.
+uploads. The manager remains owned by `Engine` even when no batches are pending.
 
 **Memory selection.** `BufferDesc::memory` tells Panda which memory properties to
 require and prefer. `Upload` and `Readback` require memory that
@@ -114,7 +114,7 @@ capability. The actual type must also satisfy the native buffer's requirements.
 
 ```mermaid
 flowchart TD
-    C["Context / Impl"] -->|owns| P["MemoryPool"]
+    C["Engine / Impl"] -->|owns| P["MemoryPool"]
     C -->|owns| D["Vulkan device"]
     A["Application Buffer"] -->|shared owner| R["BufferResource"]
     B["Copied Buffer"] -->|shared owner of the same state| R
@@ -127,8 +127,8 @@ P -->|owns|K["MemoryBlock objects and device-memory allocations"]
 
 Copying a `Buffer` retains the same state rather than allocating or copying buffer bytes.
 
-**Lifetime requirement.** No owning edge links `Buffer` to `Context`. `Context` must outlive all these handles;
-moving `Context` preserves its stable internal services. Releasing one `Buffer` only
+**Lifetime requirement.** No owning edge links `Buffer` to `Engine`. `Engine` must outlive all these handles;
+moving `Engine` preserves its stable internal services. Releasing one `Buffer` only
 drops one shared owner. Once no owner remains, `BufferResource` destroys the native
 buffer before releasing its range; [UC Return a resource memory range](release-memory-range.md)
 explains how that range returns to the pool. Submitted uses can retain additional owners;
@@ -139,7 +139,7 @@ their retention is outside this creation flow and follows the
 
 |                  | Point and condition                          | Response                                                                                                                | Resulting state and next action                                                                                                         |
 |------------------|----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| **Error&nbsp;1** | Step 1: moved-from `Context`                 | Checked fatal diagnostic                                                                                                | No recoverable return; use a live `Context`                                                                                             |
+| **Error&nbsp;1** | Step 1: moved-from `Engine`                 | Checked fatal diagnostic                                                                                                | No recoverable return; use a live `Engine`                                                                                             |
 | **Error&nbsp;2** | Step 2: upload collection fails              | Propagate its error before attempting resource creation                                                                 | No new buffer; follow the error's recovery category, not unconditional retry                                                            |
 | **Error&nbsp;3** | Step 3: invalid size, usage or memory intent | Return `InvalidArgument` or `Unsupported`                                                                               | No new native buffer; correct size, usage or intent                                                                                     |
 | **Error&nbsp;4** | Step 4: native creation fails                | Convert native status to Panda `Error`; do not adopt failed output                                                      | No published resource; inspect error category and native diagnostics                                                                    |
@@ -147,7 +147,7 @@ their retention is outside this creation flow and follows the
 | **Error&nbsp;6** | Step 6: binding fails                        | [Destroy the buffer, then release its allocation](#error-6---cleanup-after-binding-failure); propagate the native error | No published handle; memory-pool cache/accounting need not return to their exact starting values; further use depends on error category |
 
 **Errors 2–6** return errors through `Result`; that does not mean every category permits
-recovery on the same `Context`. **Error 1 is fatal.** Catastrophic host allocation failure
+recovery on the same `Engine`. **Error 1 is fatal.** Catastrophic host allocation failure
 follows the [shared error policy](../design/contracts/resources.md#errors).
 
 ### Error 6 - Cleanup after binding failure
@@ -159,7 +159,7 @@ and no public `Buffer` exists. This path needs no GPU completion wait.
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Context / Impl
+    participant C as Engine / Impl
     participant R as BufferResource
     participant M as MemoryAllocation
     participant P as MemoryPool
@@ -182,7 +182,7 @@ policy after this cleanup. The native error category/status survives propagation
 **Success.** A copyable `Buffer` owns fixed-size, memory-bound storage with **undefined contents**. No completion token
 is needed for creation because no work was
 submitted. The application must initialize contents before reads and release every
-owner before `Context` destruction.
+owner before `Engine` destruction.
 
 **Failure.** Recoverable creation failure publishes no handle and releases temporary resource
 owners. It does not roll back unrelated completed-upload collection or promise
