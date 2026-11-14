@@ -25,6 +25,8 @@ Specifications: [renderer](../../design/contracts/rendering.md#offscreen-output)
 
 - A Context without a window surface renders a supplied view to an offscreen target
   and returns completion information without presenting a frame.
+- A window renderer can render once, present the view and copy that same output to
+  a compatible offscreen target for capture.
 - The result uses the same built-in mesh/material and alpha behavior as the window
   path, with a documented SDR color and depth format policy.
 - Pixel readback is explicit, validates target ownership and completion, and has a
@@ -33,8 +35,20 @@ Specifications: [renderer](../../design/contracts/rendering.md#offscreen-output)
   checks source-over output, and verifies the result is unchanged when the input draw
   order is reversed. It checks pixels away from primitive edges and uses a documented
   tolerance for format conversion.
-- Tests cover invalid extents, unsupported target formats and target lifetime across
-  submitted work. No test accesses private renderer helpers.
+- Tests cover invalid extents, the fixed RGBA8 sRGB output format and target lifetime
+  across submitted work. No test accesses private renderer helpers.
+
+## Verification
+
+- Windows/MSVC, 2026-11-14: quality and fast builds, public-header/format targets,
+  and CUDA analysis passed. `ctest --preset msvc-fast` passed 630 tests; 4 were
+  skipped.
+- WSL Ubuntu, 2026-11-14: quality and fast builds, public-header/format targets,
+  and CUDA analysis passed. `ctest --preset gcc-fast` passed 630 tests; 8 CUDA and
+  memory-type cases were skipped.
+- Documentation checks passed: `check_docs.py` checked 82 Markdown files and the task
+  queue; `docs-checks` validated 43 diagrams in 86 files; `gcc-docs` generated the
+  public API pages. `git diff --check` passed.
 
 Learning: Explain why rendering to a GPU target does not itself copy pixels to the
 CPU, and how the completion point protects the target and its readback.

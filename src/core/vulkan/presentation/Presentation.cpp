@@ -12,6 +12,7 @@
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Error.hpp>
+#include <panda/FrameResult.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/WindowSurface.hpp>
 #include <string>
@@ -22,6 +23,7 @@
 #include "VulkanError.hpp"
 #include "VulkanHpp.hpp"  // IWYU pragma: keep
 #include "presentation/FrameExecution.hpp"
+#include "presentation/OffscreenRendering.hpp"
 #include "presentation/SwapchainGeneration.hpp"
 
 namespace panda::core::vulkan
@@ -202,6 +204,76 @@ auto Presentation::render(const RenderView& view, std::optional<std::size_t>& su
         return std::unexpected {prepared.error()};
     }
     return executeAcquiredFrame(slotIndex, view, submittedPerformanceSlot);
+}
+
+auto Presentation::renderWithCapture(const CaptureFrameRequest& request) -> std::expected<FrameResult, Error>
+{
+    request.submittedPerformanceSlot.reset();
+    const auto ready = prepareWindowFrame();
+    if (!ready)
+    {
+        return std::unexpected {ready.error()};
+    }
+    if (!*ready)
+    {
+        return FrameResult {.status = FrameResult::Status::Suspended,
+                            .completion = {},
+                            .effectiveSampleCount = effectiveSampleCount()};
+    }
+    if (!activeGeneration().supportsTransferDestination)
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Surface does not support captured presentation")};
+    }
+    return executeAcquiredCaptureFrame(request);
+}
+
+auto Presentation::executeAcquiredCaptureFrame(const CaptureFrameRequest& request) -> std::expected<FrameResult, Error>
+{
+    const auto slotIndex = _nextSlot;
+    const auto acquired = acquireFrame(slotIndex);
+    if (!acquired)
+    {
+        return std::unexpected {acquired.error()};
+    }
+    if (const auto nonReady = nonReadyFrameResult(acquired->status); nonReady)
+    {
+        return *nonReady;
+    }
+    return submitAcquiredCaptureFrame(*acquired, request);
+}
+
+auto Presentation::submitAcquiredCaptureFrame(const AcquiredImage& acquired, const CaptureFrameRequest& request)
+    -> std::expected<FrameResult, Error>
+{
+    const auto slotIndex = _nextSlot;
+    auto& image = activeGeneration().images.at(acquired.index);
+    if (const auto waited = waitImage(slotIndex, acquired.index); !waited)
+    {
+        return std::unexpected {waited.error()};
+    }
+    const auto output = presentation::WindowCaptureOutput {.image = image.image,
+                                                           .extent = activeGeneration().extent,
+                                                           .format = activeGeneration().format,
+                                                           .initialized = image.initialized};
+    auto submissionValue = std::uint64_t {};
+    const auto capture =
+        presentation::WindowCaptureRequest {.view = request.view,
+                                            .target = request.target,
+                                            .output = output,
+                                            .acquire = *_acquireSemaphores.at(slotIndex),
+                                            .finished = *image.renderFinished,
+                                            .submittedValue = submissionValue,
+                                            .submittedPerformanceSlot = request.submittedPerformanceSlot};
+    const auto rendered = request.rendering.renderWithCapture(capture);
+    if (!rendered)
+    {
+        const auto recovered = abortFrame(slotIndex, acquired.index, rendered.error());
+        return std::unexpected {recovered.error()};
+    }
+    _execution->setLastCompletion(slotIndex, submissionValue);
+    image.initialized = true;
+    _nextSlot = (_nextSlot + 1) % _acquireSemaphores.size();
+    return presentFrame(image, acquired.index, submissionValue, acquired.suboptimal);
 }
 
 auto Presentation::executeAcquiredFrame(std::size_t slotIndex,

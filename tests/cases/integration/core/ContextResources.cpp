@@ -774,9 +774,7 @@ TEST_F(ContextResourcesIntegration, CreatesMovesAndDestroysHeadlessDeviceInDepen
     EXPECT_EQ(moved.getDeviceInfo().driverName, "Integration Vulkan driver");
     EXPECT_EQ(moved.getDeviceInfo().driverInfo, "Integration test driver 1.0");
     EXPECT_EQ(moved.getDeviceInfo().queueFamily, 0U);
-    const auto frame = moved.render(panda::RenderView {});
-    ASSERT_FALSE(frame.has_value());
-    EXPECT_EQ(frame.error().code, panda::ErrorCode::Unsupported);
+    EXPECT_FALSE(moved.getWindowRenderer().has_value());
 }
 
 TEST_F(ContextResourcesIntegration, EmptyBufferAndInvalidDescriptionsNeverCreateNativeResources)
@@ -798,11 +796,12 @@ TEST_F(ContextResourcesIntegration, EmptyBufferAndInvalidDescriptionsNeverCreate
                                 .memory = invalidMemoryIntent()}
     })
     {
-        const auto buffer = context->createBuffer(description);
+        const auto buffer = context->getResourceManager().createBuffer(description);
         ASSERT_FALSE(buffer);
         EXPECT_EQ(buffer.error().code, panda::ErrorCode::InvalidArgument);
     }
-    const auto unsupported = context->createBuffer({.size = 1, .usage = vk::BufferUsageFlagBits::eShaderDeviceAddress});
+    const auto unsupported =
+        context->getResourceManager().createBuffer({.size = 1, .usage = vk::BufferUsageFlagBits::eShaderDeviceAddress});
     ASSERT_FALSE(unsupported);
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 }
@@ -836,11 +835,11 @@ TEST_F(ContextResourcesIntegration, EmptyAndInvalidTexturesNeverCreateNativeImag
     };
     for (const auto& description : descriptions)
     {
-        const auto texture = context->createTexture(description);
+        const auto texture = context->getResourceManager().createTexture(description);
         ASSERT_FALSE(texture);
         EXPECT_EQ(texture.error().code, panda::ErrorCode::InvalidArgument);
     }
-    const auto unsupported = context->createTexture({
+    const auto unsupported = context->getResourceManager().createTexture({
         .extent = vk::Extent2D {.width = 1, .height = 1},
         .format = vk::Format::eR8G8B8A8Unorm,
         .usage = vk::ImageUsageFlagBits::eTransientAttachment
@@ -874,7 +873,7 @@ TEST_F(ContextResourcesIntegration, EmptyAndInvalidMeshesNeverCreateNativeBuffer
     };
     for (const auto& description : descriptions)
     {
-        const auto mesh = context->createMesh(description);
+        const auto mesh = context->getResourceManager().createMesh(description);
         ASSERT_FALSE(mesh);
         EXPECT_EQ(mesh.error().code, panda::ErrorCode::InvalidArgument);
     }
@@ -902,7 +901,7 @@ TEST_F(ContextResourcesIntegration, CreatesIndexedAndNonIndexedMeshesWithSharedS
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
 
-    auto indexedResult = context->createMesh({
+    auto indexedResult = context->getResourceManager().createMesh({
         .vertexCount = 3,
         .vertexStride = 12,
         .indices = panda::MeshIndexDesc {.count = 3, .type = panda::MeshIndexType::UInt16},
@@ -919,8 +918,8 @@ TEST_F(ContextResourcesIntegration, CreatesIndexedAndNonIndexedMeshesWithSharedS
     EXPECT_EQ(indexed.getIndexType(), panda::MeshIndexType::UInt16);
     EXPECT_EQ(indexed.getIndexSize(), 6);
 
-    auto nonIndexedResult =
-        context->createMesh({.vertexCount = 4, .vertexStride = 8, .indices = std::nullopt, .attributes = {}});
+    auto nonIndexedResult = context->getResourceManager().createMesh(
+        {.vertexCount = 4, .vertexStride = 8, .indices = std::nullopt, .attributes = {}});
     ASSERT_TRUE(nonIndexedResult);
     auto nonIndexed = std::move(*nonIndexedResult);
     EXPECT_EQ(nonIndexed.getVertexSize(), 32);
@@ -944,7 +943,7 @@ TEST_F(ContextResourcesIntegration, CreatesAndValidatesSixteenBitStandardGeometr
         .vertices = std::vector<panda::MeshVertex>(3),
         .indices = std::vector<std::uint16_t> {0, 1, 2}
     };
-    const auto mesh = context->createMeshFromGeometry(geometry);
+    const auto mesh = context->getResourceManager().createMeshFromGeometry(geometry);
     ASSERT_TRUE(mesh);
     EXPECT_EQ(mesh->getVertexStride(), panda::standardMeshVertexStrideBytes);
     EXPECT_EQ(mesh->getIndexType(), panda::MeshIndexType::UInt16);
@@ -976,7 +975,7 @@ TEST_F(ContextResourcesIntegration, CreatesThirtyTwoBitStandardGeometryMesh)
         .vertices = std::vector<panda::MeshVertex>(3),
         .indices = std::vector<std::uint32_t> {0, 1, 2}
     };
-    const auto mesh = context->createMeshFromGeometry(geometry);
+    const auto mesh = context->getResourceManager().createMeshFromGeometry(geometry);
     ASSERT_TRUE(mesh);
     EXPECT_EQ(mesh->getIndexType(), panda::MeshIndexType::UInt32);
     EXPECT_EQ(mesh->getIndexSize(), 12);
@@ -992,7 +991,7 @@ TEST_F(ContextResourcesIntegration, CreatesNonIndexedStandardGeometryMesh)
     ASSERT_TRUE(context);
     const auto geometry =
         panda::Geometry {.vertices = std::vector<panda::MeshVertex>(1), .indices = std::vector<std::uint16_t> {}};
-    const auto mesh = context->createMeshFromGeometry(geometry);
+    const auto mesh = context->getResourceManager().createMeshFromGeometry(geometry);
     ASSERT_TRUE(mesh);
     EXPECT_EQ(mesh->getVertexSize(), panda::standardMeshVertexStrideBytes);
     EXPECT_EQ(mesh->getIndexCount(), 0);
@@ -1013,7 +1012,7 @@ TEST_F(ContextResourcesIntegration, ActiveBatchRejectsAnEmptyMeshAndRemainsUsabl
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    auto batch = context->createUploadBatch();
+    auto batch = context->getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     const auto mesh = panda::Mesh {};
     const auto written = batch->write(mesh, {}, {});
@@ -1042,7 +1041,7 @@ TEST_F(ContextResourcesIntegration, SharedTexturesBindAndReleaseTheOptimalImage)
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    auto texture = context->createTexture(description);
+    auto texture = context->getResourceManager().createTexture(description);
     ASSERT_TRUE(texture);
     EXPECT_EQ(texture->getExtent().width, description.extent.width);
     EXPECT_EQ(texture->getExtent().height, description.extent.height);
@@ -1073,7 +1072,7 @@ TEST_F(ContextResourcesIntegration, FailedImageCreationDoesNotAdoptItsUndefinedO
     EXPECT_CALL(vulkan, vkDestroyImage(device, output, nullptr)).Times(0);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    const auto texture = context->createTexture(description);
+    const auto texture = context->getResourceManager().createTexture(description);
     ASSERT_FALSE(texture);
     EXPECT_EQ(texture.error().code, panda::ErrorCode::ResourceExhausted);
 }
@@ -1094,7 +1093,7 @@ TEST_F(ContextResourcesIntegration, FailedTextureAllocationDestroysTheUnboundIma
     expectTextureAllocationFailure(output, image);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    const auto texture = context->createTexture(description);
+    const auto texture = context->getResourceManager().createTexture(description);
     ASSERT_FALSE(texture);
     EXPECT_EQ(texture.error().code, panda::ErrorCode::ResourceExhausted);
 }
@@ -1116,7 +1115,7 @@ TEST_F(ContextResourcesIntegration, DedicatedTextureBindingFailureDestroysImageB
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    const auto texture = context->createTexture(description);
+    const auto texture = context->getResourceManager().createTexture(description);
     ASSERT_FALSE(texture);
     EXPECT_EQ(texture.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_EQ(texture.error().native.value_or(panda::NativeError {}).code, exhausted);
@@ -1136,14 +1135,16 @@ TEST_F(ContextResourcesIntegration, SharedBuffersRetainNativeStateAndReuseReleas
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    auto buffer = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(buffer);
     auto copy = *buffer;
     buffer->reset();
     EXPECT_TRUE(copy.isValid());
     EXPECT_EQ(copy.getSize(), 65);
     copy.reset();
-    auto replacement = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto replacement =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(replacement);
     EXPECT_EQ(replacement->getSize(), 65);
 }
@@ -1159,7 +1160,8 @@ TEST_F(ContextResourcesIntegration, LiveBuffersRemainBoundAcrossContextAndHandle
     expectParentsDestroyed(true, false);
     auto created = panda::Context::create();
     ASSERT_TRUE(created);
-    auto buffer = created->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer =
+        created->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(buffer);
     auto context = std::move(*created);
     auto moved = std::move(*buffer);
@@ -1181,7 +1183,8 @@ TEST_F(ContextResourcesIntegration, FailedBufferCreationDoesNotAdoptUndefinedNat
         });
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    const auto buffer = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    const auto buffer =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_FALSE(buffer);
     EXPECT_EQ(buffer.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_EQ(buffer.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
@@ -1201,11 +1204,13 @@ TEST_F(ContextResourcesIntegration, FailedBindingReleasesTheRangeAndPreservesThe
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    const auto failed = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    const auto failed =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_EQ(failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
-    const auto retry = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    const auto retry =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(retry);
 }
 
@@ -1220,7 +1225,8 @@ TEST_F(ContextResourcesIntegration, RequiredDedicatedBufferIsDestroyedBeforeItsE
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    auto buffer = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(buffer);
     buffer->reset();
     EXPECT_FALSE(buffer->isValid());
@@ -1241,7 +1247,8 @@ TEST_F(ContextResourcesIntegration, LastSharedOwnerControlsNativeDestruction)
     EXPECT_CALL(resetComplete, Call()).After(memoryCleanup);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    auto original = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto original =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(original);
     auto retained = *original;
     original->reset();
@@ -1265,7 +1272,8 @@ TEST_F(ContextResourcesIntegration, DedicatedBindingFailureDestroysBufferBeforeF
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    const auto failed = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    const auto failed =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
     ASSERT_TRUE(failed.error().native);
@@ -1282,7 +1290,8 @@ TEST_F(ContextResourcesIntegration, AllocationFailureDestroysTheUnboundBuffer)
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    const auto failed = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    const auto failed =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
 }
@@ -1301,8 +1310,10 @@ TEST_F(ContextResourcesIntegration, CopyAndMoveAssignmentReleaseOnlyTheReplacedO
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    auto source = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
-    auto target = context->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto source =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto target =
+        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(source);
     ASSERT_TRUE(target);
     *target = *source;
@@ -1332,9 +1343,9 @@ TEST_F(ContextResourcesIntegration, HostMemoryIntentsSelectCoherenceForUploadsAn
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    const auto first = context->createBuffer(
+    const auto first = context->getResourceManager().createBuffer(
         {.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Upload});
-    const auto second = context->createBuffer(
+    const auto second = context->getResourceManager().createBuffer(
         {.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Readback});
     ASSERT_TRUE(first);
     ASSERT_TRUE(second);
@@ -1355,9 +1366,10 @@ TEST_F(ContextResourcesIntegrationDeathTest, ContextRejectsDestructionBeforeTheL
         return std::make_unique<panda::Context>(std::move(owner));
     });
     ASSERT_TRUE(context);
-    auto buffer = (*context)->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer =
+        (*context)->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(buffer);
-    EXPECT_DEATH(context->reset(), "Context destroyed with live Buffer or Texture owners");
+    EXPECT_DEATH(context->reset(), "Context destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
     buffer->reset();
 }
 
@@ -1418,7 +1430,13 @@ TEST_F(ContextResourcesIntegration, MovedSuspendedContextRetainsItsDeviceUntilAl
     auto context = panda::Context::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
-    const auto frame = moved.render(panda::RenderView {});
+    const auto renderer = moved.getWindowRenderer();
+    if (!renderer)
+    {
+        FAIL() << "Moved-to window context has no renderer";
+        return;
+    }
+    const auto frame = renderer->get().render(panda::RenderView {});
     ASSERT_TRUE(frame.has_value());
     EXPECT_EQ(frame->status, panda::FrameResult::Status::Suspended);
 }
@@ -1475,12 +1493,12 @@ TEST_F(ContextResourcesIntegration, EmptyAndMovedFromContextsRejectCompletionOpe
     ASSERT_TRUE(context);
     auto moved = std::move(*context);
     const auto empty = panda::CompletionPoint {};
-    const auto noWork = moved.poll(empty);
+    const auto noWork = moved.getSubmissionManager().poll(empty);
     ASSERT_FALSE(noWork);
     EXPECT_EQ(noWork.error().code, panda::ErrorCode::InvalidArgument);
-    EXPECT_FALSE(moved.wait(empty, std::chrono::nanoseconds {0}));
-    EXPECT_FALSE(context->poll(empty));
-    EXPECT_FALSE(context->wait(empty, std::chrono::nanoseconds {0}));
+    EXPECT_FALSE(moved.getSubmissionManager().wait(empty, std::chrono::nanoseconds {0}));
+    EXPECT_FALSE(context->getSubmissionManager().poll(empty));
+    EXPECT_FALSE(context->getSubmissionManager().wait(empty, std::chrono::nanoseconds {0}));
 }
 
 TEST_F(ContextResourcesIntegration, SuspendedContextRejectsEmptyPointsAndNegativeTimeout)
@@ -1491,13 +1509,13 @@ TEST_F(ContextResourcesIntegration, SuspendedContextRejectsEmptyPointsAndNegativ
     const auto context = panda::Context::createWithSurface(window);
     ASSERT_TRUE(context);
     const auto empty = panda::CompletionPoint {};
-    const auto polled = context->poll(empty);
+    const auto polled = context->getSubmissionManager().poll(empty);
     ASSERT_FALSE(polled);
     EXPECT_EQ(polled.error().code, panda::ErrorCode::InvalidArgument);
-    const auto waited = context->wait(empty, std::chrono::nanoseconds {0});
+    const auto waited = context->getSubmissionManager().wait(empty, std::chrono::nanoseconds {0});
     ASSERT_FALSE(waited);
     EXPECT_EQ(waited.error().code, panda::ErrorCode::InvalidArgument);
-    const auto negative = context->wait(empty, std::chrono::nanoseconds {-1});
+    const auto negative = context->getSubmissionManager().wait(empty, std::chrono::nanoseconds {-1});
     ASSERT_FALSE(negative);
     EXPECT_EQ(negative.error().code, panda::ErrorCode::InvalidArgument);
 }
@@ -1509,7 +1527,7 @@ TEST_F(ContextResourcesIntegration, BatchMovesAcrossContextAndEmptySubmitRemains
     expectParentsDestroyed(true, false);
     auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    auto batch = context->createUploadBatch();
+    auto batch = context->getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
     auto movedContext = std::move(*context);
     auto movedBatch = std::move(*batch);
@@ -1519,14 +1537,14 @@ TEST_F(ContextResourcesIntegration, BatchMovesAcrossContextAndEmptySubmitRemains
     ASSERT_FALSE(empty);
     EXPECT_EQ(empty.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_TRUE(movedBatch.isValid());
-    auto replacement = movedContext.createUploadBatch();
+    auto replacement = movedContext.getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(replacement);
     *replacement = std::move(movedBatch);
     EXPECT_TRUE(replacement->isValid());
     // UploadBatch explicitly supports querying its empty moved-from state.
     // NOLINTNEXTLINE(bugprone-use-after-move,clang-analyzer-cplusplus.Move,hicpp-invalid-access-moved)
     EXPECT_FALSE(movedBatch.isValid());
-    EXPECT_FALSE(context->createUploadBatch());
+    EXPECT_FALSE(context->getSubmissionManager().createUploadBatch());
 }
 
 TEST_F(ContextResourcesIntegration, FailedUploadClockCreationLeavesContextUsable)
@@ -1536,7 +1554,7 @@ TEST_F(ContextResourcesIntegration, FailedUploadClockCreationLeavesContextUsable
     expectParentsDestroyed(true, false);
     const auto context = panda::Context::create();
     ASSERT_TRUE(context);
-    const auto batch = context->createUploadBatch();
+    const auto batch = context->getSubmissionManager().createUploadBatch();
     ASSERT_FALSE(batch);
     EXPECT_EQ(batch.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_TRUE(context->isValid());
@@ -1551,7 +1569,7 @@ TEST_F(ContextResourcesIntegrationDeathTest, ContextRejectsAnUnsubmittedBatchEve
     ASSERT_TRUE(created);
     auto context = std::optional<panda::Context> {std::move(*created)};
     {
-        const auto batch = context->createUploadBatch();
+        const auto batch = context->getSubmissionManager().createUploadBatch();
         ASSERT_TRUE(batch);
         EXPECT_DEATH(context.reset(), "Context destroyed with live upload batches");
     }

@@ -103,7 +103,8 @@ FrameExecution::FrameExecution(const FrameExecutionCreateInfo& info)
       _submissions {info.submissions},
       _pool {info.pool},
       _performance {info.performance},
-      _maxLights {info.maxLights}
+      _maxLights {info.maxLights},
+      _performanceSlotBase {info.performanceSlotBase}
 {
 }
 
@@ -132,10 +133,14 @@ auto FrameExecution::initialize() -> std::expected<void, Error>
     return {};
 }
 
-auto FrameExecution::retainViewResources(ExecutionSlot& slot, const RenderView& view) -> std::expected<void, Error>
+auto FrameExecution::retainViewResources(ExecutionSlot& slot,
+                                         const RenderView& view,
+                                         std::shared_ptr<::panda::detail::OffscreenTargetResource> target)
+    -> std::expected<void, Error>
 {
     slot.retainedMeshes.clear();
     slot.retainedTextures.clear();
+    slot.retainedTarget.reset();
     try
     {
         slot.retainedMeshes.reserve(view.meshes.size());
@@ -144,6 +149,7 @@ auto FrameExecution::retainViewResources(ExecutionSlot& slot, const RenderView& 
             slot.retainedMeshes.push_back(draw.mesh);
         }
         retainMaterialTextures(slot.retainedTextures, view);
+        slot.retainedTarget = std::move(target);
     }
     catch (const std::bad_alloc&)
     {
@@ -154,14 +160,17 @@ auto FrameExecution::retainViewResources(ExecutionSlot& slot, const RenderView& 
     return {};
 }
 
-auto FrameExecution::prepareSlot(std::size_t index, const RenderView& view) -> std::expected<void, Error>
+auto FrameExecution::prepareSlot(std::size_t index,
+                                 const RenderView& view,
+                                 std::shared_ptr<::panda::detail::OffscreenTargetResource> target)
+    -> std::expected<void, Error>
 {
     auto& slot = _slots.at(index);
     if (const auto waited = waitCompletion(slot.lastCompletion); !waited)
     {
         return std::unexpected {waited.error()};
     }
-    return retainViewResources(slot, view);
+    return retainViewResources(slot, view, std::move(target));
 }
 
 auto FrameExecution::beginCommands(std::size_t index) -> std::expected<void, Error>
@@ -185,7 +194,8 @@ auto FrameExecution::recordContent(std::size_t index, const FrameOutput& output,
 {
     if (_performance != nullptr)
     {
-        if (const auto timestamp = _performance->recordStart(index, _slots.at(index).command); !timestamp)
+        if (const auto timestamp = _performance->recordStart(_performanceSlotBase + index, _slots.at(index).command);
+            !timestamp)
         {
             return std::unexpected {timestamp.error()};
         }
@@ -196,7 +206,7 @@ auto FrameExecution::recordContent(std::size_t index, const FrameOutput& output,
     }
     if (_performance != nullptr)
     {
-        _performance->recordEnd(index, _slots.at(index).command);
+        _performance->recordEnd(_performanceSlotBase + index, _slots.at(index).command);
     }
     return {};
 }
@@ -283,7 +293,7 @@ void FrameExecution::markSubmitted(std::size_t index, std::uint64_t value, bool 
     }
     if (_performance != nullptr)
     {
-        _performance->markSubmitted(index, _submissions.getPoint(value));
+        _performance->markSubmitted(_performanceSlotBase + index, _submissions.getPoint(value));
     }
 }
 
@@ -292,6 +302,7 @@ void FrameExecution::discardUnsubmittedInputs(std::size_t index)
     auto& slot = _slots.at(index);
     slot.retainedMeshes.clear();
     slot.retainedTextures.clear();
+    slot.retainedTarget.reset();
 }
 
 auto FrameExecution::waitCompletion(std::uint64_t value) const -> std::expected<void, Error>

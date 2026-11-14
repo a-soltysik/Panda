@@ -129,7 +129,7 @@ auto createColoredTriangleVertices() -> std::array<ColoredVertex, 3>
 auto createColoredTriangleMesh(const panda::Context& context, const std::array<ColoredVertex, 3>& vertices)
     -> panda::Mesh
 {
-    return panda::expect(context.createMesh({
+    return panda::expect(context.getResourceManager().createMesh({
                              .vertexCount = static_cast<std::uint32_t>(vertices.size()),
                              .vertexStride = static_cast<std::uint32_t>(sizeof(ColoredVertex)),
                              .indices = std::nullopt,
@@ -145,7 +145,7 @@ auto createColoredTriangleMesh(const panda::Context& context, const std::array<C
 
 auto createBaseColorMap(const panda::Context& context) -> panda::Texture
 {
-    return panda::expect(context.createTexture({
+    return panda::expect(context.getResourceManager().createTexture({
                              .extent = {2, 2},
                              .format = vk::Format::eR8G8B8A8Srgb,
                              .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
@@ -155,7 +155,7 @@ auto createBaseColorMap(const panda::Context& context) -> panda::Texture
 
 auto createMetallicRoughnessMap(const panda::Context& context) -> panda::Texture
 {
-    return panda::expect(context.createTexture({
+    return panda::expect(context.getResourceManager().createTexture({
                              .extent = {1, 1},
                              .format = vk::Format::eR8G8B8A8Unorm,
                              .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
@@ -165,7 +165,7 @@ auto createMetallicRoughnessMap(const panda::Context& context) -> panda::Texture
 
 auto createEmissiveMap(const panda::Context& context) -> panda::Texture
 {
-    return panda::expect(context.createTexture({
+    return panda::expect(context.getResourceManager().createTexture({
                              .extent = {2, 2},
                              .format = vk::Format::eR8G8B8A8Srgb,
                              .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
@@ -175,7 +175,7 @@ auto createEmissiveMap(const panda::Context& context) -> panda::Texture
 
 auto createNormalMap(const panda::Context& context) -> panda::Texture
 {
-    return panda::expect(context.createTexture({
+    return panda::expect(context.getResourceManager().createTexture({
                              .extent = {4, 4},
                              .format = vk::Format::eR8G8B8A8Unorm,
                              .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
@@ -185,7 +185,7 @@ auto createNormalMap(const panda::Context& context) -> panda::Texture
 
 auto createOcclusionMap(const panda::Context& context) -> panda::Texture
 {
-    return panda::expect(context.createTexture({
+    return panda::expect(context.getResourceManager().createTexture({
                              .extent = {4, 4},
                              .format = vk::Format::eR8G8B8A8Unorm,
                              .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
@@ -195,7 +195,7 @@ auto createOcclusionMap(const panda::Context& context) -> panda::Texture
 
 void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes, const SceneGeometry& geometry)
 {
-    auto batch = panda::expect(context.createUploadBatch(), "Create the upload batch");
+    auto batch = panda::expect(context.getSubmissionManager().createUploadBatch(), "Create the upload batch");
     panda::expect(batch.write(meshes.cube, geometry.cube), "Stage the cube geometry");
     panda::expect(batch.write(meshes.ground, geometry.ground), "Stage the ground geometry");
     panda::expect(batch.write(meshes.triangle, std::as_bytes(std::span {geometry.triangle})),
@@ -208,7 +208,8 @@ void uploadSceneMeshes(const panda::Context& context, const SceneMeshes& meshes,
     panda::expect(batch.write(meshes.occlusionMap, std::as_bytes(std::span {occlusionPixels})),
                   "Stage the occlusion map");
     const auto completion = panda::expect(batch.submit(), "Submit the scene upload");
-    const auto status = panda::expect(context.wait(completion, std::chrono::seconds {10}), "Wait for the scene upload");
+    const auto status = panda::expect(context.getSubmissionManager().wait(completion, std::chrono::seconds {10}),
+                                      "Wait for the scene upload");
     panda::expect(status == panda::WaitStatus::Completed, "Scene upload did not finish in time");
 }
 
@@ -259,8 +260,10 @@ auto createSceneMeshes(const panda::Context& context) -> SceneMeshes
     const auto geometry = SceneGeometry {.cube = panda::createCubeGeometry(),
                                          .ground = panda::createPlaneGeometry(),
                                          .triangle = createColoredTriangleVertices()};
-    const auto cube = panda::expect(context.createMeshFromGeometry(geometry.cube), "Create the cube mesh");
-    const auto ground = panda::expect(context.createMeshFromGeometry(geometry.ground), "Create the ground mesh");
+    const auto cube =
+        panda::expect(context.getResourceManager().createMeshFromGeometry(geometry.cube), "Create the cube mesh");
+    const auto ground =
+        panda::expect(context.getResourceManager().createMeshFromGeometry(geometry.ground), "Create the ground mesh");
     auto meshes = SceneMeshes {.cube = cube,
                                .ground = ground,
                                .triangle = createColoredTriangleMesh(context, geometry.triangle),
@@ -276,6 +279,7 @@ auto createSceneMeshes(const panda::Context& context) -> SceneMeshes
 void run(const panda::tools::Window& window, const panda::Context& context, const SceneMeshes& meshes)
 {
     static constexpr auto cameraPosition = glm::vec3 {3.0F, 2.5F, 4.0F};
+    const auto renderer = panda::expect(context.getWindowRenderer(), "Window context has no window renderer");
     auto view = makeRenderView(meshes);
     while (!window.shouldClose())
     {
@@ -296,7 +300,7 @@ void run(const panda::tools::Window& window, const panda::Context& context, cons
                               .farPlane = 100.0F
         }),
                           "Create the camera");
-        const auto frame = panda::expect(context.render(view), "Render the scene");
+        const auto frame = panda::expect(renderer.get().render(view), "Render the scene");
         // A resize can suspend rendering after the extent check above.
         panda::expect(frame.status == panda::FrameResult::Status::Suspended ? panda::tools::Window::waitForInput()
                                                                             : window.processInput(),

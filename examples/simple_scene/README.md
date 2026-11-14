@@ -2,7 +2,7 @@
 
 `simple_scene` opens a window, creates a unit cube and unit plane with the standard
 geometry helper, then creates a compact position-and-color triangle with
-`Context::createMesh(MeshDesc)`. One upload batch initializes all three meshes,
+`ResourceManager::createMesh(MeshDesc)`. One upload batch initializes all three meshes,
 the cube's optional 2x2 sRGB base-color and emissive maps, and neutral 1x1 linear
 metallic-roughness map. A second draw of the same cube uses a neutral gray material,
 a 4x4 linear normal map with alternating tangent-space directions, and a linear

@@ -26,6 +26,7 @@ forwarding and helper calculations.
 | [UC Observe or wait for submitted GPU work](observe-completion.md)                             | Context-scoped completion queries, bounded waits and upload retirement                                               |
 | [UC Reclaim completed upload packets](reclaim-completed-uploads.md)                            | Observe queue completion and release retained upload owners                                                          |
 | [UC Render and present an application view](render-view.md)                                    | Validate per-mesh layouts and materials, draw meshes or an empty background, and present with frame/image synchronization |
+| [UC Render a view to an image](render-offscreen-view.md)                                         | Submit a view to a target and optionally copy its pixels to host memory                                                  |
 | [UC Collect paired CPU and GPU frame timings](collect-frame-timings.md)                        | Opt-in timestamp collection, CPU/GPU pairing and nonblocking sample retrieval                                        |
 | [UC Execute a controlled benchmark smoke run and save a report](benchmark-smoke-run.md)        | Validate a stable static-cube run with optional lights, collect measured samples and write JSON/log output             |
 | [UC Configure and receive application/backend diagnostics](configure-diagnostics.md)           | Register synchronous log sinks, filter entries and receive Vulkan validation messages                                |

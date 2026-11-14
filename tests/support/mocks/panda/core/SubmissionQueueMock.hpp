@@ -36,6 +36,7 @@ public:
     MOCK_METHOD(panda::Result<bool>, poll, (panda::CompletionPoint), ());
     MOCK_METHOD(panda::Result<panda::WaitStatus>, wait, (panda::CompletionPoint, std::uint64_t), ());
     MOCK_METHOD(panda::Result<panda::WaitStatus>, waitValue, (std::uint64_t, std::uint64_t), ());
+    MOCK_METHOD(panda::Result<void>, validateCompletionCoversRender, (panda::CompletionPoint, std::uint64_t), (const));
     // NOLINTEND(modernize-use-trailing-return-type)
 };
 }

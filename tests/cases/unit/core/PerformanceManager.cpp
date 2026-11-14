@@ -93,6 +93,8 @@ protected:
         auto flow = testing::Sequence {};
         expectPoolCreation(pool0, flow);
         expectPoolCreation(pool1, flow);
+        expectPoolCreation(pool2, flow);
+        expectPoolCreation(pool3, flow);
     }
 
     void expectResults(VkQueryPool handle, const std::array<std::uint64_t, 4>& values, VkResult result = success)
@@ -153,6 +155,8 @@ protected:
     vk::CommandBuffer command {fakeVulkanHandle<VkCommandBuffer>(7)};
     VkQueryPool pool0 {fakeVulkanHandle<VkQueryPool>(5)};
     VkQueryPool pool1 {fakeVulkanHandle<VkQueryPool>(6)};
+    VkQueryPool pool2 {fakeVulkanHandle<VkQueryPool>(7)};
+    VkQueryPool pool3 {fakeVulkanHandle<VkQueryPool>(8)};
 
 private:
     std::optional<SubmissionQueue> _submissions;

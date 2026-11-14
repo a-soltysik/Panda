@@ -42,7 +42,7 @@ order to `RenderView::lights`. Each light may opt into shadows through
 `ShadowSettings`; without it the light contributes direct lighting only. Directional
 coverage is explicit, and local views follow light range and spot cone. With no
 visible lights, Lit materials retain only their ambient contribution.
-Renderer-specific data and mesh ownership are checked once in `Context::render()`.
+Renderer-specific data and mesh ownership are checked once in `WindowRenderer::render()`.
 Core provides configurable CPU sphere geometry. The `scene_demo` example renders an
 animated hierarchy through Scene; `simple_scene` remains a direct-renderer example.
 Scene serialization and asset integration remain in their later tasks; no ID

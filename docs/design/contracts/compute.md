@@ -51,7 +51,7 @@ move-only `ExternalMemoryHandle`, plus the logical size, allocation size and Vul
 device UUID. When `externalSemaphoreExportEnabled` is true, it also owns a paired
 timeline semaphore with initial value 0 and its move-only `ExternalSemaphoreHandle`.
 The semaphore handle can be absent on devices without export support. Ordinary
-`Context::createBuffer` resources remain non-exportable.
+`ResourceManager::createBuffer` resources remain non-exportable.
 
 `Panda::Cuda::CudaSession::create(Context&)` selects a CUDA device by UUID and
 creates one non-blocking stream. `CudaSession::importBuffer(ExternalBuffer)` imports

@@ -56,7 +56,7 @@ auto reverseOnCuda(cudaStream_t stream, std::span<std::byte, 4> buffer, std::spa
 
 void uploadTag(const panda::Context& context, const panda::cuda::SharedCudaBuffer& buffer, const Tag& tag)
 {
-    auto upload = context.createUploadBatch();
+    auto upload = context.getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(upload);
     ASSERT_TRUE(upload->write(buffer.getBuffer(), 0, tag));
     ASSERT_TRUE(upload->submit());

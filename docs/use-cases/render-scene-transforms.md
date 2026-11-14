@@ -41,7 +41,7 @@ renderer use without Scene. Persistence remains in the
    and spot positions, and transforms local -Z into the direction of directional and
    spot lights. Visibility applies to each object independently.
 4. **Publish the snapshot.** Scene returns a value independent of subsequent scene
-   edits. The application passes it to `Context::render()` in its frame loop.
+   edits. The application passes it to `WindowRenderer::render()` in its frame loop.
    Context performs renderer data and mesh-ownership validation before submission.
 
 ```mermaid
@@ -115,7 +115,7 @@ Deleting the active camera clears selection instead of choosing another object.
 
 **Success.** The application receives prepared renderer input, with no GPU work yet
 submitted. Scene edits affect the next snapshot. Renderer-specific validation, such
-as rejecting a mesh from another Context, occurs in `Context::render()`.
+as rejecting a mesh from another Context, occurs in `WindowRenderer::render()`.
 
 **Failure.** No partial snapshot escapes. Updating derived caches does not change
 the authoritative transforms or component values.

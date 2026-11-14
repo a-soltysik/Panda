@@ -144,30 +144,33 @@ protected:
 
     void expectPerformancePools()
     {
-        auto* const first = fakeVulkanHandle<VkQueryPool>(50);
-        auto* const second = fakeVulkanHandle<VkQueryPool>(51);
-        EXPECT_CALL(vulkan, vkCreateQueryPool(_, NotNull(), nullptr, NotNull()))
-            .Times(2)
-            .WillOnce([first](VkDevice,
-                              const VkQueryPoolCreateInfo* info,
-                              const VkAllocationCallbacks*,
-                              VkQueryPool* output) {
-                EXPECT_EQ(info->queryType, VK_QUERY_TYPE_TIMESTAMP);
-                EXPECT_EQ(info->queryCount, 2U);
-                *output = first;
-                return static_cast<VkResult>(vk::Result::eSuccess);
-            })
-            .WillOnce([second](VkDevice,
-                               const VkQueryPoolCreateInfo* info,
-                               const VkAllocationCallbacks*,
-                               VkQueryPool* output) {
-                EXPECT_EQ(info->queryType, VK_QUERY_TYPE_TIMESTAMP);
-                EXPECT_EQ(info->queryCount, 2U);
-                *output = second;
-                return static_cast<VkResult>(vk::Result::eSuccess);
-            });
-        EXPECT_CALL(vulkan, vkDestroyQueryPool(_, first, nullptr));
-        EXPECT_CALL(vulkan, vkDestroyQueryPool(_, second, nullptr));
+        const auto queryPools = std::array {fakeVulkanHandle<VkQueryPool>(50),
+                                            fakeVulkanHandle<VkQueryPool>(51),
+                                            fakeVulkanHandle<VkQueryPool>(52),
+                                            fakeVulkanHandle<VkQueryPool>(53)};
+        const auto expectPoolCreation = [this](VkQueryPool queryPool) {
+            EXPECT_CALL(vulkan, vkCreateQueryPool(_, NotNull(), nullptr, NotNull()))
+                .WillOnce([queryPool](VkDevice,
+                                      const VkQueryPoolCreateInfo* info,
+                                      const VkAllocationCallbacks*,
+                                      VkQueryPool* output) {
+                    EXPECT_EQ(info->queryType, VK_QUERY_TYPE_TIMESTAMP);
+                    EXPECT_EQ(info->queryCount, 2U);
+                    *output = queryPool;
+                    return static_cast<VkResult>(vk::Result::eSuccess);
+                });
+        };
+        {
+            const auto sequence = testing::InSequence {};
+            for (auto* const queryPool : queryPools)
+            {
+                expectPoolCreation(queryPool);
+            }
+        }
+        for (auto* const queryPool : queryPools)
+        {
+            EXPECT_CALL(vulkan, vkDestroyQueryPool(_, queryPool, nullptr));
+        }
     }
 
     void expectSampledCommandRecording(Sequence& flow)

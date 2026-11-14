@@ -27,6 +27,11 @@ is explicit and follows that completion rather than making ordinary rendering wa
 extent, channel order and color-space contract for image consumers and pixel tests. Image-file encoding and a general
 render graph are outside this capability.
 
+`ResourceManager::createOffscreenTarget()` creates an RGBA8 sRGB target. Applications pass a target to each
+`OffscreenRenderer::render()` call and may read the latest completed output as tightly packed, top-to-bottom RGBA bytes;
+RGB is sRGB encoded and alpha is linear UNORM. `WindowRenderer::renderWithCapture()` renders once into that target,
+copies the same output to the swapchain image and presents it.
+
 ## Built-in materials
 
 Provide a metallic-roughness lit material for direct lighting and an unlit material. Simple ambient illumination is

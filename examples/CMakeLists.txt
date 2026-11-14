@@ -1,4 +1,5 @@
 add_subdirectory(simple_scene)
+add_subdirectory(offscreen_rendering)
 if(PANDA_BUILD_SCENE)
     add_subdirectory(scene_demo)
 endif()

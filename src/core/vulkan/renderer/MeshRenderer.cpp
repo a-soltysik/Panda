@@ -290,14 +290,12 @@ void MeshRenderer::recordBlendedDraws(vk::CommandBuffer command, std::size_t fra
     _blendDraws.clear();
 }
 
-void MeshRenderer::recordAttachments(vk::CommandBuffer command,
-                                     vk::ImageView swapchainView,
-                                     std::size_t frameIndex) const
+void MeshRenderer::recordAttachments(vk::CommandBuffer command, vk::ImageView outputView, std::size_t frameIndex) const
 {
     const auto& output = _attachments->getOutputDescription();
     const auto multisampled = output.sampleCount != vk::SampleCountFlagBits::e1;
     auto color = vk::RenderingAttachmentInfo {
-        .imageView = multisampled ? _attachments->getColorView(frameIndex) : swapchainView,
+        .imageView = multisampled ? _attachments->getColorView(frameIndex) : outputView,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = multisampled ? vk::AttachmentStoreOp::eDontCare : vk::AttachmentStoreOp::eStore,
@@ -305,7 +303,7 @@ void MeshRenderer::recordAttachments(vk::CommandBuffer command,
     if (multisampled)
     {
         color.resolveMode = vk::ResolveModeFlagBits::eAverage;
-        color.resolveImageView = swapchainView;
+        color.resolveImageView = outputView;
         color.resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal;
     }
     const auto depth = vk::RenderingAttachmentInfo {

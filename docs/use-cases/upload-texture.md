@@ -26,7 +26,7 @@ ownership are described in [UC Upload bytes into a buffer](upload-buffer.md).
 
 ## Main flow
 
-1. **Create a batch.** The application calls `Context::createUploadBatch()`.
+1. **Create a batch.** The application calls `SubmissionManager::createUploadBatch()`.
    The batch borrows the Context and owns no GPU work until submission; batch
    creation and the shared submission queue are covered by
    [UC Upload bytes into a buffer](upload-buffer.md).

@@ -38,6 +38,8 @@ public:
     [[nodiscard]] auto poll(CompletionPoint point) -> Result<bool>;
     [[nodiscard]] auto wait(CompletionPoint point, std::uint64_t timeout) -> Result<WaitStatus>;
     [[nodiscard]] auto waitValue(std::uint64_t value, std::uint64_t timeout) -> Result<WaitStatus>;
+    [[nodiscard]] auto validateCompletionCoversRender(CompletionPoint point, std::uint64_t renderCompletionValue) const
+        -> Result<void>;
 
 private:
     struct SubmissionSync

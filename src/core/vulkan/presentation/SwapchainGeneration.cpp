@@ -131,7 +131,10 @@ auto createSwapchain(const SwapchainGenerationRequest& request, const SurfaceCon
         .imageColorSpace = config.format.colorSpace,
         .imageExtent = config.extent,
         .imageArrayLayers = 1,
-        .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+        .imageUsage = vk::ImageUsageFlagBits::eColorAttachment |
+                      ((config.capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst)
+                           ? vk::ImageUsageFlagBits::eTransferDst
+                           : vk::ImageUsageFlags {}),
         .imageSharingMode = separateFamilies ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
         .queueFamilyIndexCount = separateFamilies ? 2U : 0U,
         .pQueueFamilyIndices = separateFamilies ? familyIndices.data() : nullptr,
@@ -218,10 +221,13 @@ auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std
     {
         return std::unexpected {std::move(swapchain.error())};
     }
-    auto generation = SwapchainGeneration {.swapchain = std::move(*swapchain),
-                                           .images = {},
-                                           .extent = config->extent,
-                                           .format = config->format.format};
+    auto generation = SwapchainGeneration {
+        .swapchain = std::move(*swapchain),
+        .images = {},
+        .extent = config->extent,
+        .format = config->format.format,
+        .supportsTransferDestination =
+            static_cast<bool>(config->capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst)};
     if (const auto loaded = populateImages(request.device, generation); !loaded)
     {
         return std::unexpected {loaded.error()};

@@ -2,7 +2,7 @@
 
 ## Goal and boundary
 
-An application with a windowed `Context` calls `Context::render(view)` as
+An application with a windowed `Context` calls `WindowRenderer::render(view)` as
 it processes window changes. On each call, **Panda** checks the window's
 framebuffer extent and either suspends frame work or ensures a matching
 swapchain generation exists. The flow ends with a suspended result, a usable
@@ -24,7 +24,7 @@ on a resize callback.
 ## Main flow
 
 1. **Request presentation.** The application calls
-   `Context::render(view)`; `Presentation` prepares the current window
+   `WindowRenderer::render(view)`; `Presentation` prepares the current window
    generation before acquiring an image.
 2. **Read the framebuffer extent.** `Presentation::prepareWindowFrame()` asks the
    borrowed `WindowSurface` for the current pixel extent.

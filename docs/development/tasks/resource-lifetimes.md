@@ -69,11 +69,11 @@ them through normal RAII destruction. Pending-retirement accounting belongs to t
 Current counters cover this manager's native allocations, committed blocks and
 live reserved ranges. Each Context owns one manager for Panda allocations.
 
-`Context::createBuffer` publishes a copyable `Buffer` only after native creation,
+`ResourceManager::createBuffer` publishes a copyable `Buffer` only after native creation,
 memory-requirement selection, pooled/dedicated allocation and binding succeed.
 Shared resource state destroys `VkBuffer` before its `MemoryAllocation` releases
 the range. Context has stable heap-owned state; moving it preserves buffer owners.
-`Context::createTexture` rejects invalid dimensions, formats and unsupported usage,
+`ResourceManager::createTexture` rejects invalid dimensions, formats and unsupported usage,
 including usage that cannot support its required default image view. Before creating
 the optimal-tiled, single-mip, single-layer 2D image, it checks the requested format,
 usage and extent against the physical device. It then queries image memory
@@ -88,7 +88,7 @@ drains submitted uploads before checking for external Buffer, Texture or Mesh ow
 and tearing down the device. Buffer memory intent selects device-local, upload or
 readback memory, without exposing CPU mapping.
 
-`Context::createMesh` builds one fixed vertex buffer and, when described, one index
+`ResourceManager::createMesh` builds one fixed vertex buffer and, when described, one index
 buffer from the same Context pool. `MeshDesc` uses a vertex count/byte stride and an
 optional index count/type; index width is 16 or 32 bits. Both buffers use device-local
 memory and transfer-destination usage. A failed second-buffer creation releases the

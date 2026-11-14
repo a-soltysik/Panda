@@ -6,6 +6,11 @@ panda_add_test(panda_system_vulkan_context system
     SOURCES VulkanContext.cpp
     LIBRARIES Panda::Panda Vulkan::Headers)
 
+panda_add_test(panda_system_offscreen_rendering system
+    VULKAN_INTERNAL
+    SOURCES OffscreenRendering.cpp
+    LIBRARIES Panda::Panda PandaTest::LogCapture)
+
 if(PANDA_BUILD_SCENE)
     panda_add_test(panda_system_scene system
         SOURCES SceneRendering.cpp

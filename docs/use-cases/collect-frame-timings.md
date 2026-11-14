@@ -5,7 +5,7 @@
 An application opts into frame sampling when it creates a `Context`, then reads
 paired timings from that Context's borrowed `PerformanceManager`. This flow starts
 with a live Context and ends when the application peeks at or removes ready samples.
-The submitted-frame path is `Context::render(view)`. Timing markers cover either an
+The submitted-frame path is `WindowRenderer::render(view)`. Timing markers cover either an
 empty background view or the mesh draws in a populated view.
 
 **Panda** owns timestamp queries, their association with submitted frames and
@@ -25,7 +25,7 @@ samples are owned by the Context; the borrowed manager must not outlive it.
    `Context::getPerformanceManager()` and reads `getCapabilities()`. Sampling runs
    only when `isGpuTimestampSamplingEnabled` is true; `hasGpuTimestampQueries`
    separately reports support on the selected graphics queue.
-2. **Submit a marked frame.** The application calls `Context::render(view)`.
+2. **Submit a marked frame.** The application calls `WindowRenderer::render(view)`.
    `Context` starts its CPU wall clock. In the frame command buffer,
    `FrameExecution` records two `vkCmdWriteTimestamp2` queries at the
    `eColorAttachmentOutput` stage: the start immediately before view rendering and

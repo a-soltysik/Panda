@@ -13,17 +13,21 @@
 #include <glm/trigonometric.hpp>
 #include <limits>
 #include <optional>
+#include <panda/Assert.hpp>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Context.hpp>
 #include <panda/Cube.hpp>
 #include <panda/Error.hpp>
+#include <panda/FrameResult.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/OffscreenTarget.hpp>
 #include <panda/Plane.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
+#include <panda/WindowRenderer.hpp>
 #include <panda/WindowSurface.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <span>
@@ -37,6 +41,8 @@
 
 namespace
 {
+
+constexpr auto renderExtent = vk::Extent2D {160, 120};
 
 class SuspensibleSurface final : public panda::WindowSurface
 {
@@ -117,88 +123,110 @@ private:
 void verifyCompletion(const panda::Context& context, panda::CompletionPoint point)
 {
     EXPECT_TRUE(point.isValid());
-    const auto completed = context.wait(point, std::chrono::seconds {10});
+    const auto completed = context.getSubmissionManager().wait(point, std::chrono::seconds {10});
     ASSERT_TRUE(completed);
     EXPECT_EQ(*completed, panda::WaitStatus::Completed);
-    const auto polled = context.poll(point);
+    const auto polled = context.getSubmissionManager().poll(point);
     ASSERT_TRUE(polled);
     EXPECT_TRUE(*polled);
 }
 
-void expectInvalidLight(const panda::Context& context, const panda::Light& light)
+auto windowRenderer(const panda::Context& context) -> const panda::WindowRenderer&
+{
+    return panda::expect(context.getWindowRenderer(), "Window context has no renderer").get();
+}
+
+auto createTestTarget(const panda::Context& context) -> panda::Result<panda::OffscreenTarget>
+{
+    return context.getResourceManager().createOffscreenTarget({.extent = renderExtent});
+}
+
+void expectInvalidLight(const panda::Context& context, const panda::OffscreenTarget& target, const panda::Light& light)
 {
     auto view = panda::RenderView {};
     view.lights.push_back(light);
-    const auto result = context.render(view);
+    const auto result = context.getOffscreenRenderer().render(view, target);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-void expectInvalidPointLightData(const panda::Context& context)
+void expectInvalidPointLightData(const panda::Context& context, const panda::OffscreenTarget& target)
 {
     const auto infinity = std::numeric_limits<float>::infinity();
     const auto nan = std::numeric_limits<float>::quiet_NaN();
     expectInvalidLight(context,
+                       target,
                        panda::PointLight {
                            .position = {infinity, 0.0F, 0.0F},
                            .range = 8.0F,
                            .shadow = {}
     });
     expectInvalidLight(context,
+                       target,
                        panda::PointLight {
                            .color = {infinity, 1.0F, 1.0F},
                            .range = 8.0F,
                            .shadow = {}
     });
-    expectInvalidLight(context, panda::PointLight {.intensity = infinity, .range = 8.0F, .shadow = {}});
-    expectInvalidLight(context, panda::PointLight {.intensity = -1.0F, .range = 8.0F, .shadow = {}});
+    expectInvalidLight(context, target, panda::PointLight {.intensity = infinity, .range = 8.0F, .shadow = {}});
+    expectInvalidLight(context, target, panda::PointLight {.intensity = -1.0F, .range = 8.0F, .shadow = {}});
     expectInvalidLight(context,
+                       target,
                        panda::PointLight {
                            .color = {-1.0F, 1.0F, 1.0F},
                            .range = 8.0F,
                            .shadow = {}
     });
     expectInvalidLight(context,
+                       target,
                        panda::PointLight {
                            .color = {1.0F, -1.0F, 1.0F},
                            .range = 8.0F,
                            .shadow = {}
     });
     expectInvalidLight(context,
+                       target,
                        panda::PointLight {
                            .color = {1.0F, 1.0F, -1.0F},
                            .range = 8.0F,
                            .shadow = {}
     });
-    expectInvalidLight(context, panda::PointLight {.range = nan, .shadow = {}});
-    expectInvalidLight(context, panda::PointLight {.range = 0.0F, .shadow = {}});
+    expectInvalidLight(context, target, panda::PointLight {.range = nan, .shadow = {}});
+    expectInvalidLight(context, target, panda::PointLight {.range = 0.0F, .shadow = {}});
 }
 
-void expectInvalidSpotLightData(const panda::Context& context)
+void expectInvalidSpotLightData(const panda::Context& context, const panda::OffscreenTarget& target)
 {
     const auto infinity = std::numeric_limits<float>::infinity();
     const auto nan = std::numeric_limits<float>::quiet_NaN();
-    expectInvalidLight(context, panda::SpotLight {.direction = {}, .range = 8.0F, .shadow = {}});
+    expectInvalidLight(context, target, panda::SpotLight {.direction = {}, .range = 8.0F, .shadow = {}});
     expectInvalidLight(context,
+                       target,
                        panda::SpotLight {
                            .direction = {infinity, 0.0F, 0.0F},
                            .range = 8.0F,
                            .shadow = {}
     });
-    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = nan, .shadow = {}});
-    expectInvalidLight(context, panda::SpotLight {.range = 8.0F, .outerConeAngleRadians = infinity, .shadow = {}});
+    expectInvalidLight(context, target, panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = nan, .shadow = {}});
+    expectInvalidLight(context,
+                       target,
+                       panda::SpotLight {.range = 8.0F, .outerConeAngleRadians = infinity, .shadow = {}});
     expectInvalidLight(
         context,
+        target,
         panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = -0.1F, .outerConeAngleRadians = 0.4F, .shadow = {}});
     expectInvalidLight(
         context,
+        target,
         panda::SpotLight {.range = 8.0F, .innerConeAngleRadians = 0.4F, .outerConeAngleRadians = 0.4F, .shadow = {}});
     expectInvalidLight(context,
+                       target,
                        panda::SpotLight {.range = 8.0F,
                                          .innerConeAngleRadians = 0.2F,
                                          .outerConeAngleRadians = glm::half_pi<float>() + 0.1F,
                                          .shadow = {}});
     expectInvalidLight(context,
+                       target,
                        panda::SpotLight {.range = 8.0F,
                                          .innerConeAngleRadians = 0.01F,
                                          .outerConeAngleRadians = std::nextafter(0.01F, 1.0F),
@@ -217,7 +245,7 @@ struct SceneMeshes
 
 auto createCompactTriangle(const panda::Context& context) -> panda::Result<panda::Mesh>
 {
-    return context.createMesh({
+    return context.getResourceManager().createMesh({
         .vertexCount = 3,
         .vertexStride = 28,
         .indices = std::nullopt,
@@ -232,7 +260,7 @@ auto createCompactTriangle(const panda::Context& context) -> panda::Result<panda
 
 auto createSceneTexture(const panda::Context& context, vk::Format format) -> panda::Result<panda::Texture>
 {
-    return context.createTexture({
+    return context.getResourceManager().createTexture({
         .extent = vk::Extent2D {2, 2},
         .format = format,
         .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
@@ -240,6 +268,7 @@ auto createSceneTexture(const panda::Context& context, vk::Format format) -> pan
 }
 
 void expectInvalidEmissiveMap(const panda::Context& context,
+                              const panda::OffscreenTarget& target,
                               const panda::RenderCamera& camera,
                               const panda::Mesh& mesh,
                               const panda::Texture& texture)
@@ -249,12 +278,13 @@ void expectInvalidEmissiveMap(const panda::Context& context,
     draw.material.emissiveTexture = texture;
     draw.material.emissive = {1.0F, 1.0F, 1.0F};
     view.meshes.push_back(draw);
-    const auto result = context.render(view);
+    const auto result = context.getOffscreenRenderer().render(view, target);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 void expectInvalidNormalMap(const panda::Context& context,
+                            const panda::OffscreenTarget& target,
                             const panda::RenderCamera& camera,
                             const panda::Mesh& mesh,
                             const panda::Texture& texture,
@@ -265,12 +295,13 @@ void expectInvalidNormalMap(const panda::Context& context,
     draw.material.model = model;
     draw.material.normalTexture = texture;
     view.meshes.push_back(draw);
-    const auto result = context.render(view);
+    const auto result = context.getOffscreenRenderer().render(view, target);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 void expectInvalidOcclusionMap(const panda::Context& context,
+                               const panda::OffscreenTarget& target,
                                const panda::RenderCamera& camera,
                                const panda::Mesh& mesh,
                                const panda::Texture& texture,
@@ -281,7 +312,7 @@ void expectInvalidOcclusionMap(const panda::Context& context,
     draw.material.model = model;
     draw.material.occlusionTexture = texture;
     view.meshes.push_back(draw);
-    const auto result = context.render(view);
+    const auto result = context.getOffscreenRenderer().render(view, target);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
@@ -293,7 +324,7 @@ auto finishSceneMeshUpload(const panda::Context& context, panda::UploadBatch& ba
     {
         return std::unexpected {completion.error()};
     }
-    const auto waited = context.wait(*completion, std::chrono::seconds {10});
+    const auto waited = context.getSubmissionManager().wait(*completion, std::chrono::seconds {10});
     if (!waited)
     {
         return std::unexpected {waited.error()};
@@ -379,7 +410,7 @@ auto uploadSceneMeshes(const panda::Context& context,
     static constexpr auto triangleVertices =
         std::array {-0.5F, -0.5F, 0.0F, 1.0F, 0.2F, 0.2F, 1.0F, 0.5F, -0.5F, 0.0F, 0.2F,
                     1.0F,  0.2F,  1.0F, 0.0F, 0.5F, 0.0F, 0.2F, 0.2F, 1.0F,  0.0F};
-    auto batch = context.createUploadBatch();
+    auto batch = context.getSubmissionManager().createUploadBatch();
     if (!batch)
     {
         return std::unexpected {batch.error()};
@@ -407,12 +438,12 @@ auto createUploadedCubeGroundAndCompactTriangle(const panda::Context& context) -
 {
     const auto cubeGeometry = panda::createCubeGeometry();
     const auto groundGeometry = panda::createPlaneGeometry();
-    auto cube = context.createMeshFromGeometry(cubeGeometry);
+    auto cube = context.getResourceManager().createMeshFromGeometry(cubeGeometry);
     if (!cube)
     {
         return std::unexpected {cube.error()};
     }
-    auto ground = context.createMeshFromGeometry(groundGeometry);
+    auto ground = context.getResourceManager().createMeshFromGeometry(groundGeometry);
     if (!ground)
     {
         return std::unexpected {ground.error()};
@@ -490,13 +521,13 @@ auto createNormalMapFallbackMesh(const panda::Context& context, bool hasUv) -> p
                               .format = panda::VertexAttributeFormat::Float2,
                               .offset = 24});
     }
-    auto mesh = context.createMesh(
+    auto mesh = context.getResourceManager().createMesh(
         {.vertexCount = 3, .vertexStride = hasUv ? 32U : 24U, .indices = std::nullopt, .attributes = attributes});
     if (!mesh)
     {
         return std::unexpected {mesh.error()};
     }
-    auto batch = context.createUploadBatch();
+    auto batch = context.getSubmissionManager().createUploadBatch();
     if (!batch)
     {
         return std::unexpected {batch.error()};
@@ -633,7 +664,7 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
         GTEST_SKIP() << context.error().message;
     }
     ASSERT_TRUE(context.has_value()) << context.error().message;
-    const auto beforeMove = context->render(panda::RenderView {});
+    const auto beforeMove = windowRenderer(*context).render(panda::RenderView {});
     ASSERT_TRUE(beforeMove);
     auto movedContext = std::move(*context);
     verifyCompletion(movedContext, beforeMove->completion);
@@ -642,14 +673,14 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
     for (auto index = 0; index < 3; ++index)
     {
         ASSERT_TRUE(window->processInput().has_value());
-        const auto frame = movedContext.render(panda::RenderView {});
+        const auto frame = windowRenderer(movedContext).render(panda::RenderView {});
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
         EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
         verifyCompletion(movedContext, frame->completion);
     }
     ASSERT_TRUE(window->setSize({240, 180}).has_value());
     ASSERT_TRUE(window->processInput().has_value());
-    const auto resized = movedContext.render(panda::RenderView {});
+    const auto resized = windowRenderer(movedContext).render(panda::RenderView {});
     ASSERT_TRUE(resized.has_value()) << resized.error().message;
     EXPECT_EQ(resized->status, panda::FrameResult::Status::Presented);
     EXPECT_TRUE(resized->completion.isValid());
@@ -657,71 +688,111 @@ TEST(WindowedContextSystem, CreatesValidatedSurfaceAndDevice)
     // Native iconification is asynchronous and may be ignored by a window manager.
     // The surface reports the same zero framebuffer state deterministically.
     surface.setSuspended(true);
-    const auto suspended = movedContext.render(panda::RenderView {});
+    const auto suspended = windowRenderer(movedContext).render(panda::RenderView {});
     ASSERT_TRUE(suspended.has_value());
     EXPECT_EQ(suspended->status, panda::FrameResult::Status::Suspended);
     EXPECT_FALSE(suspended->completion.isValid());
 
     surface.setSuspended(false);
-    const auto restored = movedContext.render(panda::RenderView {});
+    const auto restored = windowRenderer(movedContext).render(panda::RenderView {});
     ASSERT_TRUE(restored.has_value()) << restored.error().message;
     EXPECT_EQ(restored->status, panda::FrameResult::Status::Presented);
     EXPECT_TRUE(restored->completion.isValid());
 }
 
-TEST(WindowedContextSystem, RendersSixtyFiveDirectionalLightsWithinConfiguredBudget)
+TEST(WindowedContextSystem, CapturesPresentedViewIntoOffscreenTarget)
 {
-    auto window = panda::tools::Window::create({160, 120}, "Panda multi-light smoke");
+    auto window = panda::tools::Window::create({160, 120}, "Panda capture smoke");
     if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
     {
         GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
     }
     ASSERT_TRUE(window.has_value());
-    auto surface = SuspensibleSurface {*window};
-    auto created = panda::Context::createWithSurface(
-        surface,
-        {.applicationName = "Panda multi-light smoke", .enableValidation = true, .maxLights = 65});
+    auto created =
+        panda::Context::createWithSurface(*window,
+                                          {.applicationName = "Panda capture smoke", .enableValidation = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
     }
     ASSERT_TRUE(created.has_value()) << created.error().message;
     auto context = std::move(*created);
+    auto target = createTestTarget(context);
+    ASSERT_TRUE(target.has_value()) << target.error().message;
+    const auto geometry = panda::createCubeGeometry();
+    auto mesh = context.getResourceManager().createMeshFromGeometry(geometry);
+    ASSERT_TRUE(mesh.has_value()) << mesh.error().message;
+    auto batch = context.getSubmissionManager().createUploadBatch();
+    ASSERT_TRUE(batch.has_value()) << batch.error().message;
+    ASSERT_TRUE(batch->write(*mesh, geometry));
+    ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
+    const auto camera = makeTestCamera({.width = renderExtent.width, .height = renderExtent.height});
+    ASSERT_TRUE(camera.has_value()) << camera.error().message;
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
+    auto draw = panda::MeshDraw {.mesh = *mesh};
+    draw.material.model = panda::MaterialModel::Unlit;
+    draw.material.baseColor = {0.8F, 0.1F, 0.1F, 1.0F};
+    view.meshes.push_back(draw);
+
+    const auto frame = windowRenderer(context).renderWithCapture(view, *target);
+    if (!frame && frame.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << frame.error().message;
+    }
+    ASSERT_TRUE(frame.has_value()) << frame.error().message;
+    EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+    const auto pixels = context.getOffscreenRenderer().readPixels(*target, frame->completion);
+    ASSERT_TRUE(pixels.has_value()) << pixels.error().message;
+    EXPECT_EQ(pixels->extent, renderExtent);
+    ASSERT_EQ(pixels->rgba.size(), static_cast<std::size_t>(renderExtent.width) * renderExtent.height * 4);
+    auto redPixelFound = false;
+    for (auto index = std::size_t {}; index < pixels->rgba.size(); index += 4)
+    {
+        redPixelFound = redPixelFound || pixels->rgba[index] > pixels->rgba[index + 1] + 20;
+    }
+    EXPECT_TRUE(redPixelFound);
+}
+
+TEST(HeadlessRendererSystem, RendersSixtyFiveDirectionalLightsWithinConfiguredBudget)
+{
+    auto created = panda::Context::create(
+        {.applicationName = "Panda multi-light validation", .enableValidation = true, .maxLights = 65});
+    if (!created && created.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << created.error().message;
+    }
+    ASSERT_TRUE(created.has_value()) << created.error().message;
+    auto context = std::move(*created);
+    auto target = createTestTarget(context);
+    ASSERT_TRUE(target.has_value()) << target.error().message;
     auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
     ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
-    const auto extent = window->getFramebufferExtent();
-    ASSERT_TRUE(extent.has_value()) << extent.error().message;
-    auto view = makeCubeAndGroundView(*extent, *meshes);
+    auto view = makeCubeAndGroundView({.width = renderExtent.width, .height = renderExtent.height}, *meshes);
     ASSERT_TRUE(view.has_value()) << view.error().message;
     view->lights.resize(65);
 
-    const auto frame = context.render(*view);
+    const auto frame = context.getOffscreenRenderer().render(*view, *target);
 
     ASSERT_TRUE(frame.has_value()) << frame.error().message;
     verifyCompletion(context, frame->completion);
     view->lights.emplace_back();
-    const auto overBudget = context.render(*view);
+    const auto overBudget = context.getOffscreenRenderer().render(*view, *target);
     ASSERT_FALSE(overBudget.has_value());
     EXPECT_EQ(overBudget.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
-TEST(WindowedContextSystem, RendersValidPointAndSpotLights)
+TEST(HeadlessRendererSystem, RendersValidPointAndSpotLights)
 {
-    auto window = panda::tools::Window::create({160, 120}, "Panda local-light validation");
-    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
-    {
-        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
-    }
-    ASSERT_TRUE(window.has_value());
-    auto created = panda::Context::createWithSurface(
-        *window,
-        {.applicationName = "Panda local-light validation", .enableValidation = true});
+    auto created =
+        panda::Context::create({.applicationName = "Panda local-light validation", .enableValidation = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
     }
     ASSERT_TRUE(created.has_value()) << created.error().message;
     auto context = std::move(*created);
+    auto target = createTestTarget(context);
+    ASSERT_TRUE(target.has_value()) << target.error().message;
 
     auto view = panda::RenderView {};
     view.lights.emplace_back(panda::PointLight {
@@ -729,7 +800,7 @@ TEST(WindowedContextSystem, RendersValidPointAndSpotLights)
         .range = 8.0F,
         .shadow = panda::ShadowSettings {}
     });
-    auto frame = context.render(view);
+    auto frame = context.getOffscreenRenderer().render(view, *target);
     ASSERT_TRUE(frame.has_value()) << frame.error().message;
     verifyCompletion(context, frame->completion);
 
@@ -741,74 +812,61 @@ TEST(WindowedContextSystem, RendersValidPointAndSpotLights)
         .outerConeAngleRadians = 0.4F,
         .shadow = panda::ShadowSettings {}
     });
-    frame = context.render(view);
+    frame = context.getOffscreenRenderer().render(view, *target);
     ASSERT_TRUE(frame.has_value()) << frame.error().message;
     verifyCompletion(context, frame->completion);
 }
 
-TEST(WindowedContextSystem, RejectsInvalidPointAndSpotLightData)
+TEST(HeadlessRendererSystem, RejectsInvalidPointAndSpotLightData)
 {
-    auto window = panda::tools::Window::create({160, 120}, "Panda local-light validation");
-    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
-    {
-        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
-    }
-    ASSERT_TRUE(window.has_value());
-    auto created = panda::Context::createWithSurface(
-        *window,
-        {.applicationName = "Panda local-light validation", .enableValidation = true});
+    auto created =
+        panda::Context::create({.applicationName = "Panda local-light validation", .enableValidation = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
     }
     ASSERT_TRUE(created.has_value()) << created.error().message;
     auto context = std::move(*created);
+    auto target = createTestTarget(context);
+    ASSERT_TRUE(target.has_value()) << target.error().message;
 
-    expectInvalidPointLightData(context);
-    expectInvalidSpotLightData(context);
+    expectInvalidPointLightData(context, *target);
+    expectInvalidSpotLightData(context, *target);
 }
 
-TEST(WindowedContextSystem, RendersUnlitMeshWithZeroLightBudget)
+TEST(HeadlessRendererSystem, RendersUnlitMeshWithZeroLightBudget)
 {
-    auto window = panda::tools::Window::create({160, 120}, "Panda unlit zero-light smoke");
-    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
-    {
-        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
-    }
-    ASSERT_TRUE(window.has_value());
-    auto surface = SuspensibleSurface {*window};
-    auto created = panda::Context::createWithSurface(
-        surface,
-        {.applicationName = "Panda unlit zero-light smoke", .enableValidation = true, .maxLights = 0});
+    auto created = panda::Context::create(
+        {.applicationName = "Panda unlit zero-light rendering", .enableValidation = true, .maxLights = 0});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
     }
     ASSERT_TRUE(created.has_value()) << created.error().message;
     auto context = std::move(*created);
+    auto target = createTestTarget(context);
+    ASSERT_TRUE(target.has_value()) << target.error().message;
     const auto geometry = panda::createCubeGeometry();
-    auto mesh = context.createMeshFromGeometry(geometry);
+    auto mesh = context.getResourceManager().createMeshFromGeometry(geometry);
     ASSERT_TRUE(mesh.has_value()) << mesh.error().message;
-    auto batch = context.createUploadBatch();
+    auto batch = context.getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch.has_value()) << batch.error().message;
     ASSERT_TRUE(batch->write(*mesh, geometry));
     ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
-    const auto extent = window->getFramebufferExtent();
-    ASSERT_TRUE(extent.has_value()) << extent.error().message;
-    const auto camera = makeTestCamera(*extent);
+    const auto camera = makeTestCamera({.width = renderExtent.width, .height = renderExtent.height});
     ASSERT_TRUE(camera.has_value()) << camera.error().message;
     auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
     auto draw = panda::MeshDraw {.mesh = *mesh};
     draw.material.model = panda::MaterialModel::Unlit;
     view.meshes.push_back(draw);
 
-    const auto frame = context.render(view);
+    const auto frame = context.getOffscreenRenderer().render(view, *target);
 
     ASSERT_TRUE(frame.has_value()) << frame.error().message;
     verifyCompletion(context, frame->completion);
     view.meshes.front().material.model = panda::MaterialModel::Lit;
     view.lights.emplace_back();
-    const auto overBudget = context.render(view);
+    const auto overBudget = context.getOffscreenRenderer().render(view, *target);
     ASSERT_FALSE(overBudget.has_value());
     EXPECT_EQ(overBudget.error().code, panda::ErrorCode::ResourceExhausted);
 }
@@ -837,27 +895,21 @@ TEST(WindowedContextSystem, ReportsSurfaceCreationFailures)
     EXPECT_NE(empty.error().message.find("null Vulkan surface"), std::string::npos);
 }
 
-TEST(WindowedContextSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCompletion)
+TEST(HeadlessRendererSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCompletion)
 {
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};
-    auto window = panda::tools::Window::create({160, 120}, "Panda texture retention smoke");
-    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
     {
-        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
-    }
-    ASSERT_TRUE(window.has_value());
-    auto surface = SuspensibleSurface {*window};
-    {
-        auto created = panda::Context::createWithSurface(
-            surface,
-            {.applicationName = "Panda texture retention smoke", .enableValidation = true});
+        auto created =
+            panda::Context::create({.applicationName = "Panda texture retention smoke", .enableValidation = true});
         if (!created && created.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << created.error().message;
         }
         ASSERT_TRUE(created.has_value()) << created.error().message;
         auto context = std::move(*created);
+        auto target = createTestTarget(context);
+        ASSERT_TRUE(target.has_value()) << target.error().message;
         auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
         if (!meshes && meshes.error().code == panda::ErrorCode::Unsupported)
         {
@@ -866,7 +918,7 @@ TEST(WindowedContextSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCo
         ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
         auto texture = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
         ASSERT_TRUE(texture.has_value()) << texture.error().message;
-        auto batch = context.createUploadBatch();
+        auto batch = context.getSubmissionManager().createUploadBatch();
         ASSERT_TRUE(batch.has_value()) << batch.error().message;
         static constexpr auto pixels = std::array {std::byte {0xff},
                                                    std::byte {0x80},
@@ -887,16 +939,14 @@ TEST(WindowedContextSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCo
         ASSERT_TRUE(batch->write(*texture, pixels));
         ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
 
-        const auto extent = window->getFramebufferExtent();
-        ASSERT_TRUE(extent.has_value()) << extent.error().message;
-        const auto camera = makeTestCamera(*extent);
+        const auto camera = makeTestCamera({.width = renderExtent.width, .height = renderExtent.height});
         ASSERT_TRUE(camera.has_value()) << camera.error().message;
         auto view = panda::RenderView {.camera = *camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto draw = panda::MeshDraw {.mesh = meshes->cube};
         draw.material.normalTexture = *texture;
         view.meshes.push_back(draw);
 
-        const auto frame = context.render(view);
+        const auto frame = context.getOffscreenRenderer().render(view, *target);
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
         texture->reset();
         view.meshes.clear();
@@ -909,39 +959,35 @@ TEST(WindowedContextSystem, RetainsTextureAfterApplicationReleasesItUntilFrameCo
         << (validationError == records.entries.end() ? "" : validationError->message);
 }
 
-TEST(WindowedContextSystem, RendersNormalMapsAndFallsBackWithoutUvOrTangents)
+TEST(HeadlessRendererSystem, RendersNormalMapsAndFallsBackWithoutUvOrTangents)
 {
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};
-    auto window = panda::tools::Window::create({160, 120}, "Panda normal map smoke");
-    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
-    {
-        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
-    }
-    ASSERT_TRUE(window.has_value());
-    auto surface = SuspensibleSurface {*window};
-    auto created =
-        panda::Context::createWithSurface(surface,
-                                          {.applicationName = "Panda normal map smoke", .enableValidation = true});
+    auto created = panda::Context::create({.applicationName = "Panda normal map smoke", .enableValidation = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
     }
     ASSERT_TRUE(created.has_value()) << created.error().message;
     auto context = std::move(*created);
+    auto target = createTestTarget(context);
+    ASSERT_TRUE(target.has_value()) << target.error().message;
     auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
     ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
-    const auto extent = window->getFramebufferExtent();
-    ASSERT_TRUE(extent.has_value()) << extent.error().message;
-    auto view = makeCubeAndGroundView(*extent, *meshes);
+    auto view = makeCubeAndGroundView({.width = renderExtent.width, .height = renderExtent.height}, *meshes);
     ASSERT_TRUE(view.has_value()) << view.error().message;
-    expectInvalidNormalMap(context, view->camera, meshes->cube, meshes->normalMap, panda::MaterialModel::Unlit);
+    expectInvalidNormalMap(context,
+                           *target,
+                           view->camera,
+                           meshes->cube,
+                           meshes->normalMap,
+                           panda::MaterialModel::Unlit);
     auto srgbNormalMap = createSceneTexture(context, vk::Format::eR8G8B8A8Srgb);
     ASSERT_TRUE(srgbNormalMap.has_value()) << srgbNormalMap.error().message;
-    expectInvalidNormalMap(context, view->camera, meshes->cube, *srgbNormalMap);
+    expectInvalidNormalMap(context, *target, view->camera, meshes->cube, *srgbNormalMap);
     auto unuploadedNormalMap = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
     ASSERT_TRUE(unuploadedNormalMap.has_value()) << unuploadedNormalMap.error().message;
-    expectInvalidNormalMap(context, view->camera, meshes->cube, *unuploadedNormalMap);
+    expectInvalidNormalMap(context, *target, view->camera, meshes->cube, *unuploadedNormalMap);
     auto noUvMesh = createNormalMapFallbackMesh(context, false);
     ASSERT_TRUE(noUvMesh.has_value()) << noUvMesh.error().message;
     auto noTangentMesh = createNormalMapFallbackMesh(context, true);
@@ -959,10 +1005,10 @@ TEST(WindowedContextSystem, RendersNormalMapsAndFallsBackWithoutUvOrTangents)
     noTangentDraw.material.normalTexture = meshes->normalMap;
     view->meshes.push_back(noTangentDraw);
 
-    const auto frame = context.render(*view);
+    const auto frame = context.getOffscreenRenderer().render(*view, *target);
 
     ASSERT_TRUE(frame.has_value()) << frame.error().message;
-    EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+    EXPECT_EQ(frame->status, panda::FrameResult::Status::Rendered);
     verifyCompletion(context, frame->completion);
     const auto missingUvWarning = std::ranges::find_if(records.entries, [](const auto& entry) {
         return entry.level == panda::log::Level::Warning && entry.message.find("no TexCoord0") != std::string::npos;
@@ -979,36 +1025,27 @@ TEST(WindowedContextSystem, RendersNormalMapsAndFallsBackWithoutUvOrTangents)
         << (validationError == records.entries.end() ? "" : validationError->message);
 }
 
-TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMeshesWithoutValidationErrors)
+TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMeshesWithoutValidationErrors)
 {
     auto records = panda::test::LogRecords {};
     auto capture = panda::test::ProcessSinkRegistration {records};
-    auto window = panda::tools::Window::create({160, 120}, "Panda mesh render smoke");
-    if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
     {
-        GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
-    }
-    ASSERT_TRUE(window.has_value());
-    auto surface = SuspensibleSurface {*window};
-    {
-        auto created =
-            panda::Context::createWithSurface(surface,
-                                              {.applicationName = "Panda mesh render smoke", .enableValidation = true});
+        auto created = panda::Context::create({.applicationName = "Panda mesh render smoke", .enableValidation = true});
         if (!created && created.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << created.error().message;
         }
         ASSERT_TRUE(created.has_value()) << created.error().message;
         auto context = std::move(*created);
+        auto target = createTestTarget(context);
+        ASSERT_TRUE(target.has_value()) << target.error().message;
         auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
         if (!meshes && meshes.error().code == panda::ErrorCode::Unsupported)
         {
             GTEST_SKIP() << meshes.error().message;
         }
         ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
-        const auto extent = window->getFramebufferExtent();
-        ASSERT_TRUE(extent.has_value()) << extent.error().message;
-        auto view = makeCubeAndGroundView(*extent, *meshes);
+        auto view = makeCubeAndGroundView({.width = renderExtent.width, .height = renderExtent.height}, *meshes);
         ASSERT_TRUE(view.has_value()) << view.error().message;
         auto baseColorDraw = panda::MeshDraw {};
         baseColorDraw.mesh = meshes->cube;
@@ -1040,11 +1077,11 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         missingUvDraw.material.model = panda::MaterialModel::Unlit;
         missingUvDraw.material.baseColorTexture = meshes->baseColorMap;
         missingUvView.meshes.push_back(missingUvDraw);
-        const auto missingUvResult = context.render(missingUvView);
+        const auto missingUvResult = context.getOffscreenRenderer().render(missingUvView, *target);
         ASSERT_FALSE(missingUvResult.has_value());
         EXPECT_EQ(missingUvResult.error().code, panda::ErrorCode::InvalidArgument);
 
-        auto uvlessLitMesh = context.createMesh({
+        auto uvlessLitMesh = context.getResourceManager().createMesh({
             .vertexCount = 3,
             .vertexStride = 24,
             .indices = std::nullopt,
@@ -1056,15 +1093,15 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
                             .offset = 12}}
         });
         ASSERT_TRUE(uvlessLitMesh.has_value()) << uvlessLitMesh.error().message;
-        expectInvalidEmissiveMap(context, view->camera, *uvlessLitMesh, meshes->baseColorMap);
-        expectInvalidOcclusionMap(context, view->camera, *uvlessLitMesh, meshes->metallicRoughnessMap);
+        expectInvalidEmissiveMap(context, *target, view->camera, *uvlessLitMesh, meshes->baseColorMap);
+        expectInvalidOcclusionMap(context, *target, view->camera, *uvlessLitMesh, meshes->metallicRoughnessMap);
         auto missingUvMrView =
             panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto missingUvMrDraw = panda::MeshDraw {};
         missingUvMrDraw.mesh = *uvlessLitMesh;
         missingUvMrDraw.material.metallicRoughnessTexture = meshes->metallicRoughnessMap;
         missingUvMrView.meshes.push_back(missingUvMrDraw);
-        const auto missingUvMrResult = context.render(missingUvMrView);
+        const auto missingUvMrResult = context.getOffscreenRenderer().render(missingUvMrView, *target);
         ASSERT_FALSE(missingUvMrResult.has_value());
         EXPECT_EQ(missingUvMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
@@ -1075,34 +1112,35 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         unlitMrDraw.material.model = panda::MaterialModel::Unlit;
         unlitMrDraw.material.metallicRoughnessTexture = meshes->metallicRoughnessMap;
         unlitMrView.meshes.push_back(unlitMrDraw);
-        const auto unlitMrResult = context.render(unlitMrView);
+        const auto unlitMrResult = context.getOffscreenRenderer().render(unlitMrView, *target);
         ASSERT_FALSE(unlitMrResult.has_value());
         EXPECT_EQ(unlitMrResult.error().code, panda::ErrorCode::InvalidArgument);
         expectInvalidOcclusionMap(context,
+                                  *target,
                                   view->camera,
                                   meshes->cube,
                                   meshes->metallicRoughnessMap,
                                   panda::MaterialModel::Unlit);
-        expectInvalidOcclusionMap(context, view->camera, meshes->cube, meshes->baseColorMap);
+        expectInvalidOcclusionMap(context, *target, view->camera, meshes->cube, meshes->baseColorMap);
 
-        auto linearMap = context.createTexture({
+        auto linearMap = context.getResourceManager().createTexture({
             .extent = vk::Extent2D {1, 1},
             .format = vk::Format::eR8G8B8A8Unorm,
             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
         });
         ASSERT_TRUE(linearMap.has_value()) << linearMap.error().message;
-        expectInvalidEmissiveMap(context, view->camera, meshes->cube, *linearMap);
+        expectInvalidEmissiveMap(context, *target, view->camera, meshes->cube, *linearMap);
         auto linearMapView =
             panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto linearBaseColorDraw = panda::MeshDraw {};
         linearBaseColorDraw.mesh = meshes->cube;
         linearBaseColorDraw.material.baseColorTexture = *linearMap;
         linearMapView.meshes.push_back(linearBaseColorDraw);
-        const auto linearMapResult = context.render(linearMapView);
+        const auto linearMapResult = context.getOffscreenRenderer().render(linearMapView, *target);
         ASSERT_FALSE(linearMapResult.has_value());
         EXPECT_EQ(linearMapResult.error().code, panda::ErrorCode::InvalidArgument);
 
-        auto srgbMetallicRoughnessMap = context.createTexture({
+        auto srgbMetallicRoughnessMap = context.getResourceManager().createTexture({
             .extent = vk::Extent2D {1, 1},
             .format = vk::Format::eR8G8B8A8Srgb,
             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
@@ -1114,65 +1152,65 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         srgbMrDraw.mesh = meshes->cube;
         srgbMrDraw.material.metallicRoughnessTexture = *srgbMetallicRoughnessMap;
         srgbMrView.meshes.push_back(srgbMrDraw);
-        const auto srgbMrResult = context.render(srgbMrView);
+        const auto srgbMrResult = context.getOffscreenRenderer().render(srgbMrView, *target);
         ASSERT_FALSE(srgbMrResult.has_value());
         EXPECT_EQ(srgbMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
-        auto unsampledMetallicRoughnessMap = context.createTexture({
+        auto unsampledMetallicRoughnessMap = context.getResourceManager().createTexture({
             .extent = vk::Extent2D {1, 1},
             .format = vk::Format::eR8G8B8A8Unorm,
             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment
         });
         ASSERT_TRUE(unsampledMetallicRoughnessMap.has_value()) << unsampledMetallicRoughnessMap.error().message;
-        expectInvalidOcclusionMap(context, view->camera, meshes->cube, *unsampledMetallicRoughnessMap);
-        auto unsampledEmissiveMap = context.createTexture({
+        expectInvalidOcclusionMap(context, *target, view->camera, meshes->cube, *unsampledMetallicRoughnessMap);
+        auto unsampledEmissiveMap = context.getResourceManager().createTexture({
             .extent = vk::Extent2D {1, 1},
             .format = vk::Format::eR8G8B8A8Srgb,
             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment
         });
         ASSERT_TRUE(unsampledEmissiveMap.has_value()) << unsampledEmissiveMap.error().message;
-        expectInvalidEmissiveMap(context, view->camera, meshes->cube, *unsampledEmissiveMap);
+        expectInvalidEmissiveMap(context, *target, view->camera, meshes->cube, *unsampledEmissiveMap);
         auto unsampledMrView =
             panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto unsampledMrDraw = panda::MeshDraw {};
         unsampledMrDraw.mesh = meshes->cube;
         unsampledMrDraw.material.metallicRoughnessTexture = *unsampledMetallicRoughnessMap;
         unsampledMrView.meshes.push_back(unsampledMrDraw);
-        const auto unsampledMrResult = context.render(unsampledMrView);
+        const auto unsampledMrResult = context.getOffscreenRenderer().render(unsampledMrView, *target);
         ASSERT_FALSE(unsampledMrResult.has_value());
         EXPECT_EQ(unsampledMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
-        auto unuploadedMap = context.createTexture({
+        auto unuploadedMap = context.getResourceManager().createTexture({
             .extent = vk::Extent2D {1, 1},
             .format = vk::Format::eR8G8B8A8Srgb,
             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
         });
         ASSERT_TRUE(unuploadedMap.has_value()) << unuploadedMap.error().message;
-        expectInvalidEmissiveMap(context, view->camera, meshes->cube, *unuploadedMap);
+        expectInvalidEmissiveMap(context, *target, view->camera, meshes->cube, *unuploadedMap);
         auto unuploadedMapView =
             panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto unuploadedBaseColorDraw = panda::MeshDraw {};
         unuploadedBaseColorDraw.mesh = meshes->cube;
         unuploadedBaseColorDraw.material.baseColorTexture = *unuploadedMap;
         unuploadedMapView.meshes.push_back(unuploadedBaseColorDraw);
-        const auto unuploadedMapResult = context.render(unuploadedMapView);
+        const auto unuploadedMapResult = context.getOffscreenRenderer().render(unuploadedMapView, *target);
         ASSERT_FALSE(unuploadedMapResult.has_value());
         EXPECT_EQ(unuploadedMapResult.error().code, panda::ErrorCode::InvalidArgument);
 
-        auto unuploadedMrMap = context.createTexture({
+        auto unuploadedMrMap = context.getResourceManager().createTexture({
             .extent = vk::Extent2D {1, 1},
             .format = vk::Format::eR8G8B8A8Unorm,
             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
         });
         ASSERT_TRUE(unuploadedMrMap.has_value()) << unuploadedMrMap.error().message;
-        expectInvalidOcclusionMap(context, view->camera, meshes->cube, *unuploadedMrMap);
+        expectInvalidOcclusionMap(context, *target, view->camera, meshes->cube, *unuploadedMrMap);
         auto unuploadedMrView =
             panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto unuploadedMrDraw = panda::MeshDraw {};
         unuploadedMrDraw.mesh = meshes->cube;
         unuploadedMrDraw.material.metallicRoughnessTexture = *unuploadedMrMap;
         unuploadedMrView.meshes.push_back(unuploadedMrDraw);
-        const auto unuploadedMrResult = context.render(unuploadedMrView);
+        const auto unuploadedMrResult = context.getOffscreenRenderer().render(unuploadedMrView, *target);
         ASSERT_FALSE(unuploadedMrResult.has_value());
         EXPECT_EQ(unuploadedMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
@@ -1181,27 +1219,17 @@ TEST(WindowedContextSystem, PresentsBlendedAndMaskedAlphaFaceModesAndReflectedMe
         auto negativeEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube};
         negativeEmissiveDraw.material.emissive = {-1.0F, 0.0F, 0.0F};
         negativeEmissiveView.meshes.push_back(negativeEmissiveDraw);
-        const auto negativeEmissiveResult = context.render(negativeEmissiveView);
+        const auto negativeEmissiveResult = context.getOffscreenRenderer().render(negativeEmissiveView, *target);
         ASSERT_FALSE(negativeEmissiveResult.has_value());
         EXPECT_EQ(negativeEmissiveResult.error().code, panda::ErrorCode::InvalidArgument);
-        const auto frame = context.render(*view);
+        const auto frame = context.getOffscreenRenderer().render(*view, *target);
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
-        EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+        EXPECT_EQ(frame->status, panda::FrameResult::Status::Rendered);
         EXPECT_TRUE(frame->effectiveSampleCount == vk::SampleCountFlagBits::e1 ||
                     frame->effectiveSampleCount == vk::SampleCountFlagBits::e2 ||
                     frame->effectiveSampleCount == vk::SampleCountFlagBits::e4);
-        ASSERT_TRUE(window->setSize({240, 180}));
-        ASSERT_TRUE(window->processInput());
-        const auto resizedExtent = window->getFramebufferExtent();
-        ASSERT_TRUE(resizedExtent);
-        EXPECT_NE(resizedExtent->width, extent->width);
-        EXPECT_NE(resizedExtent->height, extent->height);
-        const auto resizedFrame = context.render(*view);
-        ASSERT_TRUE(resizedFrame.has_value()) << resizedFrame.error().message;
-        EXPECT_EQ(resizedFrame->status, panda::FrameResult::Status::Presented);
         view->meshes.clear();
         verifyCompletion(context, frame->completion);
-        verifyCompletion(context, resizedFrame->completion);
     }
     const auto validationError = std::ranges::find_if(records.entries, [](const auto& entry) {
         return entry.level == panda::log::Level::Error;

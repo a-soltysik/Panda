@@ -15,6 +15,7 @@
 #include <panda/Context.hpp>
 #include <panda/Cube.hpp>
 #include <panda/Error.hpp>
+#include <panda/FrameResult.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/PerformanceManager.hpp>
@@ -59,6 +60,7 @@ auto statusFromPanda(panda::FrameResult::Status status) -> FrameStatus
     {
     case panda::FrameResult::Status::Presented:
         return FrameStatus::Presented;
+    case panda::FrameResult::Status::Rendered:
     case panda::FrameResult::Status::Skipped:
         return FrameStatus::Skipped;
     case panda::FrameResult::Status::Suspended:
@@ -118,7 +120,7 @@ void configureLights(panda::RenderView& view, std::uint32_t lightCount)
 auto waitForCubeUpload(const panda::Context& context, const panda::CompletionPoint& completion)
     -> std::expected<void, Failure>
 {
-    const auto waited = context.wait(completion, std::chrono::seconds {30});
+    const auto waited = context.getSubmissionManager().wait(completion, std::chrono::seconds {30});
     if (!waited)
     {
         return std::unexpected {failFromPanda(waited.error())};
@@ -133,7 +135,7 @@ auto waitForCubeUpload(const panda::Context& context, const panda::CompletionPoi
 auto uploadCube(const panda::Context& context, panda::Mesh& mesh, const panda::Geometry& geometry)
     -> std::expected<void, Failure>
 {
-    auto uploadBatch = context.createUploadBatch();
+    auto uploadBatch = context.getSubmissionManager().createUploadBatch();
     if (!uploadBatch)
     {
         return std::unexpected {failFromPanda(uploadBatch.error())};
@@ -153,7 +155,7 @@ auto uploadCube(const panda::Context& context, panda::Mesh& mesh, const panda::G
 auto addUploadedCube(const panda::Context& context, panda::RenderView& view) -> std::expected<void, Failure>
 {
     const auto geometry = panda::createCubeGeometry();
-    auto mesh = context.createMeshFromGeometry(geometry);
+    auto mesh = context.getResourceManager().createMeshFromGeometry(geometry);
     if (!mesh)
     {
         return std::unexpected {failFromPanda(mesh.error())};
@@ -207,7 +209,12 @@ auto VulkanSmokeRunBackend::effectiveSampleCount() const noexcept -> std::uint32
 
 auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
 {
-    const auto frame = checkedContext().render(_view);
+    const auto renderer = checkedContext().getWindowRenderer();
+    if (!renderer)
+    {
+        return std::unexpected {backendFailure("The benchmark context has no window renderer")};
+    }
+    const auto frame = renderer->get().render(_view);
     if (!frame)
     {
         return std::unexpected {failFromPanda(frame.error())};
@@ -246,7 +253,7 @@ auto VulkanSmokeRunBackend::processInput() -> std::expected<void, Failure>
 
 auto VulkanSmokeRunBackend::waitForLastFrame(std::chrono::nanoseconds timeout) -> std::expected<void, Failure>
 {
-    const auto waited = checkedContext().wait(_lastCompletion, timeout);
+    const auto waited = checkedContext().getSubmissionManager().wait(_lastCompletion, timeout);
     if (!waited)
     {
         return std::unexpected {failFromPanda(waited.error())};

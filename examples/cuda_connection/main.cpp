@@ -31,7 +31,7 @@ constexpr auto handoffPassCount = std::uint32_t {3};
 void runHandoffPass(panda::Context& context, panda::cuda::SharedCudaBuffer& sharedBuffer, std::uint32_t pass)
 {
     const auto values = std::array {pass};
-    auto uploadBatch = panda::expect(context.createUploadBatch(), "Create the upload batch");
+    auto uploadBatch = panda::expect(context.getSubmissionManager().createUploadBatch(), "Create the upload batch");
     panda::expect(uploadBatch.write(sharedBuffer.getBuffer(), 0, std::as_bytes(std::span {values})),
                   "Stage the pass value");
     std::ignore = panda::expect(uploadBatch.submit(), "Submit the upload");

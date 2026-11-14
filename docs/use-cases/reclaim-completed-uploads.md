@@ -4,7 +4,7 @@
 
 This UC releases Context-owned upload packets after the GPU has
 completed the work they retain. It is triggered when a Context operation
-opportunistically collects uploads, when `Context::poll()` or `Context::wait()`
+opportunistically collects uploads, when `SubmissionManager::poll()` or `SubmissionManager::wait()`
 updates the shared completion counter, or when Context drains pending uploads
 during shutdown. It ends when completed packet owners are released or
 when a query/wait error is returned with the relevant pending state preserved.
@@ -60,7 +60,7 @@ complete. If the pending upload with the greatest completion value has value N
 and C<N, `collectCompleted()` releases packets with values no greater than C
 and retains packets with values greater than C.
 
-**Other completion paths.** `Context::poll()` and `Context::wait()` query or wait
+**Other completion paths.** `SubmissionManager::poll()` and `SubmissionManager::wait()` query or wait
 for a caller-supplied point, then ask the manager to release packets whose
 completion values are no greater than the updated counter. `UploadManager::drain()`
 waits for the pending upload with the greatest completion value, then releases
@@ -82,7 +82,7 @@ services they borrow.
 |                    | Point and condition                                                                                                      | Response                                            | Resulting state and next action                                                                                                                                                    |
 |--------------------|--------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Variant&nbsp;1** | Step 1: no pending packets and the queue is not marked device-lost                                                       | Return success without querying the queue           | No packet changes state                                                                                                                                                            |
-| **Variant&nbsp;2** | Step 2: `Context::wait()` reaches its deadline without confirming that the completed value has reached the point's value | Return `WaitStatus::Timeout` as a successful result | Packets with completion values no greater than the known completed value may be released; all others stay retained, and the caller may poll or wait again                          |
+| **Variant&nbsp;2** | Step 2: `SubmissionManager::wait()` reaches its deadline without confirming that the completed value has reached the point's value | Return `WaitStatus::Timeout` as a successful result | Packets with completion values no greater than the known completed value may be released; all others stay retained, and the caller may poll or wait again                          |
 | **Error&nbsp;1**   | Step 2: timeline query fails or the device is lost                                                                       | Propagate the error                                 | Pending packets remain retained; follow the error category and do not assume safe release                                                                                          |
 | **Error&nbsp;2**   | `UploadManager::drain()` times out while waiting for the pending upload with the greatest completion value               | Return `Timeout`                                    | The pending list remains; no uncompleted owner is released, and a later drain may retry if the device remains usable                                                               |
 | **Error&nbsp;3**   | Shutdown cannot confirm a safe drain                                                                                     | Context emits a fatal diagnostic and stops teardown | No recoverable Context remains; pending packets are not treated as completed. See the [resource lifetime contract](../design/contracts/resources.md#frame-contexts-and-retirement) |

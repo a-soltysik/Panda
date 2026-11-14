@@ -5,8 +5,8 @@
 After successful GPU work submission, an application uses its `CompletionPoint` to
 check whether the GPU has finished or to wait for a bounded time. The point may
 come from `UploadBatch::submit()` or from a submitted `FrameResult`. The flow starts
-with that point and a live owning `Context`, and ends when `Context::poll()` or
-`Context::wait()` returns a completion state or error.
+with that point and a live owning `Context`, and ends when `SubmissionManager::poll()` or
+`SubmissionManager::wait()` returns a completion state or error.
 
 **Panda** validates the point and observes the Context's shared submission timeline. **The application** chooses whether
 to poll or wait and keeps the owning Context
@@ -16,7 +16,7 @@ appeared on screen.
 ## Main flow
 
 1. **Choose an observation.** The application passes the point to
-   `Context::poll()` for a nonblocking query or to `Context::wait()` with a
+   `SubmissionManager::poll()` for a nonblocking query or to `SubmissionManager::wait()` with a
    nonnegative timeout for an explicit wait.
 2. **Check the submitted value.** Context asks its `SubmissionQueue` to validate
    that the point belongs to this Context and identifies committed work. Polling

@@ -14,11 +14,11 @@ namespace
 {
 void exerciseOwnership(panda::Context& context, panda::BufferMemory intent)
 {
-    auto created =
-        context.createBuffer({.size = 257, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = intent});
+    auto created = context.getResourceManager().createBuffer(
+        {.size = 257, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = intent});
     ASSERT_TRUE(created) << created.error().message;
-    auto second =
-        context.createBuffer({.size = 257, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = intent});
+    auto second = context.getResourceManager().createBuffer(
+        {.size = 257, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = intent});
     ASSERT_TRUE(second) << second.error().message;
     auto copy = *created;
     EXPECT_EQ(copy.getSize(), 257);
