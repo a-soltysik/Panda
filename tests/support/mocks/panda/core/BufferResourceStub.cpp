@@ -6,9 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <functional>
 #include <memory>
-#include <optional>
 #include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <span>
@@ -110,16 +108,15 @@ void BufferResource::setExternallyOwned(bool externallyOwned) noexcept
     _externallyOwned = externallyOwned;
 }
 
-void BufferResource::setExternalInterop(ExternalBufferInterop& context,
-                                        std::shared_ptr<ExternalSemaphoreResource> semaphore) noexcept
+void BufferResource::setExternalInterop(std::shared_ptr<ExternalSemaphoreResource> semaphore) noexcept
 {
-    _externalInterop.emplace(context);
+    _exportable = true;
     _externalSemaphore = std::move(semaphore);
 }
 
-auto BufferResource::getExternalInterop() const noexcept -> std::optional<std::reference_wrapper<ExternalBufferInterop>>
+auto BufferResource::isExportable() const noexcept -> bool
 {
-    return _externalInterop;
+    return _exportable;
 }
 
 auto BufferResource::getExternalSemaphore() const noexcept -> const std::shared_ptr<ExternalSemaphoreResource>&
