@@ -37,8 +37,9 @@ samples are owned by the Engine; the borrowed manager must not outlive it.
    CPU does not itself measure GPU time. After the queue accepts the command buffer,
    `FrameExecution` then associates that slot's query pool with the committed
    `CompletionPoint` through the performance manager, which assigns a frame index.
-3. **Pair the CPU duration.** After the rendering call returns, `Engine` records
-   the elapsed wall duration for the submitted slot and returns the frame result.
+3. **Pair the CPU duration.** After the rendering call returns,
+   `WindowRenderer` or `OffscreenRenderer` records the elapsed wall duration for
+   the submitted slot and returns the frame result.
    The duration covers the whole Panda call, including CPU waits and, for the
    windowed path, presentation. It excludes application work outside the call and
    display latency.
@@ -61,20 +62,21 @@ samples are owned by the Engine; the borrowed manager must not outlive it.
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Engine
+    participant W as WindowRenderer
+    participant R as OffscreenRenderer
+    participant F as OffscreenRendering
     participant P as Presentation
-    participant O as OffscreenRendering
     participant E as FrameExecution
     participant M as PerformanceManager
     participant Q as SubmissionQueue
     participant V as Vulkan
-    A ->> C: Step 1 - getPerformanceManager()
-    C -->> A: Borrowed manager
+    A ->> M: Step 1 - getPerformanceManager()
+    M -->> A: Borrowed manager
     A ->> M: Step 1 - getCapabilities()
     M -->> A: Timestamp support and sampling state
     alt Windowed Engine
-        A ->> C: Step 2 - WindowRenderer::render(view)
-        C ->> P: Step 2 - render the view
+        A ->> W: Step 2 - render(view)
+        W ->> P: Step 2 - render the view
         P ->> E: Step 2 - record view content
         E ->> M: Step 2 - record start and end GPU timestamp markers
         M ->> V: Record vkCmdWriteTimestamp2 at color-attachment output stage
@@ -83,22 +85,28 @@ sequenceDiagram
         Q -->> P: Committed completion point
         P ->> E: Commit windowed slot after successful submit
         E ->> M: Associate queries with completion point and frame index
-        P -->> C: Frame result or post-submit presentation error
+        P -->> W: Frame result or post-submit presentation error
+        opt Submission was committed
+            W ->> M: Step 3 - record CPU frame duration
+        end
+        W -->> A: Step 3 - return frame result or error
     else Headless or windowed offscreen rendering
-        A ->> C: Step 2 - OffscreenRenderer::render(view, target)
-        C ->> O: Step 2 - render the view into the target
-        O ->> E: Step 2 - record view content
+        A ->> R: Step 2 - render(view, target)
+        R ->> F: Initialize lazily and render view
+        F ->> E: Step 2 - record view content
         E ->> M: Step 2 - record start and end GPU timestamp markers
         M ->> V: Record vkCmdWriteTimestamp2 at color-attachment output stage
-        O ->> Q: Step 2 - submit marked command buffer
+        F ->> Q: Step 2 - submit marked command buffer
         Q -) V: Queue accepts frame work and timeline signal
-        Q -->> O: Committed completion point
-        O ->> E: Commit offscreen slot after successful submit
+        Q -->> F: Committed completion point
+        F ->> E: Commit offscreen slot after successful submit
         E ->> M: Associate queries with completion point and frame index
-        O -->> C: Frame result
+        F -->> R: Frame result
+        opt Submission was committed
+            R ->> M: Step 3 - record CPU frame duration
+        end
+        R -->> A: Step 3 - return frame result or error
     end
-    C ->> M: Step 3 - record CPU frame duration
-    C -->> A: Step 3 - return frame result or error
     A ->> M: Step 4 - peek or take ready samples
     M ->> Q: Step 4 - poll each submitted completion point
     Q -->> M: Completed or pending
@@ -139,9 +147,9 @@ removes all ready samples in frame-index order. A take call is needed to free
 buffered samples, so long-running applications should drain regularly.
 
 **Submitted frame with a presentation error.** The manager associates timestamps
-with the frame as soon as queue submission succeeds. `Engine` records that frame's
-CPU duration even if presentation then returns an error, so the submitted frame can
-still produce a sample. The error does not undo GPU work; see
+with the frame as soon as queue submission succeeds. `WindowRenderer` records that
+frame's CPU duration even if presentation then returns an error, so the submitted
+frame can still produce a sample. The error does not undo GPU work; see
 [UC Render and present an application view](render-view.md) for frame
 recovery outcomes.
 

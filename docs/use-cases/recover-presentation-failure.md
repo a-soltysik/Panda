@@ -2,7 +2,7 @@
 
 ## Goal and boundary
 
-After normal frame work is submitted, `Presentation::presentFrame()` queues the
+After `WindowRenderer` submits a validated view, `Presentation::presentFrame()` queues the
 swapchain image and associates a per-image present fence. If `vkQueuePresentKHR`
 returns an error for which no presentation request was enqueued, Panda must
 retire the GPU producer, replace its unconsumed render-finished semaphore, release
@@ -23,14 +23,18 @@ not rolled back.
    the old owner retires the binary semaphore that rendering signaled but
    presentation never waited on.
 4. **Release and request recreation.** Panda releases the acquired image through
-   swapchain maintenance, clears pending recovery, sets recreation pending and
-   returns the original present error to the caller.
+   swapchain maintenance, clears pending recovery and sets recreation pending.
+   `Presentation` returns the original present error through `WindowRenderer` to
+   the application.
 
 ```mermaid
 sequenceDiagram
+    participant A as Application
+    participant W as WindowRenderer
     participant P as Presentation
     participant Q as SubmissionQueue
     participant V as Vulkan
+    W->>P: Step 1 - render the validated view
     P->>V: Step 1 - queue present with render-finished wait and present fence
     V-->>P: Non-enqueued present error
     P->>P: Step 2 - retain image index and cleanup action
@@ -42,7 +46,8 @@ sequenceDiagram
     P->>V: Step 4 - release acquired image
     V-->>P: Release result
     P->>P: Mark recreation pending
-    P-->>P: Return original present error
+    P-->>W: Return original present error
+    W-->>A: Return Result<FrameResult>
 ```
 
 ## Notes

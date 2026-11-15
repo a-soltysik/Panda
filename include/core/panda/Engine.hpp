@@ -101,10 +101,12 @@ public:
 
     /// @brief Borrows this Engine's offscreen renderer.
     /// @return A renderer that can target any compatible OffscreenTarget from this Engine.
+    /// Its address remains stable when Engine is moved; moved-from access is a fatal contract error.
     [[nodiscard]] auto getOffscreenRenderer() const -> const OffscreenRenderer&;
 
     /// @brief Borrows this Engine's window renderer when it has a window surface.
     /// @return A renderer reference, or an empty optional for a headless Engine.
+    /// Its address remains stable when Engine is moved.
     [[nodiscard]] auto getWindowRenderer() const -> std::optional<std::reference_wrapper<const WindowRenderer>>;
 
     /// @brief Borrows the Engine-owned performance data manager.
@@ -116,26 +118,13 @@ public:
     [[nodiscard]] auto getExternalBufferManager() -> ExternalBufferManager&;
 
 private:
-    friend class OffscreenRenderer;
-    friend class WindowRenderer;
-
     class Impl;
-
-    [[nodiscard]] auto renderWindow(const RenderView& view) const -> Result<FrameResult>;
-    [[nodiscard]] auto renderWindowWithCapture(const RenderView& view, const OffscreenTarget& target) const
-        -> Result<FrameResult>;
-    [[nodiscard]] auto renderOffscreen(const RenderView& view, const OffscreenTarget& target) const
-        -> Result<FrameResult>;
-    [[nodiscard]] auto readPixels(const OffscreenTarget& target, CompletionPoint completion) const
-        -> Result<ImageReadback>;
 
     [[nodiscard]] static auto createInternal(const WindowSurface* surface, const EngineOptions& options)
         -> Result<Engine>;
     explicit Engine(std::unique_ptr<Impl> implementation) noexcept;
 
     std::unique_ptr<Impl> _implementation;
-    OffscreenRenderer _offscreenRenderer;
-    WindowRenderer _windowRenderer;
     PerformanceManager _performanceManager;
     ExternalBufferManager _externalBufferManager;
 };

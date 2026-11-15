@@ -1,0 +1,144 @@
+// clang-format off
+#include "VulkanHpp.hpp" // IWYU pragma: keep
+#include <vulkan/vulkan.hpp>
+// clang-format on
+
+#include "vulkan/presentation/OffscreenRendering.hpp"
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include <vulkan/vulkan_core.h>
+
+#include <expected>
+#include <memory>
+#include <optional>
+#include <panda/Error.hpp>
+#include <tuple>
+#include <utility>
+
+#include "ScopedMock.hpp"
+#include "VulkanTestSupport.hpp"
+#include "external/vulkan/VulkanMock.hpp"
+#include "panda/core/SubmissionQueueMock.hpp"
+#include "vulkan/SubmissionQueue.hpp"
+#include "vulkan/resources/memory/MemoryPool.hpp"
+
+namespace
+{
+using panda::test::fakeVulkanHandle;
+using testing::_;
+using testing::NotNull;
+
+constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
+constexpr auto initializationFailure = static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
+
+class OffscreenRenderingTest : public testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        EXPECT_CALL(submissionQueue, construct(_, 0));
+        _submissions.emplace(_device, 0);
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(fakeVulkanHandle<VkPhysicalDevice>(2), NotNull()))
+            .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
+                *output = VkPhysicalDeviceMemoryProperties {};
+            });
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(fakeVulkanHandle<VkPhysicalDevice>(2), NotNull()))
+            .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                auto* const maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
+                ASSERT_NE(maintenance, nullptr);
+                maintenance->maxMemoryAllocationSize = 1024;
+            });
+        _pool = panda::core::vulkan::resources::MemoryPool::create(_physicalDevice, _device);
+        _rendering = std::make_unique<panda::core::vulkan::presentation::OffscreenRendering>(
+            panda::core::vulkan::presentation::OffscreenRenderingCreateInfo {
+                .physicalDevice = vk::PhysicalDevice {fakeVulkanHandle<VkPhysicalDevice>(2)},
+                .device = _device,
+                .queueFamily = 0,
+                .submissions = *_submissions,
+                .pool = *_pool,
+                .performance = nullptr,
+                .maxLights = 0});
+    }
+
+    void TearDown() override
+    {
+        _rendering.reset();
+        _pool.reset();
+        _submissions.reset();
+        std::ignore = _device.release();
+        std::ignore = _instance.release();
+    }
+
+    auto rendering() -> panda::core::vulkan::presentation::OffscreenRendering&
+    {
+        return *_rendering;
+    }
+
+    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
+    panda::test::ScopedMock<panda::test::SubmissionQueueMock> submissionQueue;
+
+private:
+    vk::raii::Context _loader {vkGetInstanceProcAddr};
+    vk::raii::Instance _instance {_loader, fakeVulkanHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice _physicalDevice {_instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device _device {_physicalDevice, fakeVulkanHandle<VkDevice>(3)};
+    std::optional<panda::detail::SubmissionQueue> _submissions;
+    std::unique_ptr<panda::core::vulkan::resources::MemoryPool> _pool;
+    std::unique_ptr<panda::core::vulkan::presentation::OffscreenRendering> _rendering;
+};
+}
+
+TEST_F(OffscreenRenderingTest, InitializationFailureIsRetryableAndSuccessIsIdempotent)
+{
+    auto* const firstPool = fakeVulkanHandle<VkCommandPool>(10);
+    auto* const secondPool = fakeVulkanHandle<VkCommandPool>(11);
+    auto* const firstCommand = fakeVulkanHandle<VkCommandBuffer>(12);
+    auto* const secondCommand = fakeVulkanHandle<VkCommandBuffer>(13);
+    {
+        const auto sequence = testing::InSequence {};
+        EXPECT_CALL(vulkan, vkCreateCommandPool(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+            .WillOnce([](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool*) {
+                return initializationFailure;
+            });
+        EXPECT_CALL(vulkan, vkCreateCommandPool(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+            .WillOnce([firstPool](VkDevice,
+                                  const VkCommandPoolCreateInfo*,
+                                  const VkAllocationCallbacks*,
+                                  VkCommandPool* out) {
+                *out = firstPool;
+                return success;
+            });
+        EXPECT_CALL(vulkan, vkAllocateCommandBuffers(fakeVulkanHandle<VkDevice>(3), NotNull(), NotNull()))
+            .WillOnce([firstCommand](VkDevice, const VkCommandBufferAllocateInfo*, VkCommandBuffer* out) {
+                *out = firstCommand;
+                return success;
+            });
+        EXPECT_CALL(vulkan, vkCreateCommandPool(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+            .WillOnce([secondPool](VkDevice,
+                                   const VkCommandPoolCreateInfo*,
+                                   const VkAllocationCallbacks*,
+                                   VkCommandPool* out) {
+                *out = secondPool;
+                return success;
+            });
+        EXPECT_CALL(vulkan, vkAllocateCommandBuffers(fakeVulkanHandle<VkDevice>(3), NotNull(), NotNull()))
+            .WillOnce([secondCommand](VkDevice, const VkCommandBufferAllocateInfo*, VkCommandBuffer* out) {
+                *out = secondCommand;
+                return success;
+            });
+    }
+    EXPECT_CALL(vulkan, vkDestroyCommandPool(fakeVulkanHandle<VkDevice>(3), firstPool, nullptr));
+    EXPECT_CALL(vulkan, vkDestroyCommandPool(fakeVulkanHandle<VkDevice>(3), secondPool, nullptr));
+
+    const auto failed = rendering().initialize();
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::BackendFailure);
+    ASSERT_TRUE(rendering().initialize());
+    EXPECT_TRUE(rendering().initialize());
+}
+
+TEST_F(OffscreenRenderingTest, UninitializedShellDrainsWithoutNativeWork)
+{
+    EXPECT_TRUE(rendering().drain());
+}
