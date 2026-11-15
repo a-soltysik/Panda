@@ -142,12 +142,8 @@ TEST_F(UploadCommandTest, PreservesCommandPoolCreationFailure)
 
     ASSERT_FALSE(command);
     const auto& native = command.error().native;
-    if (!native.has_value())
-    {
-        FAIL() << "Expected a native Vulkan error";
-        return;
-    }
-    EXPECT_EQ(native->code, static_cast<std::int64_t>(failure));
+    ASSERT_TRUE(native.has_value()) << "Expected a native Vulkan error";
+    EXPECT_EQ(native.value().code, static_cast<std::int64_t>(failure));
 }
 
 TEST_F(UploadCommandTest, DestroysTheCommandPoolWhenCommandBufferAllocationFails)
@@ -161,12 +157,8 @@ TEST_F(UploadCommandTest, DestroysTheCommandPoolWhenCommandBufferAllocationFails
 
     ASSERT_FALSE(command);
     const auto& native = command.error().native;
-    if (!native.has_value())
-    {
-        FAIL() << "Expected a native Vulkan error";
-        return;
-    }
-    EXPECT_EQ(native->code, static_cast<std::int64_t>(failure));
+    ASSERT_TRUE(native.has_value()) << "Expected a native Vulkan error";
+    EXPECT_EQ(native.value().code, static_cast<std::int64_t>(failure));
 }
 
 TEST_F(UploadCommandTest, DestroysTheCommandPoolWhenRecordingCannotBegin)

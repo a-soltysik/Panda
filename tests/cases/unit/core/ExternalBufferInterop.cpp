@@ -439,15 +439,10 @@ TEST_F(ExternalBufferInteropTest, PropagatesMemoryHandleExportFailure)
 
     ASSERT_FALSE(created);
     EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
-    if (const auto& native = created.error().native; native)
-    {
-        EXPECT_EQ(native->api, "Vulkan");
-        EXPECT_EQ(native->code, static_cast<std::int64_t>(vk::Result::eErrorOutOfHostMemory));
-    }
-    else
-    {
-        FAIL() << "Expected native Vulkan error";
-    }
+    const auto& native = created.error().native;
+    ASSERT_TRUE(native.has_value()) << "Expected native Vulkan error";
+    EXPECT_EQ(native.value().api, "Vulkan");
+    EXPECT_EQ(native.value().code, static_cast<std::int64_t>(vk::Result::eErrorOutOfHostMemory));
 }
 
 TEST_F(ExternalBufferInteropTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimelineValue)
