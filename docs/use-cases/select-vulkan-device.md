@@ -26,9 +26,10 @@ falls back to the first compatible device in Vulkan enumeration order.
 
 ## Main flow
 
-1. **Enumerate physical devices.** The Engine resource factory passes `selectDevice()`
-   the live instance, optional surface and resolved `InstanceExtensions`, then the
-   selection asks the Vulkan instance for its physical devices. For a windowed
+1. **Enumerate physical devices.** The Engine resource factory reads the live
+   instance, optional surface and resolved `InstanceExtensions` from
+   `DeviceContext`, passes them to `selectDevice()`, then selection asks the Vulkan
+   instance for its physical devices. For a windowed
    Engine, setup resolves and enables `VK_KHR_surface`, the provider's platform
    surface extension, `VK_KHR_get_surface_capabilities2` and the available KHR or
    EXT surface-maintenance1 instance extension (s); at least one maintenance variant
@@ -47,15 +48,18 @@ falls back to the first compatible device in Vulkan enumeration order.
 4. **Choose and report one candidate.** Among compatible candidates, Panda
    chooses the first discrete GPU if present, otherwise the first candidate. It
    returns driver/device details, queue families, timestamp properties and the
-   selected maintenance variant to the Engine resource factory.
+   selected maintenance variant to the Engine resource factory, which stores the
+   physical-device wrapper and final diagnostics in `DeviceContext`.
 
 ```mermaid
 sequenceDiagram
     participant C as engine::createResources
+    participant X as DeviceContext
     participant S as Device selection
     participant I as Vulkan instance
     participant D as Physical device
-    C->>S: Step 1 - selectDevice(instance, optional surface, extensions)
+    C->>X: Read instance, optional surface and InstanceExtensions
+    C->>S: Step 1 - Pass those values to selectDevice()
     S->>I: Enumerate physical devices
     I-->>S: Candidate devices
     loop Each physical device
@@ -79,6 +83,7 @@ sequenceDiagram
     end
     S->>S: Step 4 - Prefer first discrete candidate, otherwise first candidate
     S-->>C: Selected physical device, queues and properties
+    C->>X: Store physical-device wrapper
 ```
 
 ## Notes
@@ -119,8 +124,9 @@ later adapter qualifies, the first remembered error does not prevent its use.
 
 On success, the Engine resource factory receives one candidate whose required
 features were queried and whose work/presentation queues meet the selected path.
-The following logical-device creation step enables the queried features and
-creates the returned queues.
+It stores the physical-device wrapper in `DeviceContext`; the following
+logical-device creation step enables the queried features and creates the returned
+queues.
 
 On failure, no physical-device candidate is published to the public API and the
 Engine creation flow returns an error. Selection does not silently fall back to an

@@ -20,12 +20,14 @@
 #include <utility>
 #include <vector>
 
-#include "ContextResources.hpp"
+#include "DeviceContext.hpp"
 #include "DeviceSelection.hpp"
+#include "EngineCreateInfo.hpp"
 #include "InstanceCreation.hpp"
 #include "SubmissionQueue.hpp"
 #include "external/ExternalBufferInterop.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
+#include "presentation/OffscreenRendering.hpp"
 #include "presentation/Presentation.hpp"
 #include "renderer/FrameBindings.hpp"
 #include "resources/memory/MemoryPool.hpp"
@@ -103,44 +105,45 @@ auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice,
     return createLogicalDevice(physicalDevice, deviceInfo);
 }
 
-auto initializeDevice(ContextResources& resources, const WindowSurface* surface, const EngineOptions& options)
+auto initializeDevice(EngineCreateInfo& resources, const WindowSurface* surface, const EngineOptions& options)
     -> Result<void>;
-auto selectPhysicalDevice(ContextResources& resources, std::uint32_t maxLights) -> Result<SelectedDevice>;
-void populateDeviceUuid(ContextResources& resources, SelectedDevice& selected);
-auto queryExternalSupport(ContextResources& resources, const EngineOptions& options)
+auto selectPhysicalDevice(EngineCreateInfo& resources, std::uint32_t maxLights) -> Result<SelectedDevice>;
+void populateDeviceUuid(EngineCreateInfo& resources, SelectedDevice& selected);
+auto queryExternalSupport(EngineCreateInfo& resources, const EngineOptions& options)
     -> Result<std::optional<api_detail::ExternalSupport>>;
-auto initializeLogicalDevice(ContextResources& resources,
+auto initializeLogicalDevice(EngineCreateInfo& resources,
                              const SelectedDevice& selected,
                              bool windowed,
                              const std::optional<api_detail::ExternalSupport>& externalSupport) -> Result<void>;
-auto initializeSelectedDevice(ContextResources& resources,
+auto initializeSelectedDevice(EngineCreateInfo& resources,
                               const WindowSurface* surface,
                               const SelectedDevice& selected,
                               const EngineOptions& options) -> Result<void>;
-auto initializeSelectedDeviceResources(ContextResources& resources,
+auto initializeSelectedDeviceResources(EngineCreateInfo& resources,
                                        const SelectedDevice& selected,
                                        DeviceResourceOptions options) -> Result<void>;
-auto initializePerformance(ContextResources& resources,
+auto initializePerformance(EngineCreateInfo& resources,
                            const SelectedDevice& selected,
                            bool enableFramePerformanceSampling) -> Result<void>;
-auto initializePresentation(ContextResources& resources,
+auto initializePresentation(EngineCreateInfo& resources,
                             const WindowSurface& surface,
                             const SelectedDevice& selected,
                             std::uint32_t maxLights) -> Result<void>;
-void updateDeviceInfo(ContextResources& resources, const SelectedDevice& selected);
+void updateDeviceInfo(EngineCreateInfo& resources, const SelectedDevice& selected);
 }
 
-auto createResources(const WindowSurface* surface, const EngineOptions& options)
-    -> Result<std::unique_ptr<ContextResources>>
+auto createResources(const WindowSurface* surface, const EngineOptions& options) -> Result<EngineCreateInfo>
 {
-    auto resources = std::make_unique<ContextResources>();
-    auto instanceResources = instance::createResources(resources->loader(), surface, options);
+    auto resources = EngineCreateInfo {};
+    resources.device = std::make_unique<DeviceContext>();
+    resources.maxLights = options.maxLights;
+    auto instanceResources = instance::createResources(resources.device->loader, surface, options);
     if (!instanceResources)
     {
         return std::unexpected {instanceResources.error()};
     }
-    resources->instance() = std::move(*instanceResources);
-    if (const auto initialized = initializeDevice(*resources, surface, options); !initialized)
+    resources.device->instance = std::move(*instanceResources);
+    if (const auto initialized = initializeDevice(resources, surface, options); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
@@ -149,16 +152,16 @@ auto createResources(const WindowSurface* surface, const EngineOptions& options)
 
 namespace
 {
-auto selectPhysicalDevice(ContextResources& resources, std::uint32_t maxLights) -> Result<SelectedDevice>
+auto selectPhysicalDevice(EngineCreateInfo& resources, std::uint32_t maxLights) -> Result<SelectedDevice>
 {
-    const auto& instanceResources = resources.instance();
+    const auto& instanceResources = resources.device->instance;
     const auto surface = instanceResources.surface ? **instanceResources.surface : vk::SurfaceKHR {};
     auto selected = selectDevice(*instanceResources.instance, surface, instanceResources.extensions);
     if (!selected)
     {
         return std::unexpected {std::move(selected.error())};
     }
-    resources.physicalDevice() = vk::raii::PhysicalDevice {resources.instance().instance, selected->physicalDevice};
+    resources.device->physicalDevice = vk::raii::PhysicalDevice {instanceResources.instance, selected->physicalDevice};
     if (const auto supported = renderer::FrameBindings::validateDeviceLimits(selected->limits, maxLights); !supported)
     {
         return std::unexpected {supported.error()};
@@ -166,34 +169,34 @@ auto selectPhysicalDevice(ContextResources& resources, std::uint32_t maxLights) 
     return selected;
 }
 
-auto queryExternalSupport(ContextResources& resources, const EngineOptions& options)
+auto queryExternalSupport(EngineCreateInfo& resources, const EngineOptions& options)
     -> Result<std::optional<api_detail::ExternalSupport>>
 {
     if (options.externalBufferSupport != EngineOptions::ExternalBufferSupport::Disabled)
     {
         return api_detail::ExternalBufferInterop::querySupport(
-            resources.physicalDevice(),
+            resources.device->physicalDevice,
             options.externalBufferSupport == EngineOptions::ExternalBufferSupport::Required);
     }
     return std::nullopt;
 }
 
-auto initializeLogicalDevice(ContextResources& resources,
+auto initializeLogicalDevice(EngineCreateInfo& resources,
                              const SelectedDevice& selected,
                              bool windowed,
                              const std::optional<api_detail::ExternalSupport>& externalSupport) -> Result<void>
 {
     const auto extraExtensions = externalSupport ? externalSupport->deviceExtensions : std::vector<std::string> {};
-    auto createdDevice = makeDevice(resources.physicalDevice(), selected, windowed, extraExtensions);
+    auto createdDevice = makeDevice(resources.device->physicalDevice, selected, windowed, extraExtensions);
     if (!createdDevice)
     {
         return std::unexpected {std::move(createdDevice.error())};
     }
-    resources.device() = std::move(*createdDevice);
+    resources.device->device = std::move(*createdDevice);
     return {};
 }
 
-auto initializeDevice(ContextResources& resources, const WindowSurface* surface, const EngineOptions& options)
+auto initializeDevice(EngineCreateInfo& resources, const WindowSurface* surface, const EngineOptions& options)
     -> Result<void>
 {
     auto selected = selectPhysicalDevice(resources, options.maxLights);
@@ -223,7 +226,7 @@ auto initializeDevice(ContextResources& resources, const WindowSurface* surface,
     return initializeSelectedDevice(resources, surface, *selected, options);
 }
 
-auto initializeSelectedDevice(ContextResources& resources,
+auto initializeSelectedDevice(EngineCreateInfo& resources,
                               const WindowSurface* surface,
                               const SelectedDevice& selected,
                               const EngineOptions& options) -> Result<void>
@@ -233,9 +236,17 @@ auto initializeSelectedDevice(ContextResources& resources,
     {
         return std::unexpected {initialized.error()};
     }
+    resources.offscreenRendering = std::make_unique<presentation::OffscreenRendering>(
+        presentation::OffscreenRenderingCreateInfo {.physicalDevice = *resources.device->physicalDevice,
+                                                    .device = resources.device->device,
+                                                    .queueFamily = selected.info.queueFamily,
+                                                    .submissions = *resources.submissions,
+                                                    .pool = *resources.memoryPool,
+                                                    .performance = resources.performance.get(),
+                                                    .maxLights = resources.maxLights});
     if (surface != nullptr)
     {
-        if (const auto initialized = initializePresentation(resources, *surface, selected, options.maxLights);
+        if (const auto initialized = initializePresentation(resources, *surface, selected, resources.maxLights);
             !initialized)
         {
             return std::unexpected {initialized.error()};
@@ -245,44 +256,44 @@ auto initializeSelectedDevice(ContextResources& resources,
     return {};
 }
 
-void updateDeviceInfo(ContextResources& resources, const SelectedDevice& selected)
+void updateDeviceInfo(EngineCreateInfo& resources, const SelectedDevice& selected)
 {
-    resources.info() = selected.info;
-    resources.info().externalBufferExportEnabled = resources.externalInterop() != nullptr;
-    resources.info().externalSemaphoreExportEnabled =
-        resources.externalInterop() != nullptr && resources.externalInterop()->supportsSemaphoreExport();
+    resources.device->info = selected.info;
+    resources.device->info.externalBufferExportEnabled = resources.externalInterop != nullptr;
+    resources.device->info.externalSemaphoreExportEnabled =
+        resources.externalInterop != nullptr && resources.externalInterop->supportsSemaphoreExport();
 }
 
-void populateDeviceUuid(ContextResources& resources, SelectedDevice& selected)
+void populateDeviceUuid(EngineCreateInfo& resources, SelectedDevice& selected)
 {
-    const auto properties =
-        resources.physicalDevice().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
+    const auto properties = resources.device->physicalDevice
+                                .getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
     const auto& uuid = properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID;
     std::ranges::copy(uuid, selected.info.deviceUuid.begin());
 }
 
-auto initializeSelectedDeviceResources(ContextResources& resources,
+auto initializeSelectedDeviceResources(EngineCreateInfo& resources,
                                        const SelectedDevice& selected,
                                        DeviceResourceOptions options) -> Result<void>
 {
-    resources.memoryPool() = resources::MemoryPool::create(resources.physicalDevice(), resources.device());
-    resources.submissions() =
-        std::make_unique<api_detail::SubmissionQueue>(resources.device(), selected.info.queueFamily);
-    if (const auto initialized = resources.submissions()->initialize(*resources.physicalDevice()); !initialized)
+    resources.memoryPool = resources::MemoryPool::create(resources.device->physicalDevice, resources.device->device);
+    resources.submissions =
+        std::make_unique<api_detail::SubmissionQueue>(resources.device->device, selected.info.queueFamily);
+    if (const auto initialized = resources.submissions->initialize(*resources.device->physicalDevice); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
-    resources.uploads().emplace(resources.device(),
-                                *resources.memoryPool(),
-                                *resources.submissions(),
-                                selected.info.queueFamily);
+    resources.uploads = std::make_unique<upload::UploadManager>(resources.device->device,
+                                                                *resources.memoryPool,
+                                                                *resources.submissions,
+                                                                selected.info.queueFamily);
     if (options.externalSupport)
     {
-        resources.externalInterop() = std::make_unique<api_detail::ExternalBufferInterop>(
-            api_detail::ExternalBufferInterop::CreateInfo {.device = resources.device(),
-                                                           .pool = *resources.memoryPool(),
-                                                           .submissions = *resources.submissions(),
-                                                           .uploads = resources.uploadManager(),
+        resources.externalInterop = std::make_unique<api_detail::ExternalBufferInterop>(
+            api_detail::ExternalBufferInterop::CreateInfo {.device = resources.device->device,
+                                                           .pool = *resources.memoryPool,
+                                                           .submissions = *resources.submissions,
+                                                           .uploads = *resources.uploads,
                                                            .queueFamily = selected.info.queueFamily,
                                                            .deviceUuid = selected.info.deviceUuid,
                                                            .support = std::move(*options.externalSupport)});
@@ -290,13 +301,13 @@ auto initializeSelectedDeviceResources(ContextResources& resources,
     return {};
 }
 
-auto initializePerformance(ContextResources& resources,
+auto initializePerformance(EngineCreateInfo& resources,
                            const SelectedDevice& selected,
                            bool enableFramePerformanceSampling) -> Result<void>
 {
     auto performance = std::make_unique<api_detail::PerformanceManagerImpl>(
-        resources.device(),
-        *resources.submissions(),
+        resources.device->device,
+        *resources.submissions,
         api_detail::TimestampProperties {.validBits = selected.timestampValidBits,
                                          .periodNanoseconds = selected.timestampPeriodNanoseconds},
         enableFramePerformanceSampling);
@@ -304,31 +315,31 @@ auto initializePerformance(ContextResources& resources,
     {
         return std::unexpected {initialized.error()};
     }
-    resources.performanceManagerImplementation() = std::move(performance);
+    resources.performance = std::move(performance);
     return {};
 }
 
-auto initializePresentation(ContextResources& resources,
+auto initializePresentation(EngineCreateInfo& resources,
                             const WindowSurface& surface,
                             const SelectedDevice& selected,
                             std::uint32_t maxLights) -> Result<void>
 {
-    const auto& instanceResources = resources.instance();
+    const auto& instanceResources = resources.device->instance;
     const auto contextSurface = instanceResources.surface ? **instanceResources.surface : vk::SurfaceKHR {};
     auto presentation = Presentation::create({.physicalDevice = selected.physicalDevice,
-                                              .device = resources.device(),
+                                              .device = resources.device->device,
                                               .surface = contextSurface,
                                               .window = surface,
                                               .deviceInfo = selected.info,
-                                              .submissions = *resources.submissions(),
-                                              .pool = resources.memoryPool().get(),
-                                              .performance = resources.performanceManagerImplementation().get(),
+                                              .submissions = *resources.submissions,
+                                              .pool = resources.memoryPool.get(),
+                                              .performance = resources.performance.get(),
                                               .maxLights = maxLights});
     if (!presentation)
     {
         return std::unexpected {presentation.error()};
     }
-    resources.presentation() = std::move(*presentation);
+    resources.presentation = std::move(*presentation);
     return {};
 }
 }

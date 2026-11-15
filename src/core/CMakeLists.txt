@@ -29,7 +29,6 @@ panda_add_component(panda_core
         UploadBatch.cpp
         vulkan/Engine.cpp
         vulkan/EngineCreation.cpp
-        vulkan/ContextResources.cpp
         vulkan/InstanceCreation.cpp
         vulkan/DeviceSelection.cpp
         vulkan/external/ExternalBufferInterop.cpp
@@ -98,7 +97,8 @@ panda_add_component(panda_core
     PRIVATE_HEADERS
         Math.hpp
         vulkan/EngineCreation.hpp
-        vulkan/ContextResources.hpp
+        vulkan/EngineCreateInfo.hpp
+        vulkan/DeviceContext.hpp
         vulkan/DeviceSelection.hpp
         vulkan/InstanceResources.hpp
         vulkan/InstanceCreation.hpp

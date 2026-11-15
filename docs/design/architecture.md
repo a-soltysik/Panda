@@ -40,6 +40,11 @@ without tools.
 - Engine-bound resource handles retain GPU inputs until completion. Ownership
   and synchronization are separate obligations; see
   [resources](contracts/resources.md).
+- `Engine::Impl` owns the Vulkan data and concrete service implementations
+  directly. Its heap-stable `DeviceContext` contains only the loader,
+  instance/surface, physical/logical device and diagnostics; public service
+  facades borrow their narrow dependencies. `EngineCreateInfo` exists only while
+  creation assembles and transfers these owners.
 - The application owns compute algorithms, simulation time and update frequency.
   Panda provides graphics and explicit resource/handoff building blocks; it does
   not schedule persistent compute callbacks or translate kernels between

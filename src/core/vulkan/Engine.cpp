@@ -21,7 +21,8 @@
 #include <panda/WindowSurface.hpp>
 #include <utility>
 
-#include "ContextResources.hpp"
+#include "DeviceContext.hpp"
+#include "EngineCreateInfo.hpp"
 #include "EngineCreation.hpp"
 #include "external/ExternalBufferInterop.hpp"
 #include "presentation/OffscreenRendering.hpp"
@@ -54,7 +55,7 @@ public:
     Impl(Impl&&) = delete;
     auto operator=(Impl&&) -> Impl& = delete;
 
-    explicit Impl(std::unique_ptr<vulkan::ContextResources> resources, std::uint32_t maxLights) noexcept;
+    explicit Impl(vulkan::EngineCreateInfo resources) noexcept;
     ~Impl() noexcept;
 
     [[nodiscard]] auto getResourceManager() const noexcept -> const ResourceManager&;
@@ -65,50 +66,50 @@ public:
     [[nodiscard]] auto getDeviceInfo() const -> const DeviceInfo&;
     [[nodiscard]] auto getPerformanceManager() noexcept -> PerformanceManager&;
     [[nodiscard]] auto getExternalBufferManager() noexcept -> ExternalBufferManager&;
-    [[nodiscard]] auto getExternalInterop() noexcept
-        -> std::optional<std::reference_wrapper<detail::ExternalBufferInterop>>;
     void drain();
 
 private:
-    std::unique_ptr<vulkan::ContextResources> _resources;
+    std::unique_ptr<vulkan::DeviceContext> _device;
+    std::unique_ptr<vulkan::resources::MemoryPool> _memoryPool;
+    std::unique_ptr<detail::SubmissionQueue> _submissions;
+    std::unique_ptr<vulkan::upload::UploadManager> _uploads;
+    std::unique_ptr<detail::ExternalBufferInterop> _externalInterop;
+    std::unique_ptr<detail::PerformanceManagerImpl> _performance;
+    std::unique_ptr<vulkan::presentation::OffscreenRendering> _offscreenRendering;
+    std::unique_ptr<vulkan::Presentation> _presentation;
     ResourceManager _resourceManager;
     SubmissionManager _submissionManager;
-    std::unique_ptr<vulkan::presentation::OffscreenRendering> _offscreenRendering;
     OffscreenRenderer _offscreenRenderer;
     WindowRenderer _windowRenderer;
     PerformanceManager _performanceManager;
     ExternalBufferManager _externalBufferManager;
 };
 
-Engine::Impl::Impl(std::unique_ptr<vulkan::ContextResources> resources, std::uint32_t maxLights) noexcept
-    : _resources {
-          std::move(resources)
+Engine::Impl::Impl(vulkan::EngineCreateInfo resources) noexcept
+    : _device {
+          std::move(resources.device)
 },
-      _resourceManager {_resources->device(), *_resources->memoryPool(), _resources->uploadManager()},
-      _submissionManager {*_resources->submissions(), _resources->uploadManager()},
-      _offscreenRendering {std::make_unique<vulkan::presentation::OffscreenRendering>(
-          vulkan::presentation::OffscreenRenderingCreateInfo {
-              .physicalDevice = *_resources->physicalDevice(),
-              .device = _resources->device(),
-              .queueFamily = _resources->info().queueFamily,
-              .submissions = *_resources->submissions(),
-              .pool = *_resources->memoryPool(),
-              .performance = _resources->performanceManagerImplementation().get(),
-              .maxLights = maxLights})},
-      _offscreenRenderer {
-          OffscreenRenderer::Dependencies {.rendering = *_offscreenRendering,
-                                           .pool = *_resources->memoryPool(),
-                                           .uploads = _resources->uploadManager(),
-                                           .performance = *_resources->performanceManagerImplementation(),
-                                           .maxLights = maxLights}},
-      _windowRenderer {WindowRenderer::Dependencies {.presentation = _resources->presentation().get(),
+      _memoryPool {std::move(resources.memoryPool)},
+      _submissions {std::move(resources.submissions)},
+      _uploads {std::move(resources.uploads)},
+      _externalInterop {std::move(resources.externalInterop)},
+      _performance {std::move(resources.performance)},
+      _offscreenRendering {std::move(resources.offscreenRendering)},
+      _presentation {std::move(resources.presentation)},
+      _resourceManager {_device->device, *_memoryPool, *_uploads},
+      _submissionManager {*_submissions, *_uploads},
+      _offscreenRenderer {OffscreenRenderer::Dependencies {.rendering = *_offscreenRendering,
+                                                           .pool = *_memoryPool,
+                                                           .uploads = *_uploads,
+                                                           .performance = *_performance,
+                                                           .maxLights = resources.maxLights}},
+      _windowRenderer {WindowRenderer::Dependencies {.presentation = _presentation.get(),
                                                      .rendering = *_offscreenRendering,
-                                                     .pool = *_resources->memoryPool(),
-                                                     .uploads = _resources->uploadManager(),
-                                                     .performance = *_resources->performanceManagerImplementation(),
-                                                     .maxLights = maxLights}},
-      _performanceManager {*_resources->performanceManagerImplementation()},
-      _externalBufferManager {getExternalInterop()}
+                                                     .pool = *_memoryPool,
+                                                     .uploads = *_uploads,
+                                                     .performance = *_performance,
+                                                     .maxLights = resources.maxLights}},
+      _performanceManager {*_performance}, _externalBufferManager {borrowIfPresent(_externalInterop)}
 {
 }
 
@@ -134,7 +135,7 @@ auto Engine::Impl::getOffscreenRenderer() const noexcept -> const OffscreenRende
 
 auto Engine::Impl::getWindowRenderer() const noexcept -> std::optional<std::reference_wrapper<const WindowRenderer>>
 {
-    if (!_resources->presentation())
+    if (!_presentation)
     {
         return std::nullopt;
     }
@@ -143,7 +144,7 @@ auto Engine::Impl::getWindowRenderer() const noexcept -> std::optional<std::refe
 
 auto Engine::Impl::getDeviceInfo() const -> const DeviceInfo&
 {
-    return _resources->info();
+    return _device->info;
 }
 
 auto Engine::Impl::getPerformanceManager() noexcept -> PerformanceManager&
@@ -156,29 +157,23 @@ auto Engine::Impl::getExternalBufferManager() noexcept -> ExternalBufferManager&
     return _externalBufferManager;
 }
 
-auto Engine::Impl::getExternalInterop() noexcept -> std::optional<std::reference_wrapper<detail::ExternalBufferInterop>>
-{
-    return borrowIfPresent(_resources->externalInterop());
-}
-
 void Engine::Impl::drain()
 {
     static constexpr auto timeoutNanoseconds = std::uint64_t {10'000'000'000};
-    expect(!_resources->uploadManager().hasActiveBatches(), "Engine destroyed with live upload batches");
-    expect(_resources->uploadManager().drain(timeoutNanoseconds), "Cannot safely drain upload submissions");
-    if (_resources->presentation())
+    expect(!_uploads->hasActiveBatches(), "Engine destroyed with live upload batches");
+    expect(_uploads->drain(timeoutNanoseconds), "Cannot safely drain upload submissions");
+    if (_presentation)
     {
-        expect(_resources->presentation()->drain(), "Cannot safely drain window presentation");
-        _resources->presentation().reset();
+        expect(_presentation->drain(), "Cannot safely drain window presentation");
+        _presentation.reset();
     }
     expect(_offscreenRendering->drain(), "Cannot safely drain offscreen rendering");
     _offscreenRendering.reset();
-    if (_resources->externalInterop())
+    if (_externalInterop)
     {
-        expect(_resources->externalInterop()->drain(timeoutNanoseconds),
-               "Cannot safely drain external handoff submissions");
+        expect(_externalInterop->drain(timeoutNanoseconds), "Cannot safely drain external handoff submissions");
     }
-    expect(_resources->memoryPool()->getStats().liveBytes == 0,
+    expect(_memoryPool->getStats().liveBytes == 0,
            "Engine destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
 }
 
@@ -208,7 +203,7 @@ auto Engine::createInternal(const WindowSurface* surface, const EngineOptions& o
     {
         return std::unexpected {resources.error()};
     }
-    auto implementation = std::make_unique<Impl>(std::move(*resources), options.maxLights);
+    auto implementation = std::make_unique<Impl>(std::move(*resources));
     return Engine {std::move(implementation)};
 }
 
