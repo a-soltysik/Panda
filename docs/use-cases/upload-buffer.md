@@ -46,16 +46,16 @@ The shared byte-staging path is documented in
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Engine / Impl
+    participant S as SubmissionManager
     participant B as UploadBatch / Impl
     participant U as UploadManager
     participant Q as SubmissionQueue
     participant K as UploadCommand
     participant V as Vulkan queue
-    A->>C: Step 1 - createUploadBatch()
-    C->>U: Create batch from the existing upload service
-    U-->>C: Batch implementation borrowing Engine
-    C-->>A: UploadBatch
+    A->>S: Step 1 - createUploadBatch()
+    S->>U: Create batch from the existing upload service
+    U-->>S: Batch implementation borrowing Engine
+    S-->>A: UploadBatch
     loop One or more buffer writes
         A->>B: Step 2 - write(destination, offset, bytes)
         B->>U: Validate Engine, usage and range
@@ -118,7 +118,7 @@ submission.
 
 |                  | Point and condition                                                                                 | Response                                             | Resulting state and next action                                                                             |
 |------------------|-----------------------------------------------------------------------------------------------------|------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
-| **Error&nbsp;1** | Step 1: Engine is moved-from                                                                          | Return `InvalidArgument`                             | No batch or upload work is published; use a live Engine                                                     |
+| **Error&nbsp;1** | Step 1: manager requested from a moved-from `Engine`                                                  | Checked fatal diagnostic                             | No recoverable result; use a live `Engine`                                                                  |
 | **Error&nbsp;2** | Step 2: empty bytes, foreign/empty buffer, missing transfer-destination usage or out-of-range write | Return a validation error before appending the write | Earlier writes remain in the batch; correct the request or discard the batch                                |
 | **Error&nbsp;3** | Step 2: completion query, staging allocation, mapped write or cache flush fails                     | Propagate the error without appending this write     | Earlier writes remain available; retry only when the error category permits it                              |
 | **Error&nbsp;4** | Step 3: submit is called with no writes                                                             | Return `InvalidArgument`                             | The batch remains valid; add a write or destroy it                                                          |

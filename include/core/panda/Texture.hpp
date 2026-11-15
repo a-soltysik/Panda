@@ -8,7 +8,7 @@
 
 namespace panda
 {
-class Engine;
+class ResourceManager;
 
 namespace detail
 {
@@ -19,7 +19,7 @@ class TextureResource;
 struct TextureDesc
 {
     /// Nonzero width and height in texels.
-    vk::Extent2D extent {};
+    vk::Extent2D extent;
     /// Concrete format; format/usage support and extent are checked before image creation.
     vk::Format format {vk::Format::eUndefined};
     /// Include a sampled, storage, input-attachment or color/depth-attachment usage.
@@ -57,7 +57,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class Engine;
+    friend class ResourceManager;
     friend class detail::TextureResource;
     explicit Texture(std::shared_ptr<detail::TextureResource> resource);
     std::shared_ptr<detail::TextureResource> _resource;

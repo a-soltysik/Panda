@@ -11,7 +11,7 @@
 
 namespace panda
 {
-class Engine;
+class ResourceManager;
 class UploadBatch;
 
 namespace detail
@@ -127,7 +127,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class Engine;
+    friend class ResourceManager;
     friend class detail::MeshResource;
     explicit Mesh(std::shared_ptr<detail::MeshResource> resource);
     std::shared_ptr<detail::MeshResource> _resource;

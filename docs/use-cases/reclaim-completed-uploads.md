@@ -3,11 +3,12 @@
 ## Goal and boundary
 
 This UC releases Engine-owned upload packets after the GPU has
-completed the work they retain. It is triggered when an Engine operation
-opportunistically collects uploads, when `SubmissionManager::poll()` or `SubmissionManager::wait()`
-updates the shared completion counter, or when Engine drains pending uploads
-during shutdown. It ends when completed packet owners are released or
-when a query/wait error is returned with the relevant pending state preserved.
+completed the work they retain. It is triggered when a resource-creation or
+rendering operation opportunistically collects uploads, when
+`SubmissionManager::poll()` or `SubmissionManager::wait()` updates the shared
+completion counter, or when Engine drains pending uploads during shutdown. It
+ends when completed packet owners are released or when a query/wait error is
+returned with the relevant pending state preserved.
 
 Each pending packet owns its recorded command resources, staging pages and
 destination references. The returned `CompletionPoint` identifies queue work but
@@ -23,10 +24,11 @@ and resource creation, frame submission, completion observation and Engine shutd
 
 ## Main flow
 
-1. **Request collection.** An Engine operation that can allocate, stage or
-   submit calls `UploadManager::collect()`. Empty manager state is a successful
-   no-op; otherwise the manager selects the pending upload with the greatest
-   committed completion value.
+1. **Request collection.** `ResourceManager` calls `UploadManager::collect()`
+   before creating a resource; the current Engine rendering operation also uses
+   it before frame work. Empty manager state is a successful no-op; otherwise
+   the manager selects the pending upload with the greatest committed completion
+   value.
 2. **Observe queue progress.** `SubmissionQueue::poll()` reads the shared Vulkan
    timeline semaphore's integer counter without waiting. A successful query
    updates the known completed value and shows whether it has reached the selected
@@ -39,7 +41,7 @@ and resource creation, frame submission, completion observation and Engine shutd
 
 ```mermaid
 sequenceDiagram
-    participant C as Engine operation
+    participant C as Panda resource or rendering operation
     participant U as UploadManager
     participant Q as SubmissionQueue
     participant P as Pending UploadCommand
@@ -61,8 +63,8 @@ and C<N, `collectCompleted()` releases packets with values no greater than C
 and retains packets with values greater than C.
 
 **Other completion paths.** `SubmissionManager::poll()` and `SubmissionManager::wait()` query or wait
-for a caller-supplied point, then ask the manager to release packets whose
-completion values are no greater than the updated counter. `UploadManager::drain()`
+for a caller-supplied point, then call `UploadManager::collectCompleted()` to
+release packets whose completion values are no greater than the updated counter. `UploadManager::drain()`
 waits for the pending upload with the greatest completion value, then releases
 all packets whose completion values are no greater than the updated counter;
 Engine uses this blocking path during shutdown after rejecting live unsubmitted

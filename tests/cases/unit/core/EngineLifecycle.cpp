@@ -1409,7 +1409,7 @@ TEST_F(EngineLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParents
     EXPECT_EQ(context.error().message, "generation failed");
 }
 
-TEST_F(EngineLifecycleTest, EmptyAndMovedFromEnginesRejectCompletionOperations)
+TEST_F(EngineLifecycleTest, MovedToEngineRejectsEmptyCompletionOperations)
 {
     expectHeadless();
     expectParentsDestroyed(true, false);
@@ -1421,8 +1421,18 @@ TEST_F(EngineLifecycleTest, EmptyAndMovedFromEnginesRejectCompletionOperations)
     ASSERT_FALSE(noWork);
     EXPECT_EQ(noWork.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_FALSE(moved.getSubmissionManager().wait(empty, std::chrono::nanoseconds {0}));
-    EXPECT_FALSE(context->getSubmissionManager().poll(empty));
-    EXPECT_FALSE(context->getSubmissionManager().wait(empty, std::chrono::nanoseconds {0}));
+}
+
+TEST_F(EngineLifecycleDeathTest, MovedFromEngineRejectsResourceAndSubmissionManagerGetters)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    auto context = panda::Engine::create();
+    ASSERT_TRUE(context);
+    auto moved = std::move(*context);
+    EXPECT_FALSE(context->isValid());
+    EXPECT_DEATH(static_cast<void>(context->getResourceManager()), "Cannot use a moved-from Engine");
+    EXPECT_DEATH(static_cast<void>(context->getSubmissionManager()), "Cannot use a moved-from Engine");
 }
 
 TEST_F(EngineLifecycleTest, SuspendedEngineRejectsEmptyPointsAndNegativeTimeout)

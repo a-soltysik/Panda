@@ -7,45 +7,29 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <panda/Assert.hpp>
-#include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/DeviceInfo.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
-#include <panda/ExternalBuffer.hpp>
 #include <panda/FrameResult.hpp>
-#include <panda/Geometry.hpp>
-#include <panda/Mesh.hpp>
 #include <panda/OffscreenTarget.hpp>
 #include <panda/RenderView.hpp>
-#include <panda/Texture.hpp>
-#include <panda/UploadBatch.hpp>
 #include <panda/WindowSurface.hpp>
-#include <ranges>
-#include <type_traits>
 #include <utility>
-#include <variant>
-#include <vector>
 
 #include "ContextResources.hpp"
 #include "EngineCreation.hpp"
-#include "SubmissionQueue.hpp"
 #include "external/ExternalBufferInterop.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/OffscreenRendering.hpp"
 #include "presentation/Presentation.hpp"
 #include "renderer/RenderViewValidation.hpp"
-#include "resources/BufferResource.hpp"
-#include "resources/MeshResource.hpp"
 #include "resources/OffscreenTargetResource.hpp"
-#include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
-#include "upload/UploadBatchImpl.hpp"
 #include "upload/UploadManager.hpp"
 
 namespace panda
@@ -70,10 +54,14 @@ class Engine::Impl
 public:
     explicit Impl(std::unique_ptr<vulkan::ContextResources> resources, std::uint32_t maxLights) noexcept
         : _resources {std::move(resources)},
+          _resourceManager {_resources->device(), *_resources->memoryPool(), _resources->uploadManager()},
+          _submissionManager {*_resources->submissions(), _resources->uploadManager()},
           _maxLights {maxLights}
     {
     }
 
+    [[nodiscard]] auto getResourceManager() const noexcept -> const ResourceManager&;
+    [[nodiscard]] auto getSubmissionManager() const noexcept -> const SubmissionManager&;
     [[nodiscard]] auto getDeviceInfo() const -> const DeviceInfo&;
     [[nodiscard]] auto hasWindowSurface() const noexcept -> bool;
     [[nodiscard]] auto getPerformanceManagerImplementation() noexcept -> detail::PerformanceManagerImpl&;
@@ -86,35 +74,18 @@ public:
                                          const OffscreenTarget& target,
                                          std::optional<std::size_t>& submittedPerformanceSlot) -> Result<FrameResult>;
     [[nodiscard]] auto readPixels(const OffscreenTarget& target, CompletionPoint completion) -> Result<ImageReadback>;
-    [[nodiscard]] auto createBufferResource(const BufferDesc& description)
-        -> Result<std::shared_ptr<detail::BufferResource>>;
     [[nodiscard]] auto getExternalInterop() noexcept
         -> std::optional<std::reference_wrapper<detail::ExternalBufferInterop>>;
-    [[nodiscard]] auto createTextureResource(const TextureDesc& description)
-        -> Result<std::shared_ptr<detail::TextureResource>>;
-    [[nodiscard]] auto createOffscreenTargetResource(const OffscreenTargetDesc& description)
-        -> Result<std::shared_ptr<detail::OffscreenTargetResource>>;
-    [[nodiscard]] auto createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>;
-    [[nodiscard]] auto createUploadBatch() -> Result<std::unique_ptr<detail::UploadBatchImpl>>;
-    [[nodiscard]] auto poll(CompletionPoint point) -> Result<bool>;
-    [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) -> Result<WaitStatus>;
     void drain();
 
 private:
     [[nodiscard]] auto ensureOffscreenRendering() -> Result<void>;
     [[nodiscard]] auto collectUploads() -> Result<void>;
-    void collectCompletedUploads();
     [[nodiscard]] auto validateCaptureTarget(const OffscreenTarget& target) const -> Result<void>;
 
-    template <typename Resource, typename Description>
-    [[nodiscard]] auto createResource(const Description& description) -> Result<std::shared_ptr<Resource>>
-    {
-        return collectUploads().and_then([&] {
-            return Resource::create(_resources->device(), *_resources->memoryPool(), description);
-        });
-    }
-
     std::unique_ptr<vulkan::ContextResources> _resources;
+    ResourceManager _resourceManager;
+    SubmissionManager _submissionManager;
     std::unique_ptr<vulkan::presentation::OffscreenRendering> _offscreenRendering;
     std::uint32_t _maxLights;
 };
@@ -146,9 +117,14 @@ auto Engine::Impl::collectUploads() -> Result<void>
     return _resources->uploadManager().collect();
 }
 
-void Engine::Impl::collectCompletedUploads()
+auto Engine::Impl::getResourceManager() const noexcept -> const ResourceManager&
 {
-    _resources->uploadManager().collectCompleted();
+    return _resourceManager;
+}
+
+auto Engine::Impl::getSubmissionManager() const noexcept -> const SubmissionManager&
+{
+    return _submissionManager;
 }
 
 auto Engine::Impl::getDeviceInfo() const -> const DeviceInfo&
@@ -276,59 +252,9 @@ auto Engine::Impl::readPixels(const OffscreenTarget& target, CompletionPoint com
     return _offscreenRendering->readPixels(target, completion);
 }
 
-auto Engine::Impl::createBufferResource(const BufferDesc& description)
-    -> Result<std::shared_ptr<detail::BufferResource>>
-{
-    return createResource<detail::BufferResource>(description);
-}
-
 auto Engine::Impl::getExternalInterop() noexcept -> std::optional<std::reference_wrapper<detail::ExternalBufferInterop>>
 {
     return borrowIfPresent(_resources->externalInterop());
-}
-
-auto Engine::Impl::createTextureResource(const TextureDesc& description)
-    -> Result<std::shared_ptr<detail::TextureResource>>
-{
-    return createResource<detail::TextureResource>(description);
-}
-
-auto Engine::Impl::createOffscreenTargetResource(const OffscreenTargetDesc& description)
-    -> Result<std::shared_ptr<detail::OffscreenTargetResource>>
-{
-    return createResource<detail::OffscreenTargetResource>(description);
-}
-
-auto Engine::Impl::createMeshResource(const MeshDesc& description) -> Result<std::shared_ptr<detail::MeshResource>>
-{
-    return createResource<detail::MeshResource>(description);
-}
-
-auto Engine::Impl::createUploadBatch() -> Result<std::unique_ptr<detail::UploadBatchImpl>>
-{
-    return _resources->uploadManager().createBatch();
-}
-
-auto Engine::Impl::poll(CompletionPoint point) -> Result<bool>
-{
-    return _resources->submissions()->poll(point).transform([&](bool completed) {
-        collectCompletedUploads();
-        return completed;
-    });
-}
-
-auto Engine::Impl::wait(CompletionPoint point, std::chrono::nanoseconds timeout) -> Result<WaitStatus>
-{
-    if (timeout.count() < 0)
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait timeout")};
-    }
-    return _resources->submissions()
-        ->wait(point, static_cast<std::uint64_t>(timeout.count()))
-        .transform([&](WaitStatus status) {
-            collectCompletedUploads();
-            return status;
-        });
 }
 
 void Engine::Impl::drain()
@@ -357,8 +283,6 @@ void Engine::Impl::drain()
 
 Engine::Engine(std::unique_ptr<Impl> implementation) noexcept
     : _implementation {std::move(implementation)},
-      _resourceManager {*this},
-      _submissionManager {*this},
       _offscreenRenderer {*this},
       _windowRenderer {*this},
       _performanceManager {std::ref(_implementation->getPerformanceManagerImplementation())},
@@ -368,8 +292,6 @@ Engine::Engine(std::unique_ptr<Impl> implementation) noexcept
 
 Engine::Engine(Engine&& other) noexcept
     : _implementation {std::move(other._implementation)},
-      _resourceManager {*this},
-      _submissionManager {*this},
       _offscreenRenderer {*this},
       _windowRenderer {*this},
       _performanceManager {_implementation
@@ -421,12 +343,14 @@ auto Engine::getDeviceInfo() const -> DeviceInfo
 
 auto Engine::getResourceManager() const -> const ResourceManager&
 {
-    return _resourceManager;
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
+    return _implementation->getResourceManager();
 }
 
 auto Engine::getSubmissionManager() const -> const SubmissionManager&
 {
-    return _submissionManager;
+    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
+    return _implementation->getSubmissionManager();
 }
 
 auto Engine::getOffscreenRenderer() const -> const OffscreenRenderer&
@@ -522,100 +446,6 @@ auto Engine::readPixels(const OffscreenTarget& target, CompletionPoint completio
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cannot read pixels from a moved-from Engine")};
     }
     return _implementation->readPixels(target, completion);
-}
-
-auto Engine::createBuffer(const BufferDesc& description) const -> Result<Buffer>
-{
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->createBufferResource(description)
-        .transform([](std::shared_ptr<detail::BufferResource> resource) {
-            return Buffer {std::move(resource)};
-        });
-}
-
-auto Engine::createTexture(const TextureDesc& description) const -> Result<Texture>
-{
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->createTextureResource(description)
-        .transform([](std::shared_ptr<detail::TextureResource> resource) {
-            return Texture {std::move(resource)};
-        });
-}
-
-auto Engine::createOffscreenTarget(const OffscreenTargetDesc& description) const -> Result<OffscreenTarget>
-{
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->createOffscreenTargetResource(description)
-        .transform([](std::shared_ptr<detail::OffscreenTargetResource> resource) {
-            return OffscreenTarget {std::move(resource)};
-        });
-}
-
-auto Engine::createMesh(const MeshDesc& description) const -> Result<Mesh>
-{
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->createMeshResource(description)
-        .transform([](std::shared_ptr<detail::MeshResource> resource) {
-            return Mesh {std::move(resource)};
-        });
-}
-
-auto Engine::createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>
-{
-    if (geometry.indices.valueless_by_exception() ||
-        geometry.vertices.size() > std::numeric_limits<std::uint32_t>::max())
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Geometry cannot be represented by a Mesh")};
-    }
-    const auto [indexCount, indexType] = std::visit(
-        []<typename Index>(const std::vector<Index>& indices) {
-            const auto type = std::is_same_v<Index, std::uint16_t> ? MeshIndexType::UInt16 : MeshIndexType::UInt32;
-            return std::pair {indices.size(), type};
-        },
-        geometry.indices);
-    if (indexCount > std::numeric_limits<std::uint32_t>::max())
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Geometry has too many indices")};
-    }
-    auto indexDescription = std::optional<MeshIndexDesc> {};
-    if (indexCount != 0)
-    {
-        indexDescription = MeshIndexDesc {.count = static_cast<std::uint32_t>(indexCount), .type = indexType};
-    }
-    return createMesh({.vertexCount = static_cast<std::uint32_t>(geometry.vertices.size()),
-                       .vertexStride = standardMeshVertexStrideBytes,
-                       .indices = indexDescription,
-                       .attributes = std::ranges::to<std::vector<VertexAttribute>>(standardMeshVertexAttributes)});
-}
-
-auto Engine::createUploadBatch() const -> Result<UploadBatch>
-{
-    if (!_implementation)
-    {
-        return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Cannot create a batch from a moved-from Engine")};
-    }
-    return _implementation->createUploadBatch().transform([](std::unique_ptr<detail::UploadBatchImpl> batch) {
-        return UploadBatch {std::move(batch)};
-    });
-}
-
-auto Engine::poll(CompletionPoint point) const -> Result<bool>
-{
-    if (!_implementation)
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Engine")};
-    }
-    return _implementation->poll(point);
-}
-
-auto Engine::wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>
-{
-    if (!_implementation)
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Engine")};
-    }
-    return _implementation->wait(point, timeout);
 }
 
 }

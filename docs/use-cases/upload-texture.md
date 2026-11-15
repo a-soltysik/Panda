@@ -52,15 +52,17 @@ The shared byte-staging path is documented in
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Engine
+    participant S as SubmissionManager
     participant B as UploadBatch / Impl
     participant U as UploadManager
     participant T as TextureResource
     participant K as UploadCommand
     participant Q as SubmissionQueue
     participant V as Vulkan
-    A->>C: Step 1 - createUploadBatch()
-    C-->>A: Batch borrowing Engine
+    A->>S: Step 1 - createUploadBatch()
+    S->>U: Create batch from the existing upload service
+    U-->>S: Batch implementation borrowing Engine
+    S-->>A: Batch borrowing Engine
     loop Full image or one region per write
         A->>B: Step 2 - write(texture, bytes, layout)
         B->>U: Validate texture, usage, format and source layout

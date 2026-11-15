@@ -1,29 +1,50 @@
+// clang-format off
+#include "vulkan/VulkanHpp.hpp" // IWYU pragma: keep
+// clang-format on
+
 #include <chrono>
+#include <cstdint>
+#include <expected>
 #include <panda/CompletionPoint.hpp>
-#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/SubmissionManager.hpp>
 #include <panda/UploadBatch.hpp>
 
+#include "vulkan/SubmissionQueue.hpp"
+#include "vulkan/upload/UploadBatchImpl.hpp"
+#include "vulkan/upload/UploadManager.hpp"
+
 namespace panda
 {
-SubmissionManager::SubmissionManager(const Engine& context) noexcept
-    : _engine {&context}
+SubmissionManager::SubmissionManager(detail::SubmissionQueue& submissions,
+                                     core::vulkan::upload::UploadManager& uploads) noexcept
+    : _submissions {submissions},
+      _uploads {uploads}
 {
 }
 
 auto SubmissionManager::createUploadBatch() const -> Result<UploadBatch>
 {
-    return _engine->createUploadBatch();
+    return UploadBatch {_uploads.createBatch()};
 }
 
 auto SubmissionManager::poll(CompletionPoint point) const -> Result<bool>
 {
-    return _engine->poll(point);
+    return _submissions.poll(point).transform([this](bool completed) {
+        _uploads.collectCompleted();
+        return completed;
+    });
 }
 
 auto SubmissionManager::wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>
 {
-    return _engine->wait(point, timeout);
+    if (timeout.count() < 0)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait timeout")};
+    }
+    return _submissions.wait(point, static_cast<std::uint64_t>(timeout.count())).transform([this](WaitStatus status) {
+        _uploads.collectCompleted();
+        return status;
+    });
 }
 }

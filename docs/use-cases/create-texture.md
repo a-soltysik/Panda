@@ -28,11 +28,9 @@ for every `Texture` owner. The implemented scope follows
 ## Main flow
 
 1. **Request.** The application calls `ResourceManager::createTexture(description)`.
-   `Engine` requires live internal state.
-2. **Release completed upload resources.** `Engine::Impl::createResource`
-   calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
-   explains which packets can be released; the Engine's already constructed manager
-   returns immediately when it has no pending packets.
+2. **Release completed upload resources.** `ResourceManager` calls
+   `UploadManager::collect()` before creating the texture. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+   explains which packets can be released; an empty pending list returns immediately.
 3. **Validate.** `TextureResource::create` requires nonzero dimensions, a
    concrete format and nonempty supported usage. Usage must include a
    view-capable use such as sampled, storage or attachment; transfer-only usage
@@ -50,19 +48,18 @@ for every `Texture` owner. The implemented scope follows
    the sole mip and layer. Its aspect comes from the format: stencil for
    stencil-only, depth for depth and combined depth/stencil, otherwise color.
 7. **Publish.** Only after the view succeeds does `TextureResource` return its
-   complete state. `Engine` wraps it in the public `Texture` and returns it to
-   the application.
+   complete state. `ResourceManager` wraps it in the public `Texture` and returns
+   it to the application.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Engine / Impl
+    participant C as ResourceManager
     participant U as UploadManager
     participant T as TextureResource
     participant P as MemoryPool
     participant V as Vulkan device
     A ->> C: Step 1 - createTexture(description)
-    C ->> C: Step 2 - collectUploads()
     C ->> U: Step 2 - collect()
     Note over C,U: Step 2 - UC Reclaim completed upload packets
     U -->> C: Success or backend error
@@ -108,7 +105,7 @@ and [UC Return a resource memory range](release-memory-range.md) define those bo
 
 |                  | Point and condition                                                                    | Response                                                                                                                | Resulting state and next action                                              |
 |------------------|----------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
-| **Error&nbsp;1** | Step 1: moved-from `Engine`                                                           | Checked fatal diagnostic                                                                                                | No recoverable result; use a live `Engine`                                  |
+| **Error&nbsp;1** | Step 1: manager requested from a moved-from `Engine`                                  | Checked fatal diagnostic                                                                                                | No recoverable result; use a live `Engine`                                  |
 | **Error&nbsp;2** | Step 2: completed-upload collection fails                                              | Propagate its error before validating or creating the image                                                             | No new image; follow the error category rather than retrying unconditionally |
 | **Error&nbsp;3** | Step 3: zero extent, undefined format, empty usage or usage without a view-capable bit | Return `InvalidArgument`                                                                                                | No native image is created; correct the description                          |
 | **Error&nbsp;4** | Step 3: unsupported usage bit or format/usage combination                              | Return `Unsupported`                                                                                                    | No native image is created; choose a supported usage or format               |
@@ -131,7 +128,7 @@ the resource may already own a range that was bound to the image. No public
 
 ```mermaid
 sequenceDiagram
-    participant C as Engine / Impl
+    participant C as ResourceManager
     participant T as TextureResource
     participant P as MemoryPool
     participant V as Vulkan device

@@ -60,9 +60,11 @@ Both platforms retain the fast and quality preset trees; CUDA analysis is nested
 inside quality. Presets share `.cache/ccache` within each native source tree;
 the Linux mirror keeps its cache on the Linux filesystem, outside `/mnt/c`.
 Fast and quality presets use all available logical CPUs. The WSL helper passes the
-CPU count to Ninja by default; use its `-Jobs` parameter only to override that count.
-Run the two platforms' quality builds sequentially, without another build running,
-to avoid exhausting host memory.
+CPU count to Ninja by default; use its `-Jobs` parameter only to override that count
+when using the helper. When running CMake directly in WSL, pass `--parallel` to
+every `cmake --build` command so it uses the available CPU count. Run the two
+platforms' quality builds sequentially, without another build running, to avoid
+exhausting host memory.
 
 The older helper's optional uncached fallback and default `system` exclusion do
 not satisfy agent verification. Do not use `-Target` to reduce build scope.

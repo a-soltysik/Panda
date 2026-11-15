@@ -12,6 +12,16 @@ namespace panda
 {
 class Engine;
 
+namespace core::vulkan::upload
+{
+class UploadManager;
+}
+
+namespace detail
+{
+class SubmissionQueue;
+}
+
 /// @brief Creates upload batches and observes submitted work for one Engine.
 /// This facade is borrowed from Engine and must not outlive it. Calls are serialized
 /// with other operations on the owning Engine.
@@ -40,8 +50,10 @@ public:
 private:
     friend class Engine;
 
-    explicit SubmissionManager(const Engine& context) noexcept;
+    explicit SubmissionManager(detail::SubmissionQueue& submissions,
+                               core::vulkan::upload::UploadManager& uploads) noexcept;
 
-    const Engine* _engine;
+    detail::SubmissionQueue& _submissions;
+    core::vulkan::upload::UploadManager& _uploads;
 };
 }

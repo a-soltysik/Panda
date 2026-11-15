@@ -69,10 +69,11 @@ cmake --build --preset gcc-fast --parallel
 ctest --preset gcc-fast
 ```
 
-Fast and quality build presets use all available logical CPUs. The WSL helper
-passes the CPU count to Ninja by default; use its `-Jobs` parameter only to
-override that count. Run Windows and WSL quality sequentially, without another
-build running. Inspect
+Fast and quality build presets use all available logical CPUs. Pass `--parallel`
+to every direct `cmake --build` command so CMake forwards the available CPU count
+to the build tool. The WSL helper passes the CPU count to Ninja by default; use
+its `-Jobs` parameter only to override that count when using the helper. Run
+Windows and WSL quality sequentially, without another build running. Inspect
 `ccache --dir .cache/ccache --show-config` and
 `ccache --dir .cache/ccache --show-stats`; caching must be enabled. For Windows/WSL operation, follow
 [panda-dual-platform-build](../panda-dual-platform-build/SKILL.md).
@@ -90,10 +91,10 @@ Windows:
 
 ```powershell
 cmake --preset msvc-quality
-cmake --build --preset msvc-quality
-cmake --build --preset msvc-quality --target all_verify_interface_header_sets panda_format_checks
+cmake --build --preset msvc-quality --parallel
+cmake --build --preset msvc-quality --target all_verify_interface_header_sets panda_format_checks --parallel
 cmake --preset clang-cuda-analysis-windows
-cmake --build --preset clang-cuda-analysis-windows
+cmake --build --preset clang-cuda-analysis-windows --parallel
 cmake --preset msvc-fast
 cmake --build --preset msvc-fast --parallel
 ctest --preset msvc-fast
@@ -103,10 +104,10 @@ Linux:
 
 ```sh
 cmake --preset gcc-quality
-cmake --build --preset gcc-quality
-cmake --build --preset gcc-quality --target all_verify_interface_header_sets panda_format_checks
+cmake --build --preset gcc-quality --parallel
+cmake --build --preset gcc-quality --target all_verify_interface_header_sets panda_format_checks --parallel
 cmake --preset clang-cuda-analysis
-cmake --build --preset clang-cuda-analysis
+cmake --build --preset clang-cuda-analysis --parallel
 cmake --preset gcc-fast
 cmake --build --preset gcc-fast --parallel
 ctest --preset gcc-fast
@@ -117,11 +118,11 @@ Complete the documentation checks as part of the pre-commit procedure:
 ```sh
 python .agents/skills/panda-project-maintenance/scripts/check_docs.py
 cmake --preset docs-checks
-cmake --build --preset docs-checks
+cmake --build --preset docs-checks --parallel
 ```
 
 Generate/check API documentation on Linux with `cmake --preset gcc-docs` followed
-by `cmake --build --preset gcc-docs`. The documentation presets own their auxiliary
+by `cmake --build --preset gcc-docs --parallel`. The documentation presets own their auxiliary
 directories; they are not additional fast/quality code profiles. Report failures
 or missing tools instead of omitting these checks.
 
