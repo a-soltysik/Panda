@@ -1,10 +1,17 @@
 // clang-format off
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+#    include <Windows.h> // IWYU pragma: keep
+#    include <winnt.h>
+#endif
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+#    include <vulkan/vulkan_win32.h>
+#endif
 #include <vulkan/vulkan_core.h>
 
 #include <algorithm>
@@ -89,6 +96,25 @@ auto externalSemaphoreHandleType() -> VkExternalSemaphoreHandleTypeFlagBits
 #else
     return VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
 #endif
+}
+
+auto externalMemoryHandleType() -> VkExternalMemoryHandleTypeFlagBits
+{
+#ifdef _WIN32
+    return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+#else
+    return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+#endif
+}
+
+void expectBufferExternalMemoryInfo(const void* next, bool external)
+{
+    EXPECT_EQ(next != nullptr, external);
+    if (external)
+    {
+        const auto* const exportInfo = static_cast<const VkExternalMemoryBufferCreateInfo*>(next);
+        EXPECT_EQ(exportInfo->handleTypes, externalMemoryHandleType());
+    }
 }
 
 auto hasDeviceExtension(const VkDeviceCreateInfo& info, std::string_view expected) -> bool
@@ -376,16 +402,16 @@ protected:
             });
     }
 
-    void expectSubmissionQueue()
+    void expectSubmissionQueue(VkResult result = success)
     {
         auto* const queue = fakeVulkanHandle<VkQueue>(30);
         auto* const semaphore = fakeVulkanHandle<VkSemaphore>(31);
         EXPECT_CALL(vulkan, vkGetDeviceQueue(device, 0, 0, NotNull())).WillOnce(testing::SetArgPointee<3>(queue));
         EXPECT_CALL(vulkan, vkCreateSemaphore(device, NotNull(), nullptr, NotNull()))
-            .WillOnce([semaphore](VkDevice,
-                                  const VkSemaphoreCreateInfo* info,
-                                  const VkAllocationCallbacks*,
-                                  VkSemaphore* output) {
+            .WillOnce([semaphore, result](VkDevice,
+                                          const VkSemaphoreCreateInfo* info,
+                                          const VkAllocationCallbacks*,
+                                          VkSemaphore* output) {
                 EXPECT_NE(info->pNext, nullptr);
                 if (info->pNext == nullptr)
                 {
@@ -394,10 +420,16 @@ protected:
                 const auto* const type = static_cast<const VkSemaphoreTypeCreateInfo*>(info->pNext);
                 EXPECT_EQ(type->semaphoreType, VK_SEMAPHORE_TYPE_TIMELINE);
                 EXPECT_EQ(type->initialValue, 0U);
-                *output = semaphore;
-                return success;
+                if (result == success)
+                {
+                    *output = semaphore;
+                }
+                return result;
             });
-        EXPECT_CALL(vulkan, vkDestroySemaphore(device, semaphore, nullptr));
+        if (result == success)
+        {
+            EXPECT_CALL(vulkan, vkDestroySemaphore(device, semaphore, nullptr));
+        }
     }
 
     static void expectDeviceExtensions(const VkDeviceCreateInfo& info,
@@ -427,12 +459,29 @@ protected:
                       VkResult result = success,
                       bool separateQueues = false,
                       bool externalMemory = false,
-                      bool externalSemaphore = false)
+                      bool externalSemaphore = false,
+                      VkResult timelineResult = success)
     {
         if (result == success)
         {
             expectMemoryPool();
+            if (!windowed)
+            {
+                expectSubmissionQueue(timelineResult);
+            }
         }
+        EXPECT_CALL(
+            vulkan,
+            vkGetPhysicalDeviceProperties2(physical, testing::Truly([](const VkPhysicalDeviceProperties2* info) {
+                                               const auto* const chain =
+                                                   static_cast<const VkBaseOutStructure*>(info->pNext);
+                                               return chain != nullptr &&
+                                                      chain->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+                                           })))
+            .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* info) {
+                auto* const identity = static_cast<VkPhysicalDeviceIDProperties*>(info->pNext);
+                identity->deviceUUID[0] = 1;
+            });
         EXPECT_CALL(vulkan, vkCreateDevice(physical, NotNull(), nullptr, NotNull()))
             .WillOnce(testing::Action<decltype(vkCreateDevice)> {
                 [this, windowed, result, separateQueues, externalMemory, externalSemaphore](
@@ -593,17 +642,20 @@ protected:
     void expectBuffer(VkBuffer buffer,
                       std::uint64_t size = 65,
                       bool dedicated = false,
-                      const testing::ExpectationSet& ownerReleased = {})
+                      const testing::ExpectationSet& ownerReleased = {},
+                      bool external = false)
     {
         EXPECT_CALL(vulkan, vkCreateBuffer(device, NotNull(), nullptr, NotNull()))
             .InSequence(bufferCreationOrder)
-            .WillOnce([buffer,
-                       size](VkDevice, const VkBufferCreateInfo* info, const VkAllocationCallbacks*, VkBuffer* output) {
+            .WillOnce([buffer, size, external](VkDevice,
+                                               const VkBufferCreateInfo* info,
+                                               const VkAllocationCallbacks*,
+                                               VkBuffer* output) {
                 EXPECT_EQ(info->size, size);
                 EXPECT_EQ(info->usage, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
                 EXPECT_EQ(info->sharingMode, VK_SHARING_MODE_EXCLUSIVE);
                 EXPECT_EQ(info->flags, 0);
-                EXPECT_EQ(info->pNext, nullptr);
+                expectBufferExternalMemoryInfo(info->pNext, external);
                 *output = buffer;
                 return success;
             });
@@ -693,6 +745,43 @@ TEST_F(EngineLifecycleTest, CreatesEngineWithZeroLightBudget)
     ASSERT_TRUE(created);
 }
 
+TEST_F(EngineLifecycleTest, TimelineCreationFailurePreventsEnginePublication)
+{
+    expectInstance();
+    expectAdapter(false);
+    expectDevice(false, success, false, false, false, exhausted);
+    expectParentsDestroyed(true, false);
+
+    const auto created = panda::Engine::create();
+
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
+    if (const auto& native = created.error().native; native)
+    {
+        EXPECT_EQ(native->code, exhausted);
+    }
+    else
+    {
+        FAIL() << "Expected the native Vulkan error to be preserved";
+    }
+}
+
+TEST_F(EngineLifecycleTest, CreatesHeadlessQueueAndUploadManagerWithoutGpuAllocations)
+{
+    expectInstance();
+    expectAdapter(false);
+    expectDevice(false);
+    expectParentsDestroyed(true, false);
+    EXPECT_CALL(vulkan, vkCreateCommandPool(device, NotNull(), nullptr, NotNull())).Times(0);
+    EXPECT_CALL(vulkan, vkCreateBuffer(device, NotNull(), nullptr, NotNull())).Times(0);
+    EXPECT_CALL(vulkan, vkCreateImage(device, NotNull(), nullptr, NotNull())).Times(0);
+
+    auto engine = panda::Engine::create();
+    ASSERT_TRUE(engine);
+    const auto batch = engine->getSubmissionManager().createUploadBatch();
+    ASSERT_TRUE(batch);
+}
+
 TEST_F(EngineLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOrder)
 {
     expectInstance();
@@ -748,6 +837,51 @@ TEST_F(EngineLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
 
     ASSERT_TRUE(context);
     EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
+    EXPECT_EQ(context->getDeviceInfo().deviceUuid.at(0), 1U);
+}
+
+TEST_F(EngineLifecycleTest, ExportedBufferUsesTheFactoryDeviceUuid)
+{
+    auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(60);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(61);
+    expectInstance();
+    expectAdapter(false);
+    expectExternalMemoryExtensions(true);
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceExternalBufferProperties(physical, NotNull(), NotNull()))
+        .WillOnce([](VkPhysicalDevice,
+                     const VkPhysicalDeviceExternalBufferInfo* info,
+                     VkExternalBufferProperties* properties) {
+            properties->externalMemoryProperties.externalMemoryFeatures = VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT;
+            properties->externalMemoryProperties.compatibleHandleTypes = info->handleType;
+        });
+    expectBuffer(nativeBuffer, 65, true, {}, true);
+    expectBufferAllocation(memory, 0, true);
+    expectBinding(nativeBuffer, memory);
+#ifdef _WIN32
+    EXPECT_CALL(vulkan, vkGetMemoryWin32HandleKHR(device, NotNull(), NotNull()))
+        .WillOnce([](VkDevice, const VkMemoryGetWin32HandleInfoKHR*, HANDLE* output) {
+            *output = nullptr;
+            return success;
+        });
+#else
+    EXPECT_CALL(vulkan, vkGetMemoryFdKHR(device, NotNull(), NotNull()))
+        .WillOnce([](VkDevice, const VkMemoryGetFdInfoKHR*, int* output) {
+            *output = -1;
+            return success;
+        });
+#endif
+    expectDevice(false, success, false, true);
+    expectParentsDestroyed(true, false);
+
+    auto engine =
+        panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
+    ASSERT_TRUE(engine);
+    auto exported =
+        engine->getExternalBufferManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+
+    ASSERT_TRUE(exported);
+    EXPECT_EQ(engine->getDeviceInfo().deviceUuid.at(0), 1U);
+    EXPECT_EQ(exported->getDeviceUuid(), engine->getDeviceInfo().deviceUuid);
 }
 
 TEST_F(EngineLifecycleTest, RejectsExternalBufferOperationsWhenExportIsUnavailable)
@@ -840,7 +974,6 @@ TEST_F(EngineLifecycleTest, EnablesTimelineSemaphoreExportWhenTheTimelineQueryIs
     expectExternalMemoryExtensions(true, true);
     expectTimelineSemaphoreSupport(true);
     expectDevice(false, success, false, true, true);
-    expectSubmissionQueue();
     expectParentsDestroyed(true, false);
 
     auto context =
@@ -873,7 +1006,6 @@ TEST_F(EngineLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePublic
     expectInstance();
     expectAdapter(false, false, TimestampScenario {.validBits = 64, .periodNanoseconds = 2.5F});
     expectDevice(false);
-    expectSubmissionQueue();
     expectPerformancePools();
     expectParentsDestroyed(true, false);
     auto context = panda::Engine::create({.enableFramePerformanceSampling = true});

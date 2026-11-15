@@ -9,7 +9,7 @@ namespace panda
 {
 namespace detail
 {
-class ExternalContext;
+class ExternalBufferInterop;
 }
 
 /// @brief Native handle kind used to share an external buffer allocation.
@@ -45,7 +45,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class detail::ExternalContext;
+    friend class detail::ExternalBufferInterop;
     ExternalMemoryHandle(std::intptr_t value, ExternalMemoryHandleType type) noexcept;
 
     std::intptr_t _value {0};

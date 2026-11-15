@@ -126,7 +126,7 @@ protected:
     {
         return PerformanceManagerImpl {
             device,
-            &getSubmissionQueue(),
+            getSubmissionQueue(),
             TimestampProperties {.validBits = validBits, .periodNanoseconds = period},
             enabled
         };

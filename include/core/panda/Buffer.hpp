@@ -14,7 +14,7 @@ class Engine;
 namespace detail
 {
 class BufferResource;
-class ExternalContext;
+class ExternalBufferInterop;
 }
 
 /// @brief Allocation intent; does not grant CPU access or synchronize GPU use.
@@ -69,7 +69,7 @@ public:
 private:
     friend class Engine;
     friend class detail::BufferResource;
-    friend class detail::ExternalContext;
+    friend class detail::ExternalBufferInterop;
     explicit Buffer(std::shared_ptr<detail::BufferResource> resource);
     std::shared_ptr<detail::BufferResource> _resource;
 };

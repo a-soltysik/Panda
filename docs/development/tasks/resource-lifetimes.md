@@ -106,8 +106,8 @@ external ABI boundaries. Engine initializes one stable physical-device wrapper
 before logical-device creation and shares it with its allocator.
 
 `CompletionPoint` identifies committed work without retaining Engine or resources.
-Engine owns one submission clock shared by presentation and uploads, initialized
-lazily without a window. Empty/foreign points are rejected; Engine moves preserve
+Every successful Engine initializes one submission clock shared by presentation
+and uploads. Empty/foreign points are rejected; Engine moves preserve
 issued points and unsubmitted batches. Failed submit does not consume a value,
 device loss stops new work, and outstanding values respect device limits. GPU
 completion and presentation completion are tracked separately.

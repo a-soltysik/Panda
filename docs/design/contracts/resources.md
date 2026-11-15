@@ -330,9 +330,14 @@ resources, defragmenter, residency manager, or allocator plugin API in version o
   ordinary shared block; the [compute contract](compute.md#current-external-buffer-behavior)
   owns the interop rules.
 
-Buffer uploads use the same graphics/compute submission clock as presentation,
-including when Engine has no window. `SubmissionManager::createUploadBatch` initializes
-this service lazily for headless contexts. `write` snapshots nonempty caller bytes
+Every successfully created Engine initializes one graphics/compute `SubmissionQueue`
+and constructs an empty `UploadManager` before their consumers. Timeline-semaphore
+creation failure therefore fails Engine creation and preserves the native error.
+The empty manager allocates no staging memory or offscreen execution resources;
+those resources are created only when upload or rendering work is requested.
+Buffer uploads use the same submission clock as presentation, including when Engine
+has no window. `SubmissionManager::createUploadBatch` creates a batch from the
+already initialized manager and queue. `write` snapshots nonempty caller bytes
 into a persistently mapped, pooled staging page owned by the batch, validates
 Engine, transfer-destination usage and destination bounds, then flushes
 noncoherent memory. Writes share the current page when its remaining capacity and

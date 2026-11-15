@@ -22,9 +22,9 @@ buffer-only writes; texture and mesh writes add layout and atomicity rules.
 ## Main flow
 
 1. **Create a batch.** The application calls `SubmissionManager::createUploadBatch()`.
-   Engine lazily creates its upload manager and, when needed, the shared queue
-   timeline. The returned move-only batch borrows Engine, submits no work and
-   performs no completion wait.
+   A successfully created Engine already owns the shared initialized queue and an
+   empty `UploadManager`. Creating the returned move-only batch borrows Engine,
+   allocates no staging memory, submits no work and performs no completion wait.
 2. **Validate and stage each write.** `UploadBatch::write()` checks the buffer
    and range. The batch appends the copy operation after staging succeeds, in
    call order. The caller may release the source bytes after `write()` returns.
@@ -53,11 +53,7 @@ sequenceDiagram
     participant K as UploadCommand
     participant V as Vulkan queue
     A->>C: Step 1 - createUploadBatch()
-    opt Headless Engine has not initialized submissions
-        C->>Q: Initialize shared timeline
-        Q-->>C: Ready
-    end
-    C->>U: Create upload service and batch
+    C->>U: Create batch from the existing upload service
     U-->>C: Batch implementation borrowing Engine
     C-->>A: UploadBatch
     loop One or more buffer writes
@@ -112,15 +108,17 @@ their results and limits.
 Submission itself does not block for completion. Uploads use explicit barriers
 around the copies, so queue order alone is not treated as a memory dependency.
 
-**Lazy service.** `SubmissionManager::createUploadBatch()` creates the upload service on
-first use. Headless Engines also initialize their shared submission timeline at
-that point; windowed Engines use the timeline already shared with presentation.
+**Initialization.** Every successful Engine initializes its shared queue and
+constructs an empty upload manager during Engine creation. This makes timeline
+creation failure an Engine factory error. Creating a batch does not allocate staging;
+staging memory and upload command resources are created only for actual writes and
+submission.
 
 ## Variants and errors
 
 |                  | Point and condition                                                                                 | Response                                             | Resulting state and next action                                                                             |
 |------------------|-----------------------------------------------------------------------------------------------------|------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
-| **Error&nbsp;1** | Step 1: Engine is moved-from or upload service/timeline initialization fails                       | Return `InvalidArgument` or the initialization error | No batch or upload work is published; use a live Engine or resolve the reported backend/capability problem |
+| **Error&nbsp;1** | Step 1: Engine is moved-from                                                                          | Return `InvalidArgument`                             | No batch or upload work is published; use a live Engine                                                     |
 | **Error&nbsp;2** | Step 2: empty bytes, foreign/empty buffer, missing transfer-destination usage or out-of-range write | Return a validation error before appending the write | Earlier writes remain in the batch; correct the request or discard the batch                                |
 | **Error&nbsp;3** | Step 2: completion query, staging allocation, mapped write or cache flush fails                     | Propagate the error without appending this write     | Earlier writes remain available; retry only when the error category permits it                              |
 | **Error&nbsp;4** | Step 3: submit is called with no writes                                                             | Return `InvalidArgument`                             | The batch remains valid; add a write or destroy it                                                          |

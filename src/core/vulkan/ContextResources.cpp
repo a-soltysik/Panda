@@ -6,11 +6,12 @@
 
 #include <memory>
 #include <optional>
+#include <panda/Assert.hpp>
 #include <panda/DeviceInfo.hpp>
 
 #include "InstanceResources.hpp"
 #include "SubmissionQueue.hpp"
-#include "external/ExternalContext.hpp"
+#include "external/ExternalBufferInterop.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/Presentation.hpp"
 #include "resources/memory/MemoryPool.hpp"
@@ -53,9 +54,18 @@ auto ContextResources::uploads() noexcept -> std::optional<upload::UploadManager
     return _uploads;
 }
 
-auto ContextResources::externalContext() noexcept -> std::unique_ptr<detail::ExternalContext>&
+auto ContextResources::uploadManager() noexcept -> upload::UploadManager&
 {
-    return _externalContext;
+    if (!_uploads)
+    {
+        panic("Context resources have no upload manager");
+    }
+    return *_uploads;
+}
+
+auto ContextResources::externalInterop() noexcept -> std::unique_ptr<detail::ExternalBufferInterop>&
+{
+    return _externalInterop;
 }
 
 auto ContextResources::performanceManagerImplementation() noexcept -> std::unique_ptr<detail::PerformanceManagerImpl>&

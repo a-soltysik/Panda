@@ -3,7 +3,7 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include "external/ExternalContext.hpp"
+#include "external/ExternalBufferInterop.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -106,7 +106,7 @@ auto queryExternalSupport(const vk::raii::PhysicalDevice& physicalDevice, bool r
 }
 }
 
-auto ExternalContext::querySupport(const vk::raii::PhysicalDevice& physicalDevice, bool required)
+auto ExternalBufferInterop::querySupport(const vk::raii::PhysicalDevice& physicalDevice, bool required)
     -> Result<std::optional<ExternalSupport>>
 {
 #ifdef _WIN32
@@ -129,29 +129,25 @@ auto ExternalContext::querySupport(const vk::raii::PhysicalDevice& physicalDevic
 #endif
 }
 
-ExternalContext::ExternalContext(CreateInfo info)
-    : _physicalDevice {info.physicalDevice},
-      _device {info.device},
+ExternalBufferInterop::ExternalBufferInterop(CreateInfo info)
+    : _device {info.device},
       _pool {info.pool},
       _submissions {info.submissions},
       _uploads {info.uploads},
       _queueFamily {info.queueFamily},
-      _support {std::move(info.support)}
+      _support {std::move(info.support)},
+      _deviceUuid {info.deviceUuid}
 {
-    const auto properties =
-        _physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
-    const auto& uuid = properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID;
-    std::ranges::copy(uuid, _deviceUuid.begin());
 }
 
-ExternalContext::~ExternalContext() = default;
+ExternalBufferInterop::~ExternalBufferInterop() = default;
 
-auto ExternalContext::supportsSemaphoreExport() const noexcept -> bool
+auto ExternalBufferInterop::supportsSemaphoreExport() const noexcept -> bool
 {
     return _support.semaphoreHandleType.has_value();
 }
 
-auto ExternalContext::createBuffer(const BufferDesc& description) -> Result<ExternalBuffer>
+auto ExternalBufferInterop::createBuffer(const BufferDesc& description) -> Result<ExternalBuffer>
 {
     auto externalBuffer = createBufferWithMemory(description);
     if (!externalBuffer)
@@ -168,34 +164,31 @@ auto ExternalContext::createBuffer(const BufferDesc& description) -> Result<Exte
     return std::move(*externalBuffer);
 }
 
-auto ExternalContext::getHandoffBuffer(const Buffer& buffer) const -> Result<HandoffBuffer>
+auto ExternalBufferInterop::getHandoffBuffer(const Buffer& buffer) const -> Result<HandoffBuffer>
 {
     if (!buffer.isValid())
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "External buffer is empty")};
     }
     const auto resource = BufferResource::getResource(buffer);
-    const auto externalContext = resource->getExternalContext();
-    if (!externalContext || &externalContext->get() != this)
+    const auto externalInterop = resource->getExternalInterop();
+    if (!externalInterop || &externalInterop->get() != this)
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Buffer is not an external buffer from this Engine")};
     }
     const auto semaphore = resource->getExternalSemaphore();
-    if (!semaphore || !_submissions)
+    if (!semaphore)
     {
         return std::unexpected {
             makeError(ErrorCode::Unsupported, "External timeline-semaphore handoff is unavailable")};
     }
-    return HandoffBuffer {.owner = buffer,
-                          .resource = resource,
-                          .semaphore = semaphore,
-                          .submissions = _submissions->get()};
+    return HandoffBuffer {.owner = buffer, .resource = resource, .semaphore = semaphore};
 }
 
-auto ExternalContext::submitHandoff(const HandoffBuffer& buffer,
-                                    ExternalBufferOwnershipTransferDirection direction,
-                                    std::uint64_t semaphoreValue) -> Result<void>
+auto ExternalBufferInterop::submitHandoff(const HandoffBuffer& buffer,
+                                          ExternalBufferOwnershipTransferDirection direction,
+                                          std::uint64_t semaphoreValue) -> Result<void>
 {
     if (const auto prepared = prepareHandoff(); !prepared)
     {
@@ -212,12 +205,12 @@ auto ExternalContext::submitHandoff(const HandoffBuffer& buffer,
     }
     _pending.emplace_back(0, std::move(*command));
     const auto submitted = direction == ExternalBufferOwnershipTransferDirection::Release
-                               ? buffer.submissions.get().submitExternalSignal(_pending.back().second->getCommand(),
-                                                                               buffer.semaphore->getNative(),
-                                                                               semaphoreValue)
-                               : buffer.submissions.get().submitExternalWait(_pending.back().second->getCommand(),
-                                                                             buffer.semaphore->getNative(),
-                                                                             semaphoreValue);
+                               ? _submissions.submitExternalSignal(_pending.back().second->getCommand(),
+                                                                   buffer.semaphore->getNative(),
+                                                                   semaphoreValue)
+                               : _submissions.submitExternalWait(_pending.back().second->getCommand(),
+                                                                 buffer.semaphore->getNative(),
+                                                                 semaphoreValue);
     if (!submitted)
     {
         _pending.pop_back();
@@ -227,7 +220,7 @@ auto ExternalContext::submitHandoff(const HandoffBuffer& buffer,
     return {};
 }
 
-auto ExternalContext::release(const Buffer& buffer) -> Result<std::uint64_t>
+auto ExternalBufferInterop::release(const Buffer& buffer) -> Result<std::uint64_t>
 {
     auto handoff = getHandoffBuffer(buffer);
     if (!handoff)
@@ -255,7 +248,7 @@ auto ExternalContext::release(const Buffer& buffer) -> Result<std::uint64_t>
     return signalValue;
 }
 
-auto ExternalContext::acquire(const Buffer& buffer, std::uint64_t externalSignalValue) -> Result<void>
+auto ExternalBufferInterop::acquire(const Buffer& buffer, std::uint64_t externalSignalValue) -> Result<void>
 {
     auto handoff = getHandoffBuffer(buffer);
     if (!handoff)
@@ -281,38 +274,30 @@ auto ExternalContext::acquire(const Buffer& buffer, std::uint64_t externalSignal
     return {};
 }
 
-auto ExternalContext::prepareHandoff() -> Result<void>
+auto ExternalBufferInterop::prepareHandoff() -> Result<void>
 {
-    if (!_uploads)
-    {
-        return {};
-    }
-    if (_uploads->hasActiveBatches())
+    if (_uploads.hasActiveBatches())
     {
         return std::unexpected {
             makeError(ErrorCode::ResourcesInUse, "Destroy or submit upload batches before handoff")};
     }
-    return _uploads->collect();
+    return _uploads.collect();
 }
 
-auto ExternalContext::collectCompleted() -> Result<void>
+auto ExternalBufferInterop::collectCompleted() -> Result<void>
 {
     if (_pending.empty())
     {
         return {};
     }
-    if (!_submissions)
-    {
-        return std::unexpected {makeError(ErrorCode::BackendFailure, "Pending external handoff has no queue")};
-    }
-    return collectPending(_submissions->get());
+    return collectPending();
 }
 
-auto ExternalContext::collectPending(SubmissionQueue& submissions) -> Result<void>
+auto ExternalBufferInterop::collectPending() -> Result<void>
 {
     while (!_pending.empty())
     {
-        const auto completed = submissions.poll(submissions.getPoint(_pending.front().first));
+        const auto completed = _submissions.poll(_submissions.getPoint(_pending.front().first));
         if (!completed)
         {
             return std::unexpected {completed.error()};
@@ -326,17 +311,13 @@ auto ExternalContext::collectPending(SubmissionQueue& submissions) -> Result<voi
     return {};
 }
 
-auto ExternalContext::drain(std::uint64_t timeoutNanoseconds) -> Result<void>
+auto ExternalBufferInterop::drain(std::uint64_t timeoutNanoseconds) -> Result<void>
 {
     if (_pending.empty())
     {
         return {};
     }
-    if (!_submissions)
-    {
-        return std::unexpected {makeError(ErrorCode::BackendFailure, "Pending external handoff has no queue")};
-    }
-    const auto completed = _submissions->get().waitValue(_pending.back().first, timeoutNanoseconds);
+    const auto completed = _submissions.waitValue(_pending.back().first, timeoutNanoseconds);
     if (!completed)
     {
         return std::unexpected {completed.error()};
@@ -349,7 +330,7 @@ auto ExternalContext::drain(std::uint64_t timeoutNanoseconds) -> Result<void>
     return {};
 }
 
-auto ExternalContext::createBufferWithMemory(const BufferDesc& description) -> Result<ExternalBuffer>
+auto ExternalBufferInterop::createBufferWithMemory(const BufferDesc& description) -> Result<ExternalBuffer>
 {
     auto resource = BufferResource::createExportable(_device, _pool, description, _support.memoryHandleType);
     if (!resource)
@@ -371,7 +352,7 @@ auto ExternalContext::createBufferWithMemory(const BufferDesc& description) -> R
     return externalBuffer;
 }
 
-auto ExternalContext::createSemaphoreResource()
+auto ExternalBufferInterop::createSemaphoreResource()
     -> Result<std::pair<ExternalSemaphoreHandle, std::shared_ptr<ExternalSemaphoreResource>>>
 {
     const auto handleTypes = _support.semaphoreHandleType;
@@ -402,7 +383,7 @@ auto ExternalContext::createSemaphoreResource()
     };
 }
 
-auto ExternalContext::exportMemoryHandle(vk::DeviceMemory memory) const -> Result<std::intptr_t>
+auto ExternalBufferInterop::exportMemoryHandle(vk::DeviceMemory memory) const -> Result<std::intptr_t>
 {
 #ifdef _WIN32
     const auto info = vk::MemoryGetWin32HandleInfoKHR {.memory = memory, .handleType = _support.memoryHandleType};
@@ -432,8 +413,8 @@ auto ExternalContext::exportMemoryHandle(vk::DeviceMemory memory) const -> Resul
 #endif
 }
 
-auto ExternalContext::exportSemaphoreHandle(vk::Semaphore semaphore,
-                                            vk::ExternalSemaphoreHandleTypeFlagBits handleType) const
+auto ExternalBufferInterop::exportSemaphoreHandle(vk::Semaphore semaphore,
+                                                  vk::ExternalSemaphoreHandleTypeFlagBits handleType) const
     -> Result<std::intptr_t>
 {
 #ifdef _WIN32

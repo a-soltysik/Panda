@@ -24,7 +24,7 @@ scope follows
 ## Preconditions
 
 1. **Engine.** Use a live `Engine` and serialize creation with its other
-   operations on the context execution thread.
+   operations on the Engine execution thread.
 
 ## Main flow
 
@@ -32,7 +32,8 @@ scope follows
    `Engine` requires live internal state.
 2. **Release completed upload resources.** `Engine::Impl::createResource`
    calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
-   explains which packets can be released; without an `UploadManager`, this is a no-op.
+   explains which packets can be released; the Engine's already constructed manager
+   returns immediately when it has no pending packets.
 3. **Validate and derive storage sizes.** `MeshLayout::create` requires a
    nonzero vertex count and stride. When attributes are declared, Position is
    required, semantics must be unique, formats must match their semantics, and
@@ -67,11 +68,9 @@ sequenceDiagram
     participant V as Vulkan device
     A ->> C: Step 1 - createMesh(description)
     C ->> C: Step 2 - collectUploads()
-    opt UploadManager exists
-        C ->> U: Step 2 - collect()
-        Note over C,U: Step 2 - UC Reclaim completed upload packets
-        U -->> C: Success
-    end
+    C ->> U: Step 2 - collect()
+    Note over C,U: Step 2 - UC Reclaim completed upload packets
+    U -->> C: Success or backend error
     C ->> M: Step 3 - create(description)
     M ->> L: Step 3 - derive layout and byte sizes
     L -->> M: Valid layout

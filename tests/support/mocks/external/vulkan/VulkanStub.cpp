@@ -687,6 +687,17 @@ vkGetPhysicalDeviceExternalSemaphoreProperties(VkPhysicalDevice physicalDevice,
         pExternalSemaphoreProperties);
 }
 
+VKAPI_ATTR void VKAPI_CALL
+vkGetPhysicalDeviceExternalBufferProperties(VkPhysicalDevice physicalDevice,
+                                            const VkPhysicalDeviceExternalBufferInfo* pExternalBufferInfo,
+                                            VkExternalBufferProperties* pExternalBufferProperties)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetPhysicalDeviceExternalBufferProperties(
+        physicalDevice,
+        pExternalBufferInfo,
+        pExternalBufferProperties);
+}
+
 VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceProperties(VkPhysicalDevice physicalDevice,
                                                          VkPhysicalDeviceProperties* pProperties)
 {
@@ -984,6 +995,8 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkGetPhysicalDeviceFeatures2",                   .function = genericVulkanProc(&vkGetPhysicalDeviceFeatures2) },
     EntryPoint {.name = "vkGetPhysicalDeviceExternalSemaphoreProperties",
                 .function = genericVulkanProc(&vkGetPhysicalDeviceExternalSemaphoreProperties)                                         },
+    EntryPoint {.name = "vkGetPhysicalDeviceExternalBufferProperties",
+                .function = genericVulkanProc(&vkGetPhysicalDeviceExternalBufferProperties)                                            },
     EntryPoint {.name = "vkGetPhysicalDeviceProperties",                  .function = genericVulkanProc(&vkGetPhysicalDeviceProperties)},
     EntryPoint {.name = "vkGetPhysicalDeviceQueueFamilyProperties",
                 .function = genericVulkanProc(&vkGetPhysicalDeviceQueueFamilyProperties)                                               },

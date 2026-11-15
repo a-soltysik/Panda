@@ -7,7 +7,7 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include "external/ExternalContext.hpp"
+#include "external/ExternalBufferInterop.hpp"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -18,7 +18,6 @@
 
 #include <cstdint>
 #include <expected>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -28,6 +27,7 @@
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
+#include <panda/VulkanDeviceUuid.hpp>
 #include <utility>
 
 #include "ScopedMock.hpp"
@@ -43,8 +43,9 @@
 namespace
 {
 using panda::core::vulkan::resources::MemoryPool;
+using panda::core::vulkan::upload::UploadManager;
 using panda::detail::BufferResource;
-using panda::detail::ExternalContext;
+using panda::detail::ExternalBufferInterop;
 using panda::detail::SubmissionQueue;
 using panda::test::fakeVulkanHandle;
 using testing::_;
@@ -127,7 +128,7 @@ void expectTransferBarrier(const VkDependencyInfo* info, VkBuffer buffer, bool r
     expectBarrierRange(barrier, buffer);
 }
 
-class ExternalContextTest : public testing::Test
+class ExternalBufferInteropTest : public testing::Test
 {
 protected:
     void SetUp() override
@@ -140,7 +141,7 @@ protected:
                 output->memoryHeaps[0].size = 4096;
             });
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(physicalHandle, NotNull()))
-            .Times(2)
+            .Times(1)
             .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
                 const auto* const chain = static_cast<const VkBaseOutStructure*>(output->pNext);
                 if (chain->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES)
@@ -159,27 +160,29 @@ protected:
 
         EXPECT_CALL(submissionQueueMock, construct(Ref(device), 0));
         submissions = std::make_unique<SubmissionQueue>(device, 0);
+        uploads = std::make_unique<UploadManager>(device, *pool, *submissions, 0);
     }
 
     void TearDown() override
     {
-        pool.reset();
+        uploads.reset();
         submissions.reset();
+        pool.reset();
         std::ignore = device.release();
         std::ignore = instance.release();
     }
 
-    auto makeEngine(std::optional<panda::core::vulkan::upload::UploadManager>& uploads) -> ExternalContext
+    auto makeEngine() -> ExternalBufferInterop
     {
-        return ExternalContext {
-            ExternalContext::CreateInfo {
-                                         .physicalDevice = physical,
-                                         .device = device,
-                                         .pool = *pool,
-                                         .submissions = std::ref(*submissions),
-                                         .uploads = uploads,
-                                         .queueFamily = 0,
-                                         .support = panda::detail::ExternalSupport {
+        return ExternalBufferInterop {
+            ExternalBufferInterop::CreateInfo {
+                                               .device = device,
+                                               .pool = *pool,
+                                               .submissions = *submissions,
+                                               .uploads = *uploads,
+                                               .queueFamily = 0,
+                                               .deviceUuid = deviceUuid,
+                                               .support = panda::detail::ExternalSupport {
                     .deviceExtensions = {},
                     .memoryHandleType = memoryHandleType(),
                     .publicHandleType = publicMemoryHandleType(),
@@ -272,7 +275,7 @@ protected:
         EXPECT_CALL(vulkan, vkDestroySemaphore(deviceHandle, semaphore, nullptr));
     }
 
-    auto createExternalBuffer(ExternalContext& context,
+    auto createExternalBuffer(ExternalBufferInterop& context,
                               const panda::BufferDesc& description,
                               VkDeviceMemory memory,
                               VkSemaphore semaphore) -> panda::Result<panda::ExternalBuffer>
@@ -365,21 +368,24 @@ protected:
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::unique_ptr<SubmissionQueue> submissions;
+    std::unique_ptr<UploadManager> uploads;
+    panda::VulkanDeviceUuid deviceUuid {1, 2, 3};
 };
 }
 
-TEST_F(ExternalContextTest, ReleaseAndAcquireRecordOwnershipBarriersAndTimelineSubmissions)
+TEST_F(ExternalBufferInteropTest, ReleaseAndAcquireRecordOwnershipBarriersAndTimelineSubmissions)
 {
     auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(40);
     auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(41);
     auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(42);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
-    auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeEngine(uploads);
-    auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
+    auto externalInterop = makeEngine();
+    EXPECT_CALL(submissionQueueMock, isDeviceLost()).Times(2).WillRepeatedly(Return(false));
+    auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     EXPECT_TRUE(created->isValid());
     EXPECT_TRUE(created->hasSemaphore());
+    EXPECT_EQ(created->getDeviceUuid(), deviceUuid);
     auto buffer = created->getBuffer();
     const auto semaphore = vk::Semaphore {nativeSemaphore};
     expectExternalHandoff(fakeVulkanHandle<VkCommandPool>(50),
@@ -389,32 +395,31 @@ TEST_F(ExternalContextTest, ReleaseAndAcquireRecordOwnershipBarriersAndTimelineS
                           nativeBuffer,
                           semaphore);
 
-    const auto released = externalContext.release(buffer);
+    const auto released = externalInterop.release(buffer);
     ASSERT_TRUE(released);
     EXPECT_EQ(*released, 1U);
     const auto resource = BufferResource::getResource(buffer);
     EXPECT_TRUE(resource->isExternallyOwned());
     EXPECT_EQ(resource->getExternalTimelineValue(), 1U);
 
-    const auto duplicate = externalContext.release(buffer);
+    const auto duplicate = externalInterop.release(buffer);
     ASSERT_FALSE(duplicate);
     EXPECT_EQ(duplicate.error().code, panda::ErrorCode::InvalidArgument);
-    const auto wrongValue = externalContext.acquire(buffer, 1);
+    const auto wrongValue = externalInterop.acquire(buffer, 1);
     ASSERT_FALSE(wrongValue);
     EXPECT_EQ(wrongValue.error().code, panda::ErrorCode::InvalidArgument);
 
-    const auto acquired = externalContext.acquire(buffer, 2);
+    const auto acquired = externalInterop.acquire(buffer, 2);
     ASSERT_TRUE(acquired);
     EXPECT_FALSE(resource->isExternallyOwned());
     EXPECT_EQ(resource->getExternalTimelineValue(), 2U);
 }
 
-TEST_F(ExternalContextTest, PropagatesMemoryHandleExportFailure)
+TEST_F(ExternalBufferInteropTest, PropagatesMemoryHandleExportFailure)
 {
     auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(44);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
-    auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeEngine(uploads);
+    auto externalInterop = makeEngine();
     expectBufferResourceCreation(description, nativeMemory);
 #ifdef _WIN32
     EXPECT_CALL(vulkan, vkGetMemoryWin32HandleKHR(deviceHandle, NotNull(), NotNull()))
@@ -430,7 +435,7 @@ TEST_F(ExternalContextTest, PropagatesMemoryHandleExportFailure)
         });
 #endif
 
-    const auto created = externalContext.createBuffer(description);
+    const auto created = externalInterop.createBuffer(description);
 
     ASSERT_FALSE(created);
     EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
@@ -445,15 +450,15 @@ TEST_F(ExternalContextTest, PropagatesMemoryHandleExportFailure)
     }
 }
 
-TEST_F(ExternalContextTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimelineValue)
+TEST_F(ExternalBufferInteropTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimelineValue)
 {
     auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(60);
     auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(61);
     auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(62);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
-    auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeEngine(uploads);
-    auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
+    auto externalInterop = makeEngine();
+    EXPECT_CALL(submissionQueueMock, isDeviceLost()).WillOnce(Return(false));
+    auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     auto buffer = created->getBuffer();
     auto* const commandPool = fakeVulkanHandle<VkCommandPool>(63);
@@ -467,7 +472,7 @@ TEST_F(ExternalContextTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimeli
             return std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "injected submission failure")};
         });
 
-    const auto released = externalContext.release(buffer);
+    const auto released = externalInterop.release(buffer);
     ASSERT_FALSE(released);
     EXPECT_EQ(released.error().code, panda::ErrorCode::BackendFailure);
     const auto resource = BufferResource::getResource(buffer);
@@ -475,20 +480,19 @@ TEST_F(ExternalContextTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimeli
     EXPECT_EQ(resource->getExternalTimelineValue(), 0U);
 }
 
-TEST_F(ExternalContextTest, ReleaseRejectsTimelineValueWithoutRoomForExternalSignal)
+TEST_F(ExternalBufferInteropTest, ReleaseRejectsTimelineValueWithoutRoomForExternalSignal)
 {
     auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(66);
     auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(67);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
-    auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeEngine(uploads);
-    auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
+    auto externalInterop = makeEngine();
+    auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     const auto buffer = created->getBuffer();
     const auto resource = BufferResource::getResource(buffer);
     resource->setExternalTimelineValue(std::numeric_limits<std::uint64_t>::max() - 1);
 
-    const auto released = externalContext.release(buffer);
+    const auto released = externalInterop.release(buffer);
 
     ASSERT_FALSE(released);
     EXPECT_EQ(released.error().code, panda::ErrorCode::ResourceExhausted);
@@ -496,15 +500,15 @@ TEST_F(ExternalContextTest, ReleaseRejectsTimelineValueWithoutRoomForExternalSig
     EXPECT_EQ(resource->getExternalTimelineValue(), std::numeric_limits<std::uint64_t>::max() - 1);
 }
 
-TEST_F(ExternalContextTest, FailedAcquireSubmissionKeepsExternalOwnershipAndTimelineValue)
+TEST_F(ExternalBufferInteropTest, FailedAcquireSubmissionKeepsExternalOwnershipAndTimelineValue)
 {
     auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(70);
     auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(71);
     auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(72);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
-    auto uploads = std::optional<panda::core::vulkan::upload::UploadManager> {};
-    auto externalContext = makeEngine(uploads);
-    auto created = createExternalBuffer(externalContext, description, nativeMemory, nativeSemaphore);
+    auto externalInterop = makeEngine();
+    EXPECT_CALL(submissionQueueMock, isDeviceLost()).Times(2).WillRepeatedly(Return(false));
+    auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     auto buffer = created->getBuffer();
     auto* const releasePool = fakeVulkanHandle<VkCommandPool>(73);
@@ -518,7 +522,7 @@ TEST_F(ExternalContextTest, FailedAcquireSubmissionKeepsExternalOwnershipAndTime
     EXPECT_CALL(submissionQueueMock, submitExternalSignal(vk::CommandBuffer {releaseCommand}, semaphore, 1))
         .WillOnce(Return(panda::Result<std::uint64_t> {1}));
 
-    const auto released = externalContext.release(buffer);
+    const auto released = externalInterop.release(buffer);
     ASSERT_TRUE(released);
     const auto resource = BufferResource::getResource(buffer);
     ASSERT_TRUE(resource->isExternallyOwned());
@@ -532,7 +536,7 @@ TEST_F(ExternalContextTest, FailedAcquireSubmissionKeepsExternalOwnershipAndTime
             return std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "injected submission failure")};
         });
 
-    const auto acquired = externalContext.acquire(buffer, 2);
+    const auto acquired = externalInterop.acquire(buffer, 2);
 
     ASSERT_FALSE(acquired);
     EXPECT_EQ(acquired.error().code, panda::ErrorCode::BackendFailure);

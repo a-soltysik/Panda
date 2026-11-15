@@ -17,7 +17,7 @@ class Engine;
 
 namespace detail
 {
-class ExternalContext;
+class ExternalBufferInterop;
 }
 
 /// @brief Creates external buffers and queues ownership handoffs for one Engine.
@@ -55,8 +55,8 @@ public:
 private:
     friend class Engine;
     explicit ExternalBufferManager(
-        std::optional<std::reference_wrapper<detail::ExternalContext>> implementation) noexcept;
+        std::optional<std::reference_wrapper<detail::ExternalBufferInterop>> implementation) noexcept;
 
-    std::optional<std::reference_wrapper<detail::ExternalContext>> _implementation;
+    std::optional<std::reference_wrapper<detail::ExternalBufferInterop>> _implementation;
 };
 }

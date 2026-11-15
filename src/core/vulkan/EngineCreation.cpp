@@ -9,7 +9,6 @@
 #include <array>
 #include <cstdint>
 #include <expected>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -25,7 +24,7 @@
 #include "DeviceSelection.hpp"
 #include "InstanceCreation.hpp"
 #include "SubmissionQueue.hpp"
-#include "external/ExternalContext.hpp"
+#include "external/ExternalBufferInterop.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/Presentation.hpp"
 #include "renderer/FrameBindings.hpp"
@@ -40,18 +39,7 @@ namespace
 struct DeviceResourceOptions
 {
     std::optional<api_detail::ExternalSupport> externalSupport;
-    bool enableFramePerformanceSampling {};
 };
-
-template <typename T>
-auto borrowIfPresent(const std::unique_ptr<T>& owner) noexcept -> std::optional<std::reference_wrapper<T>>
-{
-    if (!owner)
-    {
-        return std::nullopt;
-    }
-    return std::ref(*owner);
-}
 
 auto makeDeviceExtensions(const SelectedDevice& selected,
                           bool windowed,
@@ -118,6 +106,7 @@ auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice,
 auto initializeDevice(ContextResources& resources, const WindowSurface* surface, const EngineOptions& options)
     -> Result<void>;
 auto selectPhysicalDevice(ContextResources& resources, std::uint32_t maxLights) -> Result<SelectedDevice>;
+void populateDeviceUuid(ContextResources& resources, SelectedDevice& selected);
 auto queryExternalSupport(ContextResources& resources, const EngineOptions& options)
     -> Result<std::optional<api_detail::ExternalSupport>>;
 auto initializeLogicalDevice(ContextResources& resources,
@@ -129,7 +118,6 @@ auto initializeSelectedDevice(ContextResources& resources,
                               const SelectedDevice& selected,
                               const EngineOptions& options) -> Result<void>;
 auto initializeSelectedDeviceResources(ContextResources& resources,
-                                       const WindowSurface* surface,
                                        const SelectedDevice& selected,
                                        DeviceResourceOptions options) -> Result<void>;
 auto initializePerformance(ContextResources& resources,
@@ -183,7 +171,7 @@ auto queryExternalSupport(ContextResources& resources, const EngineOptions& opti
 {
     if (options.externalBufferSupport != EngineOptions::ExternalBufferSupport::Disabled)
     {
-        return api_detail::ExternalContext::querySupport(
+        return api_detail::ExternalBufferInterop::querySupport(
             resources.physicalDevice(),
             options.externalBufferSupport == EngineOptions::ExternalBufferSupport::Required);
     }
@@ -213,6 +201,7 @@ auto initializeDevice(ContextResources& resources, const WindowSurface* surface,
     {
         return std::unexpected {selected.error()};
     }
+    populateDeviceUuid(resources, *selected);
     auto externalSupport = queryExternalSupport(resources, options);
     if (!externalSupport)
     {
@@ -223,12 +212,10 @@ auto initializeDevice(ContextResources& resources, const WindowSurface* surface,
     {
         return std::unexpected {initialized.error()};
     }
-    if (const auto initialized = initializeSelectedDeviceResources(
-            resources,
-            surface,
-            *selected,
-            DeviceResourceOptions {.externalSupport = std::move(*externalSupport),
-                                   .enableFramePerformanceSampling = options.enableFramePerformanceSampling});
+    if (const auto initialized =
+            initializeSelectedDeviceResources(resources,
+                                              *selected,
+                                              DeviceResourceOptions {.externalSupport = std::move(*externalSupport)});
         !initialized)
     {
         return std::unexpected {initialized.error()};
@@ -261,47 +248,44 @@ auto initializeSelectedDevice(ContextResources& resources,
 void updateDeviceInfo(ContextResources& resources, const SelectedDevice& selected)
 {
     resources.info() = selected.info;
-    resources.info().externalBufferExportEnabled = resources.externalContext() != nullptr;
+    resources.info().externalBufferExportEnabled = resources.externalInterop() != nullptr;
     resources.info().externalSemaphoreExportEnabled =
-        resources.externalContext() != nullptr && resources.externalContext()->supportsSemaphoreExport();
+        resources.externalInterop() != nullptr && resources.externalInterop()->supportsSemaphoreExport();
+}
+
+void populateDeviceUuid(ContextResources& resources, SelectedDevice& selected)
+{
     const auto properties =
         resources.physicalDevice().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
     const auto& uuid = properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID;
-    std::ranges::copy(uuid, resources.info().deviceUuid.begin());
+    std::ranges::copy(uuid, selected.info.deviceUuid.begin());
 }
 
 auto initializeSelectedDeviceResources(ContextResources& resources,
-                                       const WindowSurface* surface,
                                        const SelectedDevice& selected,
                                        DeviceResourceOptions options) -> Result<void>
 {
     resources.memoryPool() = resources::MemoryPool::create(resources.physicalDevice(), resources.device());
-    const auto needsExternalHandoff =
-        options.externalSupport && options.externalSupport->semaphoreHandleType.has_value();
-    const auto needsSubmissionQueue =
-        surface != nullptr || needsExternalHandoff || options.enableFramePerformanceSampling;
-    if (needsSubmissionQueue)
+    resources.submissions() =
+        std::make_unique<api_detail::SubmissionQueue>(resources.device(), selected.info.queueFamily);
+    if (const auto initialized = resources.submissions()->initialize(*resources.physicalDevice()); !initialized)
     {
-        resources.submissions() =
-            std::make_unique<api_detail::SubmissionQueue>(resources.device(), selected.info.queueFamily);
+        return std::unexpected {initialized.error()};
     }
-    if (surface == nullptr && resources.submissions() != nullptr)
-    {
-        if (const auto initialized = resources.submissions()->initialize(*resources.physicalDevice()); !initialized)
-        {
-            return std::unexpected {initialized.error()};
-        }
-    }
+    resources.uploads().emplace(resources.device(),
+                                *resources.memoryPool(),
+                                *resources.submissions(),
+                                selected.info.queueFamily);
     if (options.externalSupport)
     {
-        resources.externalContext() = std::make_unique<api_detail::ExternalContext>(
-            api_detail::ExternalContext::CreateInfo {.physicalDevice = resources.physicalDevice(),
-                                                     .device = resources.device(),
-                                                     .pool = *resources.memoryPool(),
-                                                     .submissions = borrowIfPresent(resources.submissions()),
-                                                     .uploads = resources.uploads(),
-                                                     .queueFamily = selected.info.queueFamily,
-                                                     .support = std::move(*options.externalSupport)});
+        resources.externalInterop() = std::make_unique<api_detail::ExternalBufferInterop>(
+            api_detail::ExternalBufferInterop::CreateInfo {.device = resources.device(),
+                                                           .pool = *resources.memoryPool(),
+                                                           .submissions = *resources.submissions(),
+                                                           .uploads = resources.uploadManager(),
+                                                           .queueFamily = selected.info.queueFamily,
+                                                           .deviceUuid = selected.info.deviceUuid,
+                                                           .support = std::move(*options.externalSupport)});
     }
     return {};
 }
@@ -312,7 +296,7 @@ auto initializePerformance(ContextResources& resources,
 {
     auto performance = std::make_unique<api_detail::PerformanceManagerImpl>(
         resources.device(),
-        resources.submissions().get(),
+        *resources.submissions(),
         api_detail::TimestampProperties {.validBits = selected.timestampValidBits,
                                          .periodNanoseconds = selected.timestampPeriodNanoseconds},
         enableFramePerformanceSampling);

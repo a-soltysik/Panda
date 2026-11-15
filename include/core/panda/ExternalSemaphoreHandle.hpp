@@ -9,7 +9,7 @@ namespace panda
 {
 namespace detail
 {
-class ExternalContext;
+class ExternalBufferInterop;
 }
 
 /// @brief Native handle kind used to share an external timeline semaphore.
@@ -45,7 +45,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class detail::ExternalContext;
+    friend class detail::ExternalBufferInterop;
     ExternalSemaphoreHandle(std::intptr_t value, ExternalSemaphoreHandleType type) noexcept;
 
     std::intptr_t _value {0};

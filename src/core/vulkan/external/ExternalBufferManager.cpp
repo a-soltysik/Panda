@@ -12,12 +12,12 @@
 #include <panda/ExternalBufferManager.hpp>
 #include <panda/ExternalTimelineValue.hpp>
 
-#include "external/ExternalContext.hpp"
+#include "external/ExternalBufferInterop.hpp"
 
 namespace panda
 {
 ExternalBufferManager::ExternalBufferManager(
-    std::optional<std::reference_wrapper<detail::ExternalContext>> implementation) noexcept
+    std::optional<std::reference_wrapper<detail::ExternalBufferInterop>> implementation) noexcept
     : _implementation {implementation}
 {
 }

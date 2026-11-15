@@ -666,10 +666,6 @@ auto Presentation::initializeFrameResources(const PresentationCreateInfo& info) 
     {
         return std::unexpected {resolved.error()};
     }
-    if (const auto initialized = _submissions.initialize(_physicalDevice); !initialized)
-    {
-        return initialized;
-    }
     auto execution = presentation::FrameExecution::create({.physicalDevice = _physicalDevice,
                                                            .device = _device,
                                                            .queueFamily = _deviceInfo.queueFamily,

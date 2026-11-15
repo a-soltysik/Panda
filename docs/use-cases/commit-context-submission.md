@@ -11,6 +11,10 @@ defines when a counter value confirms completed queue work. This UC starts
 when a caller has prepared queue work and ends when `vkQueueSubmit2` accepts it or
 returns an error.
 
+Every successful Engine has initialized this queue before publication. Queue
+initialization failure is reported by the Engine factory, so this flow starts with
+a ready queue and never initializes the timeline itself.
+
 ## Main flow
 
 1. **Prepare the work.** `SubmissionQueue::submit()` calls

@@ -23,7 +23,7 @@ for every `Texture` owner. The implemented scope follows
 ## Preconditions
 
 1. **Engine.** Use a live `Engine` and serialize creation with its other
-   operations on the context execution thread.
+   operations on the Engine execution thread.
 
 ## Main flow
 
@@ -31,7 +31,8 @@ for every `Texture` owner. The implemented scope follows
    `Engine` requires live internal state.
 2. **Release completed upload resources.** `Engine::Impl::createResource`
    calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
-   explains which packets can be released; without an `UploadManager`, this is a no-op.
+   explains which packets can be released; the Engine's already constructed manager
+   returns immediately when it has no pending packets.
 3. **Validate.** `TextureResource::create` requires nonzero dimensions, a
    concrete format and nonempty supported usage. Usage must include a
    view-capable use such as sampled, storage or attachment; transfer-only usage
@@ -62,11 +63,9 @@ sequenceDiagram
     participant V as Vulkan device
     A ->> C: Step 1 - createTexture(description)
     C ->> C: Step 2 - collectUploads()
-    opt UploadManager exists
-        C ->> U: Step 2 - collect()
-        Note over C,U: Step 2 - UC Reclaim completed upload packets
-        U -->> C: Success
-    end
+    C ->> U: Step 2 - collect()
+    Note over C,U: Step 2 - UC Reclaim completed upload packets
+    U -->> C: Success or backend error
     C ->> T: Step 3 - create(description)
     T ->> T: Validate usage, format and extent
     T ->> V: Step 3 - query 2D optimal format and usage support

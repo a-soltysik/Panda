@@ -21,6 +21,8 @@
 #include <panda/Error.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/OffscreenTarget.hpp>
+#include <panda/PerformanceManager.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
@@ -62,24 +64,28 @@ auto extension(std::string_view name) -> VkExtensionProperties
     return value;
 }
 
-auto queueFamily(VkQueueFlags flags) -> VkQueueFamilyProperties
+auto queueFamily(VkQueueFlags flags, std::uint32_t timestampValidBits = 0) -> VkQueueFamilyProperties
 {
     return {
         .queueFlags = flags,
         .queueCount = 1,
-        .timestampValidBits = 0,
+        .timestampValidBits = timestampValidBits,
         .minImageTransferGranularity = {.width = 1, .height = 1, .depth = 1}
     };
 }
 
-auto populateQueueFamilies(bool separate, std::uint32_t* count, VkQueueFamilyProperties* output) -> VkResult
+auto populateQueueFamilies(bool separate,
+                           std::uint32_t* count,
+                           VkQueueFamilyProperties* output,
+                           std::uint32_t timestampValidBits = 0) -> VkResult
 {
     *count = separate ? 2U : 1U;
     if (output != nullptr)
     {
         auto families = std::span {output, *count};
         families.front() =
-            queueFamily(static_cast<VkQueueFlags>(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute));
+            queueFamily(static_cast<VkQueueFlags>(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute),
+                        timestampValidBits);
         if (separate)
         {
             families.back() = queueFamily(static_cast<VkQueueFlags>(vk::QueueFlagBits::eTransfer));
@@ -174,7 +180,7 @@ protected:
                 }});
     }
 
-    void expectAdapter(bool windowed, bool separateQueues = false)
+    void expectAdapter(bool windowed, bool separateQueues = false, std::uint32_t timestampValidBits = 0)
     {
         expectEnumeration();
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFeatures2(physical, NotNull()))
@@ -192,7 +198,7 @@ protected:
                         maintenance->swapchainMaintenance1 = vk::True;
                     }
                 }});
-        expectQueueFamilies(separateQueues);
+        expectQueueFamilies(separateQueues, timestampValidBits);
         if (windowed)
         {
             expectPresentationSupport(separateQueues);
@@ -220,16 +226,19 @@ protected:
                 output->limits.maxStorageBufferRange = 4096;
                 output->limits.maxDescriptorSetStorageBuffers = 4;
                 output->limits.maxPerStageDescriptorStorageBuffers = 4;
+                output->limits.timestampPeriod = 2.5F;
                 std::ranges::copy(std::string_view {"Unit GPU"}, std::span {output->deviceName}.begin());
             });
     }
 
-    void expectQueueFamilies(bool separate)
+    void expectQueueFamilies(bool separate, std::uint32_t timestampValidBits = 0)
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceQueueFamilyProperties(physical, NotNull(), _))
             .Times(2)
-            .WillRepeatedly([separate](VkPhysicalDevice, std::uint32_t* count, VkQueueFamilyProperties* output) {
-                return populateQueueFamilies(separate, count, output);
+            .WillRepeatedly([separate, timestampValidBits](VkPhysicalDevice,
+                                                           std::uint32_t* count,
+                                                           VkQueueFamilyProperties* output) {
+                return populateQueueFamilies(separate, count, output, timestampValidBits);
             });
     }
 
@@ -321,6 +330,17 @@ protected:
         {
             expectMemoryPool();
         }
+        EXPECT_CALL(
+            vulkan,
+            vkGetPhysicalDeviceProperties2(physical, testing::Truly([](const VkPhysicalDeviceProperties2* output) {
+                                               const auto* base = static_cast<const VkBaseOutStructure*>(output->pNext);
+                                               return base != nullptr &&
+                                                      base->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+                                           })))
+            .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                auto* identity = static_cast<VkPhysicalDeviceIDProperties*>(output->pNext);
+                identity->deviceUUID[0] = 1;
+            });
         expectDriverProperties();
         EXPECT_CALL(vulkan, vkCreateDevice(physical, NotNull(), nullptr, NotNull()))
             .WillOnce(testing::Action<decltype(vkCreateDevice)> {
@@ -430,6 +450,12 @@ protected:
                     timeline->maxTimelineSemaphoreValueDifference = std::numeric_limits<std::uint64_t>::max();
                     return;
                 }
+                if (base->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES)
+                {
+                    auto* identity = static_cast<VkPhysicalDeviceIDProperties*>(output->pNext);
+                    identity->deviceUUID[0] = 1;
+                    return;
+                }
                 output->properties.limits.maxMemoryAllocationCount = 16;
                 output->properties.limits.nonCoherentAtomSize = 64;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
@@ -473,11 +499,38 @@ protected:
         }
     }
 
-    void expectHeadless()
+    void expectPerformanceQueryPools(std::uint32_t timestampValidBits)
+    {
+        if (timestampValidBits == 0)
+        {
+            return;
+        }
+        const auto queryPoolCreationOrder = testing::Sequence {};
+        for (auto index = std::uint64_t {}; index < 4; ++index)
+        {
+            auto* const queryPool = fakeVulkanHandle<VkQueryPool>(70 + index);
+            EXPECT_CALL(vulkan, vkCreateQueryPool(device, NotNull(), nullptr, NotNull()))
+                .InSequence(queryPoolCreationOrder)
+                .WillOnce([queryPool](VkDevice,
+                                      const VkQueryPoolCreateInfo* info,
+                                      const VkAllocationCallbacks*,
+                                      VkQueryPool* output) {
+                    EXPECT_EQ(info->queryType, VK_QUERY_TYPE_TIMESTAMP);
+                    EXPECT_EQ(info->queryCount, 2U);
+                    *output = queryPool;
+                    return success;
+                });
+            frameCleanup += EXPECT_CALL(vulkan, vkDestroyQueryPool(device, queryPool, nullptr));
+        }
+    }
+
+    void expectHeadless(vk::Result timelineResult = vk::Result::eSuccess, std::uint32_t timestampValidBits = 0)
     {
         expectInstance();
-        expectAdapter(false);
+        expectAdapter(false, false, timestampValidBits);
         expectDevice(false);
+        expectUploadClock(timelineResult);
+        expectPerformanceQueryPools(timestampValidBits);
         EXPECT_CALL(vulkan,
                     vkGetPhysicalDeviceImageFormatProperties(physical,
                                                              _,
@@ -762,9 +815,7 @@ protected:
 
 TEST_F(ContextResourcesIntegration, CreatesMovesAndDestroysHeadlessDeviceInDependencyOrder)
 {
-    expectInstance();
-    expectAdapter(false);
-    expectDevice(false);
+    expectHeadless();
     expectParentsDestroyed(true, false);
     auto context = panda::Engine::create();
     ASSERT_TRUE(context.has_value());
@@ -1008,7 +1059,6 @@ TEST_F(ContextResourcesIntegration, CreatesNonIndexedStandardGeometryMesh)
 TEST_F(ContextResourcesIntegration, ActiveBatchRejectsAnEmptyMeshAndRemainsUsable)
 {
     expectHeadless();
-    expectUploadClock();
     expectParentsDestroyed(true, false);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
@@ -1523,7 +1573,6 @@ TEST_F(ContextResourcesIntegration, SuspendedEngineRejectsEmptyPointsAndNegative
 TEST_F(ContextResourcesIntegration, BatchMovesAcrossEngineAndEmptySubmitRemainsRetryable)
 {
     expectHeadless();
-    expectUploadClock();
     expectParentsDestroyed(true, false);
     auto context = panda::Engine::create();
     ASSERT_TRUE(context);
@@ -1547,23 +1596,18 @@ TEST_F(ContextResourcesIntegration, BatchMovesAcrossEngineAndEmptySubmitRemainsR
     EXPECT_FALSE(context->getSubmissionManager().createUploadBatch());
 }
 
-TEST_F(ContextResourcesIntegration, FailedUploadClockCreationLeavesEngineUsable)
+TEST_F(ContextResourcesIntegration, FailedTimelineCreationRejectsEngineAndReleasesItsParents)
 {
-    expectHeadless();
-    expectUploadClock(vk::Result::eErrorOutOfDeviceMemory);
+    expectHeadless(vk::Result::eErrorOutOfDeviceMemory);
     expectParentsDestroyed(true, false);
     const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    const auto batch = context->getSubmissionManager().createUploadBatch();
-    ASSERT_FALSE(batch);
-    EXPECT_EQ(batch.error().code, panda::ErrorCode::ResourceExhausted);
-    EXPECT_TRUE(context->isValid());
+    ASSERT_FALSE(context);
+    EXPECT_EQ(context.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
 TEST_F(ContextResourcesIntegrationDeathTest, EngineRejectsAnUnsubmittedBatchEvenWithoutBuffers)
 {
     expectHeadless();
-    expectUploadClock();
     expectParentsDestroyed(true, false);
     auto created = panda::Engine::create();
     ASSERT_TRUE(created);
@@ -1573,4 +1617,111 @@ TEST_F(ContextResourcesIntegrationDeathTest, EngineRejectsAnUnsubmittedBatchEven
         ASSERT_TRUE(batch);
         EXPECT_DEATH(context.reset(), "Engine destroyed with live upload batches");
     }
+}
+
+TEST_F(ContextResourcesIntegration, HeadlessOffscreenSubmissionProducesPairedTimestampSample)
+{
+    expectHeadless(vk::Result::eSuccess, 64);
+    const auto imageDescription = panda::TextureDesc {
+        .extent = vk::Extent2D {.width = 16, .height = 16},
+        .format = vk::Format::eR8G8B8A8Srgb,
+        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc
+    };
+    auto* const image = fakeVulkanHandle<VkImage>(80);
+    auto* const imageView = fakeVulkanHandle<VkImageView>(81);
+    auto* const imageMemory = fakeVulkanHandle<VkDeviceMemory>(82);
+    expectTexture(image, imageDescription);
+    expectTextureAllocation(imageMemory, image);
+    expectTextureBinding(image, imageMemory);
+    expectTextureViewCreation(image, imageView, imageDescription);
+    expectTextureViewCleanup(image, imageView);
+
+    const auto commandPools = std::array {fakeVulkanHandle<VkCommandPool>(90), fakeVulkanHandle<VkCommandPool>(91)};
+    const auto commandBuffers =
+        std::array {fakeVulkanHandle<VkCommandBuffer>(92), fakeVulkanHandle<VkCommandBuffer>(93)};
+    const auto commandCreationOrder = testing::Sequence {};
+    for (auto index = std::size_t {}; index < commandPools.size(); ++index)
+    {
+        auto* const pool = commandPools.at(index);
+        auto* const command = commandBuffers.at(index);
+        EXPECT_CALL(vulkan, vkCreateCommandPool(device, NotNull(), nullptr, NotNull()))
+            .InSequence(commandCreationOrder)
+            .WillOnce([pool](VkDevice,
+                             const VkCommandPoolCreateInfo* info,
+                             const VkAllocationCallbacks*,
+                             VkCommandPool* output) {
+                EXPECT_EQ(info->queueFamilyIndex, 0U);
+                *output = pool;
+                return success;
+            });
+        EXPECT_CALL(vulkan, vkAllocateCommandBuffers(device, NotNull(), NotNull()))
+            .InSequence(commandCreationOrder)
+            .WillOnce([pool, command](VkDevice, const VkCommandBufferAllocateInfo* info, VkCommandBuffer* output) {
+                EXPECT_EQ(info->commandPool, pool);
+                EXPECT_EQ(info->commandBufferCount, 1U);
+                *output = command;
+                return success;
+            });
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, pool, nullptr));
+    }
+
+    auto* const offscreenQueryPool = fakeVulkanHandle<VkQueryPool>(72);
+    EXPECT_CALL(vulkan, vkResetCommandPool(device, commandPools.front(), 0)).WillOnce(Return(success));
+    EXPECT_CALL(vulkan, vkBeginCommandBuffer(commandBuffers.front(), NotNull())).WillOnce(Return(success));
+    EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(commandBuffers.front(), NotNull()));
+    EXPECT_CALL(vulkan, vkCmdResetQueryPool(commandBuffers.front(), offscreenQueryPool, 0, 2));
+    EXPECT_CALL(vulkan, vkCmdWriteTimestamp2(commandBuffers.front(), _, offscreenQueryPool, 0));
+    EXPECT_CALL(vulkan, vkCmdWriteTimestamp2(commandBuffers.front(), _, offscreenQueryPool, 1));
+    EXPECT_CALL(vulkan, vkCmdBeginRendering(commandBuffers.front(), NotNull()));
+    EXPECT_CALL(vulkan, vkCmdEndRendering(commandBuffers.front()));
+    EXPECT_CALL(vulkan, vkEndCommandBuffer(commandBuffers.front())).WillOnce(Return(success));
+    EXPECT_CALL(vulkan, vkQueueSubmit2(fakeVulkanHandle<VkQueue>(5), 1, NotNull(), VK_NULL_HANDLE))
+        .WillOnce([command = commandBuffers.front()](VkQueue, std::uint32_t, const VkSubmitInfo2* info, VkFence) {
+            if (info->commandBufferInfoCount != 1U || info->pCommandBufferInfos == nullptr ||
+                info->signalSemaphoreInfoCount != 1U || info->pSignalSemaphoreInfos == nullptr)
+            {
+                ADD_FAILURE() << "Offscreen submit must contain one command buffer and one timeline signal";
+                return static_cast<VkResult>(vk::Result::eErrorUnknown);
+            }
+            EXPECT_EQ(info->pCommandBufferInfos->commandBuffer, command);
+            EXPECT_EQ(info->pSignalSemaphoreInfos->value, 1U);
+            return success;
+        });
+    EXPECT_CALL(vulkan, vkGetSemaphoreCounterValue(device, fakeVulkanHandle<VkSemaphore>(10), NotNull()))
+        .WillOnce([](VkDevice, VkSemaphore, std::uint64_t* value) {
+            *value = 1;
+            return success;
+        });
+    EXPECT_CALL(vulkan, vkGetQueryPoolResults(device, offscreenQueryPool, 0, 2, _, NotNull(), _, _))
+        .WillOnce([](VkDevice,
+                     VkQueryPool,
+                     std::uint32_t,
+                     std::uint32_t,
+                     std::size_t,
+                     void* output,
+                     VkDeviceSize,
+                     VkQueryResultFlags) {
+            const auto values = std::array<std::uint64_t, 4> {100, 1, 140, 1};
+            const auto valueOutput = std::span {static_cast<std::uint64_t*>(output), values.size()};
+            std::ranges::copy(values, valueOutput.begin());
+            return success;
+        });
+
+    expectParentsDestroyed(true, false);
+    auto created = panda::Engine::create({.enableFramePerformanceSampling = true});
+    ASSERT_TRUE(created) << created.error().message;
+    auto engine = std::optional<panda::Engine> {std::move(*created)};
+    auto target = engine->getResourceManager().createOffscreenTarget({
+        .extent = {.width = 16, .height = 16}
+    });
+    ASSERT_TRUE(target) << target.error().message;
+    const auto frame = engine->getOffscreenRenderer().render(panda::RenderView {}, *target);
+    ASSERT_TRUE(frame) << frame.error().message;
+    EXPECT_EQ(frame->status, panda::FrameResult::Status::Rendered);
+    const auto samples = engine->getPerformanceManager().takeAvailableSamples();
+    ASSERT_TRUE(samples) << samples.error().message;
+    ASSERT_EQ(samples->size(), 1U);
+    EXPECT_EQ(samples->front().gpuExecutionDuration.count(), 100);
+    target->reset();
+    engine.reset();
 }
