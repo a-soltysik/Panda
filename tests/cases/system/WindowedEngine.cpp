@@ -697,6 +697,9 @@ TEST(WindowedEngineSystem, CreatesValidatedSurfaceAndDevice)
     const auto invalidViewCapture = windowRenderer(movedEngine).renderWithCapture(invalidCaptureView, *captureTarget);
     ASSERT_FALSE(invalidViewCapture);
     EXPECT_EQ(invalidViewCapture.error().code, panda::ErrorCode::InvalidArgument);
+    const auto invalidWindowFrame = windowRenderer(movedEngine).render(invalidCaptureView);
+    ASSERT_FALSE(invalidWindowFrame);
+    EXPECT_EQ(invalidWindowFrame.error().code, panda::ErrorCode::InvalidArgument);
 
     // Native iconification is asynchronous and may be ignored by a window manager.
     // The surface reports the same zero framebuffer state deterministically.
@@ -725,8 +728,9 @@ TEST(WindowedEngineSystem, CapturesPresentedViewIntoOffscreenTarget)
         GTEST_SKIP() << "Native window platform unavailable: " << window.error().message;
     }
     ASSERT_TRUE(window.has_value());
-    auto created =
-        panda::Engine::createWithSurface(*window, {.applicationName = "Panda capture smoke", .enableValidation = true});
+    auto created = panda::Engine::createWithSurface(
+        *window,
+        {.applicationName = "Panda capture smoke", .enableValidation = true, .enableFramePerformanceSampling = true});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
@@ -735,6 +739,13 @@ TEST(WindowedEngineSystem, CapturesPresentedViewIntoOffscreenTarget)
     auto context = std::move(*created);
     auto target = createTestTarget(context);
     ASSERT_TRUE(target.has_value()) << target.error().message;
+    auto other = panda::Engine::create();
+    ASSERT_TRUE(other) << other.error().message;
+    auto foreignTarget = createTestTarget(*other);
+    ASSERT_TRUE(foreignTarget) << foreignTarget.error().message;
+    const auto foreignCapture = windowRenderer(context).renderWithCapture(panda::RenderView {}, *foreignTarget);
+    ASSERT_FALSE(foreignCapture);
+    EXPECT_EQ(foreignCapture.error().code, panda::ErrorCode::InvalidArgument);
     const auto geometry = panda::createCubeGeometry();
     auto mesh = context.getResourceManager().createMeshFromGeometry(geometry);
     ASSERT_TRUE(mesh.has_value()) << mesh.error().message;
@@ -761,6 +772,14 @@ TEST(WindowedEngineSystem, CapturesPresentedViewIntoOffscreenTarget)
     ASSERT_TRUE(pixels.has_value()) << pixels.error().message;
     EXPECT_EQ(pixels->extent, renderExtent);
     ASSERT_EQ(pixels->rgba.size(), static_cast<std::size_t>(renderExtent.width) * renderExtent.height * 4);
+    auto& performance = context.getPerformanceManager();
+    if (performance.getCapabilities().isGpuTimestampSamplingEnabled)
+    {
+        const auto sample = performance.getLatestSample();
+        ASSERT_TRUE(sample) << sample.error().message;
+        ASSERT_TRUE(*sample);
+        EXPECT_GT(sample->value().cpuFrameDuration, std::chrono::nanoseconds::zero());
+    }
     auto redPixelFound = false;
     for (auto index = std::size_t {}; index < pixels->rgba.size(); index += 4)
     {
