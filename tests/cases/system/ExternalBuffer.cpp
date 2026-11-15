@@ -54,6 +54,46 @@ TEST(ExternalBufferSystem, CreatesDedicatedBufferAndOwnsPlatformHandle)
 #endif
 }
 
+TEST(ExternalBufferSystem, RejectsOrdinaryAndForeignEngineBuffers)
+{
+    const auto options =
+        panda::EngineOptions {.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required};
+    auto owner = panda::Engine::create(options);
+    if (!owner && owner.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << owner.error().message;
+    }
+    ASSERT_TRUE(owner) << owner.error().message;
+    auto foreignOwner = panda::Engine::create(options);
+    if (!foreignOwner && foreignOwner.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << foreignOwner.error().message;
+    }
+    ASSERT_TRUE(foreignOwner) << foreignOwner.error().message;
+    if (owner->getDeviceInfo().deviceUuid != foreignOwner->getDeviceInfo().deviceUuid)
+    {
+        GTEST_SKIP() << "Both Engines must select the same Vulkan device";
+    }
+
+    auto ordinary =
+        owner->getResourceManager().createBuffer({.size = 64, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(ordinary) << ordinary.error().message;
+    const auto ordinaryRelease = owner->getExternalBufferManager().releaseToExternal(*ordinary);
+    ASSERT_FALSE(ordinaryRelease);
+    EXPECT_EQ(ordinaryRelease.error().code, panda::ErrorCode::InvalidArgument);
+
+    auto external = foreignOwner->getExternalBufferManager().createBuffer(
+        {.size = 64, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    if (!external && external.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << external.error().message;
+    }
+    ASSERT_TRUE(external) << external.error().message;
+    const auto foreignRelease = owner->getExternalBufferManager().releaseToExternal(external->getBuffer());
+    ASSERT_FALSE(foreignRelease);
+    EXPECT_EQ(foreignRelease.error().code, panda::ErrorCode::InvalidArgument);
+}
+
 TEST(ExternalBufferSystem, ReleaseSignalsTimelineAndPreventsVulkanUploadsUntilAcquire)
 {
     auto context =

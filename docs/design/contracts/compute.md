@@ -66,7 +66,10 @@ semaphore when the last shared-buffer owner is released.
 `ExternalBufferManager::releaseToExternal(Buffer)` records a Vulkan queue-family
 release and signals the paired timeline semaphore. `acquireFromExternal(Buffer,
 value)` queues a wait for the next timeline value and records the matching acquire;
-neither operation waits on the CPU. The Buffer view can come from either
+neither operation waits on the CPU. Both reject ordinary or foreign-Engine buffers
+with `InvalidArgument`; origin is checked by memory-pool identity, even when two
+Engines select the same Vulkan device. An exported buffer without a paired semaphore
+returns `Unsupported` after origin validation. The Buffer view can come from either
 `ExternalBuffer` or `SharedCudaBuffer`, so ownership can be reacquired after import.
 The public handoff methods use `ExternalTimelineValue` instead of an untyped integer.
 `SharedCudaBuffer::submitWork(releaseValue, callback)` queues a CUDA wait for the

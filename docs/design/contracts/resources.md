@@ -150,35 +150,35 @@ must still avoid an infinite wait on work that was never submitted or signaled.
 The table describes public API behavior. Implemented declarations are documented in
 their public headers; entries without public declarations remain planned contracts.
 
-| Type/operation | Semantics |
-| --- | --- |
-| `Engine::create(EngineOptions) -> Result<Engine>` | Move-only owner with stable, heap-owned internal state; operations on one Engine are serialized |
-| `Engine::createWithSurface(WindowSurface&, EngineOptions) -> Result<Engine>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
-| `Engine::getDeviceInfo() -> DeviceInfo` | Copies selected-device information including external-memory and optional timeline-semaphore export support |
-| `Engine::getResourceManager() -> const ResourceManager&` | Borrows creation operations for buffers, textures, meshes and offscreen targets |
-| `Engine::getSubmissionManager() -> const SubmissionManager&` | Borrows upload-batch creation and completion observation operations |
-| `Engine::getOffscreenRenderer() -> const OffscreenRenderer&` | Borrows the renderer for explicit target-based rendering and pixel readback |
-| `Engine::getWindowRenderer() -> optional<reference_wrapper<const WindowRenderer>>` | Exposes window rendering only for an Engine created with a surface |
-| `Engine::getPerformanceManager() -> PerformanceManager&` | Borrows frame timing queries and samples; stable across Engine moves |
-| `Engine::getExternalBufferManager() -> ExternalBufferManager&` | Borrows external-buffer creation and GPU ownership handoffs; stable across Engine moves |
-| `Buffer`, `Texture`, `Mesh`, `OffscreenTarget` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
-| `ResourceManager::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
-| `ExternalBufferManager::createBuffer(BufferDesc) -> Result<ExternalBuffer>` | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle |
-| `ExternalBufferManager::releaseToExternal(const Buffer&) -> Result<ExternalTimelineValue>` | Submits a Vulkan ownership release and signals the paired timeline semaphore |
-| `ExternalBufferManager::acquireFromExternal(const Buffer&, ExternalTimelineValue) -> Result<void>` | Waits on the external timeline value and queues the Vulkan ownership acquire |
-| `ExternalBuffer` | Owns the Vulkan buffer, allocation handle and optional paired timeline-semaphore handle; handles alone do not synchronize access |
-| `CudaSession::importBuffer(ExternalBuffer) -> Result<SharedCudaBuffer>` | `Panda::Cuda` imports and maps a matching-device allocation once and imports its optional paired semaphore; it does not submit compute or synchronize with Vulkan |
-| `CudaSession::close() -> Result<void>` | Releases the session only after all `SharedCudaBuffer` owners are gone |
-| `ResourceManager::createTexture(TextureDesc) -> Result<Texture>` | Optimal-tiled 2D image with one mip and layer, sample count one, and undefined initial contents |
-| `ResourceManager::createOffscreenTarget(OffscreenTargetDesc) -> Result<OffscreenTarget>` | Single-sample RGBA8 sRGB color target for offscreen rendering and explicit readback |
-| `ResourceManager::createMesh(MeshDesc) -> Result<Mesh>` | Fixed vertex storage and optional 16- or 32-bit index storage; does not submit work |
-| `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>` | Copies the caller's bytes into owned staging before returning; validates destination bounds and transfer usage |
-| `UploadBatch::write(Mesh, vertexBytes, indexBytes) -> Result<void>` | Snapshots the complete mesh payload; a failed call queues none of that mesh's buffers |
-| `UploadBatch::write(Texture, span<const byte>, rowPitchBytes) -> Result<void>` | Copies a full texture using tightly packed rows when pitch is zero |
-| `UploadBatch::write(Texture, span<const byte>, TextureUploadRegion) -> Result<void>` | Copies one validated region; multiple regions for one texture must use the same batch |
-| `UploadBatch::submit() -> Result<CompletionPoint>` | Submits on the same graphics/compute queue; no CPU wait for completion |
-| `SubmissionManager::poll(CompletionPoint) -> Result<bool>` | Reports GPU completion or failure; not a presentation/display timestamp |
-| `SubmissionManager::wait(CompletionPoint, timeout) -> Result<WaitStatus>` | Explicit administrative wait; timeout is distinct from completion and backend failure |
+| Type/operation                                                                                     | Semantics                                                                                                                                                         |
+|----------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Engine::create(EngineOptions) -> Result<Engine>`                                                  | Move-only owner with stable, heap-owned internal state; operations on one Engine are serialized                                                                   |
+| `Engine::createWithSurface(WindowSurface&, EngineOptions) -> Result<Engine>`                       | Creates a windowed context; the borrowed window surface and native window outlive the context                                                                     |
+| `Engine::getDeviceInfo() -> DeviceInfo`                                                            | Copies selected-device information including external-memory and optional timeline-semaphore export support                                                       |
+| `Engine::getResourceManager() -> const ResourceManager&`                                           | Borrows creation operations for buffers, textures, meshes and offscreen targets                                                                                   |
+| `Engine::getSubmissionManager() -> const SubmissionManager&`                                       | Borrows upload-batch creation and completion observation operations                                                                                               |
+| `Engine::getOffscreenRenderer() -> const OffscreenRenderer&`                                       | Borrows the renderer for explicit target-based rendering and pixel readback                                                                                       |
+| `Engine::getWindowRenderer() -> optional<reference_wrapper<const WindowRenderer>>`                 | Exposes window rendering only for an Engine created with a surface                                                                                                |
+| `Engine::getPerformanceManager() -> PerformanceManager&`                                           | Borrows frame timing queries and samples; stable across Engine moves                                                                                              |
+| `Engine::getExternalBufferManager() -> ExternalBufferManager&`                                     | Borrows external-buffer creation and GPU ownership handoffs; stable across Engine moves                                                                           |
+| `Buffer`, `Texture`, `Mesh`, `OffscreenTarget`                                                     | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required                                       |
+| `ResourceManager::createBuffer(BufferDesc) -> Result<Buffer>`                                      | Fixed byte size and creation usage; never implicitly resize an existing Buffer                                                                                    |
+| `ExternalBufferManager::createBuffer(BufferDesc) -> Result<ExternalBuffer>`                        | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle                                       |
+| `ExternalBufferManager::releaseToExternal(const Buffer&) -> Result<ExternalTimelineValue>`         | Submits a Vulkan ownership release and signals the paired timeline semaphore                                                                                      |
+| `ExternalBufferManager::acquireFromExternal(const Buffer&, ExternalTimelineValue) -> Result<void>` | Waits on the external timeline value and queues the Vulkan ownership acquire                                                                                      |
+| `ExternalBuffer`                                                                                   | Owns the Vulkan buffer, allocation handle and optional paired timeline-semaphore handle; handles alone do not synchronize access                                  |
+| `CudaSession::importBuffer(ExternalBuffer) -> Result<SharedCudaBuffer>`                            | `Panda::Cuda` imports and maps a matching-device allocation once and imports its optional paired semaphore; it does not submit compute or synchronize with Vulkan |
+| `CudaSession::close() -> Result<void>`                                                             | Releases the session only after all `SharedCudaBuffer` owners are gone                                                                                            |
+| `ResourceManager::createTexture(TextureDesc) -> Result<Texture>`                                   | Optimal-tiled 2D image with one mip and layer, sample count one, and undefined initial contents                                                                   |
+| `ResourceManager::createOffscreenTarget(OffscreenTargetDesc) -> Result<OffscreenTarget>`           | Single-sample RGBA8 sRGB color target for offscreen rendering and explicit readback                                                                               |
+| `ResourceManager::createMesh(MeshDesc) -> Result<Mesh>`                                            | Fixed vertex storage and optional 16- or 32-bit index storage; does not submit work                                                                               |
+| `UploadBatch::write(Buffer, offset, span<const byte>) -> Result<void>`                             | Copies the caller's bytes into owned staging before returning; validates destination bounds and transfer usage                                                    |
+| `UploadBatch::write(Mesh, vertexBytes, indexBytes) -> Result<void>`                                | Snapshots the complete mesh payload; a failed call queues none of that mesh's buffers                                                                             |
+| `UploadBatch::write(Texture, span<const byte>, rowPitchBytes) -> Result<void>`                     | Copies a full texture using tightly packed rows when pitch is zero                                                                                                |
+| `UploadBatch::write(Texture, span<const byte>, TextureUploadRegion) -> Result<void>`               | Copies one validated region; multiple regions for one texture must use the same batch                                                                             |
+| `UploadBatch::submit() -> Result<CompletionPoint>`                                                 | Submits on the same graphics/compute queue; no CPU wait for completion                                                                                            |
+| `SubmissionManager::poll(CompletionPoint) -> Result<bool>`                                         | Reports GPU completion or failure; not a presentation/display timestamp                                                                                           |
+| `SubmissionManager::wait(CompletionPoint, timeout) -> Result<WaitStatus>`                          | Explicit administrative wait; timeout is distinct from completion and backend failure                                                                             |
 
 Materials are planned context-bound resources with shared ownership. Empty material
 handles must be detectable and rejected where a material is required; their public
@@ -284,7 +284,9 @@ Descriptor and pipeline interfaces belong to the later frame-rendering task.
 Selected-device diagnostics are available through `Engine::getDeviceInfo()` without
 exposing a device object.
 
-Engine identity is checked when combining handles. Handles do not extend Engine
+Engine identity is checked when combining handles. External-buffer handoff checks
+origin through the owning memory pool, so equal Vulkan device UUIDs do not make
+buffers from separate Engines interchangeable. Handles do not extend Engine
 lifetime; external owners must be released before Engine destruction. Its destructor
 drains internal in-flight retention before checking that requirement. Violating the
 ownership order or encountering unsafe teardown is fatal with diagnostics rather than
@@ -452,17 +454,17 @@ for its reuse/destruction, independently of queue completion. Prefer one graphic
 if distinct, use concurrent sharing for swapchain images only. Ordinary resources
 remain exclusive. Present fences protect resource recycling, not exact display time.
 
-| State/event | Required behavior |
-| --- | --- |
-| Ready | Accept updates, uploads, and frames |
-| Zero framebuffer extent | Suspended: no acquire, frame work or zero-sized attachments; keep processing events |
-| Acquire timeout/not-ready | Return a skipped-frame result; no fictitious completion point or consumed frame slot |
-| Acquire out-of-date | RecreatePending; no acquired image or frame work assumed |
-| Acquire suboptimal | Finish the acquired frame, then request recreation |
-| Present out-of-date/suboptimal | Preserve the already submitted completion point and presentation record; recreate at the safe boundary |
-| Surface lost | Stop window work and report the error; automatic platform-surface recovery is not a version-one requirement |
-| Frame recording or submit failure | Do not present output from an unsubmitted frame; follow the frame cleanup path below |
-| Device loss | Faulted: stop all new GPU work; no transparent device reconstruction |
+| State/event                       | Required behavior                                                                                           |
+|-----------------------------------|-------------------------------------------------------------------------------------------------------------|
+| Ready                             | Accept updates, uploads, and frames                                                                         |
+| Zero framebuffer extent           | Suspended: no acquire, frame work or zero-sized attachments; keep processing events                         |
+| Acquire timeout/not-ready         | Return a skipped-frame result; no fictitious completion point or consumed frame slot                        |
+| Acquire out-of-date               | RecreatePending; no acquired image or frame work assumed                                                    |
+| Acquire suboptimal                | Finish the acquired frame, then request recreation                                                          |
+| Present out-of-date/suboptimal    | Preserve the already submitted completion point and presentation record; recreate at the safe boundary      |
+| Surface lost                      | Stop window work and report the error; automatic platform-surface recovery is not a version-one requirement |
+| Frame recording or submit failure | Do not present output from an unsubmitted frame; follow the frame cleanup path below                        |
+| Device loss                       | Faulted: stop all new GPU work; no transparent device reconstruction                                        |
 
 At recreation, drain the relevant `CompletionPoint`s and outstanding presentation fences;
 administrative waiting is allowed. Build replacement attachments and swapchain,

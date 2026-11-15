@@ -172,8 +172,14 @@ protected:
         std::ignore = instance.release();
     }
 
-    auto makeEngine() -> ExternalBufferInterop
+    auto makeEngine(bool semaphoreExport = true) -> ExternalBufferInterop
     {
+        auto semaphoreHandleTypes =
+            std::optional<std::pair<vk::ExternalSemaphoreHandleTypeFlagBits, panda::ExternalSemaphoreHandleType>> {};
+        if (semaphoreExport)
+        {
+            semaphoreHandleTypes = std::pair {semaphoreHandleType(), publicSemaphoreHandleType()};
+        }
         return ExternalBufferInterop {
             ExternalBufferInterop::CreateInfo {
                                                .device = device,
@@ -182,31 +188,32 @@ protected:
                                                .uploads = *uploads,
                                                .queueFamily = 0,
                                                .deviceUuid = deviceUuid,
-                                               .support = panda::detail::ExternalSupport {
-                    .deviceExtensions = {},
-                    .memoryHandleType = memoryHandleType(),
-                    .publicHandleType = publicMemoryHandleType(),
-                    .semaphoreHandleType = std::pair {semaphoreHandleType(), publicSemaphoreHandleType()}}}
+                                               .support = panda::detail::ExternalSupport {.deviceExtensions = {},
+                                                           .memoryHandleType = memoryHandleType(),
+                                                           .publicHandleType = publicMemoryHandleType(),
+                                                           .semaphoreHandleType = semaphoreHandleTypes}}
         };
     }
 
-    void expectExternalHandleExports(VkDeviceMemory memory, VkSemaphore semaphore)
+    void expectExternalHandleExports(VkDeviceMemory memory, std::optional<VkSemaphore> semaphore)
     {
 #ifdef _WIN32
         std::ignore = memory;
-        std::ignore = semaphore;
         EXPECT_CALL(vulkan, vkGetMemoryWin32HandleKHR(deviceHandle, NotNull(), NotNull()))
             .WillOnce([](VkDevice, const VkMemoryGetWin32HandleInfoKHR* info, HANDLE* output) {
                 EXPECT_EQ(info->handleType, VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
                 *output = nullptr;
                 return success;
             });
-        EXPECT_CALL(vulkan, vkGetSemaphoreWin32HandleKHR(deviceHandle, NotNull(), NotNull()))
-            .WillOnce([](VkDevice, const VkSemaphoreGetWin32HandleInfoKHR* info, HANDLE* output) {
-                EXPECT_EQ(info->handleType, VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT);
-                *output = nullptr;
-                return success;
-            });
+        if (semaphore)
+        {
+            EXPECT_CALL(vulkan, vkGetSemaphoreWin32HandleKHR(deviceHandle, NotNull(), NotNull()))
+                .WillOnce([](VkDevice, const VkSemaphoreGetWin32HandleInfoKHR* info, HANDLE* output) {
+                    EXPECT_EQ(info->handleType, VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT);
+                    *output = nullptr;
+                    return success;
+                });
+        }
 #else
         EXPECT_CALL(vulkan, vkGetMemoryFdKHR(deviceHandle, NotNull(), NotNull()))
             .WillOnce([memory](VkDevice, const VkMemoryGetFdInfoKHR* info, int* output) {
@@ -215,13 +222,16 @@ protected:
                 *output = -1;
                 return success;
             });
-        EXPECT_CALL(vulkan, vkGetSemaphoreFdKHR(deviceHandle, NotNull(), NotNull()))
-            .WillOnce([semaphore](VkDevice, const VkSemaphoreGetFdInfoKHR* info, int* output) {
-                EXPECT_EQ(info->semaphore, semaphore);
-                EXPECT_EQ(info->handleType, VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT);
-                *output = -1;
-                return success;
-            });
+        if (semaphore)
+        {
+            EXPECT_CALL(vulkan, vkGetSemaphoreFdKHR(deviceHandle, NotNull(), NotNull()))
+                .WillOnce([semaphore](VkDevice, const VkSemaphoreGetFdInfoKHR* info, int* output) {
+                    EXPECT_EQ(info->semaphore, *semaphore);
+                    EXPECT_EQ(info->handleType, VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT);
+                    *output = -1;
+                    return success;
+                });
+        }
 #endif
     }
 
@@ -282,7 +292,7 @@ protected:
     {
         expectBufferResourceCreation(description, memory);
         expectSemaphoreCreation(semaphore);
-        expectExternalHandleExports(memory, semaphore);
+        expectExternalHandleExports(memory, std::optional {semaphore});
         return context.createBuffer(description);
     }
 
@@ -394,6 +404,7 @@ TEST_F(ExternalBufferInteropTest, ReleaseAndAcquireRecordOwnershipBarriersAndTim
                           fakeVulkanHandle<VkCommandBuffer>(53),
                           nativeBuffer,
                           semaphore);
+    EXPECT_CALL(bufferResourceMock, belongsTo(_, Ref(*pool))).Times(4).WillRepeatedly(Return(true));
 
     const auto released = externalInterop.release(buffer);
     ASSERT_TRUE(released);
@@ -413,6 +424,29 @@ TEST_F(ExternalBufferInteropTest, ReleaseAndAcquireRecordOwnershipBarriersAndTim
     ASSERT_TRUE(acquired);
     EXPECT_FALSE(resource->isExternallyOwned());
     EXPECT_EQ(resource->getExternalTimelineValue(), 2U);
+}
+
+TEST_F(ExternalBufferInteropTest, MemoryOnlyExportIsMarkedExportableButCannotHandoff)
+{
+    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(43);
+    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    auto externalInterop = makeEngine(false);
+    expectBufferResourceCreation(description, nativeMemory);
+    expectExternalHandleExports(nativeMemory, std::nullopt);
+
+    auto created = externalInterop.createBuffer(description);
+
+    ASSERT_TRUE(created);
+    EXPECT_FALSE(created->hasSemaphore());
+    const auto buffer = created->getBuffer();
+    const auto resource = BufferResource::getResource(buffer);
+    EXPECT_TRUE(resource->isExportable());
+    EXPECT_CALL(bufferResourceMock, belongsTo(_, Ref(*pool))).WillOnce(Return(true));
+
+    const auto released = externalInterop.release(buffer);
+
+    ASSERT_FALSE(released);
+    EXPECT_EQ(released.error().code, panda::ErrorCode::Unsupported);
 }
 
 TEST_F(ExternalBufferInteropTest, PropagatesMemoryHandleExportFailure)
@@ -456,6 +490,7 @@ TEST_F(ExternalBufferInteropTest, FailedReleaseSubmissionKeepsVulkanOwnershipAnd
     auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     auto buffer = created->getBuffer();
+    EXPECT_CALL(bufferResourceMock, belongsTo(_, Ref(*pool))).WillOnce(Return(true));
     auto* const commandPool = fakeVulkanHandle<VkCommandPool>(63);
     auto* const command = fakeVulkanHandle<VkCommandBuffer>(64);
     EXPECT_CALL(bufferResourceMock, getNative(_)).WillOnce(Return(vk::Buffer {nativeBuffer}));
@@ -484,6 +519,7 @@ TEST_F(ExternalBufferInteropTest, ReleaseRejectsTimelineValueWithoutRoomForExter
     auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     const auto buffer = created->getBuffer();
+    EXPECT_CALL(bufferResourceMock, belongsTo(_, Ref(*pool))).WillOnce(Return(true));
     const auto resource = BufferResource::getResource(buffer);
     resource->setExternalTimelineValue(std::numeric_limits<std::uint64_t>::max() - 1);
 
@@ -506,6 +542,7 @@ TEST_F(ExternalBufferInteropTest, FailedAcquireSubmissionKeepsExternalOwnershipA
     auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
     auto buffer = created->getBuffer();
+    EXPECT_CALL(bufferResourceMock, belongsTo(_, Ref(*pool))).Times(2).WillRepeatedly(Return(true));
     auto* const releasePool = fakeVulkanHandle<VkCommandPool>(73);
     auto* const releaseCommand = fakeVulkanHandle<VkCommandBuffer>(74);
     auto* const acquirePool = fakeVulkanHandle<VkCommandPool>(75);

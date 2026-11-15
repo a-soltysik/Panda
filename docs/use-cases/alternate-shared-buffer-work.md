@@ -35,8 +35,9 @@ callback on its session stream.
    through an `UploadBatch` and submits it. The upload is queued on the `Engine`
    graphics/compute queue; the application does not wait for its completion.
 2. **Release to CUDA.** The application calls
-   `ExternalBufferManager::releaseToExternal`. Core queues the Vulkan ownership
-   release and timeline signal, returning value `N`.
+   `ExternalBufferManager::releaseToExternal`. Core verifies that the buffer is an
+   exportable resource from this Engine, then queues the Vulkan ownership release
+   and timeline signal, returning value `N`.
 3. **Queue CUDA work.** The application calls
    `SharedCudaBuffer::submitWork(N, callback)`. CUDA waits for `N` on the session
    stream, then runs the callback with that stream, a borrowed mapped device
@@ -99,7 +100,7 @@ returned to Vulkan ownership.
 |--------------------|---------------------------------------------------------|-----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------|
 | **Variant&nbsp;1** | Step 2: the buffer has no paired timeline semaphore     | `releaseToExternal` returns `Unsupported` before submitting a release | No timeline value `N` exists; keep Vulkan ownership and use memory-sharing only                    |
 | **Error&nbsp;1**   | Step 1: upload write or submission fails                | Return the upload error before releasing the buffer                   | Vulkan still owns the buffer; resolve the cause before retrying                                    |
-| **Error&nbsp;2**   | Step 2: the buffer is invalid or already released       | Return the error before this release is submitted                     | Vulkan still owns the buffer; correct the state before retrying                                    |
+| **Error&nbsp;2**   | Step 2: the buffer is invalid, ordinary, foreign, or already released | Return before submitting the release | No release is submitted; correct the handle or ownership state before retrying |
 | **Error&nbsp;3**   | Step 3: CUDA cannot enqueue its wait                    | Return a CUDA error without invoking the callback or queuing a signal | The earlier Vulkan release remains submitted; no acquire value is available for automatic recovery |
 | **Error&nbsp;4**   | Step 3: the callback reports an enqueue error or throws | Return the callback error alongside the queued signal value           | Queue Step 4 before handling the callback error; already-enqueued work may have run                |
 | **Error&nbsp;5**   | Step 3: CUDA cannot enqueue its signal                  | Return a CUDA error and fault this imported handoff                   | No successful signal value is available; the application has no automatic recovery path            |

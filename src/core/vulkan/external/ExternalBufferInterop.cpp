@@ -160,7 +160,7 @@ auto ExternalBufferInterop::createBuffer(const BufferDesc& description) -> Resul
         return std::unexpected {std::move(semaphore.error())};
     }
     externalBuffer->_semaphoreHandle = std::move(semaphore->first);
-    BufferResource::getResource(externalBuffer->_buffer)->setExternalInterop(*this, std::move(semaphore->second));
+    BufferResource::getResource(externalBuffer->_buffer)->setExternalInterop(std::move(semaphore->second));
     return std::move(*externalBuffer);
 }
 
@@ -171,8 +171,7 @@ auto ExternalBufferInterop::getHandoffBuffer(const Buffer& buffer) const -> Resu
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "External buffer is empty")};
     }
     const auto resource = BufferResource::getResource(buffer);
-    const auto externalInterop = resource->getExternalInterop();
-    if (!externalInterop || &externalInterop->get() != this)
+    if (!resource->belongsTo(_pool) || !resource->isExportable())
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Buffer is not an external buffer from this Engine")};
