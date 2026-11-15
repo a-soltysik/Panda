@@ -36,6 +36,41 @@ void expect(bool condition,
             std::string_view message,
             std::source_location location = std::source_location::current()) noexcept;
 
+/// @brief Takes a non-null pointer-like value and returns a borrowed reference to its pointee.
+/// @param pointer An lvalue with `get()` and dereference operations.
+/// @param message Actionable context if the pointer is null.
+/// @param location Source location to report if the pointer is null.
+/// @return A reference valid while the pointee remains alive.
+template <typename Pointer>
+requires requires(Pointer& pointer) {
+    { pointer.get() != nullptr } -> std::convertible_to<bool>;
+    *pointer;
+}
+[[nodiscard]] auto expect(
+    Pointer& pointer,
+    std::string_view message,
+    std::source_location location = std::source_location::current()) noexcept(noexcept(pointer.get() != nullptr) &&
+                                                                              noexcept(*pointer)) -> decltype(*pointer)
+{
+    expect(pointer.get() != nullptr, message, location);
+    return *pointer;
+}
+
+/// @brief Takes a non-null raw object pointer and returns a borrowed reference to its pointee.
+/// @param pointer A pointer whose pointee remains alive for the returned reference's lifetime.
+/// @param message Actionable context if the pointer is null.
+/// @param location Source location to report if the pointer is null.
+/// @return A reference to the pointee.
+template <typename Value>
+requires std::is_object_v<Value>
+[[nodiscard]] auto expect(Value* pointer,
+                          std::string_view message,
+                          std::source_location location = std::source_location::current()) noexcept -> Value&
+{
+    expect(pointer != nullptr, message, location);
+    return *pointer;
+}
+
 /// @brief Logs a warning if the condition is true; returns whether it is false.
 [[nodiscard]] auto shouldNotBe(bool condition,
                                std::string_view message,

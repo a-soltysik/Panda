@@ -214,26 +214,22 @@ auto Engine::isValid() const noexcept -> bool
 
 auto Engine::getDeviceInfo() const -> DeviceInfo
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->getDeviceInfo();
+    return expect(_implementation, "Cannot use a moved-from Engine").getDeviceInfo();
 }
 
 auto Engine::getResourceManager() const -> const ResourceManager&
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->getResourceManager();
+    return expect(_implementation, "Cannot use a moved-from Engine").getResourceManager();
 }
 
 auto Engine::getSubmissionManager() const -> const SubmissionManager&
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->getSubmissionManager();
+    return expect(_implementation, "Cannot use a moved-from Engine").getSubmissionManager();
 }
 
 auto Engine::getOffscreenRenderer() const -> const OffscreenRenderer&
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->getOffscreenRenderer();
+    return expect(_implementation, "Cannot use a moved-from Engine").getOffscreenRenderer();
 }
 
 auto Engine::getWindowRenderer() const -> std::optional<std::reference_wrapper<const WindowRenderer>>
@@ -247,14 +243,12 @@ auto Engine::getWindowRenderer() const -> std::optional<std::reference_wrapper<c
 
 auto Engine::getPerformanceManager() -> PerformanceManager&
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->getPerformanceManager();
+    return expect(_implementation, "Cannot use a moved-from Engine").getPerformanceManager();
 }
 
 auto Engine::getExternalBufferManager() -> ExternalBufferManager&
 {
-    expect(_implementation != nullptr, "Cannot use a moved-from Engine");
-    return _implementation->getExternalBufferManager();
+    return expect(_implementation, "Cannot use a moved-from Engine").getExternalBufferManager();
 }
 
 }

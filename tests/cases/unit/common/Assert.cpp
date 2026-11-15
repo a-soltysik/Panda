@@ -9,9 +9,18 @@
 #include <panda/Logger.hpp>
 #include <source_location>
 #include <string>
+#include <string_view>
 #include <tuple>
 
 #include "LogCapture.hpp"
+
+namespace
+{
+auto expectPointer(std::uint32_t* pointer, std::string_view message) -> std::uint32_t
+{
+    return panda::expect(pointer, message);
+}
+}
 
 TEST(Assert, ChecksConditionsAndExtractsOwnedResults)
 {
@@ -35,6 +44,14 @@ TEST(Assert, ChecksConditionsAndExtractsOwnedResults)
     const auto copyable = std::expected<std::uint32_t, std::uint32_t> {3};
     EXPECT_EQ(panda::expect(copyable, "copy lvalue"), 3);
     EXPECT_EQ(*copyable, 3);
+}
+
+TEST(Assert, DereferencesRequiredPointerLikeValues)
+{
+    auto value = std::uint32_t {7};
+    auto owner = std::make_unique<std::uint32_t>(9);
+    EXPECT_EQ(panda::expect(owner, "required owner"), 9);
+    EXPECT_EQ(expectPointer(std::addressof(value), "required pointer"), 7);
 }
 
 TEST(Assert, NegatedComparisonsPreserveCallSites)
@@ -112,6 +129,14 @@ TEST(AssertDeathTest, RejectsEmptyOptional)
 {
     ASSERT_DEATH(std::ignore = panda::expect(std::optional<std::uint32_t> {}, "fatal optional"),
                  "Assert.cpp:.*fatal optional");
+}
+
+TEST(AssertDeathTest, RejectsNullPointerLikeValues)
+{
+    static constexpr auto owner = std::unique_ptr<std::uint32_t> {};
+    ASSERT_DEATH(std::ignore = panda::expect(owner, "fatal owner"), "Assert.cpp:.*fatal owner");
+    auto* pointer = static_cast<std::uint32_t*>(nullptr);
+    ASSERT_DEATH(std::ignore = expectPointer(pointer, "fatal pointer"), "Assert.cpp:.*fatal pointer");
 }
 
 TEST(AssertDeathTest, RejectsForbiddenCondition)

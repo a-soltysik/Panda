@@ -49,7 +49,12 @@ TEST(SceneState, RejectsStaleAndCrossSceneHandlesAfterSlotReuse)
     EXPECT_FALSE(firstScene.isAlive(stale));
     EXPECT_TRUE(firstScene.isAlive(replacement));
     EXPECT_FALSE(secondScene.isAlive(replacement));
-    EXPECT_FALSE(firstScene.getLocalTransform(stale));
+    const auto staleResult = firstScene.getLocalTransform(stale);
+    ASSERT_FALSE(staleResult);
+    EXPECT_EQ(staleResult.error().code, panda::ErrorCode::InvalidArgument);
+    const auto foreignResult = secondScene.getLocalTransform(replacement);
+    ASSERT_FALSE(foreignResult);
+    EXPECT_EQ(foreignResult.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST(SceneState, GeneratesStableObjectIdsAndRejectsReuse)

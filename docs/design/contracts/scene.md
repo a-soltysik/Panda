@@ -4,7 +4,7 @@ Specification for optional scenes, transforms, persistence, import and tools.
 Implementation follows [the plan](../../development/PLAN.md).
 Applications may supply render data directly without a scene, tools or ECS. The
 optional `Panda::Scene` module supports rapid prototyping and runs without the GUI;
-it builds on the renderer's direct interface. `Scene::create()` starts empty. The
+it builds on the renderer's direct interface. A newly constructed `Scene` starts empty. The
 current implementation provides runtime handles, 64-bit object IDs, names,
 transform hierarchy, mesh associations, perspective and orthographic cameras, and
 directional-light objects. `Scene::createRenderView()` prepares a snapshot for the
@@ -54,9 +54,11 @@ invent an inverse.
 
 ## Public scene boundary
 
-Use a move-only `Scene` with stable internal storage, owned by the application and
-bound to one `Engine`. The C++ scene types live in `panda::scene`; the context and
-shared renderer resources remain in `panda`. The context outlives the scene. Ordinary headers expose Panda
+Use a move-only `Scene` with stable internal storage, owned by the application.
+Scene construction and snapshot preparation operate on CPU state. If a Scene or
+snapshot retains GPU handles, each originating Engine must outlive those handles.
+The C++ scene types live in `panda::scene`; Engine and shared
+renderer resources remain in `panda`. Ordinary headers expose Panda
 object handles, descriptions and value snapshots, not an application registry. Scene
 storage types stay private; public `Transform` is a value, not a mutable registry
 component reference. Mutators validate and mark derived data dirty themselves.
@@ -77,14 +79,15 @@ The public scene API provides these behaviors:
   The active camera must belong to the scene; rendering without one fails clearly.
 - Assign every object a stable scene-lifetime ID, allow an explicit ID when creating
   an object, and support lookup with ordinary absence.
-  Preparing renderer input validates the scene, context and camera and follows the
-  [frame protocol](resources.md#frame-and-window-state).
+  Preparing renderer input validates scene data and the camera. Rendering validates
+  resource ownership and follows the [frame protocol](resources.md#frame-and-window-state).
 
 `Entity` is a small non-owning value with scene-instance identity and an opaque
 runtime identifier that includes the slot reuse count. It has no scene pointer to dereference after
 scene destruction; all resolving operations take a live Scene. Moving a Scene
-preserves identity; replacing/loading a different scene does not. Reject stale and
-cross-scene handles. Do not expose the raw ID as a persistent identifier.
+preserves identity; replacing/loading a different scene does not. Result-returning
+operations report `InvalidArgument` for stale or cross-scene handles; `isAlive()`
+returns false. Do not expose the raw ID as a persistent identifier.
 
 `ObjectId` is a 64-bit identifier assigned to every object, unique within one
 Scene's lifetime; deleted IDs are not reused. Scene generates IDs by default, and a
@@ -171,7 +174,7 @@ rules are specified in the rendering contract.
 
 ## First useful scene
 
-`Scene::create()` adds no entities. An application creates a camera entity, attaches
+Constructing a `Scene` adds no entities. An application creates a camera entity, attaches
 a perspective or orthographic lens, selects it, and creates any light entities it
 wants. The `scene_demo` example places its camera at (7, 5, 9) and explicitly adds
 a shadowed directional light, an unshadowed directional fill, and shadowed point
