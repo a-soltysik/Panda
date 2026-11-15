@@ -135,10 +135,8 @@ sequenceDiagram
     W->>C: Forward the request
     Note over C,V: Steps 3 to 8 realize validation through presentation
     C->>C: Validate camera, light, mesh layouts and texture requirements
-    opt UploadManager exists
-        C->>U: Collect completed upload packets
-        U-->>C: Collection result
-    end
+    C->>U: Collect completed upload packets
+    U-->>C: Collection result
     C->>C: Reject material maps without a submitted upload
     C->>P: Render validated view
     P->>V: Check framebuffer and swapchain generation

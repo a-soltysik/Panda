@@ -32,7 +32,7 @@ panda_add_component(panda_core
         vulkan/ContextResources.cpp
         vulkan/InstanceCreation.cpp
         vulkan/DeviceSelection.cpp
-        vulkan/external/ExternalContext.cpp
+        vulkan/external/ExternalBufferInterop.cpp
         vulkan/performance/PerformanceManager.cpp
         vulkan/performance/PerformanceManagerImpl.cpp
         vulkan/presentation/FrameExecution.cpp
@@ -102,7 +102,7 @@ panda_add_component(panda_core
         vulkan/DeviceSelection.hpp
         vulkan/InstanceResources.hpp
         vulkan/InstanceCreation.hpp
-        vulkan/external/ExternalContext.hpp
+        vulkan/external/ExternalBufferInterop.hpp
         vulkan/external/ExternalSemaphoreResource.hpp
         vulkan/external/ExternalBufferOwnershipTransferCommand.hpp
         vulkan/external/ScopedExternalHandle.hpp

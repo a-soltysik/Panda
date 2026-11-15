@@ -29,9 +29,9 @@ error or promise general recovery from device loss.
 2. **Begin destruction.** The `Engine` object leaves scope or is reset.
    `Engine::~Engine()` calls `Engine::Impl::drain()` before its implementation
    can release the device services.
-3. **Drain submitted uploads.** If the lazy `UploadManager` exists,
-   `Engine::Impl::drain()` first requires that no unsubmitted batches remain,
-   then waits up to ten seconds for pending uploads.
+3. **Drain submitted uploads.** `Engine::Impl::drain()` first requires that no
+   unsubmitted batches remain, then asks the Engine's `UploadManager` to wait up
+   to ten seconds for pending uploads. With no pending packets, it returns immediately.
    [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains
    when the retained owners can be released.
 4. **Drain presentation.** If this is a windowed Engine,
@@ -61,14 +61,12 @@ sequenceDiagram
     A->>H: Step 1 - release handles and submit or destroy batches
     A->>C: Step 2 - end Engine lifetime
     C->>I: Step 2 - drain()
-    opt UploadManager was created
-        I->>U: Step 3 - require no active batches
-        opt Pending upload packets
-            I->>U: Step 3 - drain with a ten-second wait
-            Note over I,U: Step 3 - UC Reclaim completed upload packets
-            U-->>I: Completed packets released, or drain error
-        end
+    I->>U: Step 3 - require no active batches and drain
+    opt Pending upload packets
+        Note over I,U: Step 3 - UC Reclaim completed upload packets
+        U-->>I: Completed packets released, or drain error
     end
+    U-->>I: Drained or error
     opt Windowed Engine
         I->>P: Step 4 - drain()
         Note over I,P: Step 4 - UC Drain frame and presentation use

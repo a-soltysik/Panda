@@ -28,8 +28,8 @@ allocation and, when available, its paired timeline semaphore.
    external-memory export it uses its fallback. Semaphore support is checked
    separately because memory can be shared without a safe cross-API handoff.
 2. **Match CUDA.** For the CUDA path, the application calls
-   `CudaSession::create` before allocating. The session selects the CUDA device
-   with the Engine's UUID and creates its stream.
+   `CudaSession::create(engine.getDeviceInfo().deviceUuid)` before allocating.
+   The session selects the matching CUDA device and creates its stream.
 3. **Request a buffer.** The application calls
    `ExternalBufferManager::createBuffer`. Core validates size, usage and
    device-local memory intent before creating native resources.
@@ -47,7 +47,7 @@ sequenceDiagram
     participant A as Application
     participant C as Engine
     participant X as ExternalBufferManager
-    participant E as ExternalContext
+    participant E as ExternalBufferInterop
     participant B as BufferResource
     participant M as MemoryPool
     participant V as Vulkan device
@@ -56,7 +56,7 @@ sequenceDiagram
     A->>C: Step 1 - create Engine with optional external support
     C->>V: Step 1 - query and enable memory and semaphore export
     C-->>A: Step 1 - return device capability flags
-    A->>S: Step 2 - create(Engine)
+    A->>S: Step 2 - create(Engine DeviceInfo UUID)
     S->>R: Step 2 - match device UUID and create stream
     R-->>S: Step 2 - matching CUDA session
     S-->>A: Step 2 - return CudaSession
@@ -88,6 +88,10 @@ semaphore and CUDA session. `CudaSession::close()` returns `ResourcesInUse` whil
 a shared-buffer owner remains. Linux transfers imported allocation and semaphore
 FDs to CUDA on successful import; Windows retains exported HANDLEs under Panda's
 RAII owners.
+
+**Device identity.** Engine queries the physical-device UUID once during creation
+and stores its copy in `DeviceInfo`. Every exported buffer carries that same UUID,
+so CUDA matching uses the identity already reported by the Engine.
 
 **Semaphore support.** An allocation can be imported even when no paired semaphore
 was exported. Such a buffer cannot use

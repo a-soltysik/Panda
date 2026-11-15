@@ -60,10 +60,6 @@ protected:
 
     void expectFrameResources(std::size_t count)
     {
-        EXPECT_CALL(submissions, initialize(_))
-            .WillOnce(testing::Action<panda::Result<void>(vk::PhysicalDevice)> {[](vk::PhysicalDevice) {
-                return panda::Result<void> {};
-            }});
         expectNativeFrameResources(count - 1);
     }
 
@@ -281,11 +277,16 @@ protected:
         -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
     {
         auto& submissionQueue = _submissions.emplace(getDevice(), 0);
+        EXPECT_CALL(submissions, initialize(_)).WillOnce(Return(panda::Result<void> {}));
+        if (const auto initialized = submissionQueue.initialize(vk::PhysicalDevice {}); !initialized)
+        {
+            return std::unexpected {initialized.error()};
+        }
         if (enableFramePerformanceSampling)
         {
             _performance = std::make_unique<panda::detail::PerformanceManagerImpl>(
                 getDevice(),
-                &submissionQueue,
+                submissionQueue,
                 panda::detail::TimestampProperties {.validBits = 64, .periodNanoseconds = 2.5F},
                 true);
             if (const auto initialized = _performance->initialize(); !initialized)
@@ -320,7 +321,7 @@ protected:
         {
             _performance = std::make_unique<panda::detail::PerformanceManagerImpl>(
                 getDevice(),
-                &submissionQueue,
+                submissionQueue,
                 panda::detail::TimestampProperties {.validBits = 64, .periodNanoseconds = 2.5F},
                 true);
             if (const auto initialized = _performance->initialize(); !initialized)
@@ -577,28 +578,10 @@ TEST_F(PresentationTest, ReportsUnavailableExtReleaseFunction)
     EXPECT_NE(presentation.error().message.find("VK_EXT_swapchain_maintenance1"), std::string::npos);
 }
 
-TEST_F(PresentationTest, PreservesSubmissionInitializationFailure)
-{
-    expectQueueLookup();
-    expectReleaseEntryPoint();
-    EXPECT_CALL(submissions, initialize(_))
-        .WillOnce(Return(
-            panda::Result<void> {std::unexpected {panda::makeVulkanError(vk::Result::eErrorInitializationFailed)}}));
-    EXPECT_CALL(vulkan, vkCreateSemaphore(_, _, _, _)).Times(0);
-    const auto presentation = createPresentation();
-    ASSERT_FALSE(presentation.has_value());
-    EXPECT_EQ(presentation.error().code, panda::ErrorCode::BackendFailure);
-    ASSERT_TRUE(presentation.error().native.has_value());
-    const auto native = presentation.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
-    EXPECT_EQ(native.api, "Vulkan");
-    EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
-}
-
 TEST_F(PresentationTest, PropagatesAcquireSemaphoreInitializationFailure)
 {
     expectQueueLookup();
     expectReleaseEntryPoint();
-    EXPECT_CALL(submissions, initialize(_)).WillOnce(Return(panda::Result<void> {}));
     expectNativeCommandResources();
     auto* const semaphore = fakeVulkanHandle<VkSemaphore>(1001);
     EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
@@ -623,7 +606,6 @@ TEST_F(PresentationTest, FailedCommandPoolCreationKeepsBorrowedSubmissionService
 {
     expectQueueLookup();
     expectReleaseEntryPoint();
-    EXPECT_CALL(submissions, initialize(_)).WillOnce(Return(panda::Result<void> {}));
     EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
         .WillOnce([](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* output) {
             *output = fakeVulkanHandle<VkCommandPool>(3);

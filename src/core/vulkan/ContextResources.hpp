@@ -11,7 +11,7 @@
 
 #include "InstanceResources.hpp"
 #include "SubmissionQueue.hpp"
-#include "external/ExternalContext.hpp"
+#include "external/ExternalBufferInterop.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/Presentation.hpp"
 #include "resources/memory/MemoryPool.hpp"
@@ -36,7 +36,8 @@ public:
     [[nodiscard]] auto memoryPool() noexcept -> std::unique_ptr<resources::MemoryPool>&;
     [[nodiscard]] auto submissions() noexcept -> std::unique_ptr<detail::SubmissionQueue>&;
     [[nodiscard]] auto uploads() noexcept -> std::optional<upload::UploadManager>&;
-    [[nodiscard]] auto externalContext() noexcept -> std::unique_ptr<detail::ExternalContext>&;
+    [[nodiscard]] auto uploadManager() noexcept -> upload::UploadManager&;
+    [[nodiscard]] auto externalInterop() noexcept -> std::unique_ptr<detail::ExternalBufferInterop>&;
     [[nodiscard]] auto performanceManagerImplementation() noexcept -> std::unique_ptr<detail::PerformanceManagerImpl>&;
     [[nodiscard]] auto presentation() noexcept -> std::unique_ptr<Presentation>&;
     [[nodiscard]] auto info() noexcept -> DeviceInfo&;
@@ -49,7 +50,7 @@ private:
     std::unique_ptr<resources::MemoryPool> _memoryPool;
     std::unique_ptr<detail::SubmissionQueue> _submissions;
     std::optional<upload::UploadManager> _uploads;
-    std::unique_ptr<detail::ExternalContext> _externalContext;
+    std::unique_ptr<detail::ExternalBufferInterop> _externalInterop;
     std::unique_ptr<detail::PerformanceManagerImpl> _performanceManagerImplementation;
     std::unique_ptr<Presentation> _presentation;
     DeviceInfo _info;

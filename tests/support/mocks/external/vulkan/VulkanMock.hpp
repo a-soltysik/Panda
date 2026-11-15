@@ -77,6 +77,10 @@ public:
                 vkGetPhysicalDeviceExternalSemaphoreProperties,
                 (VkPhysicalDevice, const VkPhysicalDeviceExternalSemaphoreInfo*, VkExternalSemaphoreProperties*),
                 ());
+    MOCK_METHOD(void,
+                vkGetPhysicalDeviceExternalBufferProperties,
+                (VkPhysicalDevice, const VkPhysicalDeviceExternalBufferInfo*, VkExternalBufferProperties*),
+                ());
 
     MOCK_METHOD(void, vkGetPhysicalDeviceProperties, (VkPhysicalDevice, VkPhysicalDeviceProperties*), ());
     MOCK_METHOD(void, vkGetPhysicalDeviceProperties2, (VkPhysicalDevice, VkPhysicalDeviceProperties2*), ());

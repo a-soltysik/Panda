@@ -36,6 +36,12 @@ using testing::Return;
 using testing::Sequence;
 using testing::StrEq;
 
+auto isTimelineSemaphoreCreateInfo(const VkSemaphoreCreateInfo* info) -> bool
+{
+    return info->pNext != nullptr &&
+           static_cast<const VkBaseInStructure*>(info->pNext)->sType == VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+}
+
 class PresentationSubmissionIntegration : public panda::test::PresentationTestSupport
 {
 protected:
@@ -54,11 +60,12 @@ protected:
 
     void expectFrameResources(std::size_t count)
     {
-        expectNativeFrameResources(count);
+        expectNativeFrameResources(count - 1);
     }
 
     void expectResourceDestruction(ResourceDestructionCounts counts)
     {
+        --counts.semaphores;
         expectNativeResourceDestruction(counts);
     }
 
@@ -156,6 +163,29 @@ protected:
         panda::DeviceInfo::SwapchainMaintenance maintenance = panda::DeviceInfo::SwapchainMaintenance::Khr)
         -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
     {
+        auto& submissions = _submissions.emplace(getDevice(), 0);
+        auto* const timeline = fakeVulkanHandle<VkSemaphore>(2);
+        EXPECT_CALL(vulkan, vkCreateSemaphore(_, testing::Truly(isTimelineSemaphoreCreateInfo), _, NotNull()))
+            .WillOnce([timeline](VkDevice,
+                                 const VkSemaphoreCreateInfo* info,
+                                 const VkAllocationCallbacks*,
+                                 VkSemaphore* output) {
+                if (info->pNext == nullptr)
+                {
+                    ADD_FAILURE() << "SubmissionQueue initialization must request a timeline semaphore";
+                    return static_cast<VkResult>(vk::Result::eErrorUnknown);
+                }
+                const auto* const type = static_cast<const VkSemaphoreTypeCreateInfo*>(info->pNext);
+                EXPECT_EQ(type->semaphoreType, VK_SEMAPHORE_TYPE_TIMELINE);
+                *output = timeline;
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
+        EXPECT_CALL(vulkan, vkDestroySemaphore(_, timeline, nullptr));
+        const auto initialized = submissions.initialize(vk::PhysicalDevice {fakeVulkanHandle<VkPhysicalDevice>(1)});
+        if (!initialized)
+        {
+            return std::unexpected {initialized.error()};
+        }
         return panda::core::vulkan::Presentation::create({
             .physicalDevice = vk::PhysicalDevice {},
             .device = getDevice(),
@@ -169,7 +199,7 @@ protected:
                                                   .queueFamily = 0,
                                                   .presentQueueFamily = 0,
                                                   .swapchainMaintenance = maintenance},
-            .submissions = _submissions.emplace(getDevice(), 0),
+            .submissions = submissions,
             .maxLights = panda::EngineOptions::defaultMaxLights
         });
     }
@@ -199,42 +229,16 @@ TEST_F(PresentationSubmissionIntegration, ReportsUnavailableExtReleaseFunction)
     EXPECT_NE(presentation.error().message.find("VK_EXT_swapchain_maintenance1"), std::string::npos);
 }
 
-TEST_F(PresentationSubmissionIntegration, PreservesTimelineSemaphoreCreationFailure)
-{
-    expectQueueLookup();
-    expectReleaseEntryPoint();
-    EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
-        .WillOnce([](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* output) {
-            *output = fakeVulkanHandle<VkSemaphore>(2);
-            return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
-        });
-    EXPECT_CALL(vulkan, vkDestroySemaphore(_, _, _)).Times(0);
-    const auto presentation = createPresentation();
-    ASSERT_FALSE(presentation.has_value());
-    EXPECT_EQ(presentation.error().code, panda::ErrorCode::BackendFailure);
-    ASSERT_TRUE(presentation.error().native.has_value());
-    const auto native = presentation.error().native.value_or(panda::NativeError {.api = {}, .code = 0});
-    EXPECT_EQ(native.api, "Vulkan");
-    EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
-}
-
 TEST_F(PresentationSubmissionIntegration, FailedCommandPoolCreationReleasesOnlyTheCreatedSemaphore)
 {
     expectQueueLookup();
     expectReleaseEntryPoint();
-    EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
-        .WillOnce([](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* output) {
-            *output = fakeVulkanHandle<VkSemaphore>(2);
-            return static_cast<VkResult>(vk::Result::eSuccess);
-        });
     EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
         .WillOnce([](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* output) {
             *output = fakeVulkanHandle<VkCommandPool>(3);
             return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
         });
     EXPECT_CALL(vulkan, vkDestroyCommandPool(_, _, _)).Times(0);
-    EXPECT_CALL(vulkan, vkDestroySemaphore(_, fakeVulkanHandle<VkSemaphore>(2), nullptr));
-
     const auto presentation = createPresentation();
 
     ASSERT_FALSE(presentation.has_value());

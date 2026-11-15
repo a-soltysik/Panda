@@ -3,7 +3,6 @@
 #include <array>
 #include <cstdint>
 #include <deque>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <panda/Buffer.hpp>
@@ -17,7 +16,11 @@
 
 #include "VulkanHpp.hpp"
 #include "resources/memory/MemoryPool.hpp"
-#include "upload/UploadManager.hpp"
+
+namespace panda::core::vulkan::upload
+{
+class UploadManager;
+}
 
 namespace panda::detail
 {
@@ -35,29 +38,29 @@ struct ExternalSupport
     std::optional<std::pair<vk::ExternalSemaphoreHandleTypeFlagBits, ExternalSemaphoreHandleType>> semaphoreHandleType;
 };
 
-class ExternalContext final
+class ExternalBufferInterop final
 {
 public:
     struct CreateInfo
     {
-        const vk::raii::PhysicalDevice& physicalDevice;
         const vk::raii::Device& device;
         core::vulkan::resources::MemoryPool& pool;
-        std::optional<std::reference_wrapper<SubmissionQueue>> submissions;
-        std::optional<core::vulkan::upload::UploadManager>& uploads;
+        SubmissionQueue& submissions;
+        core::vulkan::upload::UploadManager& uploads;
         std::uint32_t queueFamily {};
+        VulkanDeviceUuid deviceUuid {};
         ExternalSupport support;
     };
 
     [[nodiscard]] static auto querySupport(const vk::raii::PhysicalDevice& physicalDevice, bool required)
         -> Result<std::optional<ExternalSupport>>;
 
-    explicit ExternalContext(CreateInfo info);
-    ~ExternalContext();
-    ExternalContext(const ExternalContext&) = delete;
-    auto operator=(const ExternalContext&) -> ExternalContext& = delete;
-    ExternalContext(ExternalContext&&) = delete;
-    auto operator=(ExternalContext&&) -> ExternalContext& = delete;
+    explicit ExternalBufferInterop(CreateInfo info);
+    ~ExternalBufferInterop();
+    ExternalBufferInterop(const ExternalBufferInterop&) = delete;
+    auto operator=(const ExternalBufferInterop&) -> ExternalBufferInterop& = delete;
+    ExternalBufferInterop(ExternalBufferInterop&&) = delete;
+    auto operator=(ExternalBufferInterop&&) -> ExternalBufferInterop& = delete;
 
     [[nodiscard]] auto supportsSemaphoreExport() const noexcept -> bool;
     [[nodiscard]] auto createBuffer(const BufferDesc& description) -> Result<ExternalBuffer>;
@@ -71,7 +74,6 @@ private:
         Buffer owner;
         std::shared_ptr<BufferResource> resource;
         std::shared_ptr<ExternalSemaphoreResource> semaphore;
-        std::reference_wrapper<SubmissionQueue> submissions;
     };
 
     [[nodiscard]] auto getHandoffBuffer(const Buffer& buffer) const -> Result<HandoffBuffer>;
@@ -80,7 +82,7 @@ private:
                                      std::uint64_t semaphoreValue) -> Result<void>;
     [[nodiscard]] auto prepareHandoff() -> Result<void>;
     [[nodiscard]] auto collectCompleted() -> Result<void>;
-    [[nodiscard]] auto collectPending(SubmissionQueue& submissions) -> Result<void>;
+    [[nodiscard]] auto collectPending() -> Result<void>;
     [[nodiscard]] auto createBufferWithMemory(const BufferDesc& description) -> Result<ExternalBuffer>;
     [[nodiscard]] auto createSemaphoreResource()
         -> Result<std::pair<ExternalSemaphoreHandle, std::shared_ptr<ExternalSemaphoreResource>>>;
@@ -89,11 +91,10 @@ private:
                                              vk::ExternalSemaphoreHandleTypeFlagBits handleType) const
         -> Result<std::intptr_t>;
 
-    const vk::raii::PhysicalDevice& _physicalDevice;
     const vk::raii::Device& _device;
     core::vulkan::resources::MemoryPool& _pool;
-    std::optional<std::reference_wrapper<SubmissionQueue>> _submissions;
-    std::optional<core::vulkan::upload::UploadManager>& _uploads;
+    SubmissionQueue& _submissions;
+    core::vulkan::upload::UploadManager& _uploads;
     std::uint32_t _queueFamily;
     ExternalSupport _support;
     VulkanDeviceUuid _deviceUuid {};

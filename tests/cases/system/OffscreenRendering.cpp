@@ -101,7 +101,7 @@ auto makeBlendView(const panda::Mesh& mesh, bool reverse) -> panda::Result<panda
     auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
     const auto red = makeBlendDraw(mesh, 0.0F, {0.8F, 0.0F, 0.0F, 0.5F});
     const auto blue = makeBlendDraw(mesh, 0.25F, {0.0F, 0.0F, 0.7F, 0.5F});
-    view.meshes = reverse ? std::vector<panda::MeshDraw> {blue, red} : std::vector<panda::MeshDraw> {red, blue};
+    view.meshes = reverse ? std::vector {blue, red} : std::vector {red, blue};
     return view;
 }
 
@@ -209,6 +209,15 @@ TEST_F(OffscreenRenderingSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
     EXPECT_TRUE(firstFrame->completion.isValid());
     const auto firstReadback = activeEngine().getOffscreenRenderer().readPixels(target, firstFrame->completion);
     ASSERT_TRUE(firstReadback) << firstReadback.error().message;
+    if (activeEngine().getPerformanceManager().getCapabilities().isGpuTimestampSamplingEnabled)
+    {
+        const auto sample = activeEngine().getPerformanceManager().getLatestSample();
+        ASSERT_TRUE(sample) << sample.error().message;
+        const auto& latest = *sample;
+        ASSERT_TRUE(latest);
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access): ASSERT_TRUE above aborts the test when empty.
+        EXPECT_EQ(latest.value().frameIndex, 0U);
+    }
 
     const auto secondView = makeBlendView(*mesh, false);
     ASSERT_TRUE(secondView) << secondView.error().message;

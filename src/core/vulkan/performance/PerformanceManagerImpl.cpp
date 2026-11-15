@@ -24,7 +24,7 @@
 namespace panda::detail
 {
 PerformanceManagerImpl::PerformanceManagerImpl(const vk::raii::Device& device,
-                                               SubmissionQueue* submissions,
+                                               SubmissionQueue& submissions,
                                                TimestampProperties timestamps,
                                                bool enableFramePerformanceSampling)
     : _device {device},
@@ -103,11 +103,7 @@ auto PerformanceManagerImpl::collect(std::size_t slotIndex) -> Result<bool>
 
 auto PerformanceManagerImpl::isSubmissionComplete(const QuerySlot& slot) -> Result<bool>
 {
-    if (_submissions == nullptr)
-    {
-        return std::unexpected {makeError(ErrorCode::BackendFailure, "Submitted timestamp sample has no queue")};
-    }
-    return _submissions->poll(slot.submissionPoint);
+    return _submissions.poll(slot.submissionPoint);
 }
 
 auto PerformanceManagerImpl::collectCompleted(QuerySlot& slot) -> Result<bool>

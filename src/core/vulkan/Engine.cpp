@@ -1,6 +1,5 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
-#include <vulkan/vulkan.hpp>
 // clang-format on
 
 #include <chrono>
@@ -36,7 +35,7 @@
 #include "ContextResources.hpp"
 #include "EngineCreation.hpp"
 #include "SubmissionQueue.hpp"
-#include "external/ExternalContext.hpp"
+#include "external/ExternalBufferInterop.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/OffscreenRendering.hpp"
 #include "presentation/Presentation.hpp"
@@ -89,7 +88,8 @@ public:
     [[nodiscard]] auto readPixels(const OffscreenTarget& target, CompletionPoint completion) -> Result<ImageReadback>;
     [[nodiscard]] auto createBufferResource(const BufferDesc& description)
         -> Result<std::shared_ptr<detail::BufferResource>>;
-    [[nodiscard]] auto getExternalContext() noexcept -> std::optional<std::reference_wrapper<detail::ExternalContext>>;
+    [[nodiscard]] auto getExternalInterop() noexcept
+        -> std::optional<std::reference_wrapper<detail::ExternalBufferInterop>>;
     [[nodiscard]] auto createTextureResource(const TextureDesc& description)
         -> Result<std::shared_ptr<detail::TextureResource>>;
     [[nodiscard]] auto createOffscreenTargetResource(const OffscreenTargetDesc& description)
@@ -101,8 +101,6 @@ public:
     void drain();
 
 private:
-    [[nodiscard]] auto ensureUploads() -> Result<void>;
-    [[nodiscard]] auto ensureSubmissions() -> Result<void>;
     [[nodiscard]] auto ensureOffscreenRendering() -> Result<void>;
     [[nodiscard]] auto collectUploads() -> Result<void>;
     void collectCompletedUploads();
@@ -121,52 +119,11 @@ private:
     std::uint32_t _maxLights;
 };
 
-auto Engine::Impl::ensureUploads() -> Result<void>
-{
-    if (_resources->uploads())
-    {
-        return {};
-    }
-    if (const auto submissions = ensureSubmissions(); !submissions)
-    {
-        return submissions;
-    }
-    _resources->uploads().emplace(_resources->device(),
-                                  *_resources->memoryPool(),
-                                  *_resources->submissions(),
-                                  _resources->info().queueFamily);
-    return {};
-}
-
-auto Engine::Impl::ensureSubmissions() -> Result<void>
-{
-    if (_resources->submissions())
-    {
-        return {};
-    }
-    if (!_resources->submissions())
-    {
-        auto submissions =
-            std::make_unique<detail::SubmissionQueue>(_resources->device(), _resources->info().queueFamily);
-        const auto initialized = submissions->initialize(*_resources->physicalDevice());
-        if (!initialized)
-        {
-            return std::unexpected {initialized.error()};
-        }
-        _resources->submissions() = std::move(submissions);
-    }
-    return {};
-}
-
 auto Engine::Impl::ensureOffscreenRendering() -> Result<void>
 {
     if (_offscreenRendering)
     {
         return {};
-    }
-    if (const auto submissions = ensureSubmissions(); !submissions)
-    {
-        return submissions;
     }
     auto rendering = vulkan::presentation::OffscreenRendering::create(
         {.physicalDevice = *_resources->physicalDevice(),
@@ -186,17 +143,12 @@ auto Engine::Impl::ensureOffscreenRendering() -> Result<void>
 
 auto Engine::Impl::collectUploads() -> Result<void>
 {
-    auto& uploads = _resources->uploads();
-    return uploads ? uploads->collect() : Result<void> {};
+    return _resources->uploadManager().collect();
 }
 
 void Engine::Impl::collectCompletedUploads()
 {
-    auto& uploads = _resources->uploads();
-    if (uploads)
-    {
-        uploads->collectCompleted();
-    }
+    _resources->uploadManager().collectCompleted();
 }
 
 auto Engine::Impl::getDeviceInfo() const -> const DeviceInfo&
@@ -330,9 +282,9 @@ auto Engine::Impl::createBufferResource(const BufferDesc& description)
     return createResource<detail::BufferResource>(description);
 }
 
-auto Engine::Impl::getExternalContext() noexcept -> std::optional<std::reference_wrapper<detail::ExternalContext>>
+auto Engine::Impl::getExternalInterop() noexcept -> std::optional<std::reference_wrapper<detail::ExternalBufferInterop>>
 {
-    return borrowIfPresent(_resources->externalContext());
+    return borrowIfPresent(_resources->externalInterop());
 }
 
 auto Engine::Impl::createTextureResource(const TextureDesc& description)
@@ -354,17 +306,11 @@ auto Engine::Impl::createMeshResource(const MeshDesc& description) -> Result<std
 
 auto Engine::Impl::createUploadBatch() -> Result<std::unique_ptr<detail::UploadBatchImpl>>
 {
-    return ensureUploads().transform([&] {
-        return _resources->uploads()->createBatch();
-    });
+    return _resources->uploadManager().createBatch();
 }
 
 auto Engine::Impl::poll(CompletionPoint point) -> Result<bool>
 {
-    if (!_resources->submissions())
-    {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "No submitted work belongs to this Engine")};
-    }
     return _resources->submissions()->poll(point).transform([&](bool completed) {
         collectCompletedUploads();
         return completed;
@@ -373,9 +319,9 @@ auto Engine::Impl::poll(CompletionPoint point) -> Result<bool>
 
 auto Engine::Impl::wait(CompletionPoint point, std::chrono::nanoseconds timeout) -> Result<WaitStatus>
 {
-    if (timeout.count() < 0 || !_resources->submissions())
+    if (timeout.count() < 0)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait or Engine")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid completion wait timeout")};
     }
     return _resources->submissions()
         ->wait(point, static_cast<std::uint64_t>(timeout.count()))
@@ -388,12 +334,8 @@ auto Engine::Impl::wait(CompletionPoint point, std::chrono::nanoseconds timeout)
 void Engine::Impl::drain()
 {
     static constexpr auto timeoutNanoseconds = std::uint64_t {10'000'000'000};
-    auto& uploads = _resources->uploads();
-    if (uploads)
-    {
-        expect(!uploads->hasActiveBatches(), "Engine destroyed with live upload batches");
-        expect(uploads->drain(timeoutNanoseconds), "Cannot safely drain upload submissions");
-    }
+    expect(!_resources->uploadManager().hasActiveBatches(), "Engine destroyed with live upload batches");
+    expect(_resources->uploadManager().drain(timeoutNanoseconds), "Cannot safely drain upload submissions");
     if (_resources->presentation())
     {
         expect(_resources->presentation()->drain(), "Cannot safely drain window presentation");
@@ -404,9 +346,9 @@ void Engine::Impl::drain()
         expect(_offscreenRendering->drain(), "Cannot safely drain offscreen rendering");
         _offscreenRendering.reset();
     }
-    if (_resources->externalContext())
+    if (_resources->externalInterop())
     {
-        expect(_resources->externalContext()->drain(timeoutNanoseconds),
+        expect(_resources->externalInterop()->drain(timeoutNanoseconds),
                "Cannot safely drain external handoff submissions");
     }
     expect(_resources->memoryPool()->getStats().liveBytes == 0,
@@ -420,7 +362,7 @@ Engine::Engine(std::unique_ptr<Impl> implementation) noexcept
       _offscreenRenderer {*this},
       _windowRenderer {*this},
       _performanceManager {std::ref(_implementation->getPerformanceManagerImplementation())},
-      _externalBufferManager {_implementation->getExternalContext()}
+      _externalBufferManager {_implementation->getExternalInterop()}
 {
 }
 
@@ -433,7 +375,7 @@ Engine::Engine(Engine&& other) noexcept
       _performanceManager {_implementation
                                ? std::optional {std::ref(_implementation->getPerformanceManagerImplementation())}
                                : std::nullopt},
-      _externalBufferManager {_implementation ? _implementation->getExternalContext() : std::nullopt}
+      _externalBufferManager {_implementation ? _implementation->getExternalInterop() : std::nullopt}
 {
 }
 

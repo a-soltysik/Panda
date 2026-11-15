@@ -33,7 +33,8 @@ upload work.
    the native `VkSurfaceKHR` returned by `WindowSurface`.
 3. **Select a compatible device.** Panda calls the
    [UC Select a compatible Vulkan device](select-vulkan-device.md), which returns a physical
-   device, queue families and the capabilities needed by this Engine.
+   device, queue families and the capabilities needed by this Engine. Panda queries
+   the selected physical device's UUID once and copies it into `DeviceInfo`.
 4. **Check external-buffer support.** When
    `EngineOptions::externalBufferSupport` is not `Disabled`, Panda checks whether
    the selected device exposes the platform external-memory extension. `Required`
@@ -48,13 +49,16 @@ upload work.
    When the platform external-memory extension is available, it enables that
    extension and enables the external-semaphore extension only if timeline-semaphore
    export is supported.
-6. **Initialize the resource bundle.** `engine::createResources()` initializes
-   one stable `ContextResources` owner in place. It creates the memory pool and
-   performance manager, creates `ExternalContext` when external-memory export is
-   available, and initializes presentation for a windowed Engine. A nonzero
-   framebuffer extent creates the initial swapchain generation; a zero extent
-   records that presentation must be prepared later.
-7. **Publish the owner.** Only after the complete bundle is returned does
+6. **Initialize shared services.** `engine::createResources()` initializes one
+   stable `ContextResources` owner in place. After creating the memory pool, it
+   initializes the required `SubmissionQueue`, constructs an empty `UploadManager`,
+   creates `ExternalBufferInterop` when external-memory export is available, and
+   initializes `PerformanceManagerImpl`. A queue or performance initialization
+   failure aborts Engine creation.
+7. **Initialize presentation.** A windowed Engine creates frame resources and
+   presentation state. A nonzero framebuffer extent creates the initial swapchain
+   generation; a zero extent records that presentation must be prepared later.
+8. **Publish the owner.** Only after the complete bundle is returned does
    `createInternal()` construct `Engine::Impl` to own it and return the public
    `Engine`.
 
@@ -93,9 +97,10 @@ sequenceDiagram
         end
     end
     F->>V: Step 5 - Create logical device with selected features, queues and supported extensions
-    F->>R: Step 6 - Initialize pool, optional ExternalContext and performance manager
+    F->>R: Step 6 - Create pool, initialize SubmissionQueue, construct UploadManager
+    F->>R: Step 6 - Initialize optional ExternalBufferInterop and PerformanceManagerImpl
     F-->>C: Complete ContextResources
-    C->>I: Step 7 - Construct Impl with owned bundle
+    C->>I: Step 8 - Construct Impl with owned bundle
     C-->>A: Result containing Engine
 ```
 
@@ -137,8 +142,9 @@ sequenceDiagram
         end
     end
     F->>V: Step 5 - Create logical device with selected features, queues and supported extensions
-    F->>R: Step 6 - Create pool, optional ExternalContext and performance manager
-    F->>P: Initialize frame resources and initial presentation
+    F->>R: Step 6 - Create pool, initialize SubmissionQueue, construct UploadManager
+    F->>R: Step 6 - Initialize optional ExternalBufferInterop and PerformanceManagerImpl
+    F->>P: Step 7 - Initialize frame resources and initial presentation
     P->>W: Query framebuffer extent
     W-->>P: Pixel extent
     alt Nonzero framebuffer extent
@@ -148,7 +154,7 @@ sequenceDiagram
     end
     P-->>F: Initial generation or zero-extent pending state
     F-->>C: Complete ContextResources
-    C->>I: Step 7 - Construct Impl with owned bundle
+    C->>I: Step 8 - Construct Impl with owned bundle
     C-->>A: Result containing Engine
 ```
 
@@ -169,9 +175,9 @@ owned by `ContextResources`. The factory allocates this bundle once; `Engine::Im
 owns it after successful initialization. If any stage fails, the local bundle
 unwinds its RAII owners in reverse declaration order. No `Impl` exists yet, so the
 failure path does not call the successful-Engine drain. The caller still owns the
-window and must keep it alive until Engine teardown. `ExternalContext` borrows the
-optional uploads member itself, so the bundle stays at a stable address through
-lazy upload creation and Engine moves.
+window and must keep it alive until Engine teardown. `ExternalBufferInterop` borrows
+the already initialized `SubmissionQueue` and the empty `UploadManager`; both remain
+at stable addresses for the bundle's lifetime.
 
 **Windowed readiness.** A successful windowed Engine has presentation frame
 resources. If the framebuffer is minimized and reports zero pixels, creation
@@ -181,7 +187,9 @@ window-frame preparation handles that state; see the
 
 **Headless creation.** `Engine::create()` follows the same loader, device and
 service setup without querying window extensions, creating a surface or initializing
-presentation. Upload support is initialized when an upload batch is first requested.
+presentation. A successful Engine already owns an initialized submission timeline
+and an empty upload manager. Creating the manager allocates no staging memory or
+offscreen execution resources; those are created only when their work is requested.
 
 **Borrowed operations.** Both Engine paths expose `ResourceManager`,
 `SubmissionManager` and `OffscreenRenderer` through Engine getters. Only a windowed
@@ -195,18 +203,19 @@ point. These facades borrow their Engine and cannot outlive it.
 | **Error&nbsp;1**   | Step 2: loader is below Vulkan 1.3, or a requested validation layer/extension is unavailable                             | Return `Unsupported`; extension enumeration and provider errors keep their reported error                                                                   | No Engine is published; install or select a compatible Vulkan runtime, or disable optional validation        |
 | **Error&nbsp;2**   | Step 2: required window extensions are malformed or unavailable, or instance, messenger or native-surface creation fails | Return `InvalidArgument`, `Unsupported` or the originating native/provider error; release any instance services already created                             | No Engine is published; correct the provider/configuration or resolve the reported failure                   |
 | **Error&nbsp;3**   | Step 3: no compatible physical device is found, or device inspection cannot complete                                     | Propagate the selection result; see [UC Select a compatible Vulkan device](select-vulkan-device.md#variants-and-errors)                                     | No logical device or Engine is published; respond to the reported capability or backend failure              |
-| **Variant&nbsp;1** | Step 4: optional external-memory support is unavailable                                                                  | Continue Engine creation without `ExternalContext`; device info reports external-buffer export as disabled                                                 | Use the application's fallback path; see [UC Create and import an external buffer](create-external-buffer.md) |
+| **Variant&nbsp;1** | Step 4: optional external-memory support is unavailable                                                                  | Continue Engine creation without `ExternalBufferInterop`; device info reports external-buffer export as disabled                                                 | Use the application's fallback path; see [UC Create and import an external buffer](create-external-buffer.md) |
 | **Variant&nbsp;2** | Step 4: external-memory export is available but timeline-semaphore export is not                                         | Continue Engine creation and enable external-memory export only                                                                                            | Memory sharing remains available; cross-API GPU handoff is unsupported                                        |
 | **Error&nbsp;4**   | Step 4: required external-memory support is unavailable, or device-extension inspection fails                            | Return `Unsupported` for unavailable required support or propagate the inspection error                                                                     | No logical device or Engine is published; choose a compatible device or resolve the reported backend failure |
 | **Error&nbsp;5**   | Step 5: logical-device creation fails                                                                                    | Return the mapped Vulkan error without adopting a failed native output                                                                                      | No Engine is published; retry only after resolving the reported cause                                        |
-| **Error&nbsp;6**   | Step 6: performance-manager initialization fails                                                                         | Return its error and release the local manager and other Engine owners already created                                                                     | No Engine is published; investigate the reported device/backend failure before retry                         |
-| **Error&nbsp;7**   | Step 6: windowed presentation initialization fails                                                                       | Return the originating error and release partial presentation state and Vulkan owners; see [Error 7 cleanup](#error-7---release-partial-presentation-state) | No Engine is published; no application Engine is available                                                  |
+| **Error&nbsp;6**   | Step 6: timeline semaphore or performance-manager initialization fails                                                   | Return the originating Vulkan error and release the local bundle and Engine owners already created                                                         | No Engine is published; resolve the reported device/backend failure before retry                             |
+| **Error&nbsp;7**   | Step 7: windowed presentation initialization fails                                                                       | Return the originating error and release partial presentation state and Vulkan owners; see [Error 7 cleanup](#error-7---release-partial-presentation-state) | No Engine is published; no application Engine is available                                                  |
 
 ### Error 7 - Release partial presentation state
 
-**Entry state.** Steps 1-5 completed. The local `ContextResources` bundle owns
+**Entry state.** Steps 1-6 completed. The local `ContextResources` bundle owns
 instance resources, the selected physical-device wrapper, the logical device,
-memory pool and initialized performance manager. Presentation setup may have
+memory pool, initialized submission queue, upload manager and performance manager.
+Presentation setup may have
 created frame resources or attempted the initial swapchain generation. No
 `Engine::Impl` or public `Engine` has been published, and this flow has submitted
 no GPU work.
@@ -220,7 +229,7 @@ sequenceDiagram
     participant P as Presentation::create
     participant D as Logical device and Engine services
     participant S as Owned surface and instance services
-    C->>F: Step 6 - Create resource bundle
+    C->>F: Step 7 - Initialize presentation in the resource bundle
     F->>R: Own initialized services
     F->>P: Create frame resources and initial generation
     P-->>F: Error 7 - Initialization error

@@ -15,7 +15,7 @@
 
 namespace panda::detail
 {
-class ExternalContext;
+class ExternalBufferInterop;
 class ExternalSemaphoreResource;
 namespace buffer_resources = ::panda::core::vulkan::resources;
 
@@ -43,8 +43,10 @@ public:
 
     [[nodiscard]] auto isExternallyOwned() const noexcept -> bool;
     void setExternallyOwned(bool externallyOwned) noexcept;
-    void setExternalInterop(ExternalContext& context, std::shared_ptr<ExternalSemaphoreResource> semaphore) noexcept;
-    [[nodiscard]] auto getExternalContext() const noexcept -> std::optional<std::reference_wrapper<ExternalContext>>;
+    void setExternalInterop(ExternalBufferInterop& context,
+                            std::shared_ptr<ExternalSemaphoreResource> semaphore) noexcept;
+    [[nodiscard]] auto getExternalInterop() const noexcept
+        -> std::optional<std::reference_wrapper<ExternalBufferInterop>>;
     [[nodiscard]] auto getExternalSemaphore() const noexcept -> const std::shared_ptr<ExternalSemaphoreResource>&;
     [[nodiscard]] auto getExternalTimelineValue() const noexcept -> std::uint64_t;
     void setExternalTimelineValue(std::uint64_t value) noexcept;
@@ -70,7 +72,7 @@ private:
     std::uint64_t _size;
     vk::BufferUsageFlags _usage;
     BufferMemory _intent;
-    std::optional<std::reference_wrapper<ExternalContext>> _externalContext;
+    std::optional<std::reference_wrapper<ExternalBufferInterop>> _externalInterop;
     std::shared_ptr<ExternalSemaphoreResource> _externalSemaphore;
     std::uint64_t _externalTimelineValue {0};
     bool _externallyOwned {false};

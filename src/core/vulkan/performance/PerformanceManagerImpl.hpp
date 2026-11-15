@@ -27,7 +27,7 @@ class PerformanceManagerImpl final
 {
 public:
     PerformanceManagerImpl(const vk::raii::Device& device,
-                           SubmissionQueue* submissions,
+                           SubmissionQueue& submissions,
                            TimestampProperties timestamps,
                            bool enableFramePerformanceSampling);
 
@@ -66,7 +66,7 @@ private:
     [[nodiscard]] auto duration(std::uint64_t start, std::uint64_t end) const -> Result<std::chrono::nanoseconds>;
 
     const vk::raii::Device& _device;
-    SubmissionQueue* _submissions;
+    SubmissionQueue& _submissions;
     PerformanceCapabilities _capabilities;
     std::uint32_t _timestampValidBits;
     float _timestampPeriodNanoseconds;

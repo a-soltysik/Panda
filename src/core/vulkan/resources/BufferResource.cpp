@@ -263,16 +263,16 @@ void BufferResource::setExternallyOwned(bool externallyOwned) noexcept
     _externallyOwned = externallyOwned;
 }
 
-void BufferResource::setExternalInterop(ExternalContext& context,
+void BufferResource::setExternalInterop(ExternalBufferInterop& context,
                                         std::shared_ptr<ExternalSemaphoreResource> semaphore) noexcept
 {
-    _externalContext.emplace(context);
+    _externalInterop.emplace(context);
     _externalSemaphore = std::move(semaphore);
 }
 
-auto BufferResource::getExternalContext() const noexcept -> std::optional<std::reference_wrapper<ExternalContext>>
+auto BufferResource::getExternalInterop() const noexcept -> std::optional<std::reference_wrapper<ExternalBufferInterop>>
 {
-    return _externalContext;
+    return _externalInterop;
 }
 
 auto BufferResource::getExternalSemaphore() const noexcept -> const std::shared_ptr<ExternalSemaphoreResource>&

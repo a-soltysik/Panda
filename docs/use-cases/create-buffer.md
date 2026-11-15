@@ -22,7 +22,7 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 ## Preconditions
 
 1. **Engine.** Use a live `Engine` and serialize creation with its other
-   operations on the context execution thread.
+   operations on the Engine execution thread.
 
 ## Main flow
 
@@ -30,7 +30,8 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
    `Engine` requires live internal state.
 2. **Release completed upload resources.** `Engine::Impl::createResource`
    calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
-   explains which packets can be released; without an `UploadManager`, this is a no-op.
+   explains which packets can be released; the Engine's already constructed manager
+   returns immediately when it has no pending packets.
 3. **Validate.** `BufferResource::create` checks that size is nonzero, usage is
    nonempty and supported, and memory intent is `Device`, `Upload` or `Readback`
    before native buffer creation. Supported usages are the ordinary transfer,
@@ -58,11 +59,9 @@ sequenceDiagram
     participant V as Vulkan device
     A ->> C: Step 1 - createBuffer(description)
     C ->> C: Step 2 - collectUploads()
-    opt UploadManager exists
-        C ->> U: Step 2 - collect()
-        Note over C,U: Step 2 - UC Reclaim completed upload packets
-        U -->> C: Success
-    end
+    C ->> U: Step 2 - collect()
+    Note over C,U: Step 2 - UC Reclaim completed upload packets
+    U -->> C: Success or backend error
     C ->> R: Step 3 - BufferResource::create(...)
     Note over R: Validate description before creating a native buffer
     R ->> V: Step 4 - createBuffer(...)
@@ -84,11 +83,9 @@ sequenceDiagram
 **Publication guarantee.** The *publication point* is Step 7: no application handle escapes
 before allocation and binding succeed. Earlier native success does not imply operation success.
 
-**Lazy initialization.** `Engine` creates its `UploadManager` on the first successful
-`createUploadBatch()` request through `Engine::Impl::ensureUploads()`. Creating a
-buffer alone does not create that service. Before the first batch, Step 2 succeeds
-without collection; afterwards it uses the existing manager to reclaim finished
-uploads. The manager remains owned by `Engine` even when no batches are pending.
+**Upload collection.** Every successful Engine owns an `UploadManager`. Step 2
+therefore uses the same manager before or after the first upload batch; with no
+pending packets, collection returns without querying the timeline.
 
 **Memory selection.** `BufferDesc::memory` tells Panda which memory properties to
 require and prefer. `Upload` and `Readback` require memory that

@@ -14,7 +14,7 @@ namespace panda
 {
 namespace detail
 {
-class ExternalContext;
+class ExternalBufferInterop;
 }
 
 /// @brief Move-only Vulkan buffer plus exported allocation and optional semaphore handles.
@@ -54,7 +54,7 @@ public:
     [[nodiscard]] auto isValid() const noexcept -> bool;
 
 private:
-    friend class detail::ExternalContext;
+    friend class detail::ExternalBufferInterop;
     friend class Engine;
 
     Buffer _buffer;
