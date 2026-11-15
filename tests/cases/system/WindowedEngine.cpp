@@ -665,9 +665,11 @@ TEST(WindowedEngineSystem, CreatesValidatedSurfaceAndDevice)
         GTEST_SKIP() << context.error().message;
     }
     ASSERT_TRUE(context.has_value()) << context.error().message;
+    const auto* const windowRendererBeforeMove = &windowRenderer(*context);
     const auto beforeMove = windowRenderer(*context).render(panda::RenderView {});
     ASSERT_TRUE(beforeMove);
     auto movedEngine = std::move(*context);
+    EXPECT_EQ(&windowRenderer(movedEngine), windowRendererBeforeMove);
     verifyCompletion(movedEngine, beforeMove->completion);
     EXPECT_FALSE(context->isValid());
     EXPECT_NE(movedEngine.getDeviceInfo().swapchainMaintenance, panda::DeviceInfo::SwapchainMaintenance::None);

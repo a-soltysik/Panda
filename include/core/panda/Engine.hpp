@@ -24,6 +24,8 @@ class WindowSurface;
 /// Calls on one Engine must be serialized. A quiescent Engine may move between
 /// threads. A borrowed WindowSurface and its native window must outlive this Engine;
 /// windowed calls follow that surface's thread requirements.
+/// Borrowed service references keep their address when Engine moves, but must not
+/// outlive the moved-to Engine.
 /// Engine outlives every Buffer, Texture, Mesh and OffscreenTarget owner created from it, including copied handles.
 class Engine final
 {
@@ -111,10 +113,13 @@ public:
 
     /// @brief Borrows the Engine-owned performance data manager.
     /// @return A manager that exposes device capabilities and ready per-frame CPU/GPU samples;
-    /// it must not outlive this Engine. Calls remain serialized with Engine operations.
+    /// its address remains stable when Engine moves, but it must not outlive the moved-to Engine.
+    /// Calls remain serialized with Engine operations.
     [[nodiscard]] auto getPerformanceManager() -> PerformanceManager&;
 
     /// @brief Borrows this Engine's external-buffer creation and handoff operations.
+    /// @return A manager whose address remains stable when Engine moves; it must not outlive
+    /// the moved-to Engine. Calls remain serialized with Engine operations.
     [[nodiscard]] auto getExternalBufferManager() -> ExternalBufferManager&;
 
 private:
@@ -125,8 +130,6 @@ private:
     explicit Engine(std::unique_ptr<Impl> implementation) noexcept;
 
     std::unique_ptr<Impl> _implementation;
-    PerformanceManager _performanceManager;
-    ExternalBufferManager _externalBufferManager;
 };
 
 }

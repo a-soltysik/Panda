@@ -142,6 +142,11 @@ Keep `std::array` for fixed collections and raw data such as indices or device I
 - Keep standalone implementation classes in their own matching files when this
   improves readability; do not spread a nested class definition across files
   merely to simulate a standalone class.
+- Use `std::unique_ptr<Impl>` for exclusive opaque owner state when it must stay
+  stable across wrapper moves, and keep a nested owner `Impl` in its matching
+  `.cpp`. Borrowed service facades store their concrete dependencies and may
+  remain at stable addresses across owner moves, but must not outlive the moved-to
+  owner. Use shared state only when collaborating consumers retain its lifetime.
 - Keep all out-of-line member definitions for a class in one matching `.cpp` file.
   If separate implementation files are needed, move a cohesive responsibility
   behind a collaborator class instead of splitting one class by phase or feature.

@@ -59,8 +59,8 @@ upload work.
    presentation state. A nonzero framebuffer extent creates the initial swapchain
    generation; a zero extent records that presentation must be prepared later.
 8. **Publish the owner.** Only after the complete bundle is returned does
-   `createInternal()` construct `Engine::Impl` to own it and return the public
-   `Engine`.
+   `createInternal()` construct `Engine::Impl`, bind its public service facades to
+   their concrete dependencies, and return the public `Engine`.
 
 The paths share the same creation steps but differ in instance and presentation
 setup, so each entry point has its own sequence.
@@ -75,6 +75,7 @@ sequenceDiagram
     participant X as instance::createResources
     participant R as ContextResources
     participant I as Engine::Impl
+    participant S as Public service facades
     participant V as Vulkan instance and device
     participant D as Device selection
     A->>C: Step 1 - create(options)
@@ -101,6 +102,7 @@ sequenceDiagram
     F->>R: Step 6 - Initialize optional ExternalBufferInterop and PerformanceManagerImpl
     F-->>C: Complete ContextResources
     C->>I: Step 8 - Construct Impl with owned bundle
+    I->>S: Bind service facades to their dependencies
     C-->>A: Result containing Engine
 ```
 
@@ -114,6 +116,7 @@ sequenceDiagram
     participant X as instance::createResources
     participant R as ContextResources
     participant I as Engine::Impl
+    participant S as Public service facades
     participant W as WindowSurface
     participant V as Vulkan instance and device
     participant D as Device selection
@@ -155,6 +158,7 @@ sequenceDiagram
     P-->>F: Initial generation or zero-extent pending state
     F-->>C: Complete ContextResources
     C->>I: Step 8 - Construct Impl with owned bundle
+    I->>S: Bind service facades to their dependencies
     C-->>A: Result containing Engine
 ```
 
@@ -192,9 +196,12 @@ and an empty upload manager. Creating the manager allocates no staging memory or
 offscreen execution resources; those are created only when their work is requested.
 
 **Borrowed operations.** Both Engine paths expose `ResourceManager`,
-`SubmissionManager` and `OffscreenRenderer` through Engine getters. Only a windowed
-Engine exposes `WindowRenderer`; a headless Engine has no window-rendering entry
-point. These facades borrow their Engine and cannot outlive it.
+`SubmissionManager`, `OffscreenRenderer`, `PerformanceManager` and
+`ExternalBufferManager` through Engine getters. Only a windowed Engine exposes
+`WindowRenderer`; a headless Engine has no window-rendering entry point. All six
+facade objects live in `Engine::Impl`; moving Engine keeps their addresses and
+borrowed dependencies stable. A service reference remains usable while the
+moved-to Engine lives and must not outlive it.
 
 ## Variants and errors
 
