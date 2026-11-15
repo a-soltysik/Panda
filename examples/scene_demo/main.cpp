@@ -307,7 +307,7 @@ auto createMeshes(const panda::Engine& context) -> SceneMeshes
 void run(const panda::tools::Window& window, panda::Engine& context)
 {
     const auto meshes = createMeshes(context);
-    auto scene = panda::expect(panda::scene::Scene::create(context), "Create scene");
+    auto scene = panda::scene::Scene {};
     addCamera(scene);
     addDirectionalLights(scene);
     addPointLight(scene);

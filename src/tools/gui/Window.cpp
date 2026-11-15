@@ -142,8 +142,8 @@ auto Window::isValid() const noexcept -> bool
 
 void Window::checkUsable() const
 {
-    expect(_window != nullptr && _session != nullptr, "Cannot use a moved-from Window");
-    _session->checkThread();
+    expect(_window != nullptr, "Cannot use a moved-from Window");
+    expect(_session, "Cannot use a moved-from Window").checkThread();
 }
 
 auto Window::shouldClose() const -> bool
@@ -269,8 +269,7 @@ auto Window::getFramebufferExtent() const -> Result<FramebufferExtent>
 auto Window::waitForInput() -> Result<void>
 {
     const auto session = GlfwSession::cache().lock();
-    expect(session != nullptr, "Waiting for input requires a live Panda window");
-    session->checkThread();
+    expect(session, "Waiting for input requires a live Panda window").checkThread();
     GlfwSession::clearError();
     glfwWaitEvents();
     return GlfwSession::checkError();

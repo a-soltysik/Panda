@@ -17,11 +17,6 @@
 #include <string>
 #include <variant>
 
-namespace panda
-{
-class Engine;
-}
-
 namespace panda::scene
 {
 namespace detail
@@ -51,7 +46,7 @@ enum class ReparentMode : std::uint8_t
 /// @brief Mesh retained by a scene object; uploading remains the application's responsibility.
 struct MeshInstance
 {
-    /// Standard-format mesh from the scene's Engine.
+    /// Standard-format mesh; its originating Engine must outlive this handle.
     Mesh mesh;
     /// Nonnegative finite linear RGBA tint.
     glm::vec4 tint {1.0F};
@@ -125,20 +120,19 @@ struct SpotLight
 /// @brief One light component attached to a scene entity.
 using Light = std::variant<DirectionalLight, PointLight, SpotLight>;
 
-/// @brief Move-only owner of scene objects, transform hierarchy and retained mesh associations.
-/// A Scene borrows its Engine, which must outlive it. Entities do not retain or
-/// dereference a Scene and are resolved only through a live Scene.
-/// Calls must be serialized. Object operations reject stale and foreign handles
-/// with InvalidArgument. Failed edits leave logical state unchanged; world queries
-/// may update derived caches. Mesh uploads remain the application's responsibility.
+/// @brief Move-only owner of CPU scene objects, transform hierarchy and retained mesh associations.
+/// Any Engine that owns a retained mesh must outlive the Scene and snapshots holding that mesh.
+/// Entities do not retain or dereference a Scene and are resolved only through a live Scene.
+/// Calling methods on a moved-from Scene violates the contract and aborts through `expect`.
+/// Calls must be serialized. Result-returning operations report InvalidArgument
+/// for stale or foreign handles; isAlive() returns false. Failed edits leave logical
+/// state unchanged; world queries may update derived caches. Mesh uploads remain the application's responsibility.
 /// Operations may allocate CPU storage; they do not submit GPU work.
 class Scene final
 {
 public:
-    /// @brief Creates an empty Scene associated with a live Engine.
-    /// @param context Engine that must outlive the returned Scene and remain at the same address.
-    /// @return An empty scene, or InvalidArgument if the Engine is moved-from.
-    [[nodiscard]] static auto create(Engine& context) -> Result<Scene>;
+    /// @brief Creates an empty Scene.
+    Scene();
 
     Scene(const Scene&) = delete;
     auto operator=(const Scene&) -> Scene& = delete;
@@ -228,15 +222,13 @@ public:
     /// @param aspectRatio Finite positive framebuffer width divided by height, supplied each frame.
     /// @return A snapshot retaining its meshes, or InvalidArgument for a missing camera or invalid pose.
     /// Visible lights retain their optional shadow settings in the returned render snapshot.
-    /// Engine::render validates renderer input and the configured light budget.
+    /// WindowRenderer::render() and OffscreenRenderer::render() validate renderer input
+    /// and the configured light budget.
     /// Camera/light poses require positive uniform world scale without shear.
-    /// Calls are serialized with scene mutation and Engine operations; no GPU work is submitted.
+    /// Calls are serialized with Scene mutation; no GPU work is submitted.
     [[nodiscard]] auto createRenderView(float aspectRatio) -> Result<RenderView>;
 
 private:
-    explicit Scene(Engine& context, std::unique_ptr<detail::SceneState> state) noexcept;
-
-    Engine* _engine {nullptr};
     std::unique_ptr<detail::SceneState> _state;
 };
 }

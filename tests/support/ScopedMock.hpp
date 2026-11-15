@@ -12,8 +12,7 @@ class ScopedMock final : public testing::StrictMock<Mock>
 public:
     static auto getActiveMock() -> Mock&
     {
-        expect(getActiveSlot() != nullptr, "Stub requires an active mock fixture");
-        return *getActiveSlot();
+        return expect(getActiveSlot(), "Stub requires an active mock fixture");
     }
 
     ScopedMock()

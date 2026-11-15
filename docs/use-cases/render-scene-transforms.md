@@ -18,7 +18,8 @@ renderer use without Scene. Persistence remains in the
 
 ## Preconditions
 
-1. A live Engine remains at the same address and outlives Scene and retained meshes.
+1. The application owns a Scene. If it retains uploaded meshes, each originating
+   Engine remains alive until the Scene and its snapshots release those handles.
 2. The application has created a camera entity, attached a perspective or
    orthographic lens, selected it, and optionally created light entities. It has
    attached uploaded meshes to renderable objects. Mesh upload completes before rendering.
@@ -26,8 +27,7 @@ renderer use without Scene. Persistence remains in the
 ## Main flow
 
 1. **Request a snapshot.** The application calls `Scene::createRenderView()` with the
-   current framebuffer aspect ratio. Scene checks that its Engine remains valid
-   and delegates to `SceneState`.
+   current framebuffer aspect ratio. Scene delegates the CPU preparation to `SceneState`.
 2. **Prepare the camera.** `SceneState::createRenderView()` delegates to a short-lived
    `SceneRenderViewBuilder` borrowing the state. The builder requires an active
    camera, updates its dirty world transform and builds the lens projection.
@@ -53,7 +53,6 @@ sequenceDiagram
     participant M as SceneTransformMath
     participant C as Engine
     A->>S: Step 1 - createRenderView(aspectRatio)
-    S->>C: Check live Engine
     S->>D: Delegate snapshot request
     D->>B: Step 2 - build(aspectRatio), borrowing SceneState
     B->>D: Read active camera and updateWorld
@@ -88,8 +87,9 @@ world translation; entity scale does not change their range or color.
 
 **Snapshot lifetime.** A snapshot contains copies of matrices and light/camera
 values plus retained mesh handles. Deleting an object releases its Scene-owned mesh
-reference without invalidating an already prepared snapshot. Engine outlives both.
-The renderer retains submitted mesh uses through GPU completion.
+reference without invalidating an already prepared snapshot. Each originating Engine
+must outlive retained mesh handles in both Scene and snapshots. The renderer retains
+submitted mesh uses through GPU completion.
 
 **Builder lifetime.** `SceneRenderViewBuilder` borrows SceneState only while building
 one snapshot. SceneState remains the sole owner of entity identity, hierarchy,
