@@ -756,14 +756,9 @@ TEST_F(EngineLifecycleTest, TimelineCreationFailurePreventsEnginePublication)
 
     ASSERT_FALSE(created);
     EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
-    if (const auto& native = created.error().native; native)
-    {
-        EXPECT_EQ(native->code, exhausted);
-    }
-    else
-    {
-        FAIL() << "Expected the native Vulkan error to be preserved";
-    }
+    const auto& native = created.error().native;
+    ASSERT_TRUE(native.has_value()) << "Expected the native Vulkan error to be preserved";
+    EXPECT_EQ(native.value().code, exhausted);
 }
 
 TEST_F(EngineLifecycleTest, CreatesHeadlessQueueAndUploadManagerWithoutGpuAllocations)
@@ -1365,12 +1360,8 @@ TEST_F(EngineLifecycleTest, MovedSuspendedEngineRetainsItsDeviceUntilAllFrameRes
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
     const auto renderer = moved.getWindowRenderer();
-    if (!renderer)
-    {
-        FAIL() << "Moved-to window context has no renderer";
-        return;
-    }
-    const auto frame = renderer->get().render(panda::RenderView {});
+    ASSERT_TRUE(renderer.has_value()) << "Moved-to window context has no renderer";
+    const auto frame = renderer.value().get().render(panda::RenderView {});
     ASSERT_TRUE(frame.has_value());
     EXPECT_EQ(frame->status, panda::FrameResult::Status::Suspended);
 }

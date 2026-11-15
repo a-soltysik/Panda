@@ -137,11 +137,13 @@ required borrowed dependencies; those aggregates are initialized and passed, not
 reassigned.
 
 Test sources, mocks and support headers inherit the root clang-tidy configuration
-through `tests/.clang-tidy`, which disables the two magic-number checks and
+through `tests/.clang-tidy`, which disables the two magic-number checks,
+`bugprone-unchecked-optional-access` and
 `cppcoreguidelines-non-private-member-variables-in-classes` /
 `misc-non-private-member-variables-in-classes`. Numeric fixtures and expected
 values do not need production-style named constants; GoogleTest fixtures may expose
-mock fields to their generated subclasses. Other checks remain enabled.
+mock fields to their generated subclasses. GoogleTest `ASSERT_*` checks guard
+optional accesses in tests; other checks remain enabled.
 The test config uses explicit function-size limits for fixture and Vulkan mock setup:
 60 statements, 45 lines, 15 branches, six parameters and three nesting levels. These
 limits remain errors, and nesting is held to the production limit.

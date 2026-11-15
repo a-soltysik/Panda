@@ -2,6 +2,7 @@ InheritParentConfig: true
 Checks: >-
   -cppcoreguidelines-avoid-magic-numbers,
   -readability-magic-numbers,
+  -bugprone-unchecked-optional-access,
   -cppcoreguidelines-non-private-member-variables-in-classes,
   -misc-non-private-member-variables-in-classes
 CheckOptions:

@@ -135,14 +135,8 @@ TEST(ScenePublicApi, ExercisesObjectIdentityAndOrthographicCameraApi)
     ASSERT_TRUE(resolvedId);
     EXPECT_EQ(*resolvedId, objectId);
     const auto foundEntity = scene->findEntity(objectId);
-    if (foundEntity)
-    {
-        EXPECT_EQ(*foundEntity, *object);
-    }
-    else
-    {
-        FAIL() << "The explicit ObjectId should resolve while its entity is alive";
-    }
+    ASSERT_TRUE(foundEntity.has_value()) << "The explicit ObjectId should resolve while its entity is alive";
+    EXPECT_EQ(foundEntity.value(), *object);
     EXPECT_FALSE(scene->findEntity(panda::scene::ObjectId {0}));
     ASSERT_TRUE(scene->destroyEntity(*object));
     EXPECT_FALSE(scene->findEntity(objectId));

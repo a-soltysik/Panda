@@ -1481,12 +1481,8 @@ TEST_F(ContextResourcesIntegration, MovedSuspendedEngineRetainsItsDeviceUntilAll
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
     const auto renderer = moved.getWindowRenderer();
-    if (!renderer)
-    {
-        FAIL() << "Moved-to window context has no renderer";
-        return;
-    }
-    const auto frame = renderer->get().render(panda::RenderView {});
+    ASSERT_TRUE(renderer.has_value()) << "Moved-to window context has no renderer";
+    const auto frame = renderer.value().get().render(panda::RenderView {});
     ASSERT_TRUE(frame.has_value());
     EXPECT_EQ(frame->status, panda::FrameResult::Status::Suspended);
 }

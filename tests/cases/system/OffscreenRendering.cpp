@@ -215,7 +215,6 @@ TEST_F(OffscreenRenderingSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
         ASSERT_TRUE(sample) << sample.error().message;
         const auto& latest = *sample;
         ASSERT_TRUE(latest);
-        // NOLINTNEXTLINE(bugprone-unchecked-optional-access): ASSERT_TRUE above aborts the test when empty.
         EXPECT_EQ(latest.value().frameIndex, 0U);
     }
 

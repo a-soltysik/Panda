@@ -68,14 +68,8 @@ TEST(SceneState, GeneratesStableObjectIdsAndRejectsReuse)
     ASSERT_TRUE(resolvedId);
     EXPECT_EQ(*resolvedId, explicitId);
     const auto foundObject = scene.findEntity(explicitId);
-    if (foundObject)
-    {
-        EXPECT_EQ(*foundObject, *object);
-    }
-    else
-    {
-        FAIL() << "The explicit ObjectId should resolve while its entity is alive";
-    }
+    ASSERT_TRUE(foundObject.has_value()) << "The explicit ObjectId should resolve while its entity is alive";
+    EXPECT_EQ(foundObject.value(), *object);
     EXPECT_FALSE(scene.createEntity(explicitId, {.name = "duplicate"}));
     ASSERT_TRUE(scene.destroyEntity(*object));
     EXPECT_FALSE(scene.findEntity(explicitId));

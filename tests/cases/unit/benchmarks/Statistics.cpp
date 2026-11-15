@@ -36,12 +36,8 @@ TEST(BenchmarkStatistics, ComputesNearestRankStatisticsFromUnorderedSamples)
 
     const auto result = panda_bench::summarizeGpuExecutionDuration(samples);
 
-    if (!result.has_value())
-    {
-        ADD_FAILURE() << "Expected statistics for nonempty samples";
-        return;
-    }
-    const auto& statistics = *result;
+    ASSERT_TRUE(result.has_value()) << "Expected statistics for nonempty samples";
+    const auto& statistics = result.value();
     EXPECT_EQ(statistics.sampleCount, 100U);
     EXPECT_DOUBLE_EQ(statistics.meanNanoseconds, 50.5);
     EXPECT_EQ(statistics.p50, std::chrono::nanoseconds {50});
@@ -51,17 +47,14 @@ TEST(BenchmarkStatistics, ComputesNearestRankStatisticsFromUnorderedSamples)
     EXPECT_EQ(statistics.maximum, std::chrono::nanoseconds {100});
 
     const auto cpuResult = panda_bench::summarizeCpuFrameDuration(samples);
-    if (!cpuResult.has_value())
-    {
-        ADD_FAILURE() << "Expected CPU statistics for nonempty samples";
-        return;
-    }
-    EXPECT_DOUBLE_EQ(cpuResult->meanNanoseconds, 101.0);
-    EXPECT_EQ(cpuResult->p50, std::chrono::nanoseconds {100});
-    EXPECT_EQ(cpuResult->p95, std::chrono::nanoseconds {190});
-    EXPECT_EQ(cpuResult->p99, std::chrono::nanoseconds {198});
-    EXPECT_EQ(cpuResult->minimum, std::chrono::nanoseconds {2});
-    EXPECT_EQ(cpuResult->maximum, std::chrono::nanoseconds {200});
+    ASSERT_TRUE(cpuResult.has_value()) << "Expected CPU statistics for nonempty samples";
+    const auto& cpuStatistics = cpuResult.value();
+    EXPECT_DOUBLE_EQ(cpuStatistics.meanNanoseconds, 101.0);
+    EXPECT_EQ(cpuStatistics.p50, std::chrono::nanoseconds {100});
+    EXPECT_EQ(cpuStatistics.p95, std::chrono::nanoseconds {190});
+    EXPECT_EQ(cpuStatistics.p99, std::chrono::nanoseconds {198});
+    EXPECT_EQ(cpuStatistics.minimum, std::chrono::nanoseconds {2});
+    EXPECT_EQ(cpuStatistics.maximum, std::chrono::nanoseconds {200});
 }
 
 TEST(BenchmarkStatistics, SingleSampleUsesThatSampleForEveryQuantile)
@@ -70,12 +63,8 @@ TEST(BenchmarkStatistics, SingleSampleUsesThatSampleForEveryQuantile)
 
     const auto result = panda_bench::summarizeGpuExecutionDuration(samples);
 
-    if (!result.has_value())
-    {
-        ADD_FAILURE() << "Expected statistics for one sample";
-        return;
-    }
-    const auto& statistics = *result;
+    ASSERT_TRUE(result.has_value()) << "Expected statistics for one sample";
+    const auto& statistics = result.value();
     EXPECT_EQ(statistics.sampleCount, 1U);
     EXPECT_DOUBLE_EQ(statistics.meanNanoseconds, 812.0);
     EXPECT_EQ(statistics.p50, std::chrono::nanoseconds {812});
@@ -93,11 +82,7 @@ TEST(BenchmarkStatistics, MeanRetainsPrecisionWhenTheNanosecondSumExceedsDoubleE
 
     const auto result = panda_bench::summarizeGpuExecutionDuration(samples);
 
-    if (!result.has_value())
-    {
-        ADD_FAILURE() << "Expected statistics for high-duration samples";
-        return;
-    }
-    const auto& statistics = *result;
+    ASSERT_TRUE(result.has_value()) << "Expected statistics for high-duration samples";
+    const auto& statistics = result.value();
     EXPECT_DOUBLE_EQ(statistics.meanNanoseconds, 6'755'399'441'055'745.0);
 }

@@ -108,15 +108,10 @@ TEST_F(CudaAdapterTest, MapsUnexpectedRuntimeFailureToPandaError)
     ASSERT_FALSE(result);
     const auto& error = result.error();
     EXPECT_EQ(error.code, panda::ErrorCode::BackendFailure);
-    if (error.native.has_value())
-    {
-        EXPECT_EQ(error.native->api, "CUDA");
-        EXPECT_EQ(error.native->code, static_cast<std::int64_t>(cudaErrorInitializationError));
-    }
-    else
-    {
-        FAIL() << "Expected native CUDA error";
-    }
+    ASSERT_TRUE(error.native.has_value()) << "Expected native CUDA error";
+    const auto& native = error.native.value();
+    EXPECT_EQ(native.api, "CUDA");
+    EXPECT_EQ(native.code, static_cast<std::int64_t>(cudaErrorInitializationError));
 }
 
 TEST_F(CudaAdapterTest, MatchesUuidBeforeCreatingSession)
