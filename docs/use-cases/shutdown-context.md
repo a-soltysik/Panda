@@ -50,10 +50,9 @@ recoverable drain error or promise general recovery from device loss.
    rendering and handoff packets release their references. [UC Return a resource memory range](release-memory-range.md)
    explains how final owners return their ranges.
 8. **Release Engine services.** After the live-allocation check, `Engine::Impl`
-   destroys its borrowed facade objects and then releases the `ContextResources`
-   dependency bundle. Presentation and offscreen rendering were reset before the
-   check; the remaining owners release performance, external, upload, queue, pool,
-   device and instance services. The application still owns its `WindowSurface`.
+   releases its facade objects and directly owned service implementations.
+   `DeviceContext` then releases the logical device, physical-device wrapper,
+   surface, instance and loader. The application still owns its `WindowSurface`.
 
 ```mermaid
 sequenceDiagram
@@ -61,7 +60,7 @@ sequenceDiagram
     participant H as Resource handles and upload batches
     participant C as Engine
     participant I as Engine::Impl
-    participant R as ContextResources
+    participant D as DeviceContext
     participant U as UploadManager
     participant P as Presentation
     participant O as OffscreenRendering
@@ -90,8 +89,9 @@ sequenceDiagram
     I->>M: Step 7 - require liveBytes == 0
     M-->>I: No live allocation ranges
     I->>I: Step 8 - destroy service facades
-    I->>R: Step 8 - release dependency bundle
-    R-->>I: RAII teardown complete
+    I->>I: Step 8 - release implementation owners
+    I->>D: Step 8 - release Vulkan device data
+    D-->>I: RAII teardown complete
     I-->>C: Implementation destruction complete
     C-->>A: Destructor returns
 ```

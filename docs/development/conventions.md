@@ -147,6 +147,9 @@ Keep `std::array` for fixed collections and raw data such as indices or device I
   `.cpp`. Borrowed service facades store their concrete dependencies and may
   remain at stable addresses across owner moves, but must not outlive the moved-to
   owner. Use shared state only when collaborating consumers retain its lifetime.
+- Keep a main owner's runtime composition in its `Impl`; a temporary creation
+  aggregate does not become runtime state. Separate low-level device data from
+  services, and keep services bound to their concrete dependencies.
 - Keep all out-of-line member definitions for a class in one matching `.cpp` file.
   If separate implementation files are needed, move a cohesive responsibility
   behind a collaborator class instead of splitting one class by phase or feature.

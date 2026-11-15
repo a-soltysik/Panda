@@ -49,18 +49,18 @@ upload work.
    When the platform external-memory extension is available, it enables that
    extension and enables the external-semaphore extension only if timeline-semaphore
    export is supported.
-6. **Initialize shared services.** `engine::createResources()` initializes one
-   stable `ContextResources` owner in place. After creating the memory pool, it
-   initializes the required `SubmissionQueue`, constructs an empty `UploadManager`,
-   creates `ExternalBufferInterop` when external-memory export is available, and
-   initializes `PerformanceManagerImpl`. A queue or performance initialization
-   failure aborts Engine creation.
+6. **Initialize core owners.** `engine::createResources()` assembles a temporary
+   `EngineCreateInfo` containing a heap-stable `DeviceContext`, a memory pool, the
+   initialized `SubmissionQueue`, an empty `UploadManager`, optional
+   `ExternalBufferInterop`, and `PerformanceManagerImpl`. It also constructs the
+   lightweight `OffscreenRendering` shell before presentation. Queue or performance
+   initialization failure aborts Engine creation.
 7. **Initialize presentation.** A windowed Engine creates frame resources and
    presentation state. A nonzero framebuffer extent creates the initial swapchain
    generation; a zero extent records that presentation must be prepared later.
-8. **Publish the owner.** Only after the complete bundle is returned does
-   `createInternal()` construct `Engine::Impl`, bind its public service facades to
-   their concrete dependencies, and return the public `Engine`.
+8. **Publish the owner.** After the complete `EngineCreateInfo` is returned,
+   `createInternal()` moves its owners into `Engine::Impl`, which constructs public
+   service facades from their concrete dependencies and returns the public `Engine`.
 
 The paths share the same creation steps but differ in instance and presentation
 setup, so each entry point has its own sequence.
@@ -73,22 +73,24 @@ sequenceDiagram
     participant C as Engine
     participant F as engine::createResources
     participant X as instance::createResources
-    participant R as ContextResources
+    participant R as EngineCreateInfo
+    participant D as DeviceContext
     participant I as Engine::Impl
     participant S as Public service facades
     participant V as Vulkan instance and device
-    participant D as Device selection
+    participant Q as Device selection
     A->>C: Step 1 - create(options)
     C->>F: Create resources without a surface
-    F->>R: Allocate stable bundle once
-    F->>X: Step 2 - createResources(loader, no surface, options)
+    F->>R: Create temporary owner bundle
+    F->>D: Allocate stable Vulkan data owner
+    F->>X: Step 2 - createResources(D.loader, no surface, options)
     X->>V: Verify loader and optional validation layer
     X->>V: Create instance and optional debug messenger
     X-->>F: InstanceResources
-    F->>R: Store instance resources
-    F->>D: Step 3 - Select headless-compatible physical device and queue
-    Note over F,D: Step 3 - UC Select a compatible Vulkan device
-    D-->>F: Selected device, capabilities and queue families
+    F->>D: Store instance resources
+    F->>Q: Step 3 - Select headless-compatible physical device and queue
+    Note over F,Q: Step 3 - UC Select a compatible Vulkan device
+    Q-->>F: Selected device, capabilities and queue families
     opt External-buffer support requested
         F->>V: Step 4 - Check platform external-memory extension
         V-->>F: External-memory extension availability
@@ -98,11 +100,13 @@ sequenceDiagram
         end
     end
     F->>V: Step 5 - Create logical device with selected features, queues and supported extensions
-    F->>R: Step 6 - Create pool, initialize SubmissionQueue, construct UploadManager
-    F->>R: Step 6 - Initialize optional ExternalBufferInterop and PerformanceManagerImpl
-    F-->>C: Complete ContextResources
-    C->>I: Step 8 - Construct Impl with owned bundle
-    I->>S: Bind service facades to their dependencies
+    F->>D: Store physical and logical device
+    F->>R: Step 6 - Create pool, initialize SubmissionQueue and construct UploadManager
+    F->>R: Step 6 - Initialize optional interop, performance and offscreen shell
+    F->>D: Complete DeviceInfo diagnostics
+    F-->>C: Complete EngineCreateInfo
+    C->>I: Step 8 - Move owners into Impl
+    I->>S: Construct facades from concrete dependencies
     C-->>A: Result containing Engine
 ```
 
@@ -114,28 +118,30 @@ sequenceDiagram
     participant C as Engine
     participant F as engine::createResources
     participant X as instance::createResources
-    participant R as ContextResources
+    participant R as EngineCreateInfo
+    participant D as DeviceContext
     participant I as Engine::Impl
     participant S as Public service facades
     participant W as WindowSurface
     participant V as Vulkan instance and device
-    participant D as Device selection
+    participant Q as Device selection
     participant P as Presentation
     A->>C: Step 1 - createWithSurface(window, options)
     C->>F: Create resources with borrowed WindowSurface
-    F->>R: Allocate stable bundle once
-    F->>X: Step 2 - createResources(loader, surface, options)
+    F->>R: Create temporary owner bundle
+    F->>D: Allocate stable Vulkan data owner
+    F->>X: Step 2 - createResources(D.loader, surface, options)
     X->>V: Verify loader and optional validation layer
     X->>W: Get required instance extensions
     W-->>X: Platform and surface extension names
     X->>V: Create instance and optional debug messenger
     X->>W: Create native Vulkan surface
-    W-->>X: Transfer native surface ownership to ContextResources
+    W-->>X: Transfer native surface ownership to InstanceResources
     X-->>F: InstanceResources
-    F->>R: Store instance resources
-    F->>D: Step 3 - Select surface-compatible physical device and queues
-    Note over F,D: Step 3 - UC Select a compatible Vulkan device
-    D-->>F: Selected device, capabilities and queue families
+    F->>D: Store instance and surface resources
+    F->>Q: Step 3 - Select surface-compatible physical device and queues
+    Note over F,Q: Step 3 - UC Select a compatible Vulkan device
+    Q-->>F: Selected device, capabilities and queue families
     opt External-buffer support requested
         F->>V: Step 4 - Check platform external-memory extension
         V-->>F: External-memory extension availability
@@ -145,8 +151,9 @@ sequenceDiagram
         end
     end
     F->>V: Step 5 - Create logical device with selected features, queues and supported extensions
-    F->>R: Step 6 - Create pool, initialize SubmissionQueue, construct UploadManager
-    F->>R: Step 6 - Initialize optional ExternalBufferInterop and PerformanceManagerImpl
+    F->>D: Store physical and logical device
+    F->>R: Step 6 - Create pool, initialize queue, uploads, interop and performance
+    F->>R: Step 6 - Construct lightweight OffscreenRendering shell
     F->>P: Step 7 - Initialize frame resources and initial presentation
     P->>W: Query framebuffer extent
     W-->>P: Pixel extent
@@ -156,9 +163,10 @@ sequenceDiagram
         P->>P: Leave generation pending
     end
     P-->>F: Initial generation or zero-extent pending state
-    F-->>C: Complete ContextResources
-    C->>I: Step 8 - Construct Impl with owned bundle
-    I->>S: Bind service facades to their dependencies
+    F->>D: Complete DeviceInfo diagnostics
+    F-->>C: Complete EngineCreateInfo
+    C->>I: Step 8 - Move owners into Impl
+    I->>S: Construct facades from concrete dependencies
     C-->>A: Result containing Engine
 ```
 
@@ -175,13 +183,15 @@ the requested buffer usage is checked later when the buffer is created. The full
 core-device rules live in [UC Select a compatible Vulkan device](select-vulkan-device.md).
 
 **Ownership.** `WindowSurface` is borrowed, while the native surface it creates is
-owned by `ContextResources`. The factory allocates this bundle once; `Engine::Impl`
-owns it after successful initialization. If any stage fails, the local bundle
-unwinds its RAII owners in reverse declaration order. No `Impl` exists yet, so the
-failure path does not call the successful-Engine drain. The caller still owns the
-window and must keep it alive until Engine teardown. `ExternalBufferInterop` borrows
-the already initialized `SubmissionQueue` and the empty `UploadManager`; both remain
-at stable addresses for the bundle's lifetime.
+owned through `DeviceContext::instance`. `DeviceContext` holds only Vulkan loader,
+instance/surface, physical/logical device and `DeviceInfo`. `EngineCreateInfo` is a
+temporary construction result; `Engine::Impl` directly owns the device data and
+service implementations after publication, and runtime services borrow only their
+concrete dependencies. If any factory stage fails, the local owners release partial
+state without running the successful-Engine drain. The caller still owns the window
+and must keep it alive until Engine teardown. `ExternalBufferInterop` borrows the
+initialized `SubmissionQueue` and empty `UploadManager`; their heap owners remain at
+stable addresses after transfer into `Engine::Impl`.
 
 **Windowed readiness.** A successful windowed Engine has presentation frame
 resources. If the framebuffer is minimized and reports zero pixels, creation
@@ -214,37 +224,37 @@ moved-to Engine lives and must not outlive it.
 | **Variant&nbsp;2** | Step 4: external-memory export is available but timeline-semaphore export is not                                         | Continue Engine creation and enable external-memory export only                                                                                            | Memory sharing remains available; cross-API GPU handoff is unsupported                                        |
 | **Error&nbsp;4**   | Step 4: required external-memory support is unavailable, or device-extension inspection fails                            | Return `Unsupported` for unavailable required support or propagate the inspection error                                                                     | No logical device or Engine is published; choose a compatible device or resolve the reported backend failure |
 | **Error&nbsp;5**   | Step 5: logical-device creation fails                                                                                    | Return the mapped Vulkan error without adopting a failed native output                                                                                      | No Engine is published; retry only after resolving the reported cause                                        |
-| **Error&nbsp;6**   | Step 6: timeline semaphore or performance-manager initialization fails                                                   | Return the originating Vulkan error and release the local bundle and Engine owners already created                                                         | No Engine is published; resolve the reported device/backend failure before retry                             |
+| **Error&nbsp;6**   | Step 6: timeline semaphore or performance-manager initialization fails                                                   | Return the originating Vulkan error and release the local `EngineCreateInfo` owners already created                                                       | No Engine is published; resolve the reported device/backend failure before retry                             |
 | **Error&nbsp;7**   | Step 7: windowed presentation initialization fails                                                                       | Return the originating error and release partial presentation state and Vulkan owners; see [Error 7 cleanup](#error-7---release-partial-presentation-state) | No Engine is published; no application Engine is available                                                  |
 
 ### Error 7 - Release partial presentation state
 
-**Entry state.** Steps 1-6 completed. The local `ContextResources` bundle owns
-instance resources, the selected physical-device wrapper, the logical device,
-memory pool, initialized submission queue, upload manager and performance manager.
-Presentation setup may have
-created frame resources or attempted the initial swapchain generation. No
-`Engine::Impl` or public `Engine` has been published, and this flow has submitted
-no GPU work.
+**Entry state.** Steps 1-6 completed. The local `EngineCreateInfo` owns
+`DeviceContext`, the memory pool, initialized submission queue, upload manager,
+optional external interop, performance manager and the lightweight offscreen
+shell. Presentation setup may have created frame resources or attempted the initial
+swapchain generation. No `Engine::Impl` or public `Engine` has been published, and
+this flow has submitted no GPU work.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
     participant C as Engine::createInternal
     participant F as engine::createResources
-    participant R as ContextResources
+    participant R as EngineCreateInfo
+    participant D as DeviceContext
     participant P as Presentation::create
-    participant D as Logical device and Engine services
     participant S as Owned surface and instance services
-    C->>F: Step 7 - Initialize presentation in the resource bundle
-    F->>R: Own initialized services
+    C->>F: Step 7 - Initialize presentation in the construction bundle
+    F->>R: Own initialized services and offscreen shell
     F->>P: Create frame resources and initial generation
     P-->>F: Error 7 - Initialization error
     Note over P: The unpublished Presentation owner releases its partial state
+    Note over F,R: The unpublished bundle releases its owners without draining unsubmitted work
+    R->>R: Release presentation, offscreen, performance, interop, upload, queue and pool owners
+    R->>D: Release DeviceContext
+    D->>S: Release surface, messenger and instance
     F-->>C: Propagate Error, no Engine facade exists
-    Note over F,R: The unpublished bundle releases its RAII owners
-    R->>D: Release services and logical device
-    R->>S: Release owned surface, messenger and instance
     C-->>A: Result containing Error
 ```
 

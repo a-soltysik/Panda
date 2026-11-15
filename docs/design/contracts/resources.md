@@ -7,6 +7,10 @@ Implementation and device evidence follow [the plan](../../development/PLAN.md).
 
 - An Engine owns the Vulkan device and the services required to retire GPU resources.
   It outlives scenes, resource handles, upload batches, and optional modules using that Engine.
+- `Engine::Impl` directly owns its service implementations and a heap-stable
+  `DeviceContext` containing only Vulkan loader, instance/surface, device handles
+  and diagnostics. Services borrow their concrete dependencies; the temporary
+  `EngineCreateInfo` is used only during creation.
 - Moving Engine preserves its heap-owned state, service addresses, resource handles and
   issued completion points. Borrowed service references remain usable while the moved-to
   Engine lives; they do not outlive that owner.
