@@ -1,41 +1,114 @@
+// clang-format off
+#include "vulkan/VulkanHpp.hpp" // IWYU pragma: keep
+// clang-format on
+
+#include <cstdint>
+#include <expected>
+#include <limits>
+#include <memory>
+#include <optional>
 #include <panda/Buffer.hpp>
-#include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/Geometry.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/OffscreenTarget.hpp>
 #include <panda/ResourceManager.hpp>
 #include <panda/Texture.hpp>
+#include <ranges>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "vulkan/resources/BufferResource.hpp"
+#include "vulkan/resources/MeshResource.hpp"
+#include "vulkan/resources/OffscreenTargetResource.hpp"
+#include "vulkan/resources/TextureResource.hpp"
+#include "vulkan/resources/memory/MemoryPool.hpp"
+#include "vulkan/upload/UploadManager.hpp"
 
 namespace panda
 {
-ResourceManager::ResourceManager(const Engine& context) noexcept
-    : _engine {&context}
+namespace
+{
+template <typename Resource, typename Description>
+auto createResource(const vk::raii::Device& device,
+                    core::vulkan::resources::MemoryPool& pool,
+                    core::vulkan::upload::UploadManager& uploads,
+                    const Description& description) -> Result<std::shared_ptr<Resource>>
+{
+    return uploads.collect().and_then([&] {
+        return Resource::create(device, pool, description);
+    });
+}
+}
+
+ResourceManager::ResourceManager(const vk::raii::Device& device,
+                                 core::vulkan::resources::MemoryPool& pool,
+                                 core::vulkan::upload::UploadManager& uploads) noexcept
+    : _device {device},
+      _pool {pool},
+      _uploads {uploads}
 {
 }
 
 auto ResourceManager::createBuffer(const BufferDesc& description) const -> Result<Buffer>
 {
-    return _engine->createBuffer(description);
+    return createResource<detail::BufferResource>(_device, _pool, _uploads, description)
+        .transform([](std::shared_ptr<detail::BufferResource> resource) {
+            return Buffer {std::move(resource)};
+        });
 }
 
 auto ResourceManager::createTexture(const TextureDesc& description) const -> Result<Texture>
 {
-    return _engine->createTexture(description);
+    return createResource<detail::TextureResource>(_device, _pool, _uploads, description)
+        .transform([](std::shared_ptr<detail::TextureResource> resource) {
+            return Texture {std::move(resource)};
+        });
 }
 
 auto ResourceManager::createOffscreenTarget(const OffscreenTargetDesc& description) const -> Result<OffscreenTarget>
 {
-    return _engine->createOffscreenTarget(description);
+    return createResource<detail::OffscreenTargetResource>(_device, _pool, _uploads, description)
+        .transform([](std::shared_ptr<detail::OffscreenTargetResource> resource) {
+            return OffscreenTarget {std::move(resource)};
+        });
 }
 
 auto ResourceManager::createMesh(const MeshDesc& description) const -> Result<Mesh>
 {
-    return _engine->createMesh(description);
+    return createResource<detail::MeshResource>(_device, _pool, _uploads, description)
+        .transform([](std::shared_ptr<detail::MeshResource> resource) {
+            return Mesh {std::move(resource)};
+        });
 }
 
 auto ResourceManager::createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>
 {
-    return _engine->createMeshFromGeometry(geometry);
+    if (geometry.indices.valueless_by_exception() ||
+        geometry.vertices.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Geometry cannot be represented by a Mesh")};
+    }
+    const auto [indexCount, indexType] = std::visit(
+        []<typename Index>(const std::vector<Index>& indices) {
+            const auto type = std::is_same_v<Index, std::uint16_t> ? MeshIndexType::UInt16 : MeshIndexType::UInt32;
+            return std::pair {indices.size(), type};
+        },
+        geometry.indices);
+    if (indexCount > std::numeric_limits<std::uint32_t>::max())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Geometry has too many indices")};
+    }
+    auto indexDescription = std::optional<MeshIndexDesc> {};
+    if (indexCount != 0)
+    {
+        indexDescription = MeshIndexDesc {.count = static_cast<std::uint32_t>(indexCount), .type = indexType};
+    }
+    return createMesh({.vertexCount = static_cast<std::uint32_t>(geometry.vertices.size()),
+                       .vertexStride = standardMeshVertexStrideBytes,
+                       .indices = indexDescription,
+                       .attributes = std::ranges::to<std::vector<VertexAttribute>>(standardMeshVertexAttributes)});
 }
 }

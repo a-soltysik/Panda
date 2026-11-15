@@ -10,7 +10,7 @@
 
 namespace panda
 {
-class Engine;
+class ResourceManager;
 
 namespace detail
 {
@@ -61,7 +61,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class Engine;
+    friend class ResourceManager;
     friend class detail::OffscreenTargetResource;
     explicit OffscreenTarget(std::shared_ptr<detail::OffscreenTargetResource> resource);
     std::shared_ptr<detail::OffscreenTargetResource> _resource;

@@ -9,10 +9,25 @@
 #include <panda/OffscreenTarget.hpp>
 #include <panda/Texture.hpp>
 
+namespace vk::raii
+{
+class Device;
+}
+
 namespace panda
 {
 class Engine;
 struct Geometry;
+
+namespace core::vulkan::resources
+{
+class MemoryPool;
+}
+
+namespace core::vulkan::upload
+{
+class UploadManager;
+}
 
 /// @brief Creates resources that belong to one Engine.
 /// This facade is borrowed from Engine and must not outlive it. Calls are serialized
@@ -53,8 +68,12 @@ public:
 private:
     friend class Engine;
 
-    explicit ResourceManager(const Engine& context) noexcept;
+    explicit ResourceManager(const vk::raii::Device& device,
+                             core::vulkan::resources::MemoryPool& pool,
+                             core::vulkan::upload::UploadManager& uploads) noexcept;
 
-    const Engine* _engine;
+    const vk::raii::Device& _device;
+    core::vulkan::resources::MemoryPool& _pool;
+    core::vulkan::upload::UploadManager& _uploads;
 };
 }

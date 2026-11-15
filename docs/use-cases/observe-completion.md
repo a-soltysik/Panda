@@ -8,23 +8,24 @@ come from `UploadBatch::submit()` or from a submitted `FrameResult`. The flow st
 with that point and a live owning `Engine`, and ends when `SubmissionManager::poll()` or
 `SubmissionManager::wait()` returns a completion state or error.
 
-**Panda** validates the point and observes the Engine's shared submission timeline. **The application** chooses whether
-to poll or wait and keeps the owning Engine
-alive. GPU completion does not establish that a frame has finished presenting or
-appeared on screen.
+**SubmissionManager** validates the point and observes the Engine's shared
+submission timeline. **The application** chooses whether to poll or wait and keeps
+the owning Engine alive. GPU completion does not establish that a frame has
+finished presenting or appeared on screen.
 
 ## Main flow
 
 1. **Choose an observation.** The application passes the point to
    `SubmissionManager::poll()` for a nonblocking query or to `SubmissionManager::wait()` with a
    nonnegative timeout for an explicit wait.
-2. **Check the submitted value.** Engine asks its `SubmissionQueue` to validate
-   that the point belongs to this Engine and identifies committed work. Polling
-   reads the timeline without waiting; waiting returns immediately if the value is
-   already known complete, otherwise it waits up to the requested duration.
-3. **Retire known-complete uploads.** After a successful query or wait, Engine
-   calls `UploadManager` to collect completed
-   packets; [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+2. **Check the submitted value.** `SubmissionManager` asks its `SubmissionQueue`
+   to validate that the point belongs to this Engine and identifies committed
+   work. Polling reads the timeline without waiting; waiting returns immediately
+   if the value is already known complete, otherwise it waits up to the requested
+   duration.
+3. **Retire known-complete uploads.** After a successful query or wait,
+   `SubmissionManager` calls `UploadManager::collectCompleted()`;
+   [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
    explains which owners this releases.
 4. **Return the observation.** `poll()` returns `true` when the point is complete
    and `false` while it is pending. `wait()` returns `WaitStatus::Completed` or
@@ -33,24 +34,24 @@ appeared on screen.
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Engine
+    participant S as SubmissionManager
     participant Q as SubmissionQueue
     participant U as UploadManager
     alt Nonblocking query
-        A->>C: Step 1 - poll(point)
-        C->>Q: Step 2 - validate point and read timeline
-        Q-->>C: Complete
+        A->>S: Step 1 - poll(point)
+        S->>Q: Step 2 - validate point and read timeline
+        Q-->>S: Complete
     else Bounded wait
-        A->>C: Step 1 - wait(point, timeout)
-        C->>Q: Step 2 - validate point and wait for value
-        Q-->>C: Completed
+        A->>S: Step 1 - wait(point, timeout)
+        S->>Q: Step 2 - validate point and wait for value
+        Q-->>S: Completed
     end
-    opt A pending packet's value is no greater than the known completed value
-        C->>U: Step 3 - collect completed packets
-        Note over C,U: Step 3 - UC Reclaim completed upload packets
-        U-->>C: Retained owners released through RAII
+    opt Successful observation, including a pending or timed-out result
+        S->>U: Step 3 - collectCompleted()
+        Note over S,U: Step 3 - UC Reclaim completed upload packets
+        U-->>S: Completed packets released through RAII
     end
-    C-->>A: Step 4 - Result<bool> or Result<WaitStatus>
+    S-->>A: Step 4 - Result<bool> or Result<WaitStatus>
 ```
 
 ## Notes
@@ -67,9 +68,10 @@ nor resources. The owning Engine state must outlive its use, and moving an Engin
 preserves its issued points.
 
 **Upload ownership.** A successful `poll()` result includes `false`, and a
-successful `wait()` result includes `Timeout`. Engine can still release packets
-whose completion it already knows; [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
-defines that boundary.
+successful `wait()` result includes `Timeout`. `SubmissionManager` can still
+release packets whose completion it already knows;
+[UC Reclaim completed upload packets](reclaim-completed-uploads.md) defines that
+boundary.
 
 ## Variants and errors
 
@@ -77,7 +79,7 @@ defines that boundary.
 |--------------------|--------------------------------------------------------------------------------------------------|-----------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
 | **Variant&nbsp;1** | Step 2: the timeline's completed value is less than the value in the submitted `CompletionPoint` | Return `false`                                      | The work may still be running; keep the point and poll again or wait                                                             |
 | **Variant&nbsp;2** | Step 2: the wait deadline expires first                                                          | Return `WaitStatus::Timeout` as a successful result | The work may still be running; keep the point and poll or wait again                                                             |
-| **Error&nbsp;1**   | Step 1 or 2: negative timeout, empty or foreign point, or no owning submission queue             | Return `InvalidArgument`                            | No completion is established; use the owning live Engine and a valid point, or a nonnegative timeout                            |
+| **Error&nbsp;1**   | Step 1 or 2: negative timeout, empty or foreign point                                             | Return `InvalidArgument`                            | No completion is established; use the owning live Engine and a valid point, or a nonnegative timeout                            |
 | **Error&nbsp;2**   | Step 2: timeline query or wait reports a backend failure, including device loss                  | Return the backend error                            | This call establishes no new completion; pending upload owners remain retained, and general device-loss recovery is not promised |
 
 ## Outcomes

@@ -27,11 +27,9 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
 ## Main flow
 
 1. **Request.** The application calls `ResourceManager::createBuffer(description)`.
-   `Engine` requires live internal state.
-2. **Release completed upload resources.** `Engine::Impl::createResource`
-   calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
-   explains which packets can be released; the Engine's already constructed manager
-   returns immediately when it has no pending packets.
+2. **Release completed upload resources.** `ResourceManager` calls
+   `UploadManager::collect()` before creating the buffer. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+   explains which packets can be released; an empty pending list returns immediately.
 3. **Validate.** `BufferResource::create` checks that size is nonzero, usage is
    nonempty and supported, and memory intent is `Device`, `Upload` or `Readback`
    before native buffer creation. Supported usages are the ordinary transfer,
@@ -46,19 +44,18 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
    pool policy remains in the
    [allocation contract](../design/contracts/resources.md#allocation-uploads-and-descriptors).
 6. **Bind.** `bindBufferMemory2` binds the buffer at the allocation's offset.
-7. **Publish.** Only after successful binding does `Engine` wrap the shared
-   resource state in a public `Buffer` and return it.
+7. **Publish.** Only after successful binding does `ResourceManager` wrap the
+   shared resource state in a public `Buffer` and return it.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Engine / Impl
+    participant C as ResourceManager
     participant U as UploadManager
     participant R as BufferResource
     participant P as MemoryPool
     participant V as Vulkan device
     A ->> C: Step 1 - createBuffer(description)
-    C ->> C: Step 2 - collectUploads()
     C ->> U: Step 2 - collect()
     Note over C,U: Step 2 - UC Reclaim completed upload packets
     U -->> C: Success or backend error
@@ -136,7 +133,7 @@ their retention is outside this creation flow and follows the
 
 |                  | Point and condition                          | Response                                                                                                                | Resulting state and next action                                                                                                         |
 |------------------|----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| **Error&nbsp;1** | Step 1: moved-from `Engine`                 | Checked fatal diagnostic                                                                                                | No recoverable return; use a live `Engine`                                                                                             |
+| **Error&nbsp;1** | Step 1: manager requested from a moved-from `Engine` | Checked fatal diagnostic                                                                                         | No recoverable return; use a live `Engine`                                                                                             |
 | **Error&nbsp;2** | Step 2: upload collection fails              | Propagate its error before attempting resource creation                                                                 | No new buffer; follow the error's recovery category, not unconditional retry                                                            |
 | **Error&nbsp;3** | Step 3: invalid size, usage or memory intent | Return `InvalidArgument` or `Unsupported`                                                                               | No new native buffer; correct size, usage or intent                                                                                     |
 | **Error&nbsp;4** | Step 4: native creation fails                | Convert native status to Panda `Error`; do not adopt failed output                                                      | No published resource; inspect error category and native diagnostics                                                                    |
@@ -156,7 +153,7 @@ and no public `Buffer` exists. This path needs no GPU completion wait.
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Engine / Impl
+    participant C as ResourceManager
     participant R as BufferResource
     participant M as MemoryAllocation
     participant P as MemoryPool

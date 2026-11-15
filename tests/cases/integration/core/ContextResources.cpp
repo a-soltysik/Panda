@@ -1531,7 +1531,7 @@ TEST_F(ContextResourcesIntegration, GenerationFailureReleasesFrameResourcesAndAl
     EXPECT_EQ(context.error().message, "generation failed");
 }
 
-TEST_F(ContextResourcesIntegration, EmptyAndMovedFromEnginesRejectCompletionOperations)
+TEST_F(ContextResourcesIntegration, MovedToEngineRejectsEmptyCompletionOperations)
 {
     expectHeadless();
     expectParentsDestroyed(true, false);
@@ -1543,8 +1543,18 @@ TEST_F(ContextResourcesIntegration, EmptyAndMovedFromEnginesRejectCompletionOper
     ASSERT_FALSE(noWork);
     EXPECT_EQ(noWork.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_FALSE(moved.getSubmissionManager().wait(empty, std::chrono::nanoseconds {0}));
-    EXPECT_FALSE(context->getSubmissionManager().poll(empty));
-    EXPECT_FALSE(context->getSubmissionManager().wait(empty, std::chrono::nanoseconds {0}));
+}
+
+TEST_F(ContextResourcesIntegrationDeathTest, MovedFromEngineRejectsResourceAndSubmissionManagerGetters)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    auto context = panda::Engine::create();
+    ASSERT_TRUE(context);
+    auto moved = std::move(*context);
+    EXPECT_FALSE(context->isValid());
+    EXPECT_DEATH(static_cast<void>(context->getResourceManager()), "Cannot use a moved-from Engine");
+    EXPECT_DEATH(static_cast<void>(context->getSubmissionManager()), "Cannot use a moved-from Engine");
 }
 
 TEST_F(ContextResourcesIntegration, SuspendedEngineRejectsEmptyPointsAndNegativeTimeout)
@@ -1589,7 +1599,6 @@ TEST_F(ContextResourcesIntegration, BatchMovesAcrossEngineAndEmptySubmitRemainsR
     // UploadBatch explicitly supports querying its empty moved-from state.
     // NOLINTNEXTLINE(bugprone-use-after-move,clang-analyzer-cplusplus.Move,hicpp-invalid-access-moved)
     EXPECT_FALSE(movedBatch.isValid());
-    EXPECT_FALSE(context->getSubmissionManager().createUploadBatch());
 }
 
 TEST_F(ContextResourcesIntegration, FailedTimelineCreationRejectsEngineAndReleasesItsParents)

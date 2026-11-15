@@ -30,10 +30,9 @@ scope follows
 
 1. **Request.** The application calls `ResourceManager::createMesh(description)`.
    `Engine` requires live internal state.
-2. **Release completed upload resources.** `Engine::Impl::createResource`
-   calls `collectUploads()`. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
-   explains which packets can be released; the Engine's already constructed manager
-   returns immediately when it has no pending packets.
+2. **Release completed upload resources.** `ResourceManager` calls
+   `UploadManager::collect()` before creating the mesh. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
+   explains which packets can be released; an empty pending list returns immediately.
 3. **Validate and derive storage sizes.** `MeshLayout::create` requires a
    nonzero vertex count and stride. When attributes are declared, Position is
    required, semantics must be unique, formats must match their semantics, and
@@ -52,14 +51,14 @@ scope follows
 6. **Assemble private state.** `MeshResource` retains the vertex buffer, the
    optional index buffer and the derived layout. It is constructed only after
    all requested buffer creation succeeds.
-7. **Publish.** `Engine` wraps the complete `MeshResource` in the public
+7. **Publish.** `ResourceManager` wraps the complete `MeshResource` in the public
    `Mesh` handle and returns it. The handle exposes counts, stride and storage
    sizes, not native Vulkan buffers.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Engine / Impl
+    participant C as ResourceManager
     participant U as UploadManager
     participant M as MeshResource
     participant L as MeshLayout
@@ -67,7 +66,6 @@ sequenceDiagram
     participant P as MemoryPool
     participant V as Vulkan device
     A ->> C: Step 1 - createMesh(description)
-    C ->> C: Step 2 - collectUploads()
     C ->> U: Step 2 - collect()
     Note over C,U: Step 2 - UC Reclaim completed upload packets
     U -->> C: Success or backend error
@@ -129,7 +127,7 @@ is a separate operation described by the
 |--------------------|-----------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
 | **Variant&nbsp;1** | Step 3: index description is absent                                               | Create only vertex storage                                                                                        | The returned mesh reports zero index count and size, with no index type             |
 | **Variant&nbsp;2** | Step 3: index type is `UInt16` or `UInt32`                                        | Derive the corresponding index-buffer size                                                                        | The caller supplies matching bytes when uploading the payload                       |
-| **Error&nbsp;1**   | Step 1: moved-from `Engine`                                                      | Checked fatal diagnostic                                                                                          | No recoverable result; use a live `Engine`                                         |
+| **Error&nbsp;1**   | Step 1: manager requested from a moved-from `Engine`                             | Checked fatal diagnostic                                                                                          | No recoverable result; use a live `Engine`                                         |
 | **Error&nbsp;2**   | Step 2: completed-upload collection fails                                         | Propagate its error before layout validation or buffer creation                                                   | No new mesh buffers; follow the error category rather than retrying unconditionally |
 | **Error&nbsp;3**   | Step 3: vertex count/stride is zero, index count is zero or index type is invalid | Return `InvalidArgument`                                                                                          | No native buffers are created; correct the description                              |
 | **Error&nbsp;4**   | Step 4: vertex-buffer creation, allocation or binding fails                       | Propagate the buffer error                                                                                        | No index buffer or `Mesh` is published                                              |
@@ -150,7 +148,7 @@ GPU work.
 ```mermaid
 sequenceDiagram
     participant A as Application
-    participant C as Engine / Impl
+    participant C as ResourceManager
     participant M as MeshResource
     participant B as BufferResource
     participant P as MemoryPool

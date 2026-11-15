@@ -55,7 +55,6 @@ public:
 
 private:
     friend class detail::ExternalBufferInterop;
-    friend class Engine;
 
     Buffer _buffer;
     ExternalMemoryHandle _handle;

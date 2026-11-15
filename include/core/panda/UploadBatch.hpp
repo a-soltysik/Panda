@@ -16,6 +16,7 @@
 namespace panda
 {
 struct Geometry;
+class SubmissionManager;
 
 namespace detail
 {
@@ -99,7 +100,7 @@ public:
     [[nodiscard]] auto submit() -> Result<CompletionPoint>;
 
 private:
-    friend class Engine;
+    friend class SubmissionManager;
     explicit UploadBatch(std::unique_ptr<detail::UploadBatchImpl> impl);
     std::unique_ptr<detail::UploadBatchImpl> _impl;
 };

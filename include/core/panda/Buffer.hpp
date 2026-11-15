@@ -9,7 +9,7 @@
 
 namespace panda
 {
-class Engine;
+class ResourceManager;
 
 namespace detail
 {
@@ -67,7 +67,7 @@ public:
     void reset() noexcept;
 
 private:
-    friend class Engine;
+    friend class ResourceManager;
     friend class detail::BufferResource;
     friend class detail::ExternalBufferInterop;
     explicit Buffer(std::shared_ptr<detail::BufferResource> resource);

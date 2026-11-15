@@ -3,31 +3,21 @@
 /// @file
 /// Vulkan context ownership and device capability diagnostics.
 
-#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
-#include <panda/Buffer.hpp>
-#include <panda/CompletionPoint.hpp>
 #include <panda/DeviceInfo.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBufferManager.hpp>
-#include <panda/FrameResult.hpp>
-#include <panda/Mesh.hpp>
 #include <panda/OffscreenRenderer.hpp>
-#include <panda/OffscreenTarget.hpp>
 #include <panda/PerformanceManager.hpp>
-#include <panda/RenderView.hpp>
 #include <panda/ResourceManager.hpp>
 #include <panda/SubmissionManager.hpp>
-#include <panda/Texture.hpp>
-#include <panda/UploadBatch.hpp>
 #include <panda/WindowRenderer.hpp>
 
 namespace panda
 {
-struct Geometry;
 class WindowSurface;
 
 /// @brief Move-only owner of a Vulkan instance, device and optional swapchain.
@@ -100,11 +90,13 @@ public:
     [[nodiscard]] auto getDeviceInfo() const -> DeviceInfo;
 
     /// @brief Borrows this Engine's resource creation operations.
-    /// @return A manager that must not outlive this Engine.
+    /// @return A manager that must not outlive the owning Engine. Its address
+    /// remains stable when Engine is moved to another object.
     [[nodiscard]] auto getResourceManager() const -> const ResourceManager&;
 
     /// @brief Borrows this Engine's upload and completion operations.
-    /// @return A manager that must not outlive this Engine.
+    /// @return A manager that must not outlive the owning Engine. Its address
+    /// remains stable when Engine is moved to another object.
     [[nodiscard]] auto getSubmissionManager() const -> const SubmissionManager&;
 
     /// @brief Borrows this Engine's offscreen renderer.
@@ -124,21 +116,11 @@ public:
     [[nodiscard]] auto getExternalBufferManager() -> ExternalBufferManager&;
 
 private:
-    friend class ResourceManager;
-    friend class SubmissionManager;
     friend class OffscreenRenderer;
     friend class WindowRenderer;
 
     class Impl;
 
-    [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
-    [[nodiscard]] auto createTexture(const TextureDesc& description) const -> Result<Texture>;
-    [[nodiscard]] auto createOffscreenTarget(const OffscreenTargetDesc& description) const -> Result<OffscreenTarget>;
-    [[nodiscard]] auto createMesh(const MeshDesc& description) const -> Result<Mesh>;
-    [[nodiscard]] auto createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>;
-    [[nodiscard]] auto createUploadBatch() const -> Result<UploadBatch>;
-    [[nodiscard]] auto poll(CompletionPoint point) const -> Result<bool>;
-    [[nodiscard]] auto wait(CompletionPoint point, std::chrono::nanoseconds timeout) const -> Result<WaitStatus>;
     [[nodiscard]] auto renderWindow(const RenderView& view) const -> Result<FrameResult>;
     [[nodiscard]] auto renderWindowWithCapture(const RenderView& view, const OffscreenTarget& target) const
         -> Result<FrameResult>;
@@ -152,8 +134,6 @@ private:
     explicit Engine(std::unique_ptr<Impl> implementation) noexcept;
 
     std::unique_ptr<Impl> _implementation;
-    ResourceManager _resourceManager;
-    SubmissionManager _submissionManager;
     OffscreenRenderer _offscreenRenderer;
     WindowRenderer _windowRenderer;
     PerformanceManager _performanceManager;
