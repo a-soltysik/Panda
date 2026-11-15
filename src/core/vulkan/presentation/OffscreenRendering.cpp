@@ -277,19 +277,12 @@ OffscreenRendering::OffscreenRendering(const OffscreenRenderingCreateInfo& info)
 
 OffscreenRendering::~OffscreenRendering() = default;
 
-auto OffscreenRendering::create(const OffscreenRenderingCreateInfo& info)
-    -> std::expected<std::unique_ptr<OffscreenRendering>, Error>
-{
-    auto rendering = std::unique_ptr<OffscreenRendering> {new OffscreenRendering {info}};
-    if (const auto initialized = rendering->initialize(); !initialized)
-    {
-        return std::unexpected {initialized.error()};
-    }
-    return rendering;
-}
-
 auto OffscreenRendering::initialize() -> std::expected<void, Error>
 {
+    if (_execution)
+    {
+        return {};
+    }
     auto execution = FrameExecution::create({.physicalDevice = _physicalDevice,
                                              .device = _device,
                                              .queueFamily = _queueFamily,
@@ -581,6 +574,6 @@ auto OffscreenRendering::drain() -> std::expected<void, Error>
     {
         return pending;
     }
-    return _execution->drain();
+    return _execution ? _execution->drain() : std::expected<void, Error> {};
 }
 }

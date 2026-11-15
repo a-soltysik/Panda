@@ -50,7 +50,7 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 2. **Request the window render.** The application obtains the window renderer from
    `Engine::getWindowRenderer()` and calls `WindowRenderer::render(view)`. This
    renderer is available only for an Engine created with a window surface.
-3. **Validate and collect uploads.** `Engine::Impl::render()` checks matrices, all
+3. **Validate and collect uploads.** `WindowRenderer` checks matrices, all
    light variants, optional shadow settings, atlas resolutions/capacity, and the
    configured light budget,
    tint, material alpha mode, cutoff, and finite normal-map scale and occlusion
@@ -120,7 +120,6 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 sequenceDiagram
     participant A as Application
     participant W as WindowRenderer
-    participant C as Engine / Impl
     participant U as UploadManager
     participant P as Presentation
     participant E as FrameExecution
@@ -132,13 +131,12 @@ sequenceDiagram
     participant V as Vulkan
     A->>A: Step 1 - build the view
     A->>W: Step 2 - render(view)
-    W->>C: Forward the request
-    Note over C,V: Steps 3 to 8 realize validation through presentation
-    C->>C: Validate camera, light, mesh layouts and texture requirements
-    C->>U: Collect completed upload packets
-    U-->>C: Collection result
-    C->>C: Reject material maps without a submitted upload
-    C->>P: Render validated view
+    Note over W,V: Steps 3 to 8 realize validation through presentation
+    W->>W: Validate camera, light, mesh layouts and texture requirements
+    W->>U: Collect completed upload packets
+    U-->>W: Collection result
+    W->>W: Reject material maps without a submitted upload
+    W->>P: Render validated view
     P->>V: Check framebuffer and swapchain generation
     P->>E: Wait for frame slot and retain mesh and selected material texture handles
     P->>V: Acquire image and wait for presentation reuse
@@ -179,8 +177,7 @@ sequenceDiagram
     P->>E: Commit frame completion and renderer/performance state
     P->>V: Present image and signal its present fence
     V-->>P: Present outcome
-    P-->>C: FrameResult or Error
-    C-->>W: Result<FrameResult>
+    P-->>W: FrameResult or Error
     W-->>A: Result<FrameResult>
 ```
 

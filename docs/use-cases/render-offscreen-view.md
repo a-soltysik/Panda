@@ -22,11 +22,12 @@ with either a headless or windowed Engine.
    [UC Upload a complete mesh payload into a batch](upload-mesh-payload.md) and
    [UC Upload texture contents or regions](upload-texture.md).
 3. **Submit the render.** The application calls
-   `Engine::getOffscreenRenderer().render(view, target)`. Panda validates the view
-   and target, records the built-in rendering path into the target, retains the
-   target and view resources, then submits the command buffer on the Engine queue.
-   Success returns `FrameResult::Status::Rendered` and a `CompletionPoint`; it does
-   not present a frame or wait for rendering to finish.
+   `Engine::getOffscreenRenderer().render(view, target)`. `OffscreenRenderer`
+   validates the view and target, collects completed uploads, then lazily initializes
+   `OffscreenRendering` before recording the built-in rendering path. The rendering
+   path retains the target and view resources, then submits the command buffer on the
+   Engine queue. Success returns `FrameResult::Status::Rendered` and a
+   `CompletionPoint`; it does not present a frame or wait for rendering to finish.
 4. **Request pixels.** When CPU pixels are needed, the application calls
    `readPixels(target, completion)` with a point covering that target's latest
    render. Panda validates the target and point, submits an image-to-buffer copy,
@@ -37,7 +38,7 @@ sequenceDiagram
     participant A as Application
     participant M as ResourceManager
     participant R as OffscreenRenderer
-    participant C as Engine
+    participant U as UploadManager
     participant O as OffscreenRendering
     participant E as FrameExecution
     participant Q as SubmissionQueue
@@ -46,8 +47,11 @@ sequenceDiagram
     M-->>A: OffscreenTarget
     A->>A: Step 2 - build and upload view
     A->>R: Step 3 - render(view, target)
-    R->>C: Validate and render
-    C->>O: Submit offscreen frame
+    R->>R: Validate view and target
+    R->>U: Collect completed upload packets
+    U-->>R: Collection result
+    R->>R: Reject material maps without a submitted upload
+    R->>O: Initialize lazily and submit offscreen frame
     O->>E: Retain target and view resources and record content
     E->>V: Transition target and record clear/draws
     O->>Q: Submit command buffer
@@ -55,8 +59,8 @@ sequenceDiagram
     O-->>R: FrameResult::Rendered
     R-->>A: FrameResult
     A->>R: Step 4 - readPixels(target, completion)
-    R->>C: Validate target and completion
-    C->>O: Copy target to host-visible buffer
+    R->>R: Validate target ownership and render state
+    R->>O: Copy target to host-visible buffer
     O->>Q: Submit copy and wait for completion
     Q-->>O: Copy completed
     O-->>A: ImageReadback

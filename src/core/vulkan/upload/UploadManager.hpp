@@ -78,8 +78,8 @@ private:
 
     struct PendingUpload
     {
-        std::uint64_t completion;
-        std::uint64_t stagingBytes;
+        std::uint64_t completion {0};
+        std::uint64_t stagingBytes {0};
         std::unique_ptr<UploadCommand> packet;
     };
 

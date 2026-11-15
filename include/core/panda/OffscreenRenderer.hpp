@@ -3,19 +3,44 @@
 /// @file
 /// Engine-owned renderer for explicit offscreen targets.
 
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
-#include <panda/FrameResult.hpp>
-#include <panda/OffscreenTarget.hpp>
-#include <panda/RenderView.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <panda/CompletionPoint.hpp>  // IWYU pragma: export
+#include <panda/Error.hpp>            // IWYU pragma: export
+#include <panda/FrameResult.hpp>      // IWYU pragma: export
+#include <panda/OffscreenTarget.hpp>  // IWYU pragma: export
+#include <panda/RenderView.hpp>       // IWYU pragma: export
 
 namespace panda
 {
-class Engine;
+namespace core::vulkan
+{
+namespace presentation
+{
+class OffscreenRendering;
+}
+
+namespace resources
+{
+class MemoryPool;
+}
+
+namespace upload
+{
+class UploadManager;
+}
+}
+
+namespace detail
+{
+class PerformanceManagerImpl;
+}
 
 /// @brief Renders views to an explicit offscreen target.
-/// This facade is borrowed from Engine and must not outlive it. Calls are serialized
-/// with other operations on the owning Engine. Targets may vary between calls.
+/// This facade is borrowed from Engine and must not outlive it. Its address remains
+/// stable when Engine is moved. Calls are serialized with other operations on the
+/// owning Engine. Targets may vary between calls.
 class OffscreenRenderer final
 {
 public:
@@ -43,8 +68,25 @@ public:
 private:
     friend class Engine;
 
-    explicit OffscreenRenderer(const Engine& context) noexcept;
+    struct Dependencies final
+    {
+        core::vulkan::presentation::OffscreenRendering& rendering;
+        core::vulkan::resources::MemoryPool& pool;
+        core::vulkan::upload::UploadManager& uploads;
+        detail::PerformanceManagerImpl& performance;
+        std::uint32_t maxLights;
+    };
 
-    const Engine* _engine;
+    explicit OffscreenRenderer(Dependencies dependencies) noexcept;
+    [[nodiscard]] auto renderWithUploads(const RenderView& view,
+                                         const OffscreenTarget& target,
+                                         std::optional<std::size_t>& submittedPerformanceSlot) const
+        -> Result<FrameResult>;
+
+    core::vulkan::presentation::OffscreenRendering& _rendering;
+    core::vulkan::resources::MemoryPool& _pool;
+    core::vulkan::upload::UploadManager& _uploads;
+    detail::PerformanceManagerImpl& _performance;
+    std::uint32_t _maxLights;
 };
 }

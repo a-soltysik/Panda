@@ -62,15 +62,14 @@ struct WindowCaptureRequest
 class OffscreenRendering final
 {
 public:
-    [[nodiscard]] static auto create(const OffscreenRenderingCreateInfo& info)
-        -> std::expected<std::unique_ptr<OffscreenRendering>, Error>;
-
+    explicit OffscreenRendering(const OffscreenRenderingCreateInfo& info);
     OffscreenRendering(const OffscreenRendering&) = delete;
     auto operator=(const OffscreenRendering&) -> OffscreenRendering& = delete;
     OffscreenRendering(OffscreenRendering&&) = delete;
     auto operator=(OffscreenRendering&&) -> OffscreenRendering& = delete;
     ~OffscreenRendering();
 
+    [[nodiscard]] auto initialize() -> std::expected<void, Error>;
     [[nodiscard]] auto render(const RenderView& view,
                               const OffscreenTarget& target,
                               std::optional<std::size_t>& submittedPerformanceSlot)
@@ -102,8 +101,6 @@ private:
         std::uint64_t completion {0};
     };
 
-    explicit OffscreenRendering(const OffscreenRenderingCreateInfo& info);
-    [[nodiscard]] auto initialize() -> std::expected<void, Error>;
     [[nodiscard]] auto prepareRendererOutput(const ::panda::detail::OffscreenTargetResource& target,
                                              const RenderView& view) -> std::expected<void, Error>;
     [[nodiscard]] auto recordFrame(std::size_t slotIndex,

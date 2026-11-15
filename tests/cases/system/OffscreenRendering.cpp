@@ -290,6 +290,9 @@ TEST_F(OffscreenRenderingSystem, ValidatesTargetExtentOwnershipAndLifetime)
     const auto foreignRender = activeEngine().getOffscreenRenderer().render(panda::RenderView {}, *foreignTarget);
     ASSERT_FALSE(foreignRender);
     EXPECT_EQ(foreignRender.error().code, panda::ErrorCode::InvalidArgument);
+    const auto foreignReadback = activeEngine().getOffscreenRenderer().readPixels(*foreignTarget, {});
+    ASSERT_FALSE(foreignReadback);
+    EXPECT_EQ(foreignReadback.error().code, panda::ErrorCode::InvalidArgument);
     const auto foreignFrame = other->getOffscreenRenderer().render(panda::RenderView {}, *foreignTarget);
     ASSERT_TRUE(foreignFrame) << foreignFrame.error().message;
 

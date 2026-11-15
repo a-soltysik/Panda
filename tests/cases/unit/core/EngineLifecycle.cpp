@@ -542,7 +542,7 @@ protected:
         EXPECT_CALL(vulkan, vkDestroyInstance(instance, nullptr)).After(parents);
     }
 
-    void expectFrameResources()
+    void expectFrameResources(bool failOffscreenInitialization = false)
     {
         EXPECT_CALL(vulkan, vkGetDeviceQueue(device, _, 0, NotNull()))
             .Times(2)
@@ -556,11 +556,16 @@ protected:
                 testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(11)), Return(success))})
             .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
                 testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(12)), Return(success))});
-        EXPECT_CALL(vulkan, vkCreateCommandPool(device, NotNull(), nullptr, NotNull()))
+        auto& commandPoolCalls = EXPECT_CALL(vulkan, vkCreateCommandPool(device, NotNull(), nullptr, NotNull()));
+        commandPoolCalls
             .WillOnce(testing::Action<decltype(vkCreateCommandPool)> {
                 testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(20)), Return(success))})
             .WillOnce(testing::Action<decltype(vkCreateCommandPool)> {
                 testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(21)), Return(success))});
+        if (failOffscreenInitialization)
+        {
+            commandPoolCalls.WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
+        }
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(device, NotNull(), NotNull()))
             .WillOnce(testing::Action<decltype(vkAllocateCommandBuffers)> {
                 testing::DoAll(testing::SetArgPointee<2>(fakeVulkanHandle<VkCommandBuffer>(30)), Return(success))})
@@ -577,13 +582,13 @@ protected:
         frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeVulkanHandle<VkSemaphore>(10), nullptr));
     }
 
-    void expectWindowed(bool separateQueues = false)
+    void expectWindowed(bool separateQueues = false, bool failOffscreenInitialization = false)
     {
         expectInstance();
         expectWindow(panda::test::WindowSurfaceMock::SurfaceResult {surface});
         expectAdapter(true, separateQueues);
         expectDevice(true, success, separateQueues);
-        expectFrameResources();
+        expectFrameResources(failOffscreenInitialization);
         expectFramesDestroyed();
         expectParentsDestroyed(true, true);
     }
@@ -693,6 +698,85 @@ protected:
         }
     }
 
+    void expectOffscreenFormat(VkImageUsageFlags usage)
+    {
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceImageFormatProperties(physical,
+                                                             VK_FORMAT_R8G8B8A8_SRGB,
+                                                             VK_IMAGE_TYPE_2D,
+                                                             VK_IMAGE_TILING_OPTIMAL,
+                                                             usage,
+                                                             0,
+                                                             NotNull()))
+            .WillOnce([](VkPhysicalDevice,
+                         VkFormat,
+                         VkImageType,
+                         VkImageTiling,
+                         VkImageUsageFlags,
+                         VkImageCreateFlags,
+                         VkImageFormatProperties* output) {
+                output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                return success;
+            });
+    }
+
+    void expectOffscreenImageCreation(VkImage image, VkImageUsageFlags usage)
+    {
+        EXPECT_CALL(vulkan, vkCreateImage(device, NotNull(), nullptr, NotNull()))
+            .WillOnce(
+                [image, usage](VkDevice, const VkImageCreateInfo* info, const VkAllocationCallbacks*, VkImage* output) {
+                    EXPECT_EQ(info->format, VK_FORMAT_R8G8B8A8_SRGB);
+                    EXPECT_EQ(info->usage, usage);
+                    *output = image;
+                    return success;
+                });
+    }
+
+    void expectOffscreenImageRequirements(VkImage image)
+    {
+        EXPECT_CALL(vulkan, vkGetImageMemoryRequirements2(device, NotNull(), NotNull()))
+            .WillOnce([image](VkDevice, const VkImageMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
+                EXPECT_EQ(info->image, image);
+                output->memoryRequirements = {.size = 256, .alignment = 64, .memoryTypeBits = 1};
+                auto* const dedicated = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
+                ASSERT_NE(dedicated, nullptr);
+                dedicated->requiresDedicatedAllocation = vk::False;
+                dedicated->prefersDedicatedAllocation = vk::False;
+            });
+    }
+
+    void expectOffscreenImageBindingAndView(VkImage image, VkImageView view, VkDeviceMemory memory)
+    {
+        EXPECT_CALL(vulkan, vkBindImageMemory2(device, 1, NotNull()))
+            .WillOnce([image, memory](VkDevice, std::uint32_t, const VkBindImageMemoryInfo* info) {
+                EXPECT_EQ(info->image, image);
+                EXPECT_EQ(info->memory, memory);
+                EXPECT_EQ(info->memoryOffset, 0U);
+                return success;
+            });
+        EXPECT_CALL(vulkan, vkCreateImageView(device, NotNull(), nullptr, NotNull()))
+            .WillOnce(
+                [image,
+                 view](VkDevice, const VkImageViewCreateInfo* info, const VkAllocationCallbacks*, VkImageView* output) {
+                    EXPECT_EQ(info->image, image);
+                    *output = view;
+                    return success;
+                });
+        EXPECT_CALL(vulkan, vkDestroyImageView(device, view, nullptr));
+        EXPECT_CALL(vulkan, vkDestroyImage(device, image, nullptr));
+    }
+
+    void expectOffscreenTarget(VkImage image, VkImageView view, VkDeviceMemory memory)
+    {
+        constexpr auto usage = static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) |
+                               static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        expectOffscreenFormat(usage);
+        expectOffscreenImageCreation(image, usage);
+        expectOffscreenImageRequirements(image);
+        expectBufferAllocation(memory);
+        expectOffscreenImageBindingAndView(image, view, memory);
+    }
+
     void expectBinding(VkBuffer buffer, VkDeviceMemory memory, std::uint64_t offset = 0, VkResult result = success)
     {
         EXPECT_CALL(vulkan, vkBindBufferMemory2(device, 1, NotNull()))
@@ -775,6 +859,31 @@ TEST_F(EngineLifecycleTest, CreatesHeadlessQueueAndUploadManagerWithoutGpuAlloca
     ASSERT_TRUE(engine);
     const auto batch = engine->getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
+}
+
+TEST_F(EngineLifecycleTest, CaptureInitializationFailureDoesNotAcquireWindowImage)
+{
+    auto* const image = fakeVulkanHandle<VkImage>(40);
+    auto* const imageView = fakeVulkanHandle<VkImageView>(41);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(42);
+    expectOffscreenTarget(image, imageView, memory);
+    expectWindowed(false, true);
+    EXPECT_CALL(window, getFramebufferExtent())
+        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
+    EXPECT_CALL(vulkan, vkAcquireNextImageKHR(_, _, _, _, _, _)).Times(0);
+
+    const auto engine = panda::Engine::createWithSurface(window);
+    ASSERT_TRUE(engine) << engine.error().message;
+    const auto target = engine->getResourceManager().createOffscreenTarget({
+        .extent = {.width = 32, .height = 32}
+    });
+    ASSERT_TRUE(target);
+    const auto windowRenderer = engine->getWindowRenderer();
+    ASSERT_TRUE(windowRenderer);
+
+    const auto result = windowRenderer->get().renderWithCapture(panda::RenderView {}, *target);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, panda::ErrorCode::BackendFailure);
 }
 
 TEST_F(EngineLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOrder)

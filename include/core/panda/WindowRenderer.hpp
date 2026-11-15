@@ -3,18 +3,45 @@
 /// @file
 /// Engine-owned renderer for a window surface.
 
-#include <panda/Error.hpp>
-#include <panda/FrameResult.hpp>
-#include <panda/OffscreenTarget.hpp>
-#include <panda/RenderView.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <panda/Error.hpp>            // IWYU pragma: export
+#include <panda/FrameResult.hpp>      // IWYU pragma: export
+#include <panda/OffscreenTarget.hpp>  // IWYU pragma: export
+#include <panda/RenderView.hpp>       // IWYU pragma: export
 
 namespace panda
 {
-class Engine;
+namespace core::vulkan
+{
+class Presentation;
+struct CaptureFrameRequest;
+
+namespace presentation
+{
+class OffscreenRendering;
+}
+
+namespace resources
+{
+class MemoryPool;
+}
+
+namespace upload
+{
+class UploadManager;
+}
+}
+
+namespace detail
+{
+class PerformanceManagerImpl;
+}
 
 /// @brief Renders application views to the window associated with this Engine.
-/// This facade is available only when the Engine has a window surface and is
-/// borrowed from that Engine.
+/// This facade is available only when the Engine has a window surface. It is
+/// borrowed from that Engine and its address remains stable when Engine is moved.
 class WindowRenderer final
 {
 public:
@@ -41,8 +68,27 @@ public:
 private:
     friend class Engine;
 
-    explicit WindowRenderer(const Engine& context) noexcept;
+    struct Dependencies final
+    {
+        core::vulkan::Presentation* presentation;
+        core::vulkan::presentation::OffscreenRendering& rendering;
+        core::vulkan::resources::MemoryPool& pool;
+        core::vulkan::upload::UploadManager& uploads;
+        detail::PerformanceManagerImpl& performance;
+        std::uint32_t maxLights;
+    };
 
-    const Engine* _engine;
+    explicit WindowRenderer(Dependencies dependencies) noexcept;
+    [[nodiscard]] auto renderWithUploads(const RenderView& view,
+                                         std::optional<std::size_t>& submittedPerformanceSlot) const
+        -> Result<FrameResult>;
+    [[nodiscard]] auto captureWithUploads(core::vulkan::CaptureFrameRequest request) const -> Result<FrameResult>;
+
+    core::vulkan::Presentation* _presentation;
+    core::vulkan::presentation::OffscreenRendering& _rendering;
+    core::vulkan::resources::MemoryPool& _pool;
+    core::vulkan::upload::UploadManager& _uploads;
+    detail::PerformanceManagerImpl& _performance;
+    std::uint32_t _maxLights;
 };
 }
