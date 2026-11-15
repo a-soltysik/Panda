@@ -22,7 +22,8 @@ class ExternalBufferInterop;
 
 /// @brief Creates external buffers and queues ownership handoffs for one Engine.
 /// This facade is borrowed from Engine and must not outlive it. Calls are serialized
-/// with other operations on the owning Engine.
+/// with other operations on the owning Engine. Its address remains stable when Engine
+/// moves, but it must not outlive the moved-to Engine.
 class ExternalBufferManager final
 {
 public:
@@ -30,8 +31,7 @@ public:
     auto operator=(const ExternalBufferManager&) -> ExternalBufferManager& = delete;
     ExternalBufferManager(ExternalBufferManager&&) = delete;
     auto operator=(ExternalBufferManager&&) -> ExternalBufferManager& = delete;
-    // NOLINTNEXTLINE(performance-trivially-destructible): Function definitions stay in .cpp files by convention.
-    ~ExternalBufferManager() noexcept;
+    ~ExternalBufferManager() noexcept = default;
 
     /// @brief Creates a dedicated device-local buffer with exported platform handles.
     /// @return The owning buffer, or an unsupported/creation error.

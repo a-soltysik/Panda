@@ -22,11 +22,16 @@
 #include <expected>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
+#include <panda/ExternalBufferManager.hpp>
+#include <panda/OffscreenRenderer.hpp>
+#include <panda/PerformanceManager.hpp>
 #include <panda/RenderView.hpp>
+#include <panda/SubmissionManager.hpp>
 #include <panda/WindowSurface.hpp>
 #include <span>
 #include <string>
@@ -56,6 +61,33 @@ struct TimestampScenario
     std::uint32_t validBits {0};
     float periodNanoseconds {0.0F};
 };
+
+struct BorrowedEngineServices
+{
+    const panda::ResourceManager* resourceManager {nullptr};
+    const panda::SubmissionManager* submissionManager {nullptr};
+    const panda::OffscreenRenderer* offscreenRenderer {nullptr};
+    panda::PerformanceManager* performanceManager {nullptr};
+    panda::ExternalBufferManager* externalBufferManager {nullptr};
+};
+
+auto borrowServices(panda::Engine& engine) -> BorrowedEngineServices
+{
+    return {.resourceManager = &engine.getResourceManager(),
+            .submissionManager = &engine.getSubmissionManager(),
+            .offscreenRenderer = &engine.getOffscreenRenderer(),
+            .performanceManager = &engine.getPerformanceManager(),
+            .externalBufferManager = &engine.getExternalBufferManager()};
+}
+
+void expectSameServices(panda::Engine& engine, const BorrowedEngineServices& services)
+{
+    EXPECT_EQ(&engine.getResourceManager(), services.resourceManager);
+    EXPECT_EQ(&engine.getSubmissionManager(), services.submissionManager);
+    EXPECT_EQ(&engine.getOffscreenRenderer(), services.offscreenRenderer);
+    EXPECT_EQ(&engine.getPerformanceManager(), services.performanceManager);
+    EXPECT_EQ(&engine.getExternalBufferManager(), services.externalBufferManager);
+}
 
 auto invalidMemoryIntent() -> panda::BufferMemory
 {
@@ -1191,6 +1223,7 @@ TEST_F(EngineLifecycleTest, LiveBuffersRemainBoundAcrossEngineAndHandleMoves)
 {
     expectHeadless();
     auto* const native = fakeVulkanHandle<VkBuffer>(40);
+    auto* const movedNative = fakeVulkanHandle<VkBuffer>(41);
     auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
     expectBuffer(native);
     expectBufferAllocation(memory);
@@ -1198,8 +1231,8 @@ TEST_F(EngineLifecycleTest, LiveBuffersRemainBoundAcrossEngineAndHandleMoves)
     expectParentsDestroyed(true, false);
     auto created = panda::Engine::create();
     ASSERT_TRUE(created);
-    auto buffer =
-        created->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    const auto& resourceManager = created->getResourceManager();
+    auto buffer = resourceManager.createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
     ASSERT_TRUE(buffer);
     auto context = std::move(*created);
     auto moved = std::move(*buffer);
@@ -1208,6 +1241,11 @@ TEST_F(EngineLifecycleTest, LiveBuffersRemainBoundAcrossEngineAndHandleMoves)
     EXPECT_TRUE(context.isValid());
     EXPECT_EQ(moved.getSize(), 65);
     moved.reset();
+    expectBuffer(movedNative);
+    expectBinding(movedNative, memory);
+    auto replacement = resourceManager.createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(replacement);
+    replacement->reset();
 }
 
 TEST_F(EngineLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutput)
@@ -1532,7 +1570,41 @@ TEST_F(EngineLifecycleTest, MovedToEngineRejectsEmptyCompletionOperations)
     EXPECT_FALSE(moved.getSubmissionManager().wait(empty, std::chrono::nanoseconds {0}));
 }
 
-TEST_F(EngineLifecycleDeathTest, MovedFromEngineRejectsResourceAndSubmissionManagerGetters)
+TEST_F(EngineLifecycleTest, BorrowedServicesRemainStableAcrossEngineMoves)
+{
+    expectHeadless();
+    auto* const native = fakeVulkanHandle<VkBuffer>(40);
+    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    expectBuffer(native);
+    expectBufferAllocation(memory);
+    expectBinding(native, memory);
+    expectParentsDestroyed(true, false);
+    auto services = std::optional<BorrowedEngineServices> {};
+    auto movedEngine = std::unique_ptr<panda::Engine> {};
+    {
+        auto created = panda::Engine::create();
+        ASSERT_TRUE(created);
+        services.emplace(borrowServices(*created));
+        movedEngine = std::make_unique<panda::Engine>(std::move(*created));
+    }
+
+    expectSameServices(*movedEngine, *services);
+    auto buffer =
+        services->resourceManager->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    ASSERT_TRUE(buffer);
+    buffer->reset();
+    const auto batch = services->submissionManager->createUploadBatch();
+    ASSERT_TRUE(batch);
+    EXPECT_FALSE(services->offscreenRenderer->render({}, {}));
+    const auto latest = services->performanceManager->getLatestSample();
+    ASSERT_TRUE(latest);
+    EXPECT_FALSE(*latest);
+    const auto unsupported = services->externalBufferManager->createBuffer({});
+    ASSERT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(EngineLifecycleDeathTest, MovedFromEngineRejectsGettersExceptValidityAndOptionalWindow)
 {
     expectHeadless();
     expectParentsDestroyed(true, false);
@@ -1540,8 +1612,15 @@ TEST_F(EngineLifecycleDeathTest, MovedFromEngineRejectsResourceAndSubmissionMana
     ASSERT_TRUE(context);
     auto moved = std::move(*context);
     EXPECT_FALSE(context->isValid());
+    EXPECT_DEATH(static_cast<void>(context->getDeviceInfo()), "Cannot use a moved-from Engine");
     EXPECT_DEATH(static_cast<void>(context->getResourceManager()), "Cannot use a moved-from Engine");
     EXPECT_DEATH(static_cast<void>(context->getSubmissionManager()), "Cannot use a moved-from Engine");
+    EXPECT_DEATH(static_cast<void>(context->getOffscreenRenderer()), "Cannot use a moved-from Engine");
+    EXPECT_DEATH(static_cast<void>(context->getPerformanceManager()), "Cannot use a moved-from Engine");
+    EXPECT_DEATH(static_cast<void>(context->getExternalBufferManager()), "Cannot use a moved-from Engine");
+    EXPECT_FALSE(context->getWindowRenderer().has_value());
+    auto movedAgain = std::move(*context);
+    EXPECT_FALSE(movedAgain.isValid());
 }
 
 TEST_F(EngineLifecycleTest, SuspendedEngineRejectsEmptyPointsAndNegativeTimeout)

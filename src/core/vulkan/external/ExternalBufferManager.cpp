@@ -22,8 +22,6 @@ ExternalBufferManager::ExternalBufferManager(
 {
 }
 
-ExternalBufferManager::~ExternalBufferManager() noexcept = default;
-
 auto ExternalBufferManager::createBuffer(const BufferDesc& description) const -> Result<ExternalBuffer>
 {
     if (!_implementation)

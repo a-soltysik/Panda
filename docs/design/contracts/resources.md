@@ -5,8 +5,11 @@ Implementation and device evidence follow [the plan](../../development/PLAN.md).
 
 ## Ownership
 
-- A context owns the Vulkan device and the services required to retire GPU resources.
-  It outlives scenes, resource handles, upload batches, and optional modules using that context.
+- An Engine owns the Vulkan device and the services required to retire GPU resources.
+  It outlives scenes, resource handles, upload batches, and optional modules using that Engine.
+- Moving Engine preserves its heap-owned state, service addresses, resource handles and
+  issued completion points. Borrowed service references remain usable while the moved-to
+  Engine lives; they do not outlive that owner.
 - A scene owns its entities and components. An entity reference contains scene
   identity and a generation-aware identifier; copying it does not keep an entity alive.
 - Meshes, textures, and materials use shareable owning value handles. Standard
@@ -145,14 +148,15 @@ their public headers; entries without public declarations remain planned contrac
 
 | Type/operation | Semantics |
 | --- | --- |
-| `Engine::create(EngineOptions) -> Result<Engine>` | Move-only owner with stable, heap-owned internal state; operations on one context are serialized |
+| `Engine::create(EngineOptions) -> Result<Engine>` | Move-only owner with stable, heap-owned internal state; operations on one Engine are serialized |
 | `Engine::createWithSurface(WindowSurface&, EngineOptions) -> Result<Engine>` | Creates a windowed context; the borrowed window surface and native window outlive the context |
 | `Engine::getDeviceInfo() -> DeviceInfo` | Copies selected-device information including external-memory and optional timeline-semaphore export support |
-| `Engine::getResourceManager() -> ResourceManager&` | Borrows creation operations for buffers, textures, meshes and offscreen targets |
-| `Engine::getSubmissionManager() -> SubmissionManager&` | Borrows upload-batch creation and completion observation operations |
-| `Engine::getOffscreenRenderer() -> OffscreenRenderer&` | Borrows the renderer for explicit target-based rendering and pixel readback |
+| `Engine::getResourceManager() -> const ResourceManager&` | Borrows creation operations for buffers, textures, meshes and offscreen targets |
+| `Engine::getSubmissionManager() -> const SubmissionManager&` | Borrows upload-batch creation and completion observation operations |
+| `Engine::getOffscreenRenderer() -> const OffscreenRenderer&` | Borrows the renderer for explicit target-based rendering and pixel readback |
 | `Engine::getWindowRenderer() -> optional<reference_wrapper<const WindowRenderer>>` | Exposes window rendering only for an Engine created with a surface |
-| `Engine::getExternalBufferManager() -> ExternalBufferManager&` | Borrows the Engine-owned object for external-buffer creation and GPU ownership handoffs |
+| `Engine::getPerformanceManager() -> PerformanceManager&` | Borrows frame timing queries and samples; stable across Engine moves |
+| `Engine::getExternalBufferManager() -> ExternalBufferManager&` | Borrows external-buffer creation and GPU ownership handoffs; stable across Engine moves |
 | `Buffer`, `Texture`, `Mesh`, `OffscreenTarget` | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required |
 | `ResourceManager::createBuffer(BufferDesc) -> Result<Buffer>` | Fixed byte size and creation usage; never implicitly resize an existing Buffer |
 | `ExternalBufferManager::createBuffer(BufferDesc) -> Result<ExternalBuffer>` | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle |
@@ -199,9 +203,12 @@ when the counter reaches N, queue work through that signal is complete. The coun
 covers queue work only. Presentation-engine use of swapchain images is tracked
 separately by per-image present fences. A default token means no submitted work;
 empty and foreign tokens are rejected by poll/wait. Moving Engine preserves its
-issued tokens.
+issued tokens and the addresses of its borrowed service objects. A moved-from
+Engine is valid only for destruction, another move and `isValid()`; its other
+getters fail through the checked contract, while the optional window getter returns
+empty. Service references must not outlive the moved-to Engine.
 No public API lets a caller signal it, fabricate future values, or use it after
-context destruction. `Error` has an action category, owned message, optional native
+Engine destruction. `Error` has an action category, owned message, optional native
 backend status and source location; it does not retain references to temporary strings.
 
 Keep `BufferDesc` small: byte size, usage flags and memory intent. The ordinary

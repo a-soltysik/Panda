@@ -5,7 +5,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <panda/Error.hpp>
 #include <vector>
@@ -41,7 +40,8 @@ struct FramePerformanceSample
 
 /// @brief Engine-owned access to available performance samples.
 /// Calls are serialized with other operations on the owning Engine. This object
-/// is borrowed from Engine and must not outlive it.
+/// is borrowed from Engine, keeps its address when Engine moves, and must not
+/// outlive the moved-to Engine.
 class PerformanceManager final
 {
 public:
@@ -75,11 +75,9 @@ public:
 private:
     friend class Engine;
 
-    explicit PerformanceManager(
-        std::optional<std::reference_wrapper<detail::PerformanceManagerImpl>> implementation) noexcept;
+    explicit PerformanceManager(detail::PerformanceManagerImpl& implementation) noexcept;
 
-    // A moved-from Engine may need an empty facade.
-    std::optional<std::reference_wrapper<detail::PerformanceManagerImpl>> _implementation;
+    detail::PerformanceManagerImpl& _implementation;
 };
 
 }
