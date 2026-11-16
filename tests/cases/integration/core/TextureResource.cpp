@@ -15,8 +15,8 @@
 #include <panda/Error.hpp>
 #include <tuple>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
@@ -24,7 +24,7 @@ namespace
 {
 using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::TextureResource;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
@@ -207,9 +207,9 @@ protected:
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    VkPhysicalDevice physicalHandle {fakeVulkanHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    VkPhysicalDevice physicalHandle {fakeHandle<VkPhysicalDevice>(2)};
+    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
     vk::raii::PhysicalDevice physical {instance, physicalHandle};
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
@@ -224,9 +224,9 @@ class TextureResourceAspectTest : public TextureResourceTest, public testing::Wi
 TEST_P(TextureResourceAspectTest, CreatesDefaultViewWithTheFormatAspectAndDestroysItBeforeTheImage)
 {
     const auto viewCase = GetParam();
-    auto* const image = fakeVulkanHandle<VkImage>(10);
-    auto* const view = fakeVulkanHandle<VkImageView>(11);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(12);
+    auto* const image = fakeHandle<VkImage>(10);
+    auto* const view = fakeHandle<VkImageView>(11);
+    auto* const memory = fakeHandle<VkDeviceMemory>(12);
     expectNativeImage(image, view, memory, viewCase.format, viewCase.aspect);
     auto cleanupOrder = testing::Sequence {};
     EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, view, nullptr)).InSequence(cleanupOrder);
@@ -261,9 +261,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_F(TextureResourceTest, FailedViewCreationDoesNotAdoptItsOutputAndDestroysTheBoundImage)
 {
-    auto* const image = fakeVulkanHandle<VkImage>(20);
-    auto* const view = fakeVulkanHandle<VkImageView>(21);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(22);
+    auto* const image = fakeHandle<VkImage>(20);
+    auto* const view = fakeHandle<VkImageView>(21);
+    auto* const memory = fakeHandle<VkDeviceMemory>(22);
     const auto format = vk::Format::eR8G8B8A8Unorm;
     expectNativeImage(image, view, memory, format, VK_IMAGE_ASPECT_COLOR_BIT, exhausted);
     EXPECT_CALL(vulkan, vkDestroyImageView(_, _, _)).Times(0);

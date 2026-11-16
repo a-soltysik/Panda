@@ -19,8 +19,8 @@
 #include <tuple>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/RangeAllocatorMock.hpp"
 #include "resources/memory/RangeAllocator.hpp"
@@ -29,7 +29,7 @@ namespace
 {
 using panda::core::vulkan::resources::MemoryBlock;
 using panda::core::vulkan::resources::MemoryRange;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
@@ -86,10 +86,10 @@ protected:
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::RangeAllocatorMock> allocator;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
-    VkDeviceMemory memory {fakeVulkanHandle<VkDeviceMemory>(4)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
+    VkDeviceMemory memory {fakeHandle<VkDeviceMemory>(4)};
 };
 }
 

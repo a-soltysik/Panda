@@ -53,15 +53,18 @@ timeline semaphore with initial value 0 and its move-only `ExternalSemaphoreHand
 The semaphore handle can be absent on devices without export support. Ordinary
 `ResourceManager::createBuffer` resources remain non-exportable.
 
-`Panda::Cuda::CudaSession::create(Engine&)` selects a CUDA device by UUID and
-creates one non-blocking stream. `CudaSession::importBuffer(ExternalBuffer)` imports
-and maps the dedicated allocation once, and imports the paired timeline semaphore
-when one is present. `SharedCudaBuffer` retains the imported allocation and
-semaphore, its Vulkan buffer and the CUDA session; `close()` reports
-`ResourcesInUse` while those owners remain alive. On Linux, successful FD import
-transfers handle ownership to CUDA; on Windows, the exported HANDLE remains owned by
-its RAII wrapper until the `SharedCudaBuffer` releases it. CUDA destroys the imported
-semaphore when the last shared-buffer owner is released.
+`Panda::Cuda::CudaSession::create(const DeviceUuid&)` copies the selected device
+identity, matches a CUDA device and creates one non-blocking stream.
+It does not borrow or retain an Engine. After all imported buffers are released,
+the session may outlive the Engine. `CudaSession::importBuffer(ExternalBuffer)`
+imports and maps the dedicated allocation once, and imports the paired timeline
+semaphore when one is present. `SharedCudaBuffer` retains the imported allocation
+and semaphore, its Vulkan buffer and the CUDA session; the originating Engine must
+outlive each shared-buffer copy, and `close()` reports `ResourcesInUse` while those
+owners remain alive. On Linux, successful FD import transfers handle ownership to
+CUDA; on Windows, the exported HANDLE remains owned by its RAII wrapper until the
+`SharedCudaBuffer` releases it. CUDA destroys the imported semaphore when the last
+shared-buffer owner is released.
 
 `ExternalBufferManager::releaseToExternal(Buffer)` records a Vulkan queue-family
 release and signals the paired timeline semaphore. `acquireFromExternal(Buffer,

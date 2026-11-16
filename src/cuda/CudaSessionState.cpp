@@ -1,7 +1,7 @@
 #include "CudaSessionState.hpp"
 
 #include <panda/Assert.hpp>
-#include <panda/VulkanDeviceUuid.hpp>
+#include <panda/DeviceUuid.hpp>
 #include <utility>
 
 #include "CudaAdapter.hpp"
@@ -9,7 +9,7 @@
 
 namespace panda::cuda::detail
 {
-CudaSessionState::CudaSessionState(VulkanDeviceUuid uuid)
+CudaSessionState::CudaSessionState(DeviceUuid uuid)
     : _deviceUuid {uuid}
 {
 }
@@ -19,18 +19,14 @@ CudaSessionState::~CudaSessionState()
     reportCleanupFailure(destroyInteropSession(std::move(_nativeSession)), "CUDA session destruction failed");
 }
 
-auto CudaSessionState::getDeviceUuid() const noexcept -> const VulkanDeviceUuid&
+auto CudaSessionState::getDeviceUuid() const noexcept -> const DeviceUuid&
 {
     return _deviceUuid;
 }
 
 auto CudaSessionState::getNativeSession() const noexcept -> const NativeSession&
 {
-    if (!_nativeSession)
-    {
-        panda::panic("CUDA session state has no native session");
-    }
-    return *_nativeSession;
+    return panda::expect(_nativeSession, "CUDA session state has no native session");
 }
 
 void CudaSessionState::setNativeSession(NativeSessionOwner&& session) noexcept

@@ -2,11 +2,11 @@
 
 #include <cstdint>
 #include <optional>
+#include <panda/DeviceUuid.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
-#include <panda/VulkanDeviceUuid.hpp>
 #include <string>
 #include <string_view>
 
@@ -21,8 +21,7 @@ namespace panda::cuda::detail
 
 void reportCleanupFailure(std::int32_t status, std::string_view message) noexcept;
 
-[[nodiscard]] auto validateExternalBuffer(const ExternalBuffer& buffer, const VulkanDeviceUuid& deviceUuid)
-    -> Result<void>;
+[[nodiscard]] auto validateExternalBuffer(const ExternalBuffer& buffer, const DeviceUuid& deviceUuid) -> Result<void>;
 
 [[nodiscard]] auto importNativeBuffer(const NativeSession& nativeSession, ExternalBuffer& buffer)
     -> Result<NativeExternalBufferResult>;

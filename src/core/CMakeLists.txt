@@ -73,7 +73,7 @@ panda_add_component(panda_core
         panda/ExternalMemoryHandle.hpp
         panda/ExternalSemaphoreHandle.hpp
         panda/ExternalTimelineValue.hpp
-        panda/VulkanDeviceUuid.hpp
+        panda/DeviceUuid.hpp
         panda/StrongAlias.hpp
         panda/Mesh.hpp
         panda/Panda.hpp

@@ -4,12 +4,12 @@
 #include <expected>
 #include <optional>
 #include <panda/Assert.hpp>
+#include <panda/DeviceUuid.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
 #include <panda/Logger.hpp>
-#include <panda/VulkanDeviceUuid.hpp>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -88,7 +88,7 @@ void reportCleanupFailure(std::int32_t status, std::string_view message) noexcep
     }
 }
 
-auto validateExternalBuffer(const ExternalBuffer& buffer, const VulkanDeviceUuid& deviceUuid) -> Result<void>
+auto validateExternalBuffer(const ExternalBuffer& buffer, const DeviceUuid& deviceUuid) -> Result<void>
 {
     if (!buffer.isValid() || buffer.getAllocationSize() < buffer.getSize() || buffer.getSize() == 0)
     {

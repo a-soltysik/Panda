@@ -9,8 +9,8 @@ Provide backend-neutral external-memory buffers in Panda Core and an optional
 dedicated buffer allocation. Handle ownership, allocation size, logical mapped
 range and resource lifetime are part of this task.
 
-Non-goal: No compute callback/submission API, Vulkan/CUDA synchronization, solver,
-CPU bounce path or image sharing. Importing memory does not make cross-API access safe.
+Non-goal: No solver, CPU bounce path or image sharing. Memory import alone does not
+make cross-API access safe; the [GPU handoff task](gpu-handoff.md) owns synchronization.
 
 Interface: `EngineOptions::ExternalBufferSupport`,
 `DeviceInfo::externalBufferExportEnabled`, `Engine::getExternalBufferManager`, `ExternalBuffer`,

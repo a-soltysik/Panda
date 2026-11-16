@@ -268,8 +268,7 @@ void populateDeviceUuid(EngineCreateInfo& resources, SelectedDevice& selected)
 {
     const auto properties = resources.device->physicalDevice
                                 .getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
-    const auto& uuid = properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID;
-    std::ranges::copy(uuid, selected.info.deviceUuid.begin());
+    selected.info.deviceUuid = properties.get<vk::PhysicalDeviceIDProperties>().deviceUUID;
 }
 
 auto initializeSelectedDeviceResources(EngineCreateInfo& resources,

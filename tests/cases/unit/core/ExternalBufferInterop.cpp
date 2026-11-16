@@ -23,16 +23,16 @@
 #include <optional>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
+#include <panda/DeviceUuid.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
-#include <panda/VulkanDeviceUuid.hpp>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/BufferResourceMock.hpp"
 #include "panda/core/SubmissionQueueMock.hpp"
@@ -47,7 +47,7 @@ using panda::core::vulkan::upload::UploadManager;
 using panda::detail::BufferResource;
 using panda::detail::ExternalBufferInterop;
 using panda::detail::SubmissionQueue;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Ref;
@@ -371,23 +371,23 @@ protected:
     panda::test::ScopedMock<panda::test::BufferResourceMock> bufferResourceMock;
     panda::test::ScopedMock<panda::test::SubmissionQueueMock> submissionQueueMock;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    VkPhysicalDevice physicalHandle {fakeVulkanHandle<VkPhysicalDevice>(2)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    VkPhysicalDevice physicalHandle {fakeHandle<VkPhysicalDevice>(2)};
     vk::raii::PhysicalDevice physical {instance, physicalHandle};
-    VkDevice deviceHandle {fakeVulkanHandle<VkDevice>(3)};
+    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::unique_ptr<SubmissionQueue> submissions;
     std::unique_ptr<UploadManager> uploads;
-    panda::VulkanDeviceUuid deviceUuid {1, 2, 3};
+    panda::DeviceUuid deviceUuid {1, 2, 3};
 };
 }
 
 TEST_F(ExternalBufferInteropTest, ReleaseAndAcquireRecordOwnershipBarriersAndTimelineSubmissions)
 {
-    auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(40);
-    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(41);
-    auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(42);
+    auto* const nativeBuffer = fakeHandle<VkBuffer>(40);
+    auto* const nativeMemory = fakeHandle<VkDeviceMemory>(41);
+    auto* const nativeSemaphore = fakeHandle<VkSemaphore>(42);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto externalInterop = makeEngine();
     EXPECT_CALL(submissionQueueMock, isDeviceLost()).Times(2).WillRepeatedly(Return(false));
@@ -398,10 +398,10 @@ TEST_F(ExternalBufferInteropTest, ReleaseAndAcquireRecordOwnershipBarriersAndTim
     EXPECT_EQ(created->getDeviceUuid(), deviceUuid);
     auto buffer = created->getBuffer();
     const auto semaphore = vk::Semaphore {nativeSemaphore};
-    expectExternalHandoff(fakeVulkanHandle<VkCommandPool>(50),
-                          fakeVulkanHandle<VkCommandBuffer>(51),
-                          fakeVulkanHandle<VkCommandPool>(52),
-                          fakeVulkanHandle<VkCommandBuffer>(53),
+    expectExternalHandoff(fakeHandle<VkCommandPool>(50),
+                          fakeHandle<VkCommandBuffer>(51),
+                          fakeHandle<VkCommandPool>(52),
+                          fakeHandle<VkCommandBuffer>(53),
                           nativeBuffer,
                           semaphore);
     EXPECT_CALL(bufferResourceMock, belongsTo(_, Ref(*pool))).Times(4).WillRepeatedly(Return(true));
@@ -428,7 +428,7 @@ TEST_F(ExternalBufferInteropTest, ReleaseAndAcquireRecordOwnershipBarriersAndTim
 
 TEST_F(ExternalBufferInteropTest, MemoryOnlyExportIsMarkedExportableButCannotHandoff)
 {
-    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(43);
+    auto* const nativeMemory = fakeHandle<VkDeviceMemory>(43);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto externalInterop = makeEngine(false);
     expectBufferResourceCreation(description, nativeMemory);
@@ -451,7 +451,7 @@ TEST_F(ExternalBufferInteropTest, MemoryOnlyExportIsMarkedExportableButCannotHan
 
 TEST_F(ExternalBufferInteropTest, PropagatesMemoryHandleExportFailure)
 {
-    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(44);
+    auto* const nativeMemory = fakeHandle<VkDeviceMemory>(44);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto externalInterop = makeEngine();
     expectBufferResourceCreation(description, nativeMemory);
@@ -481,9 +481,9 @@ TEST_F(ExternalBufferInteropTest, PropagatesMemoryHandleExportFailure)
 
 TEST_F(ExternalBufferInteropTest, FailedReleaseSubmissionKeepsVulkanOwnershipAndTimelineValue)
 {
-    auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(60);
-    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(61);
-    auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(62);
+    auto* const nativeBuffer = fakeHandle<VkBuffer>(60);
+    auto* const nativeMemory = fakeHandle<VkDeviceMemory>(61);
+    auto* const nativeSemaphore = fakeHandle<VkSemaphore>(62);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto externalInterop = makeEngine();
     EXPECT_CALL(submissionQueueMock, isDeviceLost()).WillOnce(Return(false));
@@ -491,8 +491,8 @@ TEST_F(ExternalBufferInteropTest, FailedReleaseSubmissionKeepsVulkanOwnershipAnd
     ASSERT_TRUE(created);
     auto buffer = created->getBuffer();
     EXPECT_CALL(bufferResourceMock, belongsTo(_, Ref(*pool))).WillOnce(Return(true));
-    auto* const commandPool = fakeVulkanHandle<VkCommandPool>(63);
-    auto* const command = fakeVulkanHandle<VkCommandBuffer>(64);
+    auto* const commandPool = fakeHandle<VkCommandPool>(63);
+    auto* const command = fakeHandle<VkCommandBuffer>(64);
     EXPECT_CALL(bufferResourceMock, getNative(_)).WillOnce(Return(vk::Buffer {nativeBuffer}));
     EXPECT_CALL(bufferResourceMock, getSize(_)).WillOnce(Return(80));
     expectTransferCommand(commandPool, command, nativeBuffer, true);
@@ -512,8 +512,8 @@ TEST_F(ExternalBufferInteropTest, FailedReleaseSubmissionKeepsVulkanOwnershipAnd
 
 TEST_F(ExternalBufferInteropTest, ReleaseRejectsTimelineValueWithoutRoomForExternalSignal)
 {
-    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(66);
-    auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(67);
+    auto* const nativeMemory = fakeHandle<VkDeviceMemory>(66);
+    auto* const nativeSemaphore = fakeHandle<VkSemaphore>(67);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto externalInterop = makeEngine();
     auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
@@ -533,9 +533,9 @@ TEST_F(ExternalBufferInteropTest, ReleaseRejectsTimelineValueWithoutRoomForExter
 
 TEST_F(ExternalBufferInteropTest, FailedAcquireSubmissionKeepsExternalOwnershipAndTimelineValue)
 {
-    auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(70);
-    auto* const nativeMemory = fakeVulkanHandle<VkDeviceMemory>(71);
-    auto* const nativeSemaphore = fakeVulkanHandle<VkSemaphore>(72);
+    auto* const nativeBuffer = fakeHandle<VkBuffer>(70);
+    auto* const nativeMemory = fakeHandle<VkDeviceMemory>(71);
+    auto* const nativeSemaphore = fakeHandle<VkSemaphore>(72);
     const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
     auto externalInterop = makeEngine();
     EXPECT_CALL(submissionQueueMock, isDeviceLost()).Times(2).WillRepeatedly(Return(false));
@@ -543,10 +543,10 @@ TEST_F(ExternalBufferInteropTest, FailedAcquireSubmissionKeepsExternalOwnershipA
     ASSERT_TRUE(created);
     auto buffer = created->getBuffer();
     EXPECT_CALL(bufferResourceMock, belongsTo(_, Ref(*pool))).Times(2).WillRepeatedly(Return(true));
-    auto* const releasePool = fakeVulkanHandle<VkCommandPool>(73);
-    auto* const releaseCommand = fakeVulkanHandle<VkCommandBuffer>(74);
-    auto* const acquirePool = fakeVulkanHandle<VkCommandPool>(75);
-    auto* const acquireCommand = fakeVulkanHandle<VkCommandBuffer>(76);
+    auto* const releasePool = fakeHandle<VkCommandPool>(73);
+    auto* const releaseCommand = fakeHandle<VkCommandBuffer>(74);
+    auto* const acquirePool = fakeHandle<VkCommandPool>(75);
+    auto* const acquireCommand = fakeHandle<VkCommandBuffer>(76);
     const auto semaphore = vk::Semaphore {nativeSemaphore};
     EXPECT_CALL(bufferResourceMock, getNative(_)).Times(2).WillRepeatedly(Return(vk::Buffer {nativeBuffer}));
     EXPECT_CALL(bufferResourceMock, getSize(_)).Times(2).WillRepeatedly(Return(80));

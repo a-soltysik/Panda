@@ -19,14 +19,14 @@
 #include <tuple>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "presentation/SwapchainGeneration.hpp"
 
 namespace
 {
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
@@ -85,9 +85,8 @@ protected:
 
     void expectCapabilities(Failure failure)
     {
-        EXPECT_CALL(
-            vulkan,
-            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(fakeVulkanHandle<VkPhysicalDevice>(2), surface, NotNull()))
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(fakeHandle<VkPhysicalDevice>(2), surface, NotNull()))
             .WillOnce([failure](VkPhysicalDevice, VkSurfaceKHR, VkSurfaceCapabilitiesKHR* output) {
                 *output = VkSurfaceCapabilitiesKHR {
                     .minImageCount = 2,
@@ -114,7 +113,7 @@ protected:
     void expectFormats(Failure failure)
     {
         EXPECT_CALL(vulkan,
-                    vkGetPhysicalDeviceSurfaceFormatsKHR(fakeVulkanHandle<VkPhysicalDevice>(2), surface, NotNull(), _))
+                    vkGetPhysicalDeviceSurfaceFormatsKHR(fakeHandle<VkPhysicalDevice>(2), surface, NotNull(), _))
             .Times(failure == Failure::Formats ? 1 : 2)
             .WillRepeatedly(
                 [failure](VkPhysicalDevice, VkSurfaceKHR, std::uint32_t* count, VkSurfaceFormatKHR* output) {
@@ -162,7 +161,7 @@ protected:
 
     void expectSwapchain(Failure failure, bool separateQueues)
     {
-        EXPECT_CALL(vulkan, vkCreateSwapchainKHR(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+        EXPECT_CALL(vulkan, vkCreateSwapchainKHR(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
             .WillOnce([this, failure, separateQueues](VkDevice,
                                                       const VkSwapchainCreateInfoKHR* info,
                                                       const VkAllocationCallbacks*,
@@ -175,13 +174,13 @@ protected:
 
     void expectImages(Failure failure, std::size_t count)
     {
-        EXPECT_CALL(vulkan, vkGetSwapchainImagesKHR(fakeVulkanHandle<VkDevice>(3), chain, NotNull(), _))
+        EXPECT_CALL(vulkan, vkGetSwapchainImagesKHR(fakeHandle<VkDevice>(3), chain, NotNull(), _))
             .Times(failure == Failure::Images ? 1 : 2)
             .WillRepeatedly([failure, count](VkDevice, VkSwapchainKHR, std::uint32_t* size, VkImage* output) {
                 *size = static_cast<std::uint32_t>(count);
                 if (output != nullptr)
                 {
-                    const auto images = std::array {fakeVulkanHandle<VkImage>(10), fakeVulkanHandle<VkImage>(11)};
+                    const auto images = std::array {fakeHandle<VkImage>(10), fakeHandle<VkImage>(11)};
                     std::ranges::copy(std::span {images}.first(count), output);
                 }
                 return failure == Failure::Images ? exhausted : success;
@@ -190,43 +189,43 @@ protected:
 
     void expectView(std::size_t index, Failure failure)
     {
-        EXPECT_CALL(vulkan, vkCreateImageView(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+        EXPECT_CALL(vulkan, vkCreateImageView(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
             .InSequence(creation)
             .WillOnce([index, failure](VkDevice,
                                        const VkImageViewCreateInfo* info,
                                        const VkAllocationCallbacks*,
                                        VkImageView* output) {
-                EXPECT_EQ(info->image, fakeVulkanHandle<VkImage>(10 + index));
+                EXPECT_EQ(info->image, fakeHandle<VkImage>(10 + index));
                 EXPECT_EQ(info->viewType, static_cast<VkImageViewType>(vk::ImageViewType::e2D));
                 EXPECT_EQ(info->format, static_cast<VkFormat>(vk::Format::eB8G8R8A8Srgb));
                 EXPECT_EQ(info->subresourceRange.levelCount, 1U);
                 EXPECT_EQ(info->subresourceRange.layerCount, 1U);
-                *output = fakeVulkanHandle<VkImageView>(20 + index);
+                *output = fakeHandle<VkImageView>(20 + index);
                 return failure == Failure::View ? exhausted : success;
             });
     }
 
     void expectSemaphore(std::size_t index, Failure failure)
     {
-        EXPECT_CALL(vulkan, vkCreateSemaphore(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+        EXPECT_CALL(vulkan, vkCreateSemaphore(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
             .InSequence(creation)
             .WillOnce(
                 [index,
                  failure](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* output) {
-                    *output = fakeVulkanHandle<VkSemaphore>(30 + index);
+                    *output = fakeHandle<VkSemaphore>(30 + index);
                     return failure == Failure::Semaphore ? exhausted : success;
                 });
     }
 
     void expectFence(std::size_t index, Failure failure)
     {
-        EXPECT_CALL(vulkan, vkCreateFence(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+        EXPECT_CALL(vulkan, vkCreateFence(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
             .InSequence(creation)
             .WillOnce(
                 [index,
                  failure](VkDevice, const VkFenceCreateInfo* info, const VkAllocationCallbacks*, VkFence* output) {
                     EXPECT_EQ(info->flags, VkFenceCreateFlags {});
-                    *output = fakeVulkanHandle<VkFence>(40 + index);
+                    *output = fakeHandle<VkFence>(40 + index);
                     return failure == Failure::Fence ? exhausted : success;
                 });
     }
@@ -249,21 +248,20 @@ protected:
     {
         if (failure != Failure::View && failure != Failure::Semaphore && failure != Failure::Fence)
         {
-            cleanup += EXPECT_CALL(
-                vulkan,
-                vkDestroyFence(fakeVulkanHandle<VkDevice>(3), fakeVulkanHandle<VkFence>(40 + index), nullptr));
+            cleanup +=
+                EXPECT_CALL(vulkan, vkDestroyFence(fakeHandle<VkDevice>(3), fakeHandle<VkFence>(40 + index), nullptr));
         }
         if (failure != Failure::View && failure != Failure::Semaphore)
         {
-            cleanup += EXPECT_CALL(
-                vulkan,
-                vkDestroySemaphore(fakeVulkanHandle<VkDevice>(3), fakeVulkanHandle<VkSemaphore>(30 + index), nullptr));
+            cleanup +=
+                EXPECT_CALL(vulkan,
+                            vkDestroySemaphore(fakeHandle<VkDevice>(3), fakeHandle<VkSemaphore>(30 + index), nullptr));
         }
         if (failure != Failure::View)
         {
-            cleanup += EXPECT_CALL(
-                vulkan,
-                vkDestroyImageView(fakeVulkanHandle<VkDevice>(3), fakeVulkanHandle<VkImageView>(20 + index), nullptr));
+            cleanup +=
+                EXPECT_CALL(vulkan,
+                            vkDestroyImageView(fakeHandle<VkDevice>(3), fakeHandle<VkImageView>(20 + index), nullptr));
         }
     }
 
@@ -292,11 +290,11 @@ protected:
         expectImages(failure, 2U);
         if (failure == Failure::Images)
         {
-            EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeVulkanHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
+            EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
             return;
         }
         expectImageFailures(failure, completedFirstImage);
-        EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeVulkanHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
+        EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
     }
 
     void expectImageFailures(Failure failure, bool completedFirstImage)
@@ -334,12 +332,12 @@ protected:
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physicalDevice {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physicalDevice, fakeVulkanHandle<VkDevice>(3)};
-    VkSurfaceKHR surface {fakeVulkanHandle<VkSurfaceKHR>(4)};
-    VkSwapchainKHR chain {fakeVulkanHandle<VkSwapchainKHR>(5)};
-    VkSwapchainKHR oldSwapchain {fakeVulkanHandle<VkSwapchainKHR>(6)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physicalDevice {instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device device {physicalDevice, fakeHandle<VkDevice>(3)};
+    VkSurfaceKHR surface {fakeHandle<VkSurfaceKHR>(4)};
+    VkSwapchainKHR chain {fakeHandle<VkSwapchainKHR>(5)};
+    VkSwapchainKHR oldSwapchain {fakeHandle<VkSwapchainKHR>(6)};
     testing::Sequence creation;
     testing::ExpectationSet cleanup;
 };
@@ -353,8 +351,8 @@ TEST_F(SwapchainCreationTest, OwnsCompleteGenerationAndKeepsSwapchainImagesBorro
     ASSERT_EQ(generation->images.size(), 2U);
     EXPECT_EQ(*generation->swapchain, vk::SwapchainKHR {chain});
     EXPECT_EQ(generation->extent, (vk::Extent2D {.width = 640, .height = 480}));
-    EXPECT_EQ(generation->images.front().image, vk::Image {fakeVulkanHandle<VkImage>(10)});
-    EXPECT_EQ(*generation->images.front().view, vk::ImageView {fakeVulkanHandle<VkImageView>(20)});
+    EXPECT_EQ(generation->images.front().image, vk::Image {fakeHandle<VkImage>(10)});
+    EXPECT_EQ(*generation->images.front().view, vk::ImageView {fakeHandle<VkImageView>(20)});
 }
 
 TEST_F(SwapchainCreationTest, UsesConcurrentSharingForSeparateQueueFamilies)
@@ -402,8 +400,7 @@ TEST_F(SwapchainCreationTest, LaterImageFailureReleasesCompletedImagesBeforeTheS
 TEST_F(SwapchainCreationTest, FailedFormatFillIgnoresUndefinedOutputCount)
 {
     expectCapabilities(Failure::None);
-    EXPECT_CALL(vulkan,
-                vkGetPhysicalDeviceSurfaceFormatsKHR(fakeVulkanHandle<VkPhysicalDevice>(2), surface, NotNull(), _))
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceSurfaceFormatsKHR(fakeHandle<VkPhysicalDevice>(2), surface, NotNull(), _))
         .WillOnce(testing::DoAll(testing::SetArgPointee<2>(1U), Return(success)))
         .WillOnce(
             testing::DoAll(testing::SetArgPointee<2>(std::numeric_limits<std::uint32_t>::max()), Return(exhausted)));
@@ -417,21 +414,21 @@ TEST_F(SwapchainCreationTest, IncompleteImageEnumerationRetriesBeforeCreatingIma
     expectCapabilities(Failure::None);
     expectFormats(Failure::None);
     expectSwapchain(Failure::None, false);
-    EXPECT_CALL(vulkan, vkGetSwapchainImagesKHR(fakeVulkanHandle<VkDevice>(3), chain, NotNull(), testing::IsNull()))
+    EXPECT_CALL(vulkan, vkGetSwapchainImagesKHR(fakeHandle<VkDevice>(3), chain, NotNull(), testing::IsNull()))
         .WillOnce(testing::DoAll(testing::SetArgPointee<2>(1U), Return(success)))
         .WillOnce(testing::DoAll(testing::SetArgPointee<2>(2U), Return(success)));
-    EXPECT_CALL(vulkan, vkGetSwapchainImagesKHR(fakeVulkanHandle<VkDevice>(3), chain, NotNull(), NotNull()))
+    EXPECT_CALL(vulkan, vkGetSwapchainImagesKHR(fakeHandle<VkDevice>(3), chain, NotNull(), NotNull()))
         .WillOnce(testing::DoAll(testing::SetArgPointee<2>(1U),
-                                 testing::SetArgPointee<3>(fakeVulkanHandle<VkImage>(10)),
+                                 testing::SetArgPointee<3>(fakeHandle<VkImage>(10)),
                                  Return(static_cast<VkResult>(vk::Result::eIncomplete))))
         .WillOnce([](VkDevice, VkSwapchainKHR, std::uint32_t* count, VkImage* output) {
             *count = 2;
-            std::ranges::copy(std::array {fakeVulkanHandle<VkImage>(10), fakeVulkanHandle<VkImage>(11)}, output);
+            std::ranges::copy(std::array {fakeHandle<VkImage>(10), fakeHandle<VkImage>(11)}, output);
             return success;
         });
     expectImage(0, Failure::None);
     expectImage(1, Failure::None);
-    EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeVulkanHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
+    EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
     const auto generation = create();
     ASSERT_TRUE(generation.has_value());
     EXPECT_EQ(generation->images.size(), 2U);

@@ -5,14 +5,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <span>
+#include <panda/DeviceUuid.hpp>
 
 namespace panda::cuda::detail
 {
 struct NativeSession;
-// Keep CUDA headers local while retaining the native types of opaque handles.
-inline constexpr std::size_t nativeDeviceUuidSize {16};
 
+// Keep CUDA headers local while retaining the native types of opaque handles.
 struct NativeSessionDeleter
 {
     void operator()(NativeSession* session) const noexcept;
@@ -90,8 +89,7 @@ struct NativeExternalSemaphoreImport
 };
 
 [[nodiscard]] auto queryNativeAvailability() noexcept -> NativeAvailabilityResult;
-[[nodiscard]] auto createInteropSession(std::span<const std::uint8_t, nativeDeviceUuidSize> deviceUuid) noexcept
-    -> NativeInteropResult;
+[[nodiscard]] auto createInteropSession(const panda::DeviceUuid& deviceUuid) noexcept -> NativeInteropResult;
 [[nodiscard]] auto importExternalBuffer(const NativeSession& session,
                                         const NativeExternalBufferImport& description) noexcept
     -> NativeExternalBufferResult;

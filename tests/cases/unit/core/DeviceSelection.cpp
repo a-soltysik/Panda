@@ -18,15 +18,15 @@
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
+#include "FakeHandle.hpp"
 #include "LogCapture.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
 
 namespace
 {
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
@@ -56,10 +56,10 @@ struct TimestampScenario
 auto makeDeviceScenario() -> DeviceScenario
 {
     return DeviceScenario {
-        .brokenDevice = fakeVulkanHandle<VkPhysicalDevice>(1),
-        .usableDevice = fakeVulkanHandle<VkPhysicalDevice>(2),
-        .instance = fakeVulkanHandle<VkInstance>(3),
-        .surface = fakeVulkanHandle<VkSurfaceKHR>(4),
+        .brokenDevice = fakeHandle<VkPhysicalDevice>(1),
+        .usableDevice = fakeHandle<VkPhysicalDevice>(2),
+        .instance = fakeHandle<VkInstance>(3),
+        .surface = fakeHandle<VkSurfaceKHR>(4),
         .extensions = {makeExtension(vk::KHRSwapchainExtensionName),
                        makeExtension(vk::KHRSwapchainMaintenance1ExtensionName)}
     };
@@ -469,9 +469,9 @@ TEST(DeviceSelection, LogsAndSkipsDeviceInspectionFailureWhenAnotherDeviceIsUsab
 TEST(DeviceSelection, PreservesInspectionErrorWhenNoDeviceCanBeSelected)
 {
     auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
-    auto* const brokenDevice = fakeVulkanHandle<VkPhysicalDevice>(1);
-    auto* const instance = fakeVulkanHandle<VkInstance>(2);
-    auto* const surface = fakeVulkanHandle<VkSurfaceKHR>(3);
+    auto* const brokenDevice = fakeHandle<VkPhysicalDevice>(1);
+    auto* const instance = fakeHandle<VkInstance>(2);
+    auto* const surface = fakeHandle<VkSurfaceKHR>(3);
     expectSingleDeviceQueryFailure(vulkan, brokenDevice);
 
     const auto selected = panda::core::vulkan::selectDevice(

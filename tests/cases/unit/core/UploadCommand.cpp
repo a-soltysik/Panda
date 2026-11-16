@@ -18,8 +18,8 @@
 #include <span>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/BufferResourceMock.hpp"
 #include "panda/core/MemoryAllocationMock.hpp"
@@ -36,7 +36,7 @@ using panda::core::vulkan::upload::BufferUpload;
 using panda::core::vulkan::upload::UploadCommand;
 using panda::core::vulkan::upload::UploadOperation;
 using panda::detail::BufferResource;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Ref;
@@ -91,7 +91,7 @@ protected:
 
     auto expectPoolCreation() -> VkCommandPool
     {
-        auto* const poolHandle = fakeVulkanHandle<VkCommandPool>(21);
+        auto* const poolHandle = fakeHandle<VkCommandPool>(21);
         EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
             .WillOnce([poolHandle](VkDevice,
                                    const VkCommandPoolCreateInfo* info,
@@ -107,7 +107,7 @@ protected:
 
     auto expectCommandBufferAllocation(VkCommandPool poolHandle) -> VkCommandBuffer
     {
-        auto* const command = fakeVulkanHandle<VkCommandBuffer>(22);
+        auto* const command = fakeHandle<VkCommandBuffer>(22);
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull()))
             .WillOnce(
                 [command, poolHandle](VkDevice, const VkCommandBufferAllocateInfo* info, VkCommandBuffer* output) {
@@ -126,9 +126,9 @@ protected:
     panda::test::ScopedMock<panda::test::BufferResourceMock> buffers;
     panda::test::ScopedMock<panda::test::TextureResourceMock> textures;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::unique_ptr<MemoryPool> pool;
 };
 }
@@ -195,8 +195,8 @@ TEST_F(UploadCommandTest, RecordsBufferCopyBetweenTheSuppliedResources)
     auto destination = makeBuffer(128);
     auto* const poolHandle = expectPoolCreation();
     auto* const commandHandle = expectCommandBufferAllocation(poolHandle);
-    auto* const sourceHandle = fakeVulkanHandle<VkBuffer>(23);
-    auto* const destinationHandle = fakeVulkanHandle<VkBuffer>(24);
+    auto* const sourceHandle = fakeHandle<VkBuffer>(23);
+    auto* const destinationHandle = fakeHandle<VkBuffer>(24);
     const auto stagingOffset = std::uint64_t {16};
     const auto destinationOffset = std::uint64_t {32};
     const auto copySize = std::uint64_t {48};

@@ -17,14 +17,14 @@
 #include <span>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 
 namespace
 {
 using panda::detail::SubmissionQueue;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 constexpr auto success = VK_SUCCESS;
@@ -172,11 +172,11 @@ protected:
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
-    VkQueue queue {fakeVulkanHandle<VkQueue>(4)};
-    VkSemaphore semaphore {fakeVulkanHandle<VkSemaphore>(5)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
+    VkQueue queue {fakeHandle<VkQueue>(4)};
+    VkSemaphore semaphore {fakeHandle<VkSemaphore>(5)};
     std::uint64_t maximumDifference {std::numeric_limits<std::uint64_t>::max()};
 };
 }
@@ -226,7 +226,7 @@ TEST_F(SubmissionQueueTest, CommitIsPublishedOnlyAfterSuccessAndFailedValuesAreR
 
 TEST_F(SubmissionQueueTest, ExternalTimelineWaitsAndSignalsUseTheEngineSubmissionClock)
 {
-    auto* const externalSemaphore = fakeVulkanHandle<VkSemaphore>(9);
+    auto* const externalSemaphore = fakeHandle<VkSemaphore>(9);
     expectTimeline();
     auto submissions = SubmissionQueue {device, 0};
     ASSERT_TRUE(submissions.initialize(*physical));
@@ -242,7 +242,7 @@ TEST_F(SubmissionQueueTest, ExternalTimelineWaitsAndSignalsUseTheEngineSubmissio
 
 TEST_F(SubmissionQueueTest, FailedExternalTimelineSubmitDoesNotCommitItsQueueValue)
 {
-    auto* const externalSemaphore = fakeVulkanHandle<VkSemaphore>(9);
+    auto* const externalSemaphore = fakeHandle<VkSemaphore>(9);
     expectTimeline();
     auto submissions = SubmissionQueue {device, 0};
     ASSERT_TRUE(submissions.initialize(*physical));

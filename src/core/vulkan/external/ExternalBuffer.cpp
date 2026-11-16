@@ -6,9 +6,9 @@
 
 #include <cstdint>
 #include <panda/Buffer.hpp>
+#include <panda/DeviceUuid.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
-#include <panda/VulkanDeviceUuid.hpp>
 
 #include "resources/BufferResource.hpp"
 
@@ -63,7 +63,7 @@ auto ExternalBuffer::getAllocationSize() const noexcept -> std::uint64_t
     return _allocationSize;
 }
 
-auto ExternalBuffer::getDeviceUuid() const noexcept -> const VulkanDeviceUuid&
+auto ExternalBuffer::getDeviceUuid() const noexcept -> const DeviceUuid&
 {
     return _deviceUuid;
 }

@@ -9,6 +9,7 @@
 #include <memory>
 #include <new>
 #include <optional>
+#include <panda/DeviceUuid.hpp>
 #include <span>
 #include <utility>
 
@@ -73,7 +74,7 @@ auto failedSession(NativeSessionOwner session, cudaError_t error) -> NativeInter
                                 .session = {}};
 }
 
-auto checkDeviceUuid(int device, std::span<const std::uint8_t, nativeDeviceUuidSize> deviceUuid) -> NativeDeviceResult
+auto checkDeviceUuid(int device, const panda::DeviceUuid& deviceUuid) -> NativeDeviceResult
 {
     auto properties = cudaDeviceProp {};
     const auto status = cudaGetDeviceProperties(&properties, device);
@@ -81,14 +82,14 @@ auto checkDeviceUuid(int device, std::span<const std::uint8_t, nativeDeviceUuidS
     {
         return {.status = interopStatus(status), .nativeCode = static_cast<std::int32_t>(status)};
     }
-    const auto uuid = std::span {properties.uuid.bytes};
-    return {.status = std::memcmp(uuid.data(), deviceUuid.data(), uuid.size_bytes()) == 0
+    const auto nativeUuid = std::span {properties.uuid.bytes};
+    return {.status = std::memcmp(nativeUuid.data(), deviceUuid.data(), deviceUuid.size()) == 0
                           ? NativeInteropStatus::Success
                           : NativeInteropStatus::Unsupported,
             .device = device};
 }
 
-auto findMatchingDevice(std::span<const std::uint8_t, nativeDeviceUuidSize> deviceUuid) -> NativeDeviceResult
+auto findMatchingDevice(const panda::DeviceUuid& deviceUuid) -> NativeDeviceResult
 {
     auto deviceCount = int {};
     const auto countStatus = cudaGetDeviceCount(&deviceCount);
@@ -248,8 +249,7 @@ auto NativeSessionDeleter::operator()(NativeSession* session) const noexcept -> 
     std::default_delete<NativeSession> {}(session);
 }
 
-auto createInteropSession(std::span<const std::uint8_t, nativeDeviceUuidSize> deviceUuid) noexcept
-    -> NativeInteropResult
+auto createInteropSession(const panda::DeviceUuid& deviceUuid) noexcept -> NativeInteropResult
 {
     const auto matchingDevice = findMatchingDevice(deviceUuid);
     if (matchingDevice.status != NativeInteropStatus::Success)

@@ -6,10 +6,10 @@
 #include <memory>
 #include <optional>
 #include <panda/Buffer.hpp>
+#include <panda/DeviceUuid.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
-#include <panda/VulkanDeviceUuid.hpp>
 #include <string>
 #include <utility>
 #include <vector>
@@ -48,7 +48,7 @@ public:
         SubmissionQueue& submissions;
         core::vulkan::upload::UploadManager& uploads;
         std::uint32_t queueFamily {};
-        VulkanDeviceUuid deviceUuid {};
+        DeviceUuid deviceUuid {};
         ExternalSupport support;
     };
 
@@ -97,7 +97,7 @@ private:
     core::vulkan::upload::UploadManager& _uploads;
     std::uint32_t _queueFamily;
     ExternalSupport _support;
-    VulkanDeviceUuid _deviceUuid {};
+    DeviceUuid _deviceUuid {};
     std::deque<std::pair<std::uint64_t, std::unique_ptr<ExternalBufferOwnershipTransferCommand>>> _pending;
 };
 }

@@ -1,6 +1,6 @@
 #include <expected>
 #include <memory>
-#include <panda/Engine.hpp>
+#include <panda/DeviceUuid.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/cuda/CudaSession.hpp>
@@ -14,9 +14,8 @@
 
 namespace panda::cuda
 {
-auto CudaSession::create(const panda::Engine& context) -> Result<CudaSession>
+auto CudaSession::create(const DeviceUuid& deviceUuid) -> Result<CudaSession>
 {
-    const auto& deviceUuid = context.getDeviceInfo().deviceUuid;
     auto state = std::make_shared<detail::CudaSessionState>(deviceUuid);
     auto native = detail::createInteropSession(deviceUuid);
     if (native.status != detail::NativeInteropStatus::Success)

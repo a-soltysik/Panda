@@ -17,8 +17,8 @@
 #include <tuple>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/MemoryBlockMock.hpp"
 #include "resources/memory/RangeAllocator.hpp"
@@ -28,7 +28,7 @@ namespace
 using panda::core::vulkan::resources::MemoryPool;
 using panda::core::vulkan::resources::MemoryRange;
 using panda::core::vulkan::resources::MemoryRequest;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
@@ -39,7 +39,7 @@ auto requestFor(std::uint64_t size = 64) -> MemoryRequest
 {
     return MemoryRequest {
         .requirements = {.size = size, .alignment = 16, .memoryTypeBits = 1},
-        .resource = {.buffer = vk::Buffer {fakeVulkanHandle<VkBuffer>(20)}},
+        .resource = {.buffer = vk::Buffer {fakeHandle<VkBuffer>(20)}},
         .exportHandleTypes = {},
         .requiredProperties = vk::MemoryPropertyFlagBits::eDeviceLocal,
         .preferredProperties = {}
@@ -91,9 +91,9 @@ protected:
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::MemoryBlockMock> blocks;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     VkPhysicalDeviceMemoryProperties memoryProperties {};
     std::unique_ptr<MemoryPool> pool;
 };
@@ -114,7 +114,7 @@ TEST_F(MemoryPoolTest, SelectsACompatibleTypeAndPublishesTheReturnedRange)
     constexpr auto capacity = 64 * mebibyte;
     constexpr auto range = MemoryRange {.offset = 128, .size = 64};
     createOrdinaryBlock(capacity, range);
-    EXPECT_CALL(blocks, getMemory(_)).WillOnce(Return(vk::DeviceMemory {fakeVulkanHandle<VkDeviceMemory>(4)}));
+    EXPECT_CALL(blocks, getMemory(_)).WillOnce(Return(vk::DeviceMemory {fakeHandle<VkDeviceMemory>(4)}));
     EXPECT_CALL(blocks, release(_, range)).WillOnce(Return(panda::Result<void> {}));
     EXPECT_CALL(blocks, getFreeSize(_)).WillRepeatedly(Return(capacity));
     EXPECT_CALL(blocks, getCapacity(_)).WillRepeatedly(Return(capacity));
@@ -123,7 +123,7 @@ TEST_F(MemoryPoolTest, SelectsACompatibleTypeAndPublishesTheReturnedRange)
 
     ASSERT_TRUE(allocation);
     EXPECT_EQ(allocation->getRange(), range);
-    EXPECT_EQ(allocation->getMemory(), vk::DeviceMemory {fakeVulkanHandle<VkDeviceMemory>(4)});
+    EXPECT_EQ(allocation->getMemory(), vk::DeviceMemory {fakeHandle<VkDeviceMemory>(4)});
     EXPECT_EQ(pool->getStats().allocationCount, 1);
     EXPECT_EQ(pool->getStats().committedBytes, capacity);
     EXPECT_EQ(pool->getStats().liveBytes, range.size);

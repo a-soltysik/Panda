@@ -23,8 +23,9 @@ callback on its session stream.
 ## Preconditions
 
 1. **Shared buffer.** [UC Create and import an external buffer](create-external-buffer.md)
-   has produced a live `SharedCudaBuffer`. The `Engine` outlives the buffer and
-   its imported CUDA session.
+   has produced a live `SharedCudaBuffer`. The originating `Engine` outlives the
+   buffer; the buffer retains its CUDA session, which may outlive Engine after the
+   final shared-buffer owner is released.
 2. **Ownership and ordering.** Vulkan owns the buffer when a pass starts. The
    application serializes passes for this buffer; each next Vulkan submission uses
    the same `Engine` queue after the preceding acquire has been queued.

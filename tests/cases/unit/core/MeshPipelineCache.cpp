@@ -15,14 +15,14 @@
 #include <panda/RenderView.hpp>
 #include <tuple>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 
 namespace
 {
 using panda::core::vulkan::renderer::MeshPipelineCache;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 
@@ -45,7 +45,7 @@ protected:
                                    VkShaderModule* output) {
                 EXPECT_GT(info->codeSize, 0U);
                 EXPECT_NE(info->pCode, nullptr);
-                *output = fakeVulkanHandle<VkShaderModule>(nextHandle++);
+                *output = fakeHandle<VkShaderModule>(nextHandle++);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
         EXPECT_CALL(vulkan, vkDestroyShaderModule(deviceHandle, _, nullptr)).Times(static_cast<int>(count));
@@ -65,7 +65,7 @@ protected:
                 EXPECT_GT(info->stageCount, 0U);
                 EXPECT_NE(info->pVertexInputState, nullptr);
                 EXPECT_NE(info->pNext, nullptr);
-                *output = fakeVulkanHandle<VkPipeline>(nextHandle++);
+                *output = fakeHandle<VkPipeline>(nextHandle++);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
         EXPECT_CALL(vulkan, vkDestroyPipeline(deviceHandle, _, nullptr)).Times(static_cast<int>(count));
@@ -73,9 +73,9 @@ protected:
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
     vk::raii::Device device {physical, deviceHandle};
     std::uintptr_t nextHandle {10};
 };
@@ -144,7 +144,7 @@ TEST_F(MeshPipelineCacheTest, PreparesSeparateTexturedAndUntexturedMaskShadowVar
 {
     expectShaderModules(4);
     expectSuccessfulPipelines(2);
-    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeVulkanHandle<VkPipelineLayout>(90)}};
+    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
@@ -167,7 +167,7 @@ TEST_F(MeshPipelineCacheTest, PrepareCachesVariantsAndBlendDoesNotCreateShadowPi
     expectShaderModules(2);
     expectSuccessfulPipelines(1);
 
-    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeVulkanHandle<VkPipelineLayout>(90)}};
+    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
@@ -201,12 +201,12 @@ TEST_F(MeshPipelineCacheTest, FailedCreationCanBeRetriedWithoutPublishingAnInval
                          const VkGraphicsPipelineCreateInfo*,
                          const VkAllocationCallbacks*,
                          VkPipeline* output) {
-            *output = fakeVulkanHandle<VkPipeline>(nextHandle++);
+            *output = fakeHandle<VkPipeline>(nextHandle++);
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
     EXPECT_CALL(vulkan, vkDestroyPipeline(deviceHandle, _, nullptr));
 
-    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeVulkanHandle<VkPipelineLayout>(90)}};
+    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
@@ -219,7 +219,7 @@ TEST_F(MeshPipelineCacheTest, OutputCompatibilityInvalidatesOnlyDependentVariant
 {
     expectShaderModules(10);
     expectSuccessfulPipelines(6);
-    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeVulkanHandle<VkPipelineLayout>(90)}};
+    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});

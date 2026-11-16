@@ -34,10 +34,10 @@ safe. Renderer-owned camera, transform, light, and material parameter data must 
 frame-safe storage or an equivalent proven update policy.
 
 An external-memory handle grants another API access to the same allocation; it does
-not order GPU reads and writes. The current external-buffer API does not yet provide
-a CUDA/Vulkan handoff, so an imported buffer is not ready for cross-API computation.
-The [compute contract](compute.md) defines this boundary and the required guarantees
-for the later handoff task. CPU updates and uploads also require an explicit
+not order GPU reads and writes. The external-buffer API provides an explicit
+CUDA/Vulkan timeline handoff, but importing a buffer alone does not make it ready for
+cross-API computation. The [compute contract](compute.md) defines the handoff and
+resource requirements. CPU updates and uploads also require an explicit
 staging/visibility policy; mapping memory does not permit overwriting data still in use.
 
 ## Frame contexts and retirement
@@ -285,7 +285,7 @@ Selected-device diagnostics are available through `Engine::getDeviceInfo()` with
 exposing a device object.
 
 Engine identity is checked when combining handles. External-buffer handoff checks
-origin through the owning memory pool, so equal Vulkan device UUIDs do not make
+origin through the owning memory pool, so equal device UUIDs do not make
 buffers from separate Engines interchangeable. Handles do not extend Engine
 lifetime; external owners must be released before Engine destruction. Its destructor
 drains internal in-flight retention before checking that requirement. Violating the
@@ -415,9 +415,9 @@ Frame-local data is reusable only after the slot's final `CompletionPoint`, defi
 by the Engine submission queue. The first renderer chooses a minimal
 safe representation; a general arena is added only if representative measurements
 justify it. Explicit upload staging remains owned by its batch and submission until
-completion. Cross-API work does not currently join this completion queue; the
-[compute handoff task](../../development/tasks/gpu-handoff.md) defines that future
-integration.
+completion. Cross-API work uses its external timeline semaphore and CUDA stream;
+it is not represented by Engine `CompletionPoint`s. The
+[compute handoff task](../../development/tasks/gpu-handoff.md) defines that ordering.
 
 When GPU timestamp sampling is enabled, the Engine-owned public
 `PerformanceManager` collects a slot's ready timestamps before that slot's query

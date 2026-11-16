@@ -20,8 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/Texture.hpp"
 #include "panda/core/TextureResourceMock.hpp"
@@ -32,7 +32,7 @@ namespace
 using panda::core::vulkan::renderer::RenderAttachments;
 using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::TextureResource;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::AnyNumber;
 using testing::NotNull;
@@ -122,7 +122,7 @@ protected:
                 return panda::Result<void> {};
             });
         EXPECT_CALL(textures, getNative(_)).Times(AnyNumber()).WillRepeatedly([this](const TextureResource& texture) {
-            auto [entry, inserted] = images.try_emplace(&texture, fakeVulkanHandle<VkImage>(nextHandle));
+            auto [entry, inserted] = images.try_emplace(&texture, fakeHandle<VkImage>(nextHandle));
             if (inserted)
             {
                 ++nextHandle;
@@ -132,7 +132,7 @@ protected:
         EXPECT_CALL(textures, getNativeView(_))
             .Times(AnyNumber())
             .WillRepeatedly([this](const TextureResource& texture) {
-                auto [entry, inserted] = views.try_emplace(&texture, fakeVulkanHandle<VkImageView>(nextHandle));
+                auto [entry, inserted] = views.try_emplace(&texture, fakeHandle<VkImageView>(nextHandle));
                 if (inserted)
                 {
                     ++nextHandle;
@@ -174,9 +174,9 @@ protected:
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::TextureResourceMock> textures;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::vector<vk::ImageUsageFlags> createdUsages;
@@ -200,9 +200,9 @@ TEST_F(RenderAttachmentsTest, NoOpFormatAndExtentResizePreserveOnlyUnaffectedRes
     ASSERT_TRUE(noOp);
     (*attachments)->publishResize(std::move(*noOp));
     EXPECT_EQ(createdUsages.size(), initialCreateCount);
-    (*attachments)->transitionColor(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
-    (*attachments)->transitionDepth(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
-    (*attachments)->transitionShadowForAttachment(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionColor(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionDepth(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionShadowForAttachment(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
     ASSERT_EQ(barriers.size(), 3U);
     EXPECT_EQ(barriers.at(0).oldLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     EXPECT_EQ(barriers.at(1).oldLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -214,9 +214,9 @@ TEST_F(RenderAttachmentsTest, NoOpFormatAndExtentResizePreserveOnlyUnaffectedRes
     ASSERT_EQ(createdUsages.size(), createsBeforeFormatChange + 1);
     EXPECT_EQ(createdUsages.back(), vk::ImageUsageFlagBits::eColorAttachment);
     (*attachments)->publishResize(std::move(*formatChange));
-    (*attachments)->transitionColor(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
-    (*attachments)->transitionDepth(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
-    (*attachments)->transitionShadowForAttachment(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionColor(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionDepth(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionShadowForAttachment(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
     ASSERT_EQ(barriers.size(), 6U);
     EXPECT_EQ(barriers.at(3).oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
     EXPECT_EQ(barriers.at(4).oldLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
@@ -229,9 +229,9 @@ TEST_F(RenderAttachmentsTest, NoOpFormatAndExtentResizePreserveOnlyUnaffectedRes
     EXPECT_EQ(createdUsages.at(createsBeforeExtentChange), vk::ImageUsageFlagBits::eDepthStencilAttachment);
     EXPECT_EQ(createdUsages.at(createsBeforeExtentChange + 1), vk::ImageUsageFlagBits::eColorAttachment);
     (*attachments)->publishResize(std::move(*extentChange));
-    (*attachments)->transitionColor(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
-    (*attachments)->transitionDepth(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
-    (*attachments)->transitionShadowForAttachment(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionColor(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionDepth(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionShadowForAttachment(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
     ASSERT_EQ(barriers.size(), 9U);
     EXPECT_EQ(barriers.at(6).oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
     EXPECT_EQ(barriers.at(7).oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
@@ -261,8 +261,8 @@ TEST_F(RenderAttachmentsTest, FailedSecondReplacementKeepsPublishedResourcesAndD
     EXPECT_EQ(current.extent.height, initialDescription.extent.height);
     EXPECT_EQ(current.colorFormat, initialDescription.colorFormat);
     EXPECT_EQ(current.sampleCount, initialDescription.sampleCount);
-    (*attachments)->transitionDepth(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
-    (*attachments)->transitionShadowForAttachment(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionDepth(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionShadowForAttachment(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
     ASSERT_EQ(barriers.size(), 2U);
     EXPECT_EQ(barriers.at(0).oldLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
     EXPECT_EQ(barriers.at(1).oldLayout, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
@@ -273,7 +273,7 @@ TEST_F(RenderAttachmentsTest, RecordingDoesNotCommitLayoutHistoryUntilSubmission
 {
     auto attachments = createAttachments();
     ASSERT_TRUE(attachments);
-    const auto command = vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)};
+    const auto command = vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)};
     for (auto attempt = 0; attempt < 2; ++attempt)
     {
         (*attachments)->transitionColor(command, 0);
@@ -307,7 +307,7 @@ TEST_F(RenderAttachmentsTest, ClearsOptionalMsaaColorAttachmentWhenOutputUsesOne
     EXPECT_EQ(pending->description.sampleCount, vk::SampleCountFlagBits::e1);
     (*attachments)->publishResize(std::move(*pending));
     EXPECT_EQ((*attachments)->getColorView(0), vk::ImageView {});
-    (*attachments)->transitionColor(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(4)}, 0);
+    (*attachments)->transitionColor(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
     EXPECT_EQ(std::ranges::count(createdUsages, vk::ImageUsageFlagBits::eColorAttachment), colorCount);
     EXPECT_EQ(barriers.size(), 0U);
 }

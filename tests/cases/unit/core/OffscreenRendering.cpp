@@ -16,8 +16,8 @@
 #include <tuple>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SubmissionQueueMock.hpp"
 #include "vulkan/SubmissionQueue.hpp"
@@ -25,7 +25,7 @@
 
 namespace
 {
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 
@@ -39,11 +39,11 @@ protected:
     {
         EXPECT_CALL(submissionQueue, construct(_, 0));
         _submissions.emplace(_device, 0);
-        EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(fakeVulkanHandle<VkPhysicalDevice>(2), NotNull()))
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(fakeHandle<VkPhysicalDevice>(2), NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
                 *output = VkPhysicalDeviceMemoryProperties {};
             });
-        EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(fakeVulkanHandle<VkPhysicalDevice>(2), NotNull()))
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(fakeHandle<VkPhysicalDevice>(2), NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
                 auto* const maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
                 ASSERT_NE(maintenance, nullptr);
@@ -52,7 +52,7 @@ protected:
         _pool = panda::core::vulkan::resources::MemoryPool::create(_physicalDevice, _device);
         _rendering = std::make_unique<panda::core::vulkan::presentation::OffscreenRendering>(
             panda::core::vulkan::presentation::OffscreenRenderingCreateInfo {
-                .physicalDevice = vk::PhysicalDevice {fakeVulkanHandle<VkPhysicalDevice>(2)},
+                .physicalDevice = vk::PhysicalDevice {fakeHandle<VkPhysicalDevice>(2)},
                 .device = _device,
                 .queueFamily = 0,
                 .submissions = *_submissions,
@@ -80,9 +80,9 @@ protected:
 
 private:
     vk::raii::Context _loader {vkGetInstanceProcAddr};
-    vk::raii::Instance _instance {_loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice _physicalDevice {_instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device _device {_physicalDevice, fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance _instance {_loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice _physicalDevice {_instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device _device {_physicalDevice, fakeHandle<VkDevice>(3)};
     std::optional<panda::detail::SubmissionQueue> _submissions;
     std::unique_ptr<panda::core::vulkan::resources::MemoryPool> _pool;
     std::unique_ptr<panda::core::vulkan::presentation::OffscreenRendering> _rendering;
@@ -91,17 +91,17 @@ private:
 
 TEST_F(OffscreenRenderingTest, InitializationFailureIsRetryableAndSuccessIsIdempotent)
 {
-    auto* const firstPool = fakeVulkanHandle<VkCommandPool>(10);
-    auto* const secondPool = fakeVulkanHandle<VkCommandPool>(11);
-    auto* const firstCommand = fakeVulkanHandle<VkCommandBuffer>(12);
-    auto* const secondCommand = fakeVulkanHandle<VkCommandBuffer>(13);
+    auto* const firstPool = fakeHandle<VkCommandPool>(10);
+    auto* const secondPool = fakeHandle<VkCommandPool>(11);
+    auto* const firstCommand = fakeHandle<VkCommandBuffer>(12);
+    auto* const secondCommand = fakeHandle<VkCommandBuffer>(13);
     {
         const auto sequence = testing::InSequence {};
-        EXPECT_CALL(vulkan, vkCreateCommandPool(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+        EXPECT_CALL(vulkan, vkCreateCommandPool(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
             .WillOnce([](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool*) {
                 return initializationFailure;
             });
-        EXPECT_CALL(vulkan, vkCreateCommandPool(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+        EXPECT_CALL(vulkan, vkCreateCommandPool(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
             .WillOnce([firstPool](VkDevice,
                                   const VkCommandPoolCreateInfo*,
                                   const VkAllocationCallbacks*,
@@ -109,12 +109,12 @@ TEST_F(OffscreenRenderingTest, InitializationFailureIsRetryableAndSuccessIsIdemp
                 *out = firstPool;
                 return success;
             });
-        EXPECT_CALL(vulkan, vkAllocateCommandBuffers(fakeVulkanHandle<VkDevice>(3), NotNull(), NotNull()))
+        EXPECT_CALL(vulkan, vkAllocateCommandBuffers(fakeHandle<VkDevice>(3), NotNull(), NotNull()))
             .WillOnce([firstCommand](VkDevice, const VkCommandBufferAllocateInfo*, VkCommandBuffer* out) {
                 *out = firstCommand;
                 return success;
             });
-        EXPECT_CALL(vulkan, vkCreateCommandPool(fakeVulkanHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
+        EXPECT_CALL(vulkan, vkCreateCommandPool(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
             .WillOnce([secondPool](VkDevice,
                                    const VkCommandPoolCreateInfo*,
                                    const VkAllocationCallbacks*,
@@ -122,14 +122,14 @@ TEST_F(OffscreenRenderingTest, InitializationFailureIsRetryableAndSuccessIsIdemp
                 *out = secondPool;
                 return success;
             });
-        EXPECT_CALL(vulkan, vkAllocateCommandBuffers(fakeVulkanHandle<VkDevice>(3), NotNull(), NotNull()))
+        EXPECT_CALL(vulkan, vkAllocateCommandBuffers(fakeHandle<VkDevice>(3), NotNull(), NotNull()))
             .WillOnce([secondCommand](VkDevice, const VkCommandBufferAllocateInfo*, VkCommandBuffer* out) {
                 *out = secondCommand;
                 return success;
             });
     }
-    EXPECT_CALL(vulkan, vkDestroyCommandPool(fakeVulkanHandle<VkDevice>(3), firstPool, nullptr));
-    EXPECT_CALL(vulkan, vkDestroyCommandPool(fakeVulkanHandle<VkDevice>(3), secondPool, nullptr));
+    EXPECT_CALL(vulkan, vkDestroyCommandPool(fakeHandle<VkDevice>(3), firstPool, nullptr));
+    EXPECT_CALL(vulkan, vkDestroyCommandPool(fakeHandle<VkDevice>(3), secondPool, nullptr));
 
     const auto failed = rendering().initialize();
     ASSERT_FALSE(failed);
