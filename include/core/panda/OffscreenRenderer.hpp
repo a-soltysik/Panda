@@ -18,7 +18,7 @@ namespace core::vulkan
 {
 namespace presentation
 {
-class OffscreenRendering;
+class OffscreenRenderBackend;
 }
 
 namespace resources
@@ -39,7 +39,7 @@ class PerformanceManagerImpl;
 
 /// @brief Renders views to an explicit offscreen target.
 /// This facade is borrowed from Engine and must not outlive it. Its address remains
-/// stable when Engine is moved. Calls are serialized with other operations on the
+/// stable when Engine moves. Calls are serialized with other operations on the
 /// owning Engine. Targets may vary between calls.
 class OffscreenRenderer final
 {
@@ -70,10 +70,10 @@ private:
 
     struct Dependencies final
     {
-        core::vulkan::presentation::OffscreenRendering& rendering;
+        core::vulkan::presentation::OffscreenRenderBackend& rendering;
         core::vulkan::resources::MemoryPool& pool;
         core::vulkan::upload::UploadManager& uploads;
-        detail::PerformanceManagerImpl& performance;
+        detail::PerformanceManagerImpl* performance;
         std::uint32_t maxLights;
     };
 
@@ -83,10 +83,10 @@ private:
                                          std::optional<std::size_t>& submittedPerformanceSlot) const
         -> Result<FrameResult>;
 
-    core::vulkan::presentation::OffscreenRendering& _rendering;
+    core::vulkan::presentation::OffscreenRenderBackend& _rendering;
     core::vulkan::resources::MemoryPool& _pool;
     core::vulkan::upload::UploadManager& _uploads;
-    detail::PerformanceManagerImpl& _performance;
+    detail::PerformanceManagerImpl* _performance;
     std::uint32_t _maxLights;
 };
 }

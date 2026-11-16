@@ -11,7 +11,6 @@
 #include <expected>
 #include <iterator>
 #include <optional>
-#include <panda/DeviceInfo.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <panda/WindowSurface.hpp>
@@ -201,28 +200,26 @@ auto instanceExtensions(const WindowSurface* surface, bool enableValidation) -> 
 
 namespace
 {
-using Maintenance = DeviceInfo::SwapchainMaintenance;
-
 auto chooseMaintenance(const std::vector<vk::ExtensionProperties>& listed, const InstanceExtensions& extensions)
-    -> std::optional<Maintenance>
+    -> std::optional<SwapchainMaintenance>
 {
     if (extensions.hasKhrMaintenance && hasExtension(listed, vk::KHRSwapchainMaintenance1ExtensionName))
     {
-        return Maintenance::Khr;
+        return SwapchainMaintenance::Khr;
     }
     if (extensions.hasExtMaintenance && hasExtension(listed, vk::EXTSwapchainMaintenance1ExtensionName))
     {
-        return Maintenance::Ext;
+        return SwapchainMaintenance::Ext;
     }
     return std::nullopt;
 }
 
 auto maintenanceVariant(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
-    -> std::expected<std::optional<Maintenance>, Error>
+    -> std::expected<std::optional<SwapchainMaintenance>, Error>
 {
     if (!surface)
     {
-        return std::optional {Maintenance::None};
+        return std::optional {SwapchainMaintenance::None};
     }
     const auto listed =
         enumerateVulkan<vk::ExtensionProperties>([&](std::uint32_t* count, vk::ExtensionProperties* output) {
@@ -394,7 +391,7 @@ struct DeviceProfile
 {
     vk::PhysicalDeviceProperties properties;
     vk::PhysicalDeviceDriverProperties driver;
-    Maintenance maintenance;
+    SwapchainMaintenance maintenance;
 };
 
 auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice,
@@ -461,10 +458,10 @@ auto makeSelectedDevice(vk::PhysicalDevice physicalDevice,
                  .driverName = profile.driver.driverName.data(),
                  .driverInfo = profile.driver.driverInfo.data(),
                  .driverVersion = profile.properties.driverVersion,
-                 .apiVersion = profile.properties.apiVersion,
-                 .queueFamily = queues.graphics,
-                 .presentQueueFamily = queues.present,
-                 .swapchainMaintenance = profile.maintenance},
+                 .apiVersion = profile.properties.apiVersion},
+        .queueFamily = queues.graphics,
+        .presentQueueFamily = queues.present,
+        .maintenance = profile.maintenance,
         .limits = profile.properties.limits,
         .timestampValidBits = queueFamilies.at(queues.graphics).timestampValidBits,
         .timestampPeriodNanoseconds = profile.properties.limits.timestampPeriod

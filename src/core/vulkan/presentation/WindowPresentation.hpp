@@ -11,7 +11,6 @@
 #include <expected>
 #include <memory>
 #include <optional>
-#include <panda/DeviceInfo.hpp>
 #include <panda/FrameResult.hpp>
 #include <panda/OffscreenTarget.hpp>
 #include <panda/RenderView.hpp>
@@ -27,18 +26,22 @@ namespace panda::core::vulkan
 {
 namespace api_detail = ::panda::detail;
 
+enum class SwapchainMaintenance : std::uint8_t;
+
 namespace presentation
 {
-class OffscreenRendering;
+class OffscreenRenderBackend;
 }
 
-struct PresentationCreateInfo
+struct WindowPresentationCreateInfo
 {
     vk::PhysicalDevice physicalDevice;
     const vk::raii::Device& device;
     vk::SurfaceKHR surface;
     const WindowSurface& window;
-    DeviceInfo deviceInfo;
+    std::uint32_t queueFamily;
+    std::uint32_t presentQueueFamily;
+    SwapchainMaintenance maintenance;
     api_detail::SubmissionQueue& submissions;
     resources::MemoryPool* pool {nullptr};
     api_detail::PerformanceManagerImpl* performance {nullptr};
@@ -49,21 +52,21 @@ struct CaptureFrameRequest
 {
     const RenderView& view;
     const OffscreenTarget& target;
-    presentation::OffscreenRendering& rendering;
+    presentation::OffscreenRenderBackend& rendering;
     std::optional<std::size_t>& submittedPerformanceSlot;
 };
 
-class Presentation final
+class WindowPresentation final
 {
 public:
-    [[nodiscard]] static auto create(const PresentationCreateInfo& info)
-        -> std::expected<std::unique_ptr<Presentation>, Error>;
+    [[nodiscard]] static auto create(const WindowPresentationCreateInfo& info)
+        -> std::expected<std::unique_ptr<WindowPresentation>, Error>;
 
-    Presentation(const Presentation&) = delete;
-    auto operator=(const Presentation&) -> Presentation& = delete;
-    Presentation(Presentation&&) = delete;
-    auto operator=(Presentation&&) -> Presentation& = delete;
-    ~Presentation();
+    WindowPresentation(const WindowPresentation&) = delete;
+    auto operator=(const WindowPresentation&) -> WindowPresentation& = delete;
+    WindowPresentation(WindowPresentation&&) = delete;
+    auto operator=(WindowPresentation&&) -> WindowPresentation& = delete;
+    ~WindowPresentation();
 
     [[nodiscard]] auto render(const RenderView& view) -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
@@ -99,10 +102,10 @@ private:
         bool releaseFailed {false};
     };
 
-    explicit Presentation(const PresentationCreateInfo& info);
+    explicit WindowPresentation(const WindowPresentationCreateInfo& info);
 
-    [[nodiscard]] auto initialize(const PresentationCreateInfo& info) -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeFrameResources(const PresentationCreateInfo& info) -> std::expected<void, Error>;
+    [[nodiscard]] auto initialize(const WindowPresentationCreateInfo& info) -> std::expected<void, Error>;
+    [[nodiscard]] auto initializeFrameResources(const WindowPresentationCreateInfo& info) -> std::expected<void, Error>;
     [[nodiscard]] auto initializeAcquireSemaphores() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeWindowPresentation() -> std::expected<void, Error>;
     [[nodiscard]] auto verifyReleaseFunction() const -> std::expected<void, Error>;
@@ -161,7 +164,9 @@ private:
     vk::raii::Queue _presentQueue;
     vk::SurfaceKHR _surface {};
     const WindowSurface& _window;
-    DeviceInfo _deviceInfo;
+    std::uint32_t _queueFamily;
+    std::uint32_t _presentQueueFamily;
+    SwapchainMaintenance _maintenance;
     api_detail::SubmissionQueue& _submissions;
     std::unique_ptr<presentation::FrameExecution> _execution;
     std::array<vk::raii::Semaphore, presentation::FrameExecution::slotCount> _acquireSemaphores {

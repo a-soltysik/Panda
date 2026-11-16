@@ -31,24 +31,24 @@ batch.
 the platform external-memory extension when available; `Required` returns
 `Unsupported` when the selected Vulkan device cannot enable it. This option has no
 CUDA dependency. With `Optional`, the application reads
-`Engine::getDeviceInfo().externalBufferExportEnabled` immediately after creation:
-`true` means the external-memory extension was enabled for that Engine; `false`
-means to choose another path before allocating a shared buffer. `Required` fails
-Engine creation instead of returning `false`.
+`Engine::getFeatures().externalBufferExportEnabled` immediately after creation:
+`true` means external-memory export was enabled for that Engine; `false` means to
+choose another path before allocating a shared buffer. `Required` fails Engine
+creation instead of returning `false`.
 
 The flag describes Engine-level Vulkan export setup only. Support for an individual
 buffer usage is queried when that buffer is requested. CUDA applications can also
 create `CudaSession` before allocating buffers; failure to match the selected Vulkan
 device is reported then, so they can select an application-owned fallback early.
-`DeviceInfo::externalSemaphoreExportEnabled` separately reports whether the
-selected device can export the opaque timeline semaphore handle used by the handoff.
+`EngineFeatures::externalSemaphoreExportEnabled` separately reports whether the
+Engine can export the opaque timeline semaphore handle used by the handoff.
 
 `ExternalBufferManager::createBuffer(BufferDesc)` validates the request, checks
 export support for the requested Vulkan usage, creates a device-local buffer backed
 by one dedicated allocation, binds it at offset zero and exports the platform
 allocation handle. The resulting `ExternalBuffer` owns both the Vulkan `Buffer` and one
 move-only `ExternalMemoryHandle`, plus the logical size, allocation size and Vulkan
-device UUID. When `externalSemaphoreExportEnabled` is true, it also owns a paired
+device UUID. When `EngineFeatures::externalSemaphoreExportEnabled` is true, it also owns a paired
 timeline semaphore with initial value 0 and its move-only `ExternalSemaphoreHandle`.
 The semaphore handle can be absent on devices without export support. Ordinary
 `ResourceManager::createBuffer` resources remain non-exportable.

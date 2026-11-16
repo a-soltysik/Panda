@@ -45,11 +45,7 @@ protected:
 
     auto activeEngine() -> panda::Engine&
     {
-        if (!context)
-        {
-            panda::panic("Scene system test has no initialized Engine");
-        }
-        return *context;
+        return panda::expect(context, "Scene system test has no initialized Engine");
     }
 
     std::optional<panda::Engine> context;

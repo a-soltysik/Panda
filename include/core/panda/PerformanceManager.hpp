@@ -51,25 +51,21 @@ public:
     auto operator=(PerformanceManager&&) -> PerformanceManager& = delete;
     ~PerformanceManager() = default;
 
-    /// @brief Copies timestamp support and sampling state for this Engine.
-    /// @return GPU support and whether sampling is enabled; does not query or wait for GPU work.
-    [[nodiscard]] auto getCapabilities() const noexcept -> PerformanceCapabilities;
-
     /// @brief Peeks at the newest frame sample whose GPU timestamps are ready.
-    /// @return A copy of the sample with the greatest frame index, or empty if sampling is disabled,
-    /// unsupported, or no sample is ready; this call does not remove samples or wait for GPU work.
+    /// @return A copy of the sample with the greatest frame index, or empty if no sample is ready;
+    /// this call does not remove samples or wait for GPU work.
     /// Drain samples with a take method to keep the manager's pending sample storage bounded.
     [[nodiscard]] auto getLatestSample() -> Result<std::optional<FramePerformanceSample>>;
 
     /// @brief Takes the oldest frame sample whose GPU timestamps are ready.
-    /// @return The sample with the smallest frame index, removed from the manager, or empty if sampling is
-    /// disabled, unsupported, or no sample is ready; this call does not wait for GPU work.
+    /// @return The sample with the smallest frame index, removed from the manager, or empty if no
+    /// sample is ready; this call does not wait for GPU work.
     [[nodiscard]] auto takeNextSample() -> Result<std::optional<FramePerformanceSample>>;
 
     /// @brief Drains frame samples whose GPU timestamp queries are already available.
     /// @return Ready samples, or a backend error. This call does not wait for GPU work;
     /// samples remain buffered until returned. The result may allocate. The vector is empty
-    /// if sampling is disabled, unsupported, or no sample is ready.
+    /// if no sample is ready.
     [[nodiscard]] auto takeAvailableSamples() -> Result<std::vector<FramePerformanceSample>>;
 
 private:

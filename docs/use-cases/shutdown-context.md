@@ -9,9 +9,10 @@ and presentation use for windowed Engines, offscreen execution, and external
 handoff work when available. If those checks pass, the Engine's RAII owners tear
 down its device services and native objects.
 
-The flow starts when `Engine::~Engine()` releases its implementation and ends
-with normal teardown or a fatal diagnostic. `Engine::Impl` drains exactly once
-from its destructor. The destructors are `noexcept`; teardown cannot return a
+The flow starts when Engine is destroyed and ends with normal teardown or a fatal
+diagnostic. Its out-of-line destructor releases the single implementation owner,
+and `Engine::Impl` drains exactly once from its destructor. The destructors are
+`noexcept`; teardown cannot return a
 recoverable drain error or promise general recovery from device loss.
 
 ## Preconditions
@@ -28,19 +29,19 @@ recoverable drain error or promise general recovery from device loss.
    and either submits or destroys each upload batch while the Engine is still
    alive. A submitted packet can continue to retain staging and destination
    resources after the application releases its handles.
-2. **Begin destruction.** The `Engine` object leaves scope or is reset.
-   Its implementation owner is destroyed, and `Engine::Impl::~Impl()` starts the
-   drain before any borrowed service or dependency is released.
+2. **Begin destruction.** Engine leaves scope or is reset. Its destructor releases
+   the single implementation owner, and `Engine::Impl::~Impl()` starts the drain
+   before dependencies are released.
 3. **Drain submitted uploads.** `Engine::Impl::drain()` first requires that no
    unsubmitted batches remain, then asks the Engine's `UploadManager` to wait up
    to ten seconds for pending uploads. With no pending packets, it returns immediately.
    [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains
    when the retained owners can be released.
 4. **Drain presentation.** If this is a windowed Engine,
-   `Presentation::drain()` settles submitted frame and presentation use.
+   `WindowPresentation::drain()` settles submitted frame and presentation use.
    [UC Drain frame and presentation use](drain-presentation.md) explains the
    required completion checks.
-5. **Drain offscreen rendering.** `OffscreenRendering::drain()` completes pending
+5. **Drain offscreen rendering.** `OffscreenRenderBackend::drain()` completes pending
    readback and execution use, then the implementation releases its retained
    offscreen owners.
 6. **Drain external handoffs.** If external-buffer interop is available,
@@ -62,8 +63,8 @@ sequenceDiagram
     participant I as Engine::Impl
     participant D as DeviceContext
     participant U as UploadManager
-    participant P as Presentation
-    participant O as OffscreenRendering
+    participant P as WindowPresentation
+    participant O as OffscreenRenderBackend
     participant X as ExternalBufferInterop
     participant M as MemoryPool
     A->>H: Step 1 - release handles and submit or destroy batches
@@ -110,7 +111,7 @@ their address and remain usable through the moved-to Engine, then expire when
 that Engine is destroyed.
 
 **The waits are targeted.** Upload draining waits for its last committed upload
-value. Presentation draining separately checks queue completion, image recovery
+value. WindowPresentation draining separately checks queue completion, image recovery
 and present fences. These waits protect tracked uses; teardown does not use a
 routine device-wide idle.
 
@@ -136,7 +137,7 @@ returned. See the [UC Return a resource memory range](release-memory-range.md).
 | **Variant&nbsp;4** | Step 6: external-buffer interop is unavailable                                                                          | Skip handoff drain                                    | Continue to the resource-owner check                                                                                                |
 | **Error&nbsp;1**   | Step 3: an unsubmitted batch is still alive                                                                             | Fatal lifetime diagnostic before upload waiting       | Engine destruction cannot return; destroy or submit batches before Engine                                                        |
 | **Error&nbsp;2**   | Step 3: the upload completion wait times out or fails, including device loss                                            | `expect` emits a fatal diagnostic                     | Pending owners are not treated as completed; teardown stops                                                                        |
-| **Error&nbsp;3**   | Step 4: a timeline or present-fence wait fails, or acquired-image recovery is unsafe (including device loss)            | `expect` emits a fatal diagnostic                     | Presentation resources are not claimed safe; teardown stops. See the [UC Drain frame and presentation use](drain-presentation.md) |
+| **Error&nbsp;3**   | Step 4: a timeline or present-fence wait fails, or acquired-image recovery is unsafe (including device loss)            | `expect` emits a fatal diagnostic                     | WindowPresentation resources are not claimed safe; teardown stops. See the [UC Drain frame and presentation use](drain-presentation.md) |
 | **Error&nbsp;4**   | Step 5: offscreen execution or readback cannot drain                                                                     | `expect` emits a fatal diagnostic                     | Offscreen resources are not claimed safe; teardown stops                                                                           |
 | **Error&nbsp;5**   | Step 6: an external handoff wait fails, including device loss                                                           | `expect` emits a fatal diagnostic                     | External ownership is not claimed returned; teardown stops                                                                         |
 | **Error&nbsp;6**   | Step 7: `liveBytes` is nonzero after internal drains                                                                    | Fatal lifetime diagnostic naming live resource owners | Release every external handle before destroying Engine; no recoverable Engine remains                                            |

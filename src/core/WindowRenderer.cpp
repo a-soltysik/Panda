@@ -10,8 +10,8 @@
 #include <panda/WindowRenderer.hpp>
 
 #include "vulkan/performance/PerformanceManagerImpl.hpp"
-#include "vulkan/presentation/OffscreenRendering.hpp"
-#include "vulkan/presentation/Presentation.hpp"
+#include "vulkan/presentation/OffscreenRenderBackend.hpp"
+#include "vulkan/presentation/WindowPresentation.hpp"
 #include "vulkan/renderer/RenderViewValidation.hpp"
 #include "vulkan/resources/OffscreenTargetResource.hpp"
 #include "vulkan/upload/UploadManager.hpp"
@@ -20,41 +20,36 @@ namespace panda
 {
 namespace
 {
-auto startCpuFrameTimer(const detail::PerformanceManagerImpl& performance)
+auto startCpuFrameTimer(const detail::PerformanceManagerImpl* performance)
     -> std::optional<std::chrono::steady_clock::time_point>
 {
-    if (performance.getCapabilities().isGpuTimestampSamplingEnabled)
+    if (performance != nullptr)
     {
         return std::chrono::steady_clock::now();
     }
     return std::nullopt;
 }
 
-void recordCpuFrameDuration(detail::PerformanceManagerImpl& performance,
+void recordCpuFrameDuration(detail::PerformanceManagerImpl* performance,
                             const std::optional<std::chrono::steady_clock::time_point>& frameStart,
                             const std::optional<std::size_t>& submittedPerformanceSlot)
 {
-    if (frameStart && submittedPerformanceSlot)
+    if (performance != nullptr && frameStart && submittedPerformanceSlot)
     {
         const auto duration =
             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - *frameStart);
-        performance.recordCpuFrameDuration(*submittedPerformanceSlot, duration);
+        performance->recordCpuFrameDuration(*submittedPerformanceSlot, duration);
     }
 }
 
-auto validateCaptureTarget(const OffscreenTarget& target,
-                           const core::vulkan::resources::MemoryPool& pool,
-                           const core::vulkan::Presentation* presentation) -> Result<void>
+auto validateCaptureTarget(const OffscreenTarget& target, const core::vulkan::resources::MemoryPool& pool)
+    -> Result<void>
 {
     const auto& targetResource = detail::OffscreenTargetResource::getResource(target);
     if (!targetResource || !targetResource->belongsTo(pool))
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Offscreen target does not belong to this Engine")};
-    }
-    if (presentation == nullptr)
-    {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to capture a frame")};
     }
     return {};
 }
@@ -78,10 +73,6 @@ auto WindowRenderer::render(const RenderView& view) const -> Result<FrameResult>
     {
         return std::unexpected {valid.error()};
     }
-    if (_presentation == nullptr)
-    {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "A window surface is required to present a frame")};
-    }
     auto result = renderWithUploads(view, submittedPerformanceSlot);
     recordCpuFrameDuration(_performance, frameStart, submittedPerformanceSlot);
     return result;
@@ -96,7 +87,7 @@ auto WindowRenderer::renderWithUploads(const RenderView& view,
         {
             return std::unexpected {valid.error()};
         }
-        return _presentation->render(view, submittedPerformanceSlot);
+        return _presentation.render(view, submittedPerformanceSlot);
     });
 }
 
@@ -105,7 +96,7 @@ auto WindowRenderer::renderWithCapture(const RenderView& view, const OffscreenTa
 {
     const auto frameStart = startCpuFrameTimer(_performance);
     auto submittedPerformanceSlot = std::optional<std::size_t> {};
-    if (const auto valid = validateCaptureTarget(target, _pool, _presentation); !valid)
+    if (const auto valid = validateCaptureTarget(target, _pool); !valid)
     {
         return std::unexpected {valid.error()};
     }
@@ -133,7 +124,7 @@ auto WindowRenderer::captureWithUploads(core::vulkan::CaptureFrameRequest reques
         {
             return std::unexpected {initialized.error()};
         }
-        return _presentation->renderWithCapture(request);
+        return _presentation.renderWithCapture(request);
     });
 }
 }

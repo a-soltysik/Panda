@@ -9,8 +9,8 @@ pixels is a separate operation that waits for its copy to finish.
 
 **The application** supplies the view, chooses a target per render, and keeps the
 owning `Engine` alive. **Panda** validates ownership and view resources, retains
-them through GPU completion, and defines the readback layout. A target can be used
-with either a headless or windowed Engine.
+them through GPU completion, and defines the readback layout. A target belongs to
+the Engine that created it.
 
 ## Main flow
 
@@ -24,7 +24,7 @@ with either a headless or windowed Engine.
 3. **Submit the render.** The application calls
    `Engine::getOffscreenRenderer().render(view, target)`. `OffscreenRenderer`
    validates the view and target, collects completed uploads, then lazily initializes
-   `OffscreenRendering` before recording the built-in rendering path. The rendering
+   `OffscreenRenderBackend` before recording the built-in rendering path. The rendering
    path retains the target and view resources, then submits the command buffer on the
    Engine queue. Success returns `FrameResult::Status::Rendered` and a
    `CompletionPoint`; it does not present a frame or wait for rendering to finish.
@@ -39,7 +39,7 @@ sequenceDiagram
     participant M as ResourceManager
     participant R as OffscreenRenderer
     participant U as UploadManager
-    participant O as OffscreenRendering
+    participant O as OffscreenRenderBackend
     participant E as FrameExecution
     participant Q as SubmissionQueue
     participant V as Vulkan

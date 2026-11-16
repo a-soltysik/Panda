@@ -1,14 +1,14 @@
 #pragma once
 
 /// @file
-/// Vulkan context creation options.
+/// Vulkan engine creation options.
 
 #include <cstdint>
 #include <string>
 
 namespace panda
 {
-/// @brief Options for creating a Vulkan 1.3 context.
+/// @brief Options for creating a Vulkan 1.3 engine.
 struct EngineOptions
 {
     /// Default maximum number of lights accepted by the built-in renderer.

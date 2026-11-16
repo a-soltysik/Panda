@@ -7,8 +7,8 @@ waits efficiently when presentation is suspended, and leaves the loop after a
 close request. The flow starts with a live `panda::tools::Window` and ends when
 the application loop exits. **The application** owns the loop and decides how to
 handle input and errors; `Window` only processes GLFW events and reports window
-state. If the application renders, a windowed `Engine` borrows the `Window` for
-its lifetime.
+state. If the application renders, it creates Engine with
+`Engine::createWithSurface`; Engine borrows the `Window` for its lifetime.
 
 This scenario follows the optional Panda GLFW wrapper. A custom
 `WindowSurface` provides the Vulkan surface boundary; the application still owns
@@ -18,7 +18,7 @@ provider is borrowed.
 ## Preconditions
 
 1. **Live window.** Keep the `Window` alive while processing its events. If a
-   windowed `Engine` exists, destroy it before the `Window`.
+   `Engine` exists, destroy it before the `Window`.
 2. **Thread and callback context.** Call window operations on the GLFW-owning
    main thread, outside GLFW callbacks. `waitForInput()` also requires a live
    Panda window and can block indefinitely.
@@ -31,7 +31,7 @@ provider is borrowed.
    processed, so a close event handled in Step 3 is checked on the next
    iteration.
 2. **Check the render extent.** Before projection or frame work, an application
-   with a windowed `Engine` reads `Window::getFramebufferExtent()`. If either
+   with a `Engine` reads `Window::getFramebufferExtent()`. If either
    dimension is zero, it skips `WindowRenderer::render(view)`. Otherwise it renders;
    `WindowRenderer::render(view)` still returns `FrameResult::Status::Suspended` if the
    extent becomes zero between the query and image acquisition. [UC Render and
@@ -136,7 +136,7 @@ iteration to check for a close request and observe current window state.
 the application releases them; a windowed `Engine` must be destroyed before its
 borrowed `Window`.
 
-**Presentation suspended.** No frame work is submitted. The application waits for
+**WindowPresentation suspended.** No frame work is submitted. The application waits for
 an event and retries after the platform changes the window state.
 
 ## Related information

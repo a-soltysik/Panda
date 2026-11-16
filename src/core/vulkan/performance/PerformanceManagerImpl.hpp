@@ -28,16 +28,14 @@ class PerformanceManagerImpl final
 public:
     PerformanceManagerImpl(const vk::raii::Device& device,
                            SubmissionQueue& submissions,
-                           TimestampProperties timestamps,
-                           bool enableFramePerformanceSampling);
+                           TimestampProperties timestamps);
 
     [[nodiscard]] auto initialize() -> Result<void>;
-    [[nodiscard]] auto getCapabilities() const noexcept -> PerformanceCapabilities;
     [[nodiscard]] auto getLatestSample() -> Result<std::optional<FramePerformanceSample>>;
     [[nodiscard]] auto takeNextSample() -> Result<std::optional<FramePerformanceSample>>;
     [[nodiscard]] auto takeAvailableSamples() -> Result<std::vector<FramePerformanceSample>>;
     [[nodiscard]] auto recordStart(std::size_t slotIndex, vk::CommandBuffer command) -> Result<void>;
-    void recordEnd(std::size_t slotIndex, vk::CommandBuffer command);
+    void recordEnd(std::size_t slotIndex, vk::CommandBuffer command) const;
     void markSubmitted(std::size_t slotIndex, CompletionPoint submissionPoint) noexcept;
     void recordCpuFrameDuration(std::size_t slotIndex, std::chrono::nanoseconds duration) noexcept;
 
@@ -67,7 +65,6 @@ private:
 
     const vk::raii::Device& _device;
     SubmissionQueue& _submissions;
-    PerformanceCapabilities _capabilities;
     std::uint32_t _timestampValidBits;
     float _timestampPeriodNanoseconds;
     std::array<QuerySlot, 4> _slots;

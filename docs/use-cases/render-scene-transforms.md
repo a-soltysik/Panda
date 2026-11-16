@@ -18,8 +18,9 @@ renderer use without Scene. Persistence remains in the
 
 ## Preconditions
 
-1. The application owns a Scene. If it retains uploaded meshes, each originating
-   Engine remains alive until the Scene and its snapshots release those handles.
+1. The application owns a Scene. Its CPU state is independent of any Engine. If it
+   retains uploaded meshes, each originating Engine remains alive until the Scene
+   and its snapshots release those handles.
 2. The application has created a camera entity, attached a perspective or
    orthographic lens, selected it, and optionally created light entities. It has
    attached uploaded meshes to renderable objects. Mesh upload completes before rendering.

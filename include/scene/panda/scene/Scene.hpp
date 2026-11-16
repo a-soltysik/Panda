@@ -121,7 +121,8 @@ struct SpotLight
 using Light = std::variant<DirectionalLight, PointLight, SpotLight>;
 
 /// @brief Move-only owner of CPU scene objects, transform hierarchy and retained mesh associations.
-/// Any Engine that owns a retained mesh must outlive the Scene and snapshots holding that mesh.
+/// CPU scene state is independent of Engine. Any Engine that owns a retained mesh
+/// must outlive the Scene and snapshots holding that mesh.
 /// Entities do not retain or dereference a Scene and are resolved only through a live Scene.
 /// Calling methods on a moved-from Scene violates the contract and aborts through `expect`.
 /// Calls must be serialized. Result-returning operations report InvalidArgument

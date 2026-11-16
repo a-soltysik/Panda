@@ -29,7 +29,7 @@ class BufferResource;
 
 namespace panda::core::vulkan::presentation
 {
-struct OffscreenRenderingCreateInfo
+struct OffscreenRenderBackendCreateInfo
 {
     vk::PhysicalDevice physicalDevice;
     const vk::raii::Device& device;
@@ -59,15 +59,15 @@ struct WindowCaptureRequest
     std::optional<std::size_t>& submittedPerformanceSlot;
 };
 
-class OffscreenRendering final
+class OffscreenRenderBackend final
 {
 public:
-    explicit OffscreenRendering(const OffscreenRenderingCreateInfo& info);
-    OffscreenRendering(const OffscreenRendering&) = delete;
-    auto operator=(const OffscreenRendering&) -> OffscreenRendering& = delete;
-    OffscreenRendering(OffscreenRendering&&) = delete;
-    auto operator=(OffscreenRendering&&) -> OffscreenRendering& = delete;
-    ~OffscreenRendering();
+    explicit OffscreenRenderBackend(const OffscreenRenderBackendCreateInfo& info);
+    OffscreenRenderBackend(const OffscreenRenderBackend&) = delete;
+    auto operator=(const OffscreenRenderBackend&) -> OffscreenRenderBackend& = delete;
+    OffscreenRenderBackend(OffscreenRenderBackend&&) = delete;
+    auto operator=(OffscreenRenderBackend&&) -> OffscreenRenderBackend& = delete;
+    ~OffscreenRenderBackend();
 
     [[nodiscard]] auto initialize() -> std::expected<void, Error>;
     [[nodiscard]] auto render(const RenderView& view,

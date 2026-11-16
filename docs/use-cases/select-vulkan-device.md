@@ -4,8 +4,8 @@
 
 During Engine creation, Panda must choose a physical device that can run the
 Engine's ordered graphics/compute work and, when a surface is present, present to
-that surface. This UC ends with one compatible physical device,
-its queue-family indices, selected swapchain-maintenance variant and diagnostic
+that surface. This UC ends with one compatible physical device, its private
+queue-family indices, selected swapchain-maintenance variant and diagnostic
 properties, or an error. Creating the logical device is the next step in
 [UC Create an Engine](create-context.md).
 
@@ -47,9 +47,10 @@ falls back to the first compatible device in Vulkan enumeration order.
    and present mode.
 4. **Choose and report one candidate.** Among compatible candidates, Panda
    chooses the first discrete GPU if present, otherwise the first candidate. It
-   returns driver/device details, queue families, timestamp properties and the
-   selected maintenance variant to the Engine resource factory, which stores the
-   physical-device wrapper and final diagnostics in `DeviceContext`.
+   returns driver/device details, private queue-family indices, timestamp
+   properties and the selected maintenance variant to the Engine resource
+   factory. It stores the physical-device wrapper and public device diagnostics
+   in `DeviceContext`; `DeviceInfo` does not expose queue-family indices.
 
 ```mermaid
 sequenceDiagram
@@ -95,9 +96,11 @@ Only the windowed path checks surface presentation, formats, present modes,
 preferred when both KHR and EXT variants are available.
 
 **Queue choice.** Panda prefers a single family for graphics, compute and
-presentation. If the surface requires a separate present family, both indices are
-returned and the logical device requests both queues. This makes surface
-compatibility part of device selection rather than a later frame-time surprise.
+presentation. If the surface requires a separate present family, the private
+selection result carries both indices and logical-device creation requests both
+queues. `DeviceInfo` omits them because Engine exposes no native device or queue
+that a caller could use with those indices. This makes surface compatibility part
+of device selection rather than a later frame-time surprise.
 
 **Adapter inspection errors.** A device that simply lacks a capability is skipped.
 An inspection error is logged and that adapter is skipped for most error

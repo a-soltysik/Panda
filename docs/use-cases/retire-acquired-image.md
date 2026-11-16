@@ -10,24 +10,24 @@ acquisition and ends with cleanup success or a faulted presentation state.
 ## Main flow
 
 1. **Start cleanup.** A command-recording failure, or a present-fence wait/reset
-   failure for the acquired image, calls `Presentation::abortAcquire()`.
+   failure for the acquired image, calls `WindowPresentation::abortAcquire()`.
 2. **Consume acquire and commit retirement.** An empty `SubmissionQueue` submission
    waits on the slot's acquire semaphore and signals the Engine timeline. On
-   queue acceptance, `Presentation` stores the image index as pending recovery
+   queue acceptance, `WindowPresentation` stores the image index as pending recovery
    and asks `FrameExecution` to record the returned value as the slot's last
    completion. The value is a cleanup dependency, not a submitted frame sample.
    [UC Commit work to the Engine submission timeline](commit-context-submission.md)
    defines when that value is committed.
-3. **Wait for the retirement submission.** `Presentation::waitCompletion()` waits
+3. **Wait for the retirement submission.** `WindowPresentation::waitCompletion()` waits
    for that committed value before release. If the wait times out, the pending
    recovery remains for `drain()`.
-4. **Release the unused image.** `Presentation::releaseImage()` calls the enabled
+4. **Release the unused image.** `WindowPresentation::releaseImage()` calls the enabled
    KHR or EXT `vkReleaseSwapchainImages` entry point for the acquired index and
    clears pending recovery only after Vulkan confirms release.
 
 ```mermaid
 sequenceDiagram
-    participant P as Presentation
+    participant P as WindowPresentation
     participant E as FrameExecution
     participant Q as SubmissionQueue
     participant V as Vulkan
@@ -51,10 +51,10 @@ sequenceDiagram
 **One binary wait.** The acquire semaphore is consumed either by normal frame
 submission or by this empty cleanup submission. A failed cleanup submission has
 not committed that wait; Panda faults presentation and records that no acquired
-image retirement was committed. `Presentation::drain()` then refuses to claim
+image retirement was committed. `WindowPresentation::drain()` then refuses to claim
 safe cleanup.
 
-**Retained recovery.** Once Step 2 commits, `Presentation` keeps the acquired
+**Retained recovery.** Once Step 2 commits, `WindowPresentation` keeps the acquired
 index while `FrameExecution` retains its slot completion value until Step 4 succeeds.
 If Step 3 times out or fails, `drain()` waits for the committed work and then
 performs Step 4 before it can report success. This preserves the
@@ -62,7 +62,7 @@ performs Step 4 before it can report success. This preserves the
 across a retry.
 
 **Unconfirmed release.** If Step 4 returns an error, Vulkan has not confirmed
-whether the acquisition was released. `Presentation` faults and `drain()` returns
+whether the acquisition was released. `WindowPresentation` faults and `drain()` returns
 an error instead of repeating the release or claiming that the generation is safe
 to destroy.
 

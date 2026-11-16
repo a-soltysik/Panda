@@ -80,11 +80,7 @@ protected:
 
     auto activeEngine() -> panda::Engine&
     {
-        if (!context)
-        {
-            panda::panic("Upload system test has no initialized Engine");
-        }
-        return *context;
+        return panda::expect(context, "Upload system test has no initialized Engine");
     }
 
     panda::test::LogRecords records;
@@ -173,7 +169,7 @@ TEST_F(UploadSystem, BatchAndPointRemainUsableAfterMovingEngine)
     auto target = makeDestination();
     auto batch = activeEngine().getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch);
-    auto moved = std::move(activeEngine());
+    auto moved = std::move(*context);
     const auto bytes = std::array {std::byte {4}, std::byte {5}, std::byte {6}};
     ASSERT_TRUE(batch->write(target, 3, bytes));
     const auto point = batch->submit();

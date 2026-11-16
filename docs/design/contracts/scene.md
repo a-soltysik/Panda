@@ -55,8 +55,9 @@ invent an inverse.
 ## Public scene boundary
 
 Use a move-only `Scene` with stable internal storage, owned by the application.
-Scene construction and snapshot preparation operate on CPU state. If a Scene or
-snapshot retains GPU handles, each originating Engine must outlive those handles.
+Scene construction and snapshot preparation operate on CPU state independently of
+any Engine. If a Scene or snapshot retains GPU handles, each originating Engine
+must outlive those handles.
 The C++ scene types live in `panda::scene`; Engine and shared
 renderer resources remain in `panda`. Ordinary headers expose Panda
 object handles, descriptions and value snapshots, not an application registry. Scene

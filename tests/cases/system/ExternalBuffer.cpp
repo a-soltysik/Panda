@@ -39,7 +39,7 @@ TEST(ExternalBufferSystem, CreatesDedicatedBufferAndOwnsPlatformHandle)
     EXPECT_EQ(created->getSize(), 1024);
     EXPECT_GE(created->getAllocationSize(), created->getSize());
     EXPECT_TRUE(created->getHandle().isValid());
-    EXPECT_EQ(created->hasSemaphore(), context->getDeviceInfo().externalSemaphoreExportEnabled);
+    EXPECT_EQ(created->hasSemaphore(), context->getFeatures().externalSemaphoreExportEnabled);
     EXPECT_EQ(created->getSemaphoreHandle().isValid(), created->hasSemaphore());
 #ifdef _WIN32
     if (created->hasSemaphore())
@@ -104,7 +104,7 @@ TEST(ExternalBufferSystem, ReleaseSignalsTimelineAndPreventsVulkanUploadsUntilAc
         GTEST_SKIP() << context.error().message;
     }
     ASSERT_TRUE(context) << context.error().message;
-    if (!context->getDeviceInfo().externalSemaphoreExportEnabled)
+    if (!context->getFeatures().externalSemaphoreExportEnabled)
     {
         GTEST_SKIP() << "Selected Vulkan device cannot export a timeline semaphore";
     }

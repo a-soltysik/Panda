@@ -1,6 +1,6 @@
 # Buffer allocation example
 
-`buffer_allocation` creates a headless Engine and a 4096-byte device-local storage
+`buffer_allocation` creates a headless Engine with `Engine::create()` and a 4096-byte device-local storage
 buffer, copies four integer values into an upload batch, submits the copy and
 waits for its completion point before closing through RAII.
 The buffer's scope ends before the Engine's scope. Requires

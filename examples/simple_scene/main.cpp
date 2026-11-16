@@ -279,7 +279,7 @@ auto createSceneMeshes(const panda::Engine& context) -> SceneMeshes
 void run(const panda::tools::Window& window, const panda::Engine& context, const SceneMeshes& meshes)
 {
     static constexpr auto cameraPosition = glm::vec3 {3.0F, 2.5F, 4.0F};
-    const auto renderer = panda::expect(context.getWindowRenderer(), "Window context has no window renderer");
+    const auto& renderer = context.getWindowRenderer();
     auto view = makeRenderView(meshes);
     while (!window.shouldClose())
     {
@@ -300,7 +300,7 @@ void run(const panda::tools::Window& window, const panda::Engine& context, const
                               .farPlane = 100.0F
         }),
                           "Create the camera");
-        const auto frame = panda::expect(renderer.get().render(view), "Render the scene");
+        const auto frame = panda::expect(renderer.render(view), "Render the scene");
         // A resize can suspend rendering after the extent check above.
         panda::expect(frame.status == panda::FrameResult::Status::Suspended ? panda::tools::Window::waitForInput()
                                                                             : window.processInput(),

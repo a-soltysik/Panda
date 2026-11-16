@@ -8,13 +8,18 @@
 #include <vulkan/vulkan_core.h>
 
 #include <algorithm>
+#include <concepts>
 #include <cstdint>
 #include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
+#include <panda/PerformanceManager.hpp>
+#include <panda/WindowRenderer.hpp>
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "FakeHandle.hpp"
@@ -36,6 +41,25 @@ using testing::Return;
 using testing::Sequence;
 using testing::SetArgPointee;
 using testing::StrEq;
+
+template <typename T>
+concept HasWindowRenderer = requires(const T& engine) { engine.getWindowRenderer(); };
+
+static_assert(std::is_final_v<panda::Engine>);
+static_assert(std::is_move_constructible_v<panda::Engine>);
+static_assert(std::is_nothrow_move_constructible_v<panda::Engine>);
+static_assert(!std::is_copy_constructible_v<panda::Engine>);
+static_assert(!std::is_copy_assignable_v<panda::Engine>);
+static_assert(!std::is_move_assignable_v<panda::Engine>);
+static_assert(HasWindowRenderer<panda::Engine>);
+static_assert(std::same_as<decltype(std::declval<const panda::Engine&>().getFeatures()), panda::EngineFeatures>);
+static_assert(
+    std::same_as<decltype(std::declval<panda::Engine&>().getPerformanceManager()), panda::PerformanceManager&>);
+static_assert(
+    std::same_as<decltype(std::declval<const panda::Engine&>().getWindowRenderer()), const panda::WindowRenderer&>);
+static_assert(std::same_as<decltype(panda::Engine::create()), panda::Result<panda::Engine>>);
+static_assert(std::same_as<decltype(panda::Engine::createWithSurface(std::declval<const panda::WindowSurface&>())),
+                           panda::Result<panda::Engine>>);
 
 auto makeLayer(std::string_view name) -> VkLayerProperties
 {

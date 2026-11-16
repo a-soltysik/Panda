@@ -5,15 +5,19 @@ Implementation and device evidence follow [the plan](../../development/PLAN.md).
 
 ## Ownership
 
-- An Engine owns the Vulkan device and the services required to retire GPU resources.
-  It outlives scenes, resource handles, upload batches, and optional modules using that Engine.
-- `Engine::Impl` directly owns its service implementations and a heap-stable
+- `Engine` is the concrete, move-only API entry point and shutdown owner. It
+  creates headless or window-enabled state through static functions; a window
+  renderer and performance manager exist only when their features are available.
+  Engine outlives scenes, resource handles, upload batches, and optional modules
+  using it.
+- `Engine` owns only a `unique_ptr<Impl>`. `Engine::Impl` directly owns its service
+  implementations and a heap-stable
   `DeviceContext` containing only Vulkan loader, instance/surface, device handles
   and diagnostics. Services borrow their concrete dependencies; the temporary
   `EngineCreateInfo` is used only during creation.
-- Moving Engine preserves its heap-owned state, service addresses, resource handles and
-  issued completion points. Borrowed service references remain usable while the moved-to
-  Engine lives; they do not outlive that owner.
+- Moving Engine preserves its heap-owned state, service addresses, resource
+  handles and issued completion points. Borrowed service references remain usable
+  while the moved-to Engine lives; they do not outlive that owner.
 - A scene owns its entities and components. An entity reference contains scene
   identity and a generation-aware identifier; copying it does not keep an entity alive.
 - Meshes, textures, and materials use shareable owning value handles. Standard
@@ -150,17 +154,18 @@ must still avoid an infinite wait on work that was never submitted or signaled.
 The table describes public API behavior. Implemented declarations are documented in
 their public headers; entries without public declarations remain planned contracts.
 
-| Type/operation                                                                                     | Semantics                                                                                                                                                         |
-|----------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Engine::create(EngineOptions) -> Result<Engine>`                                                  | Move-only owner with stable, heap-owned internal state; operations on one Engine are serialized                                                                   |
-| `Engine::createWithSurface(WindowSurface&, EngineOptions) -> Result<Engine>`                       | Creates a windowed context; the borrowed window surface and native window outlive the context                                                                     |
-| `Engine::getDeviceInfo() -> DeviceInfo`                                                            | Copies selected-device information including external-memory and optional timeline-semaphore export support                                                       |
-| `Engine::getResourceManager() -> const ResourceManager&`                                           | Borrows creation operations for buffers, textures, meshes and offscreen targets                                                                                   |
-| `Engine::getSubmissionManager() -> const SubmissionManager&`                                       | Borrows upload-batch creation and completion observation operations                                                                                               |
-| `Engine::getOffscreenRenderer() -> const OffscreenRenderer&`                                       | Borrows the renderer for explicit target-based rendering and pixel readback                                                                                       |
-| `Engine::getWindowRenderer() -> optional<reference_wrapper<const WindowRenderer>>`                 | Exposes window rendering only for an Engine created with a surface                                                                                                |
-| `Engine::getPerformanceManager() -> PerformanceManager&`                                           | Borrows frame timing queries and samples; stable across Engine moves                                                                                              |
-| `Engine::getExternalBufferManager() -> ExternalBufferManager&`                                     | Borrows external-buffer creation and GPU ownership handoffs; stable across Engine moves                                                                           |
+| Type/operation | Semantics |
+|---|---|
+| `Engine::create(EngineOptions) -> Result<Engine>` | Creates a headless Engine with stable, heap-owned state; operations are serialized. |
+| `Engine::createWithSurface(WindowSurface&, EngineOptions) -> Result<Engine>` | Creates a window-enabled Engine; the borrowed surface and native window outlive it. |
+| `Engine::getDeviceInfo() -> DeviceInfo` | Copies device identity and driver diagnostics. Queue-family indices and optional-feature flags are not part of DeviceInfo. |
+| `Engine::getFeatures() -> EngineFeatures` | Copies the effective window, validation, performance and external-export feature state. |
+| `Engine::getResourceManager() -> const ResourceManager&` | Borrows creation operations for buffers, textures, meshes and offscreen targets. |
+| `Engine::getSubmissionManager() -> const SubmissionManager&` | Borrows upload-batch creation and completion observation operations. |
+| `Engine::getOffscreenRenderer() -> const OffscreenRenderer&` | Borrows the renderer for explicit target-based rendering and pixel readback. |
+| `Engine::getWindowRenderer() -> const WindowRenderer&` | Borrows the window renderer; `expect` fails if Engine has no window surface. |
+| `Engine::getPerformanceManager() -> PerformanceManager&` | Borrows frame timing queries and samples; `expect` fails when sampling is not active. |
+| `Engine::getExternalBufferManager() -> ExternalBufferManager&` | Borrows external-buffer creation and GPU ownership handoffs; unsupported operations return `Unsupported`. |
 | `Buffer`, `Texture`, `Mesh`, `OffscreenTarget`                                                     | Copyable typed handles around shared resource state; empty handles are detectable and rejected where a resource is required                                       |
 | `ResourceManager::createBuffer(BufferDesc) -> Result<Buffer>`                                      | Fixed byte size and creation usage; never implicitly resize an existing Buffer                                                                                    |
 | `ExternalBufferManager::createBuffer(BufferDesc) -> Result<ExternalBuffer>`                        | Creates a device-local dedicated allocation and exports its memory handle plus an optional paired timeline-semaphore handle                                       |
@@ -185,13 +190,13 @@ handles must be detectable and rejected where a material is required; their publ
 creation and access API will be designed during implementation. See the
 [material contract](rendering.md#programs-materials-and-application-resources).
 
-`DeviceInfo::externalBufferExportEnabled` is `true` only when the Engine
-enabled Vulkan external-memory export. It does not guarantee every requested usage
-can be exported; `ExternalBufferManager::createBuffer` checks the actual usage.
-`externalSemaphoreExportEnabled` separately reports whether the Engine enabled
-opaque timeline-semaphore export for external buffers. A buffer created on a device
-without that capability has no semaphore handle, and handoff requests return
-`Unsupported`.
+`EngineFeatures::externalBufferExportEnabled` is `true` only when Engine enabled
+external-memory export. It does not guarantee every requested usage can be
+exported; `ExternalBufferManager::createBuffer` checks the actual usage.
+`externalSemaphoreExportEnabled` separately reports opaque timeline-semaphore
+export. A buffer created without that capability has no semaphore handle, and
+handoff requests return `Unsupported`. `DeviceInfo` contains no queue-family
+indices: Panda does not expose the native device or queue needed to act on them.
 
 `EngineOptions::enableValidation` enables the installed Khronos validation layer and
 registers a `VK_EXT_debug_utils` callback that routes diagnostics to the Panda logger.
@@ -204,13 +209,14 @@ the layer or debug-utils extension is unavailable returns an `Unsupported` error
 integer counter orders all submissions sent through it, including upload, frame
 and presentation-recovery work. Each accepted submission signals the next value;
 when the counter reaches N, queue work through that signal is complete. The counter
-covers queue work only. Presentation-engine use of swapchain images is tracked
+covers queue work only. Window-enabled Engine use of swapchain images is tracked
 separately by per-image present fences. A default token means no submitted work;
 empty and foreign tokens are rejected by poll/wait. Moving Engine preserves its
 issued tokens and the addresses of its borrowed service objects. A moved-from
-Engine is valid only for destruction, another move and `isValid()`; its other
-getters fail through the checked contract, while the optional window getter returns
-empty. Service references must not outlive the moved-to Engine.
+Engine is valid only for destruction, another move and `isValid()`; service getters
+fail through the checked contract. `getWindowRenderer()` also fails when no window
+renderer was created, and `getPerformanceManager()` fails when sampling is inactive.
+Service references must not outlive the moved-to Engine.
 No public API lets a caller signal it, fabricate future values, or use it after
 Engine destruction. `Error` has an action category, owned message, optional native
 backend status and source location; it does not retain references to temporary strings.

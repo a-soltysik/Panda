@@ -4,7 +4,7 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include "presentation/OffscreenRendering.hpp"
+#include "presentation/OffscreenRenderBackend.hpp"
 
 #include <algorithm>
 #include <array>
@@ -264,7 +264,7 @@ auto waitStatusResult(WaitStatus status) -> Result<void>
 }
 }
 
-OffscreenRendering::OffscreenRendering(const OffscreenRenderingCreateInfo& info)
+OffscreenRenderBackend::OffscreenRenderBackend(const OffscreenRenderBackendCreateInfo& info)
     : _physicalDevice {info.physicalDevice},
       _device {info.device},
       _queueFamily {info.queueFamily},
@@ -275,9 +275,9 @@ OffscreenRendering::OffscreenRendering(const OffscreenRenderingCreateInfo& info)
 {
 }
 
-OffscreenRendering::~OffscreenRendering() = default;
+OffscreenRenderBackend::~OffscreenRenderBackend() = default;
 
-auto OffscreenRendering::initialize() -> std::expected<void, Error>
+auto OffscreenRenderBackend::initialize() -> std::expected<void, Error>
 {
     if (_execution)
     {
@@ -299,8 +299,8 @@ auto OffscreenRendering::initialize() -> std::expected<void, Error>
     return {};
 }
 
-auto OffscreenRendering::prepareRendererOutput(const ::panda::detail::OffscreenTargetResource& target,
-                                               const RenderView& view) -> std::expected<void, Error>
+auto OffscreenRenderBackend::prepareRendererOutput(const ::panda::detail::OffscreenTargetResource& target,
+                                                   const RenderView& view) -> std::expected<void, Error>
 {
     if (view.meshes.empty())
     {
@@ -316,9 +316,9 @@ auto OffscreenRendering::prepareRendererOutput(const ::panda::detail::OffscreenT
     return {};
 }
 
-auto OffscreenRendering::recordFrame(std::size_t slotIndex,
-                                     const std::shared_ptr<::panda::detail::OffscreenTargetResource>& target,
-                                     const FrameRequest& request) -> std::expected<void, Error>
+auto OffscreenRenderBackend::recordFrame(std::size_t slotIndex,
+                                         const std::shared_ptr<::panda::detail::OffscreenTargetResource>& target,
+                                         const FrameRequest& request) -> std::expected<void, Error>
 {
     if (const auto begun = _execution->beginCommands(slotIndex); !begun)
     {
@@ -340,9 +340,9 @@ auto OffscreenRendering::recordFrame(std::size_t slotIndex,
     return _execution->endCommands(slotIndex);
 }
 
-auto OffscreenRendering::render(const RenderView& view,
-                                const OffscreenTarget& target,
-                                std::optional<std::size_t>& submittedPerformanceSlot)
+auto OffscreenRenderBackend::render(const RenderView& view,
+                                    const OffscreenTarget& target,
+                                    std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
     submittedPerformanceSlot.reset();
@@ -351,7 +351,7 @@ auto OffscreenRendering::render(const RenderView& view,
     return renderInternal(request);
 }
 
-auto OffscreenRendering::renderWithCapture(const WindowCaptureRequest& request) -> std::expected<FrameResult, Error>
+auto OffscreenRenderBackend::renderWithCapture(const WindowCaptureRequest& request) -> std::expected<FrameResult, Error>
 {
     if (!request.output.image || !request.acquire || !request.finished)
     {
@@ -377,7 +377,7 @@ auto OffscreenRendering::renderWithCapture(const WindowCaptureRequest& request) 
     return renderInternal(frameRequest);
 }
 
-auto OffscreenRendering::renderInternal(const FrameRequest& request) -> std::expected<FrameResult, Error>
+auto OffscreenRenderBackend::renderInternal(const FrameRequest& request) -> std::expected<FrameResult, Error>
 {
     if (const auto pending = waitPendingReadback(); !pending)
     {
@@ -401,9 +401,9 @@ auto OffscreenRendering::renderInternal(const FrameRequest& request) -> std::exp
     return submitFrame(slotIndex, targetResource, request);
 }
 
-auto OffscreenRendering::submitFrame(std::size_t slotIndex,
-                                     const std::shared_ptr<::panda::detail::OffscreenTargetResource>& target,
-                                     const FrameRequest& request) -> std::expected<FrameResult, Error>
+auto OffscreenRenderBackend::submitFrame(std::size_t slotIndex,
+                                         const std::shared_ptr<::panda::detail::OffscreenTargetResource>& target,
+                                         const FrameRequest& request) -> std::expected<FrameResult, Error>
 {
     const auto submitted = _submissions.submit(_execution->command(slotIndex), request.acquire, request.finished);
     if (!submitted)
@@ -432,7 +432,7 @@ auto OffscreenRendering::submitFrame(std::size_t slotIndex,
                         .effectiveSampleCount = _execution->getSampleCount()};
 }
 
-auto OffscreenRendering::readPixels(const OffscreenTarget& target, CompletionPoint completion)
+auto OffscreenRenderBackend::readPixels(const OffscreenTarget& target, CompletionPoint completion)
     -> std::expected<ImageReadback, Error>
 {
     if (const auto pending = waitPendingReadback(); !pending)
@@ -453,7 +453,7 @@ auto OffscreenRendering::readPixels(const OffscreenTarget& target, CompletionPoi
     return submitReadback(targetResource);
 }
 
-auto OffscreenRendering::submitReadback(const std::shared_ptr<::panda::detail::OffscreenTargetResource>& target)
+auto OffscreenRenderBackend::submitReadback(const std::shared_ptr<::panda::detail::OffscreenTargetResource>& target)
     -> std::expected<ImageReadback, Error>
 {
     const auto extent = target->getExtent();
@@ -477,9 +477,10 @@ auto OffscreenRendering::submitReadback(const std::shared_ptr<::panda::detail::O
     return collectPendingReadback();
 }
 
-auto OffscreenRendering::submitReadbackCommands(const std::shared_ptr<::panda::detail::OffscreenTargetResource>& target,
-                                                std::shared_ptr<::panda::detail::BufferResource> buffer,
-                                                vk::Extent2D extent) -> std::expected<void, Error>
+auto OffscreenRenderBackend::submitReadbackCommands(
+    const std::shared_ptr<::panda::detail::OffscreenTargetResource>& target,
+    std::shared_ptr<::panda::detail::BufferResource> buffer,
+    vk::Extent2D extent) -> std::expected<void, Error>
 {
     auto pool = vk::raii::CommandPool {nullptr};
     auto command = vk::CommandBuffer {};
@@ -505,7 +506,7 @@ auto OffscreenRendering::submitReadbackCommands(const std::shared_ptr<::panda::d
     return {};
 }
 
-auto OffscreenRendering::collectPendingReadback() -> std::expected<ImageReadback, Error>
+auto OffscreenRenderBackend::collectPendingReadback() -> std::expected<ImageReadback, Error>
 {
     if (!_pendingReadback)
     {
@@ -525,7 +526,7 @@ auto OffscreenRendering::collectPendingReadback() -> std::expected<ImageReadback
     return copyReadbackBytes(*pending.buffer, pending.extent);
 }
 
-auto OffscreenRendering::copyReadbackBytes(const ::panda::detail::BufferResource& buffer, vk::Extent2D extent)
+auto OffscreenRenderBackend::copyReadbackBytes(const ::panda::detail::BufferResource& buffer, vk::Extent2D extent)
     -> std::expected<ImageReadback, Error>
 {
     const auto size = pixelByteCount(extent);
@@ -549,7 +550,7 @@ auto OffscreenRendering::copyReadbackBytes(const ::panda::detail::BufferResource
     return pixels;
 }
 
-auto OffscreenRendering::waitPendingReadback() -> std::expected<void, Error>
+auto OffscreenRenderBackend::waitPendingReadback() -> std::expected<void, Error>
 {
     if (!_pendingReadback)
     {
@@ -568,7 +569,7 @@ auto OffscreenRendering::waitPendingReadback() -> std::expected<void, Error>
     return {};
 }
 
-auto OffscreenRendering::drain() -> std::expected<void, Error>
+auto OffscreenRenderBackend::drain() -> std::expected<void, Error>
 {
     if (const auto pending = waitPendingReadback(); !pending)
     {

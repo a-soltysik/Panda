@@ -58,6 +58,6 @@ panda_add_test(panda_system_memory_allocation system
     SOURCES MemoryAllocation.cpp
     LIBRARIES Panda::Panda Vulkan::Headers)
 
-panda_add_test(panda_system_windowed_engine system
-    SOURCES WindowedEngine.cpp
+panda_add_test(panda_system_window_rendering system
+    SOURCES WindowRendering.cpp
     LIBRARIES Panda::Tools PandaTest::Support PandaTest::LogCapture glfw)

@@ -31,7 +31,7 @@ Specifications: [renderer](../../design/contracts/rendering.md#rendering-path),
 
 ## Acceptance
 
-- A windowed Engine lets the application request a presentation policy; headless
+- A `Engine` lets the application request a presentation policy; headless
   contexts remain unaffected.
 - Unsupported requests fail clearly or follow a documented fallback, and the
   effective selected mode is observable.

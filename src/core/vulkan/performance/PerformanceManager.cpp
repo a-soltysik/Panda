@@ -16,11 +16,6 @@ PerformanceManager::PerformanceManager(detail::PerformanceManagerImpl& implement
 {
 }
 
-auto PerformanceManager::getCapabilities() const noexcept -> PerformanceCapabilities
-{
-    return _implementation.getCapabilities();
-}
-
 auto PerformanceManager::getLatestSample() -> Result<std::optional<FramePerformanceSample>>
 {
     return _implementation.getLatestSample();
