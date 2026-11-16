@@ -39,8 +39,8 @@
 #include <utility>
 #include <vector>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
@@ -48,7 +48,7 @@
 
 namespace
 {
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
@@ -436,8 +436,8 @@ protected:
 
     void expectSubmissionQueue(VkResult result = success)
     {
-        auto* const queue = fakeVulkanHandle<VkQueue>(30);
-        auto* const semaphore = fakeVulkanHandle<VkSemaphore>(31);
+        auto* const queue = fakeHandle<VkQueue>(30);
+        auto* const semaphore = fakeHandle<VkSemaphore>(31);
         EXPECT_CALL(vulkan, vkGetDeviceQueue(device, 0, 0, NotNull())).WillOnce(testing::SetArgPointee<3>(queue));
         EXPECT_CALL(vulkan, vkCreateSemaphore(device, NotNull(), nullptr, NotNull()))
             .WillOnce([semaphore, result](VkDevice,
@@ -531,10 +531,10 @@ protected:
 
     void expectPerformancePools()
     {
-        const auto queryPools = std::array {fakeVulkanHandle<VkQueryPool>(40),
-                                            fakeVulkanHandle<VkQueryPool>(41),
-                                            fakeVulkanHandle<VkQueryPool>(42),
-                                            fakeVulkanHandle<VkQueryPool>(43)};
+        const auto queryPools = std::array {fakeHandle<VkQueryPool>(40),
+                                            fakeHandle<VkQueryPool>(41),
+                                            fakeHandle<VkQueryPool>(42),
+                                            fakeHandle<VkQueryPool>(43)};
         const auto expectPoolCreation = [this](VkQueryPool queryPool) {
             EXPECT_CALL(vulkan, vkCreateQueryPool(device, NotNull(), nullptr, NotNull()))
                 .WillOnce([queryPool](VkDevice,
@@ -579,39 +579,39 @@ protected:
         EXPECT_CALL(vulkan, vkGetDeviceQueue(device, _, 0, NotNull()))
             .Times(2)
             .WillRepeatedly([](VkDevice, std::uint32_t, std::uint32_t, VkQueue* output) {
-                *output = fakeVulkanHandle<VkQueue>(5);
+                *output = fakeHandle<VkQueue>(5);
             });
         EXPECT_CALL(vulkan, vkCreateSemaphore(device, NotNull(), nullptr, NotNull()))
             .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(10)), Return(success))})
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkSemaphore>(10)), Return(success))})
             .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(11)), Return(success))})
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkSemaphore>(11)), Return(success))})
             .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(12)), Return(success))});
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkSemaphore>(12)), Return(success))});
         auto& commandPoolCalls = EXPECT_CALL(vulkan, vkCreateCommandPool(device, NotNull(), nullptr, NotNull()));
         commandPoolCalls
             .WillOnce(testing::Action<decltype(vkCreateCommandPool)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(20)), Return(success))})
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkCommandPool>(20)), Return(success))})
             .WillOnce(testing::Action<decltype(vkCreateCommandPool)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(21)), Return(success))});
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkCommandPool>(21)), Return(success))});
         if (failOffscreenInitialization)
         {
             commandPoolCalls.WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
         }
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(device, NotNull(), NotNull()))
             .WillOnce(testing::Action<decltype(vkAllocateCommandBuffers)> {
-                testing::DoAll(testing::SetArgPointee<2>(fakeVulkanHandle<VkCommandBuffer>(30)), Return(success))})
+                testing::DoAll(testing::SetArgPointee<2>(fakeHandle<VkCommandBuffer>(30)), Return(success))})
             .WillOnce(testing::Action<decltype(vkAllocateCommandBuffers)> {
-                testing::DoAll(testing::SetArgPointee<2>(fakeVulkanHandle<VkCommandBuffer>(31)), Return(success))});
+                testing::DoAll(testing::SetArgPointee<2>(fakeHandle<VkCommandBuffer>(31)), Return(success))});
     }
 
     void expectFramesDestroyed()
     {
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeVulkanHandle<VkSemaphore>(12), nullptr));
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, fakeVulkanHandle<VkCommandPool>(21), nullptr));
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeVulkanHandle<VkSemaphore>(11), nullptr));
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, fakeVulkanHandle<VkCommandPool>(20), nullptr));
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeVulkanHandle<VkSemaphore>(10), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeHandle<VkSemaphore>(12), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, fakeHandle<VkCommandPool>(21), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeHandle<VkSemaphore>(11), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, fakeHandle<VkCommandPool>(20), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeHandle<VkSemaphore>(10), nullptr));
     }
 
     void expectWindowed(bool separateQueues = false, bool failOffscreenInitialization = false)
@@ -836,10 +836,10 @@ protected:
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::SwapchainGenerationMock> generations;
     testing::StrictMock<panda::test::WindowSurfaceMock> window;
-    VkInstance instance {fakeVulkanHandle<VkInstance>(1)};
-    VkPhysicalDevice physical {fakeVulkanHandle<VkPhysicalDevice>(2)};
-    VkDevice device {fakeVulkanHandle<VkDevice>(3)};
-    VkSurfaceKHR surface {fakeVulkanHandle<VkSurfaceKHR>(4)};
+    VkInstance instance {fakeHandle<VkInstance>(1)};
+    VkPhysicalDevice physical {fakeHandle<VkPhysicalDevice>(2)};
+    VkDevice device {fakeHandle<VkDevice>(3)};
+    VkSurfaceKHR surface {fakeHandle<VkSurfaceKHR>(4)};
     testing::ExpectationSet frameCleanup;
     testing::ExpectationSet bufferCleanup;
     testing::ExpectationSet memoryCleanup;
@@ -895,9 +895,9 @@ TEST_F(EngineLifecycleTest, CreatesHeadlessQueueAndUploadManagerWithoutGpuAlloca
 
 TEST_F(EngineLifecycleTest, CaptureInitializationFailureDoesNotAcquireWindowImage)
 {
-    auto* const image = fakeVulkanHandle<VkImage>(40);
-    auto* const imageView = fakeVulkanHandle<VkImageView>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(42);
+    auto* const image = fakeHandle<VkImage>(40);
+    auto* const imageView = fakeHandle<VkImageView>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(42);
     expectOffscreenTarget(image, imageView, memory);
     expectWindowed(false, true);
     EXPECT_CALL(window, getFramebufferExtent())
@@ -978,8 +978,8 @@ TEST_F(EngineLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
 
 TEST_F(EngineLifecycleTest, ExportedBufferUsesTheFactoryDeviceUuid)
 {
-    auto* const nativeBuffer = fakeVulkanHandle<VkBuffer>(60);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(61);
+    auto* const nativeBuffer = fakeHandle<VkBuffer>(60);
+    auto* const memory = fakeHandle<VkDeviceMemory>(61);
     expectInstance();
     expectAdapter(false);
     expectExternalMemoryExtensions(true);
@@ -1041,8 +1041,8 @@ TEST_F(EngineLifecycleTest, RejectsExternalBufferOperationsWhenExportIsUnavailab
 
 TEST_F(EngineLifecycleTest, RejectsEmptyHandoffsWhenMemoryExportIsAvailable)
 {
-    auto* const native = fakeVulkanHandle<VkBuffer>(42);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(52);
+    auto* const native = fakeHandle<VkBuffer>(42);
+    auto* const memory = fakeHandle<VkDeviceMemory>(52);
     expectInstance();
     expectAdapter(false);
     expectExternalMemoryExtensions(true);
@@ -1194,9 +1194,9 @@ TEST_F(EngineLifecycleTest, EmptyBufferAndInvalidDescriptionsNeverCreateNativeRe
 TEST_F(EngineLifecycleTest, SharedBuffersRetainNativeStateAndReuseReleasedRanges)
 {
     expectHeadless();
-    auto* const first = fakeVulkanHandle<VkBuffer>(40);
-    auto* const second = fakeVulkanHandle<VkBuffer>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const first = fakeHandle<VkBuffer>(40);
+    auto* const second = fakeHandle<VkBuffer>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(first);
     expectBuffer(second);
     expectBufferAllocation(memory);
@@ -1222,9 +1222,9 @@ TEST_F(EngineLifecycleTest, SharedBuffersRetainNativeStateAndReuseReleasedRanges
 TEST_F(EngineLifecycleTest, LiveBuffersRemainBoundAcrossEngineAndHandleMoves)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const movedNative = fakeVulkanHandle<VkBuffer>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const movedNative = fakeHandle<VkBuffer>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native);
     expectBufferAllocation(memory);
     expectBinding(native, memory);
@@ -1254,7 +1254,7 @@ TEST_F(EngineLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutpu
     expectParentsDestroyed(true, false);
     EXPECT_CALL(vulkan, vkCreateBuffer(device, NotNull(), nullptr, NotNull()))
         .WillOnce([](VkDevice, const VkBufferCreateInfo*, const VkAllocationCallbacks*, VkBuffer* output) {
-            *output = fakeVulkanHandle<VkBuffer>(40);
+            *output = fakeHandle<VkBuffer>(40);
             return exhausted;
         });
     const auto context = panda::Engine::create();
@@ -1269,9 +1269,9 @@ TEST_F(EngineLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutpu
 TEST_F(EngineLifecycleTest, FailedBindingReleasesTheRangeAndPreservesTheNativeError)
 {
     expectHeadless();
-    auto* const first = fakeVulkanHandle<VkBuffer>(40);
-    auto* const second = fakeVulkanHandle<VkBuffer>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const first = fakeHandle<VkBuffer>(40);
+    auto* const second = fakeHandle<VkBuffer>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(first);
     expectBuffer(second);
     expectBufferAllocation(memory);
@@ -1293,8 +1293,8 @@ TEST_F(EngineLifecycleTest, FailedBindingReleasesTheRangeAndPreservesTheNativeEr
 TEST_F(EngineLifecycleTest, RequiredDedicatedBufferIsDestroyedBeforeItsExactAllocation)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native, 65, true);
     expectBufferAllocation(memory, 0, true);
     expectBinding(native, memory);
@@ -1311,8 +1311,8 @@ TEST_F(EngineLifecycleTest, RequiredDedicatedBufferIsDestroyedBeforeItsExactAllo
 TEST_F(EngineLifecycleTest, LastSharedOwnerControlsNativeDestruction)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     auto lastRelease = testing::MockFunction<void()> {};
     const auto ownerReleased = testing::Expectation {EXPECT_CALL(lastRelease, Call())};
     expectBuffer(native, 65, true, testing::ExpectationSet {ownerReleased});
@@ -1340,8 +1340,8 @@ TEST_F(EngineLifecycleTest, LastSharedOwnerControlsNativeDestruction)
 TEST_F(EngineLifecycleTest, DedicatedBindingFailureDestroysBufferBeforeFreeingItsAllocation)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native, 65, true);
     expectBufferAllocation(memory, 0, true);
     expectBinding(native, memory, 0, exhausted);
@@ -1359,7 +1359,7 @@ TEST_F(EngineLifecycleTest, DedicatedBindingFailureDestroysBufferBeforeFreeingIt
 TEST_F(EngineLifecycleTest, AllocationFailureDestroysTheUnboundBuffer)
 {
     expectHeadless();
-    expectBuffer(fakeVulkanHandle<VkBuffer>(40));
+    expectBuffer(fakeHandle<VkBuffer>(40));
     EXPECT_CALL(vulkan, vkAllocateMemory(device, NotNull(), nullptr, NotNull()))
         .Times(2)
         .WillRepeatedly(Return(exhausted));
@@ -1375,9 +1375,9 @@ TEST_F(EngineLifecycleTest, AllocationFailureDestroysTheUnboundBuffer)
 TEST_F(EngineLifecycleTest, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
 {
     expectHeadless();
-    auto* const first = fakeVulkanHandle<VkBuffer>(40);
-    auto* const second = fakeVulkanHandle<VkBuffer>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const first = fakeHandle<VkBuffer>(40);
+    auto* const second = fakeHandle<VkBuffer>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(first);
     expectBuffer(second);
     expectBufferAllocation(memory);
@@ -1404,10 +1404,10 @@ TEST_F(EngineLifecycleTest, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
 TEST_F(EngineLifecycleTest, HostMemoryIntentsSelectCoherenceForUploadsAndCachingForReadback)
 {
     expectHeadless();
-    auto* const upload = fakeVulkanHandle<VkBuffer>(40);
-    auto* const readback = fakeVulkanHandle<VkBuffer>(41);
-    auto* const uploadMemory = fakeVulkanHandle<VkDeviceMemory>(50);
-    auto* const readbackMemory = fakeVulkanHandle<VkDeviceMemory>(51);
+    auto* const upload = fakeHandle<VkBuffer>(40);
+    auto* const readback = fakeHandle<VkBuffer>(41);
+    auto* const uploadMemory = fakeHandle<VkDeviceMemory>(50);
+    auto* const readbackMemory = fakeHandle<VkDeviceMemory>(51);
     expectBuffer(upload);
     expectBuffer(readback);
     expectBufferAllocation(uploadMemory, 1);
@@ -1432,8 +1432,8 @@ using EngineLifecycleDeathTest = EngineLifecycleTest;
 TEST_F(EngineLifecycleDeathTest, EngineRejectsDestructionBeforeTheLastResourceOwner)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native);
     expectBufferAllocation(memory);
     expectBinding(native, memory);
@@ -1573,8 +1573,8 @@ TEST_F(EngineLifecycleTest, MovedToEngineRejectsEmptyCompletionOperations)
 TEST_F(EngineLifecycleTest, BorrowedServicesRemainStableAcrossEngineMoves)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native);
     expectBufferAllocation(memory);
     expectBinding(native, memory);

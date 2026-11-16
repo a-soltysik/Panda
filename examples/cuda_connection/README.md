@@ -18,6 +18,11 @@ the build detects the local GPU architecture. To configure without a GPU, pass
 NVIDIA GPU. Missing CUDA drivers or devices are reported without failing the
 application. CI builds and analyzes the example without running it.
 
+The example creates its `CudaSession` from the Engine's copied device UUID. The
+session owns its CUDA stream independently and may outlive Engine after all imported
+shared buffers are released; each live shared buffer still requires its originating
+Engine.
+
 The example adds a `StreamSink` to `std::clog` before querying CUDA. The logger
 starts with no sinks, so applications choose where engine logs are written.
 

@@ -21,15 +21,15 @@
 #include <span>
 #include <string>
 
+#include "FakeHandle.hpp"
 #include "PresentationTestSupport.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "VulkanTestSupport.hpp"
 #include "presentation/Presentation.hpp"
 
 namespace
 {
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
@@ -164,7 +164,7 @@ protected:
         -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
     {
         auto& submissions = _submissions.emplace(getDevice(), 0);
-        auto* const timeline = fakeVulkanHandle<VkSemaphore>(2);
+        auto* const timeline = fakeHandle<VkSemaphore>(2);
         EXPECT_CALL(vulkan, vkCreateSemaphore(_, testing::Truly(isTimelineSemaphoreCreateInfo), _, NotNull()))
             .WillOnce([timeline](VkDevice,
                                  const VkSemaphoreCreateInfo* info,
@@ -181,7 +181,7 @@ protected:
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
         EXPECT_CALL(vulkan, vkDestroySemaphore(_, timeline, nullptr));
-        const auto initialized = submissions.initialize(vk::PhysicalDevice {fakeVulkanHandle<VkPhysicalDevice>(1)});
+        const auto initialized = submissions.initialize(vk::PhysicalDevice {fakeHandle<VkPhysicalDevice>(1)});
         if (!initialized)
         {
             return std::unexpected {initialized.error()};
@@ -235,7 +235,7 @@ TEST_F(PresentationSubmissionIntegration, FailedCommandPoolCreationReleasesOnlyT
     expectReleaseEntryPoint();
     EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
         .WillOnce([](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* output) {
-            *output = fakeVulkanHandle<VkCommandPool>(3);
+            *output = fakeHandle<VkCommandPool>(3);
             return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
         });
     EXPECT_CALL(vulkan, vkDestroyCommandPool(_, _, _)).Times(0);

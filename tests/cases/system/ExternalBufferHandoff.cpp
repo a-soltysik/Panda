@@ -135,7 +135,7 @@ void runTaggedHandoffs(Observations& observed)
     {
         GTEST_SKIP() << "External timeline semaphore export is unavailable";
     }
-    auto session = panda::cuda::CudaSession::create(*context);
+    auto session = panda::cuda::CudaSession::create(context->getDeviceInfo().deviceUuid);
     ASSERT_TRUE(session) << session.error().message;
     ASSERT_NO_FATAL_FAILURE(exerciseWithScratch(*context, *session, observed));
 }

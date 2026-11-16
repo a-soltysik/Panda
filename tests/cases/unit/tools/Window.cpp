@@ -17,8 +17,8 @@
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/glfw/GlfwMock.hpp"
 
 namespace
@@ -329,8 +329,8 @@ TEST_F(WindowTest, CreatesBorrowedHppSurfaceThroughTheGlfwAbi)
     expectSessionRelease();
     auto window = Window::create(size, "test");
     ASSERT_TRUE(window);
-    auto* const instance = panda::test::fakeVulkanHandle<VkInstance>(60);
-    auto* const nativeSurface = panda::test::fakeVulkanHandle<VkSurfaceKHR>(61);
+    auto* const instance = panda::test::fakeHandle<VkInstance>(60);
+    auto* const nativeSurface = panda::test::fakeHandle<VkSurfaceKHR>(61);
     EXPECT_CALL(glfw, glfwCreateWindowSurface(instance, getFirst(), nullptr, NotNull()))
         .WillOnce(DoAll(SetArgPointee<3>(nativeSurface), Return(VK_SUCCESS)));
     const auto surface = window->createSurface(vk::Instance {instance});
@@ -347,8 +347,8 @@ TEST_F(WindowTest, SurfaceFailurePreservesNativeErrorAndDoesNotPublishTheFailedO
     expectSessionRelease();
     auto window = Window::create(size, "test");
     ASSERT_TRUE(window);
-    auto* const instance = panda::test::fakeVulkanHandle<VkInstance>(60);
-    auto* const failedOutput = panda::test::fakeVulkanHandle<VkSurfaceKHR>(61);
+    auto* const instance = panda::test::fakeHandle<VkInstance>(60);
+    auto* const failedOutput = panda::test::fakeHandle<VkSurfaceKHR>(61);
     EXPECT_CALL(glfw, glfwCreateWindowSurface(instance, getFirst(), nullptr, NotNull()))
         .WillOnce(DoAll(SetArgPointee<3>(failedOutput), Return(VK_ERROR_SURFACE_LOST_KHR)));
     const auto surface = window->createSurface(vk::Instance {instance});

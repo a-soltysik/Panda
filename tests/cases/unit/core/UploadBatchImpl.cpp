@@ -24,9 +24,9 @@
 #include <span>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/BufferResourceMock.hpp"
 #include "panda/core/MemoryAllocationMock.hpp"
@@ -58,7 +58,7 @@ using panda::detail::BufferResource;
 using panda::detail::MeshResource;
 using panda::detail::TextureResource;
 using panda::detail::UploadBatchImpl;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Ref;
@@ -196,9 +196,9 @@ protected:
     panda::test::ScopedMock<panda::test::MeshResourceMock> meshes;
     panda::test::ScopedMock<panda::test::MeshLayoutMock> layouts;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::unique_ptr<MemoryPool> pool;
     std::unique_ptr<panda::detail::SubmissionQueue> submissions;
     std::unique_ptr<UploadManager> manager;

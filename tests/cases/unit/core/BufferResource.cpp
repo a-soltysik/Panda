@@ -21,8 +21,8 @@
 #include <tuple>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/MemoryAllocationMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"
@@ -34,7 +34,7 @@ namespace
 using panda::core::vulkan::resources::MemoryPool;
 using panda::core::vulkan::resources::MemoryRequest;
 using panda::detail::BufferResource;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Ref;
@@ -115,9 +115,9 @@ protected:
     panda::test::ScopedMock<panda::test::MemoryPoolMock> poolMock;
     panda::test::ScopedMock<panda::test::MemoryAllocationMock> allocationMock;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::array<std::byte, 128> mapped {};
@@ -151,7 +151,7 @@ TEST_F(BufferResourceTest, RejectsNonDeviceMemoryBeforeExternalExport)
 
 TEST_F(BufferResourceTest, PreservesNativeCreationFailureWithoutAdoptingTheOutput)
 {
-    expectBufferCreated(fakeVulkanHandle<VkBuffer>(20), 80, exhausted);
+    expectBufferCreated(fakeHandle<VkBuffer>(20), 80, exhausted);
 
     const auto created = BufferResource::create(device, *pool, validDescription());
 
@@ -161,7 +161,7 @@ TEST_F(BufferResourceTest, PreservesNativeCreationFailureWithoutAdoptingTheOutpu
 
 TEST_F(BufferResourceTest, ReleasesTheNativeBufferWhenAllocationFails)
 {
-    auto* const buffer = fakeVulkanHandle<VkBuffer>(20);
+    auto* const buffer = fakeHandle<VkBuffer>(20);
     expectBufferCreated(buffer);
     expectRequirements(buffer);
     EXPECT_CALL(vulkan, vkDestroyBuffer(deviceHandle, buffer, nullptr));
@@ -177,8 +177,8 @@ TEST_F(BufferResourceTest, ReleasesTheNativeBufferWhenAllocationFails)
 
 TEST_F(BufferResourceTest, DestroysTheBufferBeforeReleasingItsAllocationAfterBindFailure)
 {
-    auto* const buffer = fakeVulkanHandle<VkBuffer>(20);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(21);
+    auto* const buffer = fakeHandle<VkBuffer>(20);
+    auto* const memory = fakeHandle<VkDeviceMemory>(21);
     const auto range = panda::core::vulkan::resources::MemoryRange {.offset = 64, .size = 128};
     expectBufferCreated(buffer);
     expectRequirements(buffer);
@@ -189,8 +189,8 @@ TEST_F(BufferResourceTest, DestroysTheBufferBeforeReleasingItsAllocationAfterBin
     EXPECT_CALL(vulkan, vkBindBufferMemory2(deviceHandle, 1, NotNull()))
         .InSequence(cleanup)
         .WillOnce([](VkDevice, std::uint32_t, const VkBindBufferMemoryInfo* info) {
-            EXPECT_EQ(info->buffer, fakeVulkanHandle<VkBuffer>(20));
-            EXPECT_EQ(info->memory, fakeVulkanHandle<VkDeviceMemory>(21));
+            EXPECT_EQ(info->buffer, fakeHandle<VkBuffer>(20));
+            EXPECT_EQ(info->memory, fakeHandle<VkDeviceMemory>(21));
             EXPECT_EQ(info->memoryOffset, 64);
             return exhausted;
         });
@@ -205,8 +205,8 @@ TEST_F(BufferResourceTest, DestroysTheBufferBeforeReleasingItsAllocationAfterBin
 
 TEST_F(BufferResourceTest, WritesOnlyValidUploadRangesAndPropagatesMappedFlushResults)
 {
-    auto* const buffer = fakeVulkanHandle<VkBuffer>(20);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(21);
+    auto* const buffer = fakeHandle<VkBuffer>(20);
+    auto* const memory = fakeHandle<VkDeviceMemory>(21);
     const auto range = panda::core::vulkan::resources::MemoryRange {.offset = 0, .size = 128};
     expectBufferCreated(buffer);
     expectRequirements(buffer);

@@ -28,8 +28,8 @@
 #include <utility>
 #include <vector>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/BufferResourceMock.hpp"
 #include "panda/core/TextureResourceMock.hpp"
@@ -48,7 +48,7 @@ using panda::core::vulkan::renderer::LightRecord;
 using panda::core::vulkan::renderer::MaterialRecord;
 using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::BufferResource;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::AnyNumber;
 using testing::NotNull;
@@ -94,7 +94,7 @@ protected:
             .Times(AnyNumber())
             .WillRepeatedly(Return(panda::Result<void> {}));
         EXPECT_CALL(buffers, getNative(_)).Times(AnyNumber()).WillRepeatedly([this](const BufferResource&) {
-            return fakeVulkanHandle<VkBuffer>(nextHandle++);
+            return fakeHandle<VkBuffer>(nextHandle++);
         });
         EXPECT_CALL(buffers, writeMapped(_, _, _)).Times(AnyNumber()).WillRepeatedly(Return(panda::Result<void> {}));
     }
@@ -153,10 +153,8 @@ protected:
         EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
             .Times(AnyNumber())
             .WillRepeatedly(Return(panda::Result<void> {}));
-        EXPECT_CALL(textures, getNative(_)).Times(AnyNumber()).WillRepeatedly(Return(fakeVulkanHandle<VkImage>(91)));
-        EXPECT_CALL(textures, getNativeView(_))
-            .Times(AnyNumber())
-            .WillRepeatedly(Return(fakeVulkanHandle<VkImageView>(90)));
+        EXPECT_CALL(textures, getNative(_)).Times(AnyNumber()).WillRepeatedly(Return(fakeHandle<VkImage>(91)));
+        EXPECT_CALL(textures, getNativeView(_)).Times(AnyNumber()).WillRepeatedly(Return(fakeHandle<VkImageView>(90)));
         return panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
     }
 
@@ -189,7 +187,7 @@ protected:
                                    const VkAllocationCallbacks*,
                                    VkDescriptorSetLayout* output) {
                 EXPECT_GT(info->bindingCount, 0U);
-                *output = fakeVulkanHandle<VkDescriptorSetLayout>(nextHandle++);
+                *output = fakeHandle<VkDescriptorSetLayout>(nextHandle++);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
         EXPECT_CALL(vulkan, vkCreatePipelineLayout(_, NotNull(), _, NotNull()))
@@ -199,7 +197,7 @@ protected:
                                    const VkAllocationCallbacks*,
                                    VkPipelineLayout* output) {
                 EXPECT_EQ(info->setLayoutCount, 2U);
-                *output = fakeVulkanHandle<VkPipelineLayout>(nextHandle++);
+                *output = fakeHandle<VkPipelineLayout>(nextHandle++);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
     }
@@ -213,7 +211,7 @@ protected:
                                    const VkAllocationCallbacks*,
                                    VkDescriptorPool* output) {
                 EXPECT_GT(info->maxSets, 0U);
-                *output = fakeVulkanHandle<VkDescriptorPool>(nextHandle++);
+                *output = fakeHandle<VkDescriptorPool>(nextHandle++);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
         EXPECT_CALL(vulkan, vkAllocateDescriptorSets(_, NotNull(), NotNull()))
@@ -221,7 +219,7 @@ protected:
             .WillRepeatedly([this](VkDevice, const VkDescriptorSetAllocateInfo* info, VkDescriptorSet* output) {
                 for (auto& descriptorSet : std::span {output, info->descriptorSetCount})
                 {
-                    descriptorSet = fakeVulkanHandle<VkDescriptorSet>(nextHandle++);
+                    descriptorSet = fakeHandle<VkDescriptorSet>(nextHandle++);
                 }
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
@@ -233,7 +231,7 @@ protected:
             .Times(AnyNumber())
             .WillRepeatedly(
                 [this](VkDevice, const VkSamplerCreateInfo*, const VkAllocationCallbacks*, VkSampler* output) {
-                    *output = fakeVulkanHandle<VkSampler>(nextHandle++);
+                    *output = fakeHandle<VkSampler>(nextHandle++);
                     return static_cast<VkResult>(vk::Result::eSuccess);
                 });
         EXPECT_CALL(vulkan, vkDestroyDescriptorSetLayout(_, _, _)).Times(AnyNumber());
@@ -248,9 +246,9 @@ protected:
     panda::test::ScopedMock<panda::test::BufferResourceMock> buffers;
     panda::test::ScopedMock<panda::test::TextureResourceMock> textures;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::uintptr_t nextHandle {10};
@@ -291,7 +289,7 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
             writes.emplace_back(data.begin(), data.end());
             return panda::Result<void> {};
         });
-    const auto shadowView = vk::ImageView {fakeVulkanHandle<VkImageView>(90)};
+    const auto shadowView = vk::ImageView {fakeHandle<VkImageView>(90)};
     EXPECT_CALL(vulkan, vkUpdateDescriptorSets(deviceHandle, 6, NotNull(), 0, nullptr))
         .WillOnce([shadowView](VkDevice,
                                std::uint32_t writeCount,
@@ -355,7 +353,7 @@ TEST_F(FrameBindingsTest, MaterialBufferGrowthFailureCanBeRetried)
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "buffer growth failed")}}))
         .WillOnce(Return(panda::Result<void> {}));
     auto view = makeView(2);
-    const auto shadowView = vk::ImageView {fakeVulkanHandle<VkImageView>(90)};
+    const auto shadowView = vk::ImageView {fakeHandle<VkImageView>(90)};
 
     const auto failed = bindings->updateFrame(0, view, shadowView);
     const auto retried = bindings->updateFrame(0, view, shadowView);
@@ -548,11 +546,11 @@ TEST_F(FrameBindingsTest, TextureDescriptorPoolGrowthFailureCanBeRetried)
                          const VkDescriptorPoolCreateInfo*,
                          const VkAllocationCallbacks*,
                          VkDescriptorPool* output) {
-            *output = fakeVulkanHandle<VkDescriptorPool>(nextHandle++);
+            *output = fakeHandle<VkDescriptorPool>(nextHandle++);
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
     auto view = makeView(2);
-    const auto shadowView = vk::ImageView {fakeVulkanHandle<VkImageView>(90)};
+    const auto shadowView = vk::ImageView {fakeHandle<VkImageView>(90)};
 
     const auto failed = bindings->updateFrame(0, view, shadowView);
     const auto retried = bindings->updateFrame(0, view, shadowView);
@@ -687,7 +685,7 @@ TEST_F(FrameBindingsTest, PropagatesDescriptorLayoutCreationFailures)
                      const VkDescriptorSetLayoutCreateInfo*,
                      const VkAllocationCallbacks*,
                      VkDescriptorSetLayout* output) {
-            *output = fakeVulkanHandle<VkDescriptorSetLayout>(40);
+            *output = fakeHandle<VkDescriptorSetLayout>(40);
             return static_cast<VkResult>(vk::Result::eSuccess);
         })
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
@@ -729,7 +727,7 @@ TEST_F(FrameBindingsTest, PropagatesSamplerCreationFailures)
     EXPECT_CALL(vulkan, vkCreateSampler(deviceHandle, NotNull(), _, NotNull()))
         .Times(2)
         .WillOnce([](VkDevice, const VkSamplerCreateInfo*, const VkAllocationCallbacks*, VkSampler* output) {
-            *output = fakeVulkanHandle<VkSampler>(50);
+            *output = fakeHandle<VkSampler>(50);
             return static_cast<VkResult>(vk::Result::eSuccess);
         })
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
@@ -761,7 +759,7 @@ TEST_F(FrameBindingsTest, TextureDescriptorAllocationFailureCanBeRetried)
         .WillOnce([this](VkDevice, const VkDescriptorSetAllocateInfo* info, VkDescriptorSet* output) {
             for (auto& descriptorSet : std::span {output, info->descriptorSetCount})
             {
-                descriptorSet = fakeVulkanHandle<VkDescriptorSet>(nextHandle++);
+                descriptorSet = fakeHandle<VkDescriptorSet>(nextHandle++);
             }
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
@@ -925,7 +923,7 @@ TEST_F(FrameBindingsTest, OneSampleColorPassClearsTheSwapchainWithoutResolveAtta
     ASSERT_TRUE(renderer);
     EXPECT_EQ((*renderer)->getSampleCount(), vk::SampleCountFlagBits::e1);
 
-    auto* const swapchainImageView = fakeVulkanHandle<VkImageView>(900);
+    auto* const swapchainImageView = fakeHandle<VkImageView>(900);
     auto colorPassCount = 0;
     EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull()))
         .Times(2)
@@ -946,7 +944,7 @@ TEST_F(FrameBindingsTest, OneSampleColorPassClearsTheSwapchainWithoutResolveAtta
     EXPECT_CALL(vulkan, vkCmdSetScissor(_, _, _, NotNull())).Times(1);
     EXPECT_CALL(vulkan, vkCmdBindDescriptorSets(_)).Times(1);
     EXPECT_CALL(vulkan, vkCmdEndRendering(_)).Times(2);
-    const auto command = vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(901)};
+    const auto command = vk::CommandBuffer {fakeHandle<VkCommandBuffer>(901)};
     const auto view = panda::RenderView {};
 
     (*renderer)->record(command, vk::ImageView {swapchainImageView}, 0, view);
@@ -981,7 +979,7 @@ TEST_F(FrameBindingsTest, RecordsEveryPointFaceWithItsOwnDynamicShadowViewOffset
     EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull())).Times(2);
     EXPECT_CALL(vulkan, vkCmdEndRendering(_)).Times(2);
 
-    (*renderer)->record(vk::CommandBuffer {fakeVulkanHandle<VkCommandBuffer>(902)}, {}, 0, view);
+    (*renderer)->record(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(902)}, {}, 0, view);
 
     ASSERT_EQ(offsets.size(), 8U);
     for (auto index = std::uint32_t {}; index < 7U; ++index)

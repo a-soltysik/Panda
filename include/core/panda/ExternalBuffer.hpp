@@ -5,10 +5,10 @@
 
 #include <cstdint>
 #include <panda/Buffer.hpp>
+#include <panda/DeviceUuid.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalMemoryHandle.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
-#include <panda/VulkanDeviceUuid.hpp>
 
 namespace panda
 {
@@ -49,7 +49,7 @@ public:
     /// @brief Returns the dedicated allocation size required by external import.
     [[nodiscard]] auto getAllocationSize() const noexcept -> std::uint64_t;
     /// @brief Returns the identity of the Vulkan device that owns this allocation.
-    [[nodiscard]] auto getDeviceUuid() const noexcept -> const VulkanDeviceUuid&;
+    [[nodiscard]] auto getDeviceUuid() const noexcept -> const DeviceUuid&;
     /// @brief Reports whether this object owns a buffer and valid exported handle.
     [[nodiscard]] auto isValid() const noexcept -> bool;
 
@@ -60,6 +60,6 @@ private:
     ExternalMemoryHandle _handle;
     ExternalSemaphoreHandle _semaphoreHandle;
     std::uint64_t _allocationSize {0};
-    VulkanDeviceUuid _deviceUuid {};
+    DeviceUuid _deviceUuid {};
 };
 }

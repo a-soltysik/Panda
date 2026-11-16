@@ -4,16 +4,15 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <array>
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <panda/DeviceUuid.hpp>
 #include <panda/Error.hpp>
 #include <panda/cuda/Cuda.hpp>
 #include <span>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "external/cuda/CudaRuntimeMock.hpp"
 
@@ -22,14 +21,7 @@ namespace
 
 using panda::cuda::detail::NativeAvailability;
 using panda::cuda::detail::NativeInteropStatus;
-
-template <typename Handle>
-auto fakeHandle(std::max_align_t& token) -> Handle
-{
-    // The opaque CUDA handle is only compared and passed to a mock, never dereferenced.
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    return reinterpret_cast<Handle>(&token);
-}
+using panda::test::fakeHandle;
 
 class CudaAdapterTest : public testing::Test
 {
@@ -116,15 +108,13 @@ TEST_F(CudaAdapterTest, MapsUnexpectedRuntimeFailureToPandaError)
 
 TEST_F(CudaAdapterTest, MatchesUuidBeforeCreatingSession)
 {
-    const auto uuid =
-        std::array<std::uint8_t,
-                   16> {0x85, 0x1d, 0x8e, 0x83, 0x2b, 0xf3, 0xf1, 0xd8, 0xda, 0xc6, 0x36, 0xe2, 0x78, 0xaf, 0xbd, 0xcb};
+    static constexpr auto uuid = panda::
+        DeviceUuid {0x85, 0x1d, 0x8e, 0x83, 0x2b, 0xf3, 0xf1, 0xd8, 0xda, 0xc6, 0x36, 0xe2, 0x78, 0xaf, 0xbd, 0xcb};
     auto firstProperties = cudaDeviceProp {};
     firstProperties.uuid.bytes[0] = 9;
     auto matchingProperties = cudaDeviceProp {};
     std::memcpy(std::span {matchingProperties.uuid.bytes}.data(), uuid.data(), uuid.size());
-    std::max_align_t streamToken {};
-    auto* const stream = fakeHandle<cudaStream_t>(streamToken);
+    auto* const stream = fakeHandle<cudaStream_t>(1);
 
     EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
         .WillOnce(testing::DoAll(testing::SetArgPointee<0>(2), testing::Return(cudaSuccess)));
@@ -145,8 +135,8 @@ TEST_F(CudaAdapterTest, MatchesUuidBeforeCreatingSession)
 
 TEST_F(CudaAdapterTest, RejectsWhenNoCudaDeviceMatchesUuid)
 {
-    const auto uuid = std::array<std::uint8_t, 16> {1};
-    const auto properties = cudaDeviceProp {};
+    static constexpr auto uuid = panda::DeviceUuid {1};
+    static constexpr auto properties = cudaDeviceProp {};
 
     EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
         .WillOnce(testing::DoAll(testing::SetArgPointee<0>(1), testing::Return(cudaSuccess)));
@@ -160,18 +150,13 @@ TEST_F(CudaAdapterTest, RejectsWhenNoCudaDeviceMatchesUuid)
 
 TEST_F(CudaAdapterTest, ImportsDedicatedExternalAllocationAndMapsLogicalRange)
 {
-    const auto uuid = std::array<std::uint8_t, 16> {1, 2, 3};
+    static constexpr auto uuid = panda::DeviceUuid {1, 2, 3};
     auto properties = cudaDeviceProp {};
-    const auto deviceUuid = std::span {properties.uuid.bytes};
-    std::ranges::copy(uuid, deviceUuid.begin());
-    std::max_align_t streamToken {};
-    std::max_align_t memoryToken {};
-    std::max_align_t pointerToken {};
-    auto* const stream = fakeHandle<cudaStream_t>(streamToken);
-    auto* const cudaMemory = fakeHandle<cudaExternalMemory_t>(memoryToken);
+    std::memcpy(std::span {properties.uuid.bytes}.data(), uuid.data(), uuid.size());
+    auto* const stream = fakeHandle<cudaStream_t>(2);
+    auto* const cudaMemory = fakeHandle<cudaExternalMemory_t>(3);
     auto* const externalMemory = cudaMemory;
-    const auto pointerBytes = std::as_writable_bytes(std::span {&pointerToken, std::size_t {1}});
-    auto* const devicePointer = pointerBytes.data();
+    auto* const devicePointer = fakeHandle<void*>(4);
 #ifdef _WIN32
     constexpr auto nativeHandleType = cudaExternalMemoryHandleTypeOpaqueWin32;
 #else
@@ -219,20 +204,18 @@ TEST_F(CudaAdapterTest, ImportsDedicatedExternalAllocationAndMapsLogicalRange)
 
 TEST_F(CudaAdapterTest, ImportsOpaquePlatformHandleAsCudaTimelineSemaphore)
 {
-    const auto uuid = std::array<std::uint8_t, 16> {1, 2, 3};
+    static constexpr auto uuid = panda::DeviceUuid {1, 2, 3};
     auto properties = cudaDeviceProp {};
-    std::ranges::copy(uuid, std::span {properties.uuid.bytes}.begin());
-    std::max_align_t streamToken {};
-    std::max_align_t semaphoreToken {};
-    auto* const stream = fakeHandle<cudaStream_t>(streamToken);
-    auto* const cudaSemaphore = fakeHandle<cudaExternalSemaphore_t>(semaphoreToken);
+    std::memcpy(std::span {properties.uuid.bytes}.data(), uuid.data(), uuid.size());
+    auto* const stream = fakeHandle<cudaStream_t>(5);
+    auto* const cudaSemaphore = fakeHandle<cudaExternalSemaphore_t>(6);
     auto* const semaphore = cudaSemaphore;
 #ifdef _WIN32
-    constexpr auto cudaHandleType = cudaExternalSemaphoreHandleTypeTimelineSemaphoreWin32;
+    static constexpr auto cudaHandleType = cudaExternalSemaphoreHandleTypeTimelineSemaphoreWin32;
 #else
-    constexpr auto cudaHandleType = cudaExternalSemaphoreHandleTypeTimelineSemaphoreFd;
+    static constexpr auto cudaHandleType = cudaExternalSemaphoreHandleTypeTimelineSemaphoreFd;
 #endif
-    constexpr auto handle = std::intptr_t {7};
+    static constexpr auto handle = std::intptr_t {7};
 
     EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))
         .WillOnce(testing::DoAll(testing::SetArgPointee<0>(1), testing::Return(cudaSuccess)));
@@ -272,13 +255,11 @@ TEST_F(CudaAdapterTest, ImportsOpaquePlatformHandleAsCudaTimelineSemaphore)
 
 TEST_F(CudaAdapterTest, QueuesTimelineSemaphoreWaitAndSignalOnTheSessionStream)
 {
-    const auto uuid = std::array<std::uint8_t, 16> {1, 2, 3};
+    static constexpr auto uuid = panda::DeviceUuid {1, 2, 3};
     auto properties = cudaDeviceProp {};
-    std::ranges::copy(uuid, std::span {properties.uuid.bytes}.begin());
-    std::max_align_t streamToken {};
-    std::max_align_t semaphoreToken {};
-    auto* const stream = fakeHandle<cudaStream_t>(streamToken);
-    auto* const cudaSemaphore = fakeHandle<cudaExternalSemaphore_t>(semaphoreToken);
+    std::memcpy(std::span {properties.uuid.bytes}.data(), uuid.data(), uuid.size());
+    auto* const stream = fakeHandle<cudaStream_t>(7);
+    auto* const cudaSemaphore = fakeHandle<cudaExternalSemaphore_t>(8);
     auto* const semaphore = cudaSemaphore;
 
     EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull()))

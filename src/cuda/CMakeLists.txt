@@ -3,6 +3,7 @@ set_target_properties(panda_cuda_adapter PROPERTIES
     FOLDER "Panda/Libraries"
     CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
     UNITY_BUILD "${PANDA_ENABLE_UNITY}")
+target_include_directories(panda_cuda_adapter PRIVATE "${PROJECT_SOURCE_DIR}/include/core")
 target_link_libraries(panda_cuda_adapter PRIVATE CUDA::cudart_static)
 panda_configure_target(panda_cuda_adapter)
 

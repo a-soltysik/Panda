@@ -33,8 +33,8 @@
 #include <utility>
 #include <vector>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
@@ -42,7 +42,7 @@
 
 namespace
 {
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
@@ -384,34 +384,34 @@ protected:
         EXPECT_CALL(vulkan, vkGetDeviceQueue(device, _, 0, NotNull()))
             .Times(2)
             .WillRepeatedly([](VkDevice, std::uint32_t, std::uint32_t, VkQueue* output) {
-                *output = fakeVulkanHandle<VkQueue>(5);
+                *output = fakeHandle<VkQueue>(5);
             });
         EXPECT_CALL(vulkan, vkCreateSemaphore(device, NotNull(), nullptr, NotNull()))
             .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(10)), Return(success))})
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkSemaphore>(10)), Return(success))})
             .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(11)), Return(success))})
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkSemaphore>(11)), Return(success))})
             .WillOnce(testing::Action<decltype(vkCreateSemaphore)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkSemaphore>(12)), Return(success))});
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkSemaphore>(12)), Return(success))});
         EXPECT_CALL(vulkan, vkCreateCommandPool(device, NotNull(), nullptr, NotNull()))
             .WillOnce(testing::Action<decltype(vkCreateCommandPool)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(20)), Return(success))})
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkCommandPool>(20)), Return(success))})
             .WillOnce(testing::Action<decltype(vkCreateCommandPool)> {
-                testing::DoAll(testing::SetArgPointee<3>(fakeVulkanHandle<VkCommandPool>(21)), Return(success))});
+                testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkCommandPool>(21)), Return(success))});
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(device, NotNull(), NotNull()))
             .WillOnce(testing::Action<decltype(vkAllocateCommandBuffers)> {
-                testing::DoAll(testing::SetArgPointee<2>(fakeVulkanHandle<VkCommandBuffer>(30)), Return(success))})
+                testing::DoAll(testing::SetArgPointee<2>(fakeHandle<VkCommandBuffer>(30)), Return(success))})
             .WillOnce(testing::Action<decltype(vkAllocateCommandBuffers)> {
-                testing::DoAll(testing::SetArgPointee<2>(fakeVulkanHandle<VkCommandBuffer>(31)), Return(success))});
+                testing::DoAll(testing::SetArgPointee<2>(fakeHandle<VkCommandBuffer>(31)), Return(success))});
     }
 
     void expectFramesDestroyed()
     {
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeVulkanHandle<VkSemaphore>(12), nullptr));
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, fakeVulkanHandle<VkCommandPool>(21), nullptr));
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeVulkanHandle<VkSemaphore>(11), nullptr));
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, fakeVulkanHandle<VkCommandPool>(20), nullptr));
-        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeVulkanHandle<VkSemaphore>(10), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeHandle<VkSemaphore>(12), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, fakeHandle<VkCommandPool>(21), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeHandle<VkSemaphore>(11), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, fakeHandle<VkCommandPool>(20), nullptr));
+        frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeHandle<VkSemaphore>(10), nullptr));
     }
 
     void expectWindowed(bool separateQueues = false)
@@ -486,16 +486,16 @@ protected:
     void expectUploadClock(vk::Result result = vk::Result::eSuccess)
     {
         EXPECT_CALL(vulkan, vkGetDeviceQueue(device, 0, 0, NotNull()))
-            .WillOnce(testing::SetArgPointee<3>(fakeVulkanHandle<VkQueue>(5)));
+            .WillOnce(testing::SetArgPointee<3>(fakeHandle<VkQueue>(5)));
         EXPECT_CALL(vulkan, vkCreateSemaphore(device, NotNull(), nullptr, NotNull()))
             .WillOnce(
                 [result](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* output) {
-                    *output = fakeVulkanHandle<VkSemaphore>(10);
+                    *output = fakeHandle<VkSemaphore>(10);
                     return static_cast<VkResult>(result);
                 });
         if (result == vk::Result::eSuccess)
         {
-            frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeVulkanHandle<VkSemaphore>(10), nullptr));
+            frameCleanup += EXPECT_CALL(vulkan, vkDestroySemaphore(device, fakeHandle<VkSemaphore>(10), nullptr));
         }
     }
 
@@ -508,7 +508,7 @@ protected:
         const auto queryPoolCreationOrder = testing::Sequence {};
         for (auto index = std::uint64_t {}; index < 4; ++index)
         {
-            auto* const queryPool = fakeVulkanHandle<VkQueryPool>(70 + index);
+            auto* const queryPool = fakeHandle<VkQueryPool>(70 + index);
             EXPECT_CALL(vulkan, vkCreateQueryPool(device, NotNull(), nullptr, NotNull()))
                 .InSequence(queryPoolCreationOrder)
                 .WillOnce([queryPool](VkDevice,
@@ -795,10 +795,10 @@ protected:
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::SwapchainGenerationMock> generations;
     testing::StrictMock<panda::test::WindowSurfaceMock> window;
-    VkInstance instance {fakeVulkanHandle<VkInstance>(1)};
-    VkPhysicalDevice physical {fakeVulkanHandle<VkPhysicalDevice>(2)};
-    VkDevice device {fakeVulkanHandle<VkDevice>(3)};
-    VkSurfaceKHR surface {fakeVulkanHandle<VkSurfaceKHR>(4)};
+    VkInstance instance {fakeHandle<VkInstance>(1)};
+    VkPhysicalDevice physical {fakeHandle<VkPhysicalDevice>(2)};
+    VkDevice device {fakeHandle<VkDevice>(3)};
+    VkSurfaceKHR surface {fakeHandle<VkSurfaceKHR>(4)};
     testing::ExpectationSet frameCleanup;
     testing::ExpectationSet bufferCleanup;
     testing::ExpectationSet imageCleanup;
@@ -947,10 +947,10 @@ TEST_F(ContextResourcesIntegration, CreatesIndexedAndNonIndexedMeshesWithSharedS
         static_cast<VkBufferUsageFlags>(vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer);
     constexpr auto indexBufferUsage =
         static_cast<VkBufferUsageFlags>(vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer);
-    auto* const indexedVertices = fakeVulkanHandle<VkBuffer>(40);
-    auto* const indices = fakeVulkanHandle<VkBuffer>(41);
-    auto* const nonIndexedVertices = fakeVulkanHandle<VkBuffer>(42);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const indexedVertices = fakeHandle<VkBuffer>(40);
+    auto* const indices = fakeHandle<VkBuffer>(41);
+    auto* const nonIndexedVertices = fakeHandle<VkBuffer>(42);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(indexedVertices, 36, false, {}, vertexBufferUsage);
     expectBuffer(indices, 6, false, {}, indexBufferUsage);
     expectBuffer(nonIndexedVertices, 32, false, {}, vertexBufferUsage);
@@ -994,9 +994,9 @@ TEST_F(ContextResourcesIntegration, CreatesIndexedAndNonIndexedMeshesWithSharedS
 TEST_F(ContextResourcesIntegration, CreatesAndValidatesSixteenBitStandardGeometry)
 {
     expectHeadless();
-    auto* const vertices = fakeVulkanHandle<VkBuffer>(40);
-    auto* const indices = fakeVulkanHandle<VkBuffer>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const vertices = fakeHandle<VkBuffer>(40);
+    auto* const indices = fakeHandle<VkBuffer>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectGeometryMesh(vertices, memory, 192, indices, 6);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
@@ -1026,9 +1026,9 @@ TEST_F(ContextResourcesIntegration, CreatesAndValidatesSixteenBitStandardGeometr
 TEST_F(ContextResourcesIntegration, CreatesThirtyTwoBitStandardGeometryMesh)
 {
     expectHeadless();
-    auto* const vertices = fakeVulkanHandle<VkBuffer>(40);
-    auto* const indices = fakeVulkanHandle<VkBuffer>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const vertices = fakeHandle<VkBuffer>(40);
+    auto* const indices = fakeHandle<VkBuffer>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectGeometryMesh(vertices, memory, 192, indices, 12);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
@@ -1045,8 +1045,8 @@ TEST_F(ContextResourcesIntegration, CreatesThirtyTwoBitStandardGeometryMesh)
 TEST_F(ContextResourcesIntegration, CreatesNonIndexedStandardGeometryMesh)
 {
     expectHeadless();
-    auto* const vertices = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const vertices = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectGeometryMesh(vertices, memory, 64);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
@@ -1090,9 +1090,9 @@ TEST_F(ContextResourcesIntegration, SharedTexturesBindAndReleaseTheOptimalImage)
         .format = vk::Format::eR8G8B8A8Unorm,
         .usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst
     };
-    auto* const image = fakeVulkanHandle<VkImage>(40);
-    auto* const view = fakeVulkanHandle<VkImageView>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const image = fakeHandle<VkImage>(40);
+    auto* const view = fakeHandle<VkImageView>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectTexture(image, description);
     expectTextureViewCleanup(image, view);
     expectTextureAllocation(memory, image);
@@ -1123,7 +1123,7 @@ TEST_F(ContextResourcesIntegration, FailedImageCreationDoesNotAdoptItsUndefinedO
         .format = vk::Format::eR8G8B8A8Unorm,
         .usage = vk::ImageUsageFlagBits::eSampled
     };
-    auto* const output = fakeVulkanHandle<VkImage>(40);
+    auto* const output = fakeHandle<VkImage>(40);
     EXPECT_CALL(vulkan, vkCreateImage(device, NotNull(), nullptr, NotNull()))
         .WillOnce([output](VkDevice, const VkImageCreateInfo*, const VkAllocationCallbacks*, VkImage* image) {
             *image = output;
@@ -1146,8 +1146,8 @@ TEST_F(ContextResourcesIntegration, FailedTextureAllocationDestroysTheUnboundIma
         .format = vk::Format::eR8G8B8A8Unorm,
         .usage = vk::ImageUsageFlagBits::eSampled
     };
-    auto* const image = fakeVulkanHandle<VkImage>(40);
-    auto* const output = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const image = fakeHandle<VkImage>(40);
+    auto* const output = fakeHandle<VkDeviceMemory>(50);
     expectTexture(image, description, true);
     expectTextureCleanup(image);
     expectTextureAllocationFailure(output, image);
@@ -1166,8 +1166,8 @@ TEST_F(ContextResourcesIntegration, DedicatedTextureBindingFailureDestroysImageB
         .format = vk::Format::eR8G8B8A8Unorm,
         .usage = vk::ImageUsageFlagBits::eSampled
     };
-    auto* const image = fakeVulkanHandle<VkImage>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const image = fakeHandle<VkImage>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectTexture(image, description, true);
     expectTextureCleanup(image);
     expectTextureAllocation(memory, image, 0, true);
@@ -1184,9 +1184,9 @@ TEST_F(ContextResourcesIntegration, DedicatedTextureBindingFailureDestroysImageB
 TEST_F(ContextResourcesIntegration, SharedBuffersRetainNativeStateAndReuseReleasedRanges)
 {
     expectHeadless();
-    auto* const first = fakeVulkanHandle<VkBuffer>(40);
-    auto* const second = fakeVulkanHandle<VkBuffer>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const first = fakeHandle<VkBuffer>(40);
+    auto* const second = fakeHandle<VkBuffer>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(first);
     expectBuffer(second);
     expectBufferAllocation(memory);
@@ -1212,8 +1212,8 @@ TEST_F(ContextResourcesIntegration, SharedBuffersRetainNativeStateAndReuseReleas
 TEST_F(ContextResourcesIntegration, LiveBuffersRemainBoundAcrossEngineAndHandleMoves)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native);
     expectBufferAllocation(memory);
     expectBinding(native, memory);
@@ -1238,7 +1238,7 @@ TEST_F(ContextResourcesIntegration, FailedBufferCreationDoesNotAdoptUndefinedNat
     expectParentsDestroyed(true, false);
     EXPECT_CALL(vulkan, vkCreateBuffer(device, NotNull(), nullptr, NotNull()))
         .WillOnce([](VkDevice, const VkBufferCreateInfo*, const VkAllocationCallbacks*, VkBuffer* output) {
-            *output = fakeVulkanHandle<VkBuffer>(40);
+            *output = fakeHandle<VkBuffer>(40);
             return exhausted;
         });
     const auto context = panda::Engine::create();
@@ -1253,9 +1253,9 @@ TEST_F(ContextResourcesIntegration, FailedBufferCreationDoesNotAdoptUndefinedNat
 TEST_F(ContextResourcesIntegration, FailedBindingReleasesTheRangeAndPreservesTheNativeError)
 {
     expectHeadless();
-    auto* const first = fakeVulkanHandle<VkBuffer>(40);
-    auto* const second = fakeVulkanHandle<VkBuffer>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const first = fakeHandle<VkBuffer>(40);
+    auto* const second = fakeHandle<VkBuffer>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(first);
     expectBuffer(second);
     expectBufferAllocation(memory);
@@ -1277,8 +1277,8 @@ TEST_F(ContextResourcesIntegration, FailedBindingReleasesTheRangeAndPreservesThe
 TEST_F(ContextResourcesIntegration, RequiredDedicatedBufferIsDestroyedBeforeItsExactAllocation)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native, 65, true);
     expectBufferAllocation(memory, 0, true);
     expectBinding(native, memory);
@@ -1295,8 +1295,8 @@ TEST_F(ContextResourcesIntegration, RequiredDedicatedBufferIsDestroyedBeforeItsE
 TEST_F(ContextResourcesIntegration, LastSharedOwnerControlsNativeDestruction)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     auto lastRelease = testing::MockFunction<void()> {};
     const auto ownerReleased = testing::Expectation {EXPECT_CALL(lastRelease, Call())};
     expectBuffer(native, 65, true, testing::ExpectationSet {ownerReleased});
@@ -1324,8 +1324,8 @@ TEST_F(ContextResourcesIntegration, LastSharedOwnerControlsNativeDestruction)
 TEST_F(ContextResourcesIntegration, DedicatedBindingFailureDestroysBufferBeforeFreeingItsAllocation)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native, 65, true);
     expectBufferAllocation(memory, 0, true);
     expectBinding(native, memory, 0, exhausted);
@@ -1343,7 +1343,7 @@ TEST_F(ContextResourcesIntegration, DedicatedBindingFailureDestroysBufferBeforeF
 TEST_F(ContextResourcesIntegration, AllocationFailureDestroysTheUnboundBuffer)
 {
     expectHeadless();
-    expectBuffer(fakeVulkanHandle<VkBuffer>(40));
+    expectBuffer(fakeHandle<VkBuffer>(40));
     EXPECT_CALL(vulkan, vkAllocateMemory(device, NotNull(), nullptr, NotNull()))
         .Times(2)
         .WillRepeatedly(Return(exhausted));
@@ -1359,9 +1359,9 @@ TEST_F(ContextResourcesIntegration, AllocationFailureDestroysTheUnboundBuffer)
 TEST_F(ContextResourcesIntegration, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
 {
     expectHeadless();
-    auto* const first = fakeVulkanHandle<VkBuffer>(40);
-    auto* const second = fakeVulkanHandle<VkBuffer>(41);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const first = fakeHandle<VkBuffer>(40);
+    auto* const second = fakeHandle<VkBuffer>(41);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(first);
     expectBuffer(second);
     expectBufferAllocation(memory);
@@ -1388,10 +1388,10 @@ TEST_F(ContextResourcesIntegration, CopyAndMoveAssignmentReleaseOnlyTheReplacedO
 TEST_F(ContextResourcesIntegration, HostMemoryIntentsSelectCoherenceForUploadsAndCachingForReadback)
 {
     expectHeadless();
-    auto* const upload = fakeVulkanHandle<VkBuffer>(40);
-    auto* const readback = fakeVulkanHandle<VkBuffer>(41);
-    auto* const uploadMemory = fakeVulkanHandle<VkDeviceMemory>(50);
-    auto* const readbackMemory = fakeVulkanHandle<VkDeviceMemory>(51);
+    auto* const upload = fakeHandle<VkBuffer>(40);
+    auto* const readback = fakeHandle<VkBuffer>(41);
+    auto* const uploadMemory = fakeHandle<VkDeviceMemory>(50);
+    auto* const readbackMemory = fakeHandle<VkDeviceMemory>(51);
     expectBuffer(upload);
     expectBuffer(readback);
     expectBufferAllocation(uploadMemory, 1);
@@ -1416,8 +1416,8 @@ using ContextResourcesIntegrationDeathTest = ContextResourcesIntegration;
 TEST_F(ContextResourcesIntegrationDeathTest, EngineRejectsDestructionBeforeTheLastResourceOwner)
 {
     expectHeadless();
-    auto* const native = fakeVulkanHandle<VkBuffer>(40);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(50);
+    auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native);
     expectBufferAllocation(memory);
     expectBinding(native, memory);
@@ -1646,18 +1646,17 @@ TEST_F(ContextResourcesIntegration, HeadlessOffscreenSubmissionProducesPairedTim
         .format = vk::Format::eR8G8B8A8Srgb,
         .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc
     };
-    auto* const image = fakeVulkanHandle<VkImage>(80);
-    auto* const imageView = fakeVulkanHandle<VkImageView>(81);
-    auto* const imageMemory = fakeVulkanHandle<VkDeviceMemory>(82);
+    auto* const image = fakeHandle<VkImage>(80);
+    auto* const imageView = fakeHandle<VkImageView>(81);
+    auto* const imageMemory = fakeHandle<VkDeviceMemory>(82);
     expectTexture(image, imageDescription);
     expectTextureAllocation(imageMemory, image);
     expectTextureBinding(image, imageMemory);
     expectTextureViewCreation(image, imageView, imageDescription);
     expectTextureViewCleanup(image, imageView);
 
-    const auto commandPools = std::array {fakeVulkanHandle<VkCommandPool>(90), fakeVulkanHandle<VkCommandPool>(91)};
-    const auto commandBuffers =
-        std::array {fakeVulkanHandle<VkCommandBuffer>(92), fakeVulkanHandle<VkCommandBuffer>(93)};
+    const auto commandPools = std::array {fakeHandle<VkCommandPool>(90), fakeHandle<VkCommandPool>(91)};
+    const auto commandBuffers = std::array {fakeHandle<VkCommandBuffer>(92), fakeHandle<VkCommandBuffer>(93)};
     const auto commandCreationOrder = testing::Sequence {};
     for (auto index = std::size_t {}; index < commandPools.size(); ++index)
     {
@@ -1684,7 +1683,7 @@ TEST_F(ContextResourcesIntegration, HeadlessOffscreenSubmissionProducesPairedTim
         frameCleanup += EXPECT_CALL(vulkan, vkDestroyCommandPool(device, pool, nullptr));
     }
 
-    auto* const offscreenQueryPool = fakeVulkanHandle<VkQueryPool>(72);
+    auto* const offscreenQueryPool = fakeHandle<VkQueryPool>(72);
     EXPECT_CALL(vulkan, vkResetCommandPool(device, commandPools.front(), 0)).WillOnce(Return(success));
     EXPECT_CALL(vulkan, vkBeginCommandBuffer(commandBuffers.front(), NotNull())).WillOnce(Return(success));
     EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(commandBuffers.front(), NotNull()));
@@ -1694,7 +1693,7 @@ TEST_F(ContextResourcesIntegration, HeadlessOffscreenSubmissionProducesPairedTim
     EXPECT_CALL(vulkan, vkCmdBeginRendering(commandBuffers.front(), NotNull()));
     EXPECT_CALL(vulkan, vkCmdEndRendering(commandBuffers.front()));
     EXPECT_CALL(vulkan, vkEndCommandBuffer(commandBuffers.front())).WillOnce(Return(success));
-    EXPECT_CALL(vulkan, vkQueueSubmit2(fakeVulkanHandle<VkQueue>(5), 1, NotNull(), VK_NULL_HANDLE))
+    EXPECT_CALL(vulkan, vkQueueSubmit2(fakeHandle<VkQueue>(5), 1, NotNull(), VK_NULL_HANDLE))
         .WillOnce([command = commandBuffers.front()](VkQueue, std::uint32_t, const VkSubmitInfo2* info, VkFence) {
             if (info->commandBufferInfoCount != 1U || info->pCommandBufferInfos == nullptr ||
                 info->signalSemaphoreInfoCount != 1U || info->pSignalSemaphoreInfos == nullptr)
@@ -1706,7 +1705,7 @@ TEST_F(ContextResourcesIntegration, HeadlessOffscreenSubmissionProducesPairedTim
             EXPECT_EQ(info->pSignalSemaphoreInfos->value, 1U);
             return success;
         });
-    EXPECT_CALL(vulkan, vkGetSemaphoreCounterValue(device, fakeVulkanHandle<VkSemaphore>(10), NotNull()))
+    EXPECT_CALL(vulkan, vkGetSemaphoreCounterValue(device, fakeHandle<VkSemaphore>(10), NotNull()))
         .WillOnce([](VkDevice, VkSemaphore, std::uint64_t* value) {
             *value = 1;
             return success;

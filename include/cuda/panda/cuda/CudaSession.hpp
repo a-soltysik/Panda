@@ -1,14 +1,10 @@
 #pragma once
 
 #include <memory>
+#include <panda/DeviceUuid.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
-
-namespace panda
-{
-class Engine;
-}
 
 namespace panda::cuda
 {
@@ -17,14 +13,16 @@ namespace detail
 class CudaSessionState;
 }
 
-/// @brief Move-only CUDA session matched to one Engine's selected Vulkan device.
-/// The Engine outlives the session and every shared buffer created from it.
+/// @brief Move-only CUDA session matched to a generic device identity.
+/// The session owns a copied UUID and CUDA stream, independently of Engine. The
+/// originating Engine must outlive every imported SharedCudaBuffer and its copies.
 class CudaSession final
 {
 public:
-    /// @brief Matches the selected Vulkan device and creates one non-blocking stream.
+    /// @brief Copies a device UUID, matches the CUDA device and creates a non-blocking stream.
+    /// @param deviceUuid UUID from Engine::getDeviceInfo().deviceUuid.
     /// @return A session, or an actionable Unsupported/initialization error.
-    [[nodiscard]] static auto create(const panda::Engine& context) -> Result<CudaSession>;
+    [[nodiscard]] static auto create(const DeviceUuid& deviceUuid) -> Result<CudaSession>;
 
     CudaSession(const CudaSession&) = delete;
     auto operator=(const CudaSession&) -> CudaSession& = delete;

@@ -27,17 +27,17 @@
 #include <string>
 #include <thread>
 
+#include "FakeHandle.hpp"
 #include "PresentationTestSupport.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "VulkanTestSupport.hpp"
 #include "panda/core/SubmissionQueueMock.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/FrameExecution.hpp"
 
 namespace
 {
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
@@ -141,10 +141,10 @@ protected:
 
     void expectPerformancePools()
     {
-        const auto queryPools = std::array {fakeVulkanHandle<VkQueryPool>(50),
-                                            fakeVulkanHandle<VkQueryPool>(51),
-                                            fakeVulkanHandle<VkQueryPool>(52),
-                                            fakeVulkanHandle<VkQueryPool>(53)};
+        const auto queryPools = std::array {fakeHandle<VkQueryPool>(50),
+                                            fakeHandle<VkQueryPool>(51),
+                                            fakeHandle<VkQueryPool>(52),
+                                            fakeHandle<VkQueryPool>(53)};
         const auto expectPoolCreation = [this](VkQueryPool queryPool) {
             EXPECT_CALL(vulkan, vkCreateQueryPool(_, NotNull(), nullptr, NotNull()))
                 .WillOnce([queryPool](VkDevice,
@@ -172,7 +172,7 @@ protected:
 
     void expectSampledCommandRecording(Sequence& flow)
     {
-        auto* const pool = fakeVulkanHandle<VkQueryPool>(50);
+        auto* const pool = fakeHandle<VkQueryPool>(50);
         EXPECT_CALL(vulkan, vkResetCommandPool(_, _, _))
             .InSequence(flow)
             .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
@@ -216,7 +216,7 @@ protected:
     void expectCompletedSampleReadback()
     {
         EXPECT_CALL(submissions, poll(_)).WillOnce(Return(panda::Result<bool> {true}));
-        auto* const pool = fakeVulkanHandle<VkQueryPool>(50);
+        auto* const pool = fakeHandle<VkQueryPool>(50);
         EXPECT_CALL(vulkan,
                     vkGetQueryPoolResults(_,
                                           pool,
@@ -355,7 +355,7 @@ TEST_F(PresentationTest, FrameExecutionRecordsPlainFrameOutputWithoutWindowServi
 {
     expectNativeFrameResources(0);
     expectNativeResourceDestruction({});
-    const auto imageView = vk::ImageView {fakeVulkanHandle<VkImageView>(900)};
+    const auto imageView = vk::ImageView {fakeHandle<VkImageView>(900)};
     EXPECT_CALL(vulkan, vkResetCommandPool(_, _, _)).WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
     EXPECT_CALL(vulkan, vkBeginCommandBuffer(_, NotNull()))
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
@@ -392,12 +392,12 @@ TEST_F(PresentationTest, FrameExecutionPropagatesCommandBufferAllocationFailure)
 {
     EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
         .WillOnce([](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* output) {
-            *output = fakeVulkanHandle<VkCommandPool>(901);
+            *output = fakeHandle<VkCommandPool>(901);
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
     EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull()))
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
-    EXPECT_CALL(vulkan, vkDestroyCommandPool(_, fakeVulkanHandle<VkCommandPool>(901), _));
+    EXPECT_CALL(vulkan, vkDestroyCommandPool(_, fakeHandle<VkCommandPool>(901), _));
 
     const auto execution = createFrameExecution();
 
@@ -583,7 +583,7 @@ TEST_F(PresentationTest, PropagatesAcquireSemaphoreInitializationFailure)
     expectQueueLookup();
     expectReleaseEntryPoint();
     expectNativeCommandResources();
-    auto* const semaphore = fakeVulkanHandle<VkSemaphore>(1001);
+    auto* const semaphore = fakeHandle<VkSemaphore>(1001);
     EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
         .Times(2)
         .WillOnce([semaphore](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* out) {
@@ -608,7 +608,7 @@ TEST_F(PresentationTest, FailedCommandPoolCreationKeepsBorrowedSubmissionService
     expectReleaseEntryPoint();
     EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
         .WillOnce([](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* output) {
-            *output = fakeVulkanHandle<VkCommandPool>(3);
+            *output = fakeHandle<VkCommandPool>(3);
             return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
         });
     EXPECT_CALL(vulkan, vkDestroyCommandPool(_, _, _)).Times(0);
@@ -854,7 +854,7 @@ TEST_F(PresentationTest, PresentRecoverySurvivesProducerAndReplacementFailures)
     EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), _, NotNull()))
         .InSequence(flow)
         .WillOnce([](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* semaphore) {
-            *semaphore = fakeVulkanHandle<VkSemaphore>(1000);
+            *semaphore = fakeHandle<VkSemaphore>(1000);
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
     expectImageRelease(flow);

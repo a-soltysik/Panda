@@ -17,6 +17,7 @@
 #include <string_view>
 #include <vector>
 
+#include "FakeHandle.hpp"
 #include "LogCapture.hpp"
 #include "ScopedMock.hpp"
 #include "VulkanTestSupport.hpp"
@@ -26,7 +27,7 @@
 
 namespace
 {
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using panda::test::genericVulkanProc;
 using testing::_;
 using testing::DoAll;
@@ -216,11 +217,11 @@ TEST_F(EngineTest, DoesNotDestroyInstanceWhenCreationFails)
         .WillOnce(DoAll(SetArgPointee<0>(vk::ApiVersion13), Return(static_cast<VkResult>(vk::Result::eSuccess))));
     EXPECT_CALL(vulkan, vkCreateInstance(NotNull(), nullptr, NotNull()))
         .WillOnce([](const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance* output) {
-            *output = fakeVulkanHandle<VkInstance>(1);
+            *output = fakeHandle<VkInstance>(1);
             return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
         });
     EXPECT_CALL(vulkan, vkDestroyInstance(_, _)).Times(0);
-    EXPECT_CALL(vulkan, vkGetInstanceProcAddr(fakeVulkanHandle<VkInstance>(1), _)).Times(0);
+    EXPECT_CALL(vulkan, vkGetInstanceProcAddr(fakeHandle<VkInstance>(1), _)).Times(0);
 
     const auto context = panda::Engine::create();
 
@@ -271,8 +272,8 @@ TEST_F(EngineTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
 {
     auto logRecords = panda::test::LogRecords {};
     auto logSink = panda::test::ProcessSinkRegistration {logRecords};
-    auto* const instance = fakeVulkanHandle<VkInstance>(1);
-    auto* const messenger = fakeVulkanHandle<VkDebugUtilsMessengerEXT>(2);
+    auto* const instance = fakeHandle<VkInstance>(1);
+    auto* const messenger = fakeHandle<VkDebugUtilsMessengerEXT>(2);
     expectValidationPrerequisites(vulkan);
     expectValidationInstanceCreated(vulkan, instance);
     expectValidationMessengerCreated(vulkan, instance, messenger);
@@ -289,8 +290,8 @@ TEST_F(EngineTest, EnablesValidationCallbackWithoutEnvironmentConfiguration)
 
 TEST_F(EngineTest, DoesNotDestroyMessengerWhenCreationFails)
 {
-    auto* const instance = fakeVulkanHandle<VkInstance>(1);
-    auto* const output = fakeVulkanHandle<VkDebugUtilsMessengerEXT>(2);
+    auto* const instance = fakeHandle<VkInstance>(1);
+    auto* const output = fakeHandle<VkDebugUtilsMessengerEXT>(2);
     expectValidationPrerequisites(vulkan);
     expectValidationInstanceCreated(vulkan, instance);
     expectValidationMessengerCreationFailure(vulkan, instance, output);
@@ -303,7 +304,7 @@ TEST_F(EngineTest, DoesNotDestroyMessengerWhenCreationFails)
 
 TEST_F(EngineTest, ReportsMissingDebugMessengerEntryPointBeforeCreation)
 {
-    auto* const instance = fakeVulkanHandle<VkInstance>(1);
+    auto* const instance = fakeHandle<VkInstance>(1);
     expectValidationPrerequisites(vulkan);
     expectValidationInstanceCreated(vulkan, instance);
     EXPECT_CALL(vulkan, vkGetInstanceProcAddr(instance, StrEq("vkCreateDebugUtilsMessengerEXT")))

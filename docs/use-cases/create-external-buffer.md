@@ -92,7 +92,9 @@ RAII owners.
 
 **Device identity.** Engine queries the physical-device UUID once during creation
 and stores its copy in `DeviceInfo`. Every exported buffer carries that same UUID,
-so CUDA matching uses the identity already reported by the Engine.
+so CUDA matching uses the identity already reported by the Engine. `CudaSession`
+copies this UUID and does not retain the Engine; it may remain alive after Engine
+destruction once all imported shared buffers have been released.
 
 **Engine ownership.** The external-buffer manager checks the buffer's memory-pool
 identity before handoff. A buffer from another Engine remains foreign even when both
@@ -108,7 +110,7 @@ that flow requires the timeline semaphore.
 | **Variant&nbsp;1** | Step 1: optional external-memory support is unavailable         | Engine creation succeeds and reports export disabled                                              | Use the application's fallback before requesting a shared buffer              |
 | **Variant&nbsp;2** | Step 1: memory export is available but semaphore export is not  | Buffer creation and memory import remain available, but no timeline handoff value can be produced | Use memory-sharing only; do not submit cross-API work                         |
 | **Error&nbsp;1**   | Step 1: required Engine/device initialization fails             | Return the initialization error                                                                   | No Engine or external buffer is published; choose a compatible runtime/device |
-| **Error&nbsp;2**   | Step 2: no CUDA device matches the Vulkan UUID                  | Return `Unsupported`                                                                              | No CUDA session is published; use the application's fallback                  |
+| **Error&nbsp;2**   | Step 2: no CUDA device matches the Engine device UUID           | Return `Unsupported`                                                                              | No CUDA session is published; use the application's fallback                  |
 | **Error&nbsp;3**   | Step 3: size, usage or memory intent is invalid                 | Return the validation error before native buffer creation                                         | No native resource is published; correct the description                      |
 | **Error&nbsp;4**   | Step 4: requested memory usage or handle cannot be exported     | Return `Unsupported` and release unpublished state                                                | No ExternalBuffer is published; choose a supported usage/device               |
 | **Error&nbsp;5**   | Step 4: timeline semaphore creation or export fails             | Return the Vulkan error and release unpublished resources                                         | No ExternalBuffer is published; inspect the native failure before retrying    |

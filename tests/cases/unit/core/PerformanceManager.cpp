@@ -17,10 +17,10 @@
 #include <panda/PerformanceManager.hpp>
 #include <tuple>
 
+#include "FakeHandle.hpp"
 #include "PerformanceManagerImpl.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SubmissionQueueMock.hpp"
 
@@ -29,7 +29,7 @@ namespace
 using panda::detail::PerformanceManagerImpl;
 using panda::detail::SubmissionQueue;
 using panda::detail::TimestampProperties;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 
@@ -43,9 +43,9 @@ class PerformanceManagerTest : public testing::Test
 {
 protected:
     PerformanceManagerTest()
-        : instance {loader, fakeVulkanHandle<VkInstance>(1)},
-          physicalDevice {instance, fakeVulkanHandle<VkPhysicalDevice>(2)},
-          device {physicalDevice, fakeVulkanHandle<VkDevice>(3)}
+        : instance {loader, fakeHandle<VkInstance>(1)},
+          physicalDevice {instance, fakeHandle<VkPhysicalDevice>(2)},
+          device {physicalDevice, fakeHandle<VkDevice>(3)}
     {
     }
 
@@ -152,11 +152,11 @@ protected:
     vk::raii::PhysicalDevice physicalDevice;
     vk::raii::Device device;
     panda::test::ScopedMock<panda::test::SubmissionQueueMock> submissionQueue;
-    vk::CommandBuffer command {fakeVulkanHandle<VkCommandBuffer>(7)};
-    VkQueryPool pool0 {fakeVulkanHandle<VkQueryPool>(5)};
-    VkQueryPool pool1 {fakeVulkanHandle<VkQueryPool>(6)};
-    VkQueryPool pool2 {fakeVulkanHandle<VkQueryPool>(7)};
-    VkQueryPool pool3 {fakeVulkanHandle<VkQueryPool>(8)};
+    vk::CommandBuffer command {fakeHandle<VkCommandBuffer>(7)};
+    VkQueryPool pool0 {fakeHandle<VkQueryPool>(5)};
+    VkQueryPool pool1 {fakeHandle<VkQueryPool>(6)};
+    VkQueryPool pool2 {fakeHandle<VkQueryPool>(7)};
+    VkQueryPool pool3 {fakeHandle<VkQueryPool>(8)};
 
 private:
     std::optional<SubmissionQueue> _submissions;

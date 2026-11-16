@@ -18,8 +18,8 @@
 #include <utility>
 #include <vector>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "resources/memory/MemoryAllocation.hpp"
 #include "resources/memory/RangeAllocator.hpp"
@@ -28,7 +28,7 @@ namespace
 {
 using panda::core::vulkan::resources::MemoryPool;
 using panda::core::vulkan::resources::MemoryRequest;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Return;
@@ -40,7 +40,7 @@ auto bufferRequest(std::uint64_t size = 64) -> MemoryRequest
 {
     return MemoryRequest {
         .requirements = {.size = size, .alignment = 16, .memoryTypeBits = 1},
-        .resource = {.buffer = vk::Buffer {fakeVulkanHandle<VkBuffer>(20)}},
+        .resource = {.buffer = vk::Buffer {fakeHandle<VkBuffer>(20)}},
         .exportHandleTypes = {},
         .requiredProperties = vk::MemoryPropertyFlagBits::eDeviceLocal,
         .preferredProperties = {}
@@ -58,7 +58,7 @@ void verifyAllocateInfo(const VkMemoryAllocateInfo& info, std::uint64_t size, st
     }
     const auto* resource = static_cast<const VkMemoryDedicatedAllocateInfo*>(info.pNext);
     ASSERT_NE(resource, nullptr);
-    EXPECT_EQ(resource->buffer, fakeVulkanHandle<VkBuffer>(20));
+    EXPECT_EQ(resource->buffer, fakeHandle<VkBuffer>(20));
     EXPECT_EQ(resource->image, VkImage {});
 }
 
@@ -156,9 +156,9 @@ protected:
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::uint64_t heapSize {256 * mebibyte};
     std::uint64_t maximumSize {256 * mebibyte};
     std::uint32_t maximumCount {16};
@@ -172,7 +172,7 @@ TEST_F(MemoryPoolTest, CreatesLazilyAndReusesRangesAfterCoalescing)
 {
     auto pool = MemoryPool::create(physical, device);
     EXPECT_EQ(pool->getStats().allocationCount, 0);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(64 * mebibyte, 0, memory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     auto first = pool->allocate(bufferRequest());
@@ -193,7 +193,7 @@ TEST_F(MemoryPoolTest, CreatesLazilyAndReusesRangesAfterCoalescing)
 TEST_F(MemoryPoolTest, PrefersCoherentHostMemoryAndUsesEightMebibyteBlocks)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(8 * mebibyte, 2, memory);
     expectMapped(memory, 8 * mebibyte);
     auto request = bufferRequest(65);
@@ -209,7 +209,7 @@ TEST_F(MemoryPoolTest, PrefersCoherentHostMemoryAndUsesEightMebibyteBlocks)
 TEST_F(MemoryPoolTest, NoncoherentPaddingCountsAsReservedLiveBytes)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(8 * mebibyte, 1, memory);
     expectMapped(memory, 8 * mebibyte);
     auto request = bufferRequest(65);
@@ -229,15 +229,15 @@ TEST_F(MemoryPoolTest, NoncoherentPaddingCountsAsReservedLiveBytes)
 TEST_F(MemoryPoolTest, SeparatesBuffersAndOptimalImages)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const bufferMemory = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const imageMemory = fakeVulkanHandle<VkDeviceMemory>(5);
+    auto* const bufferMemory = fakeHandle<VkDeviceMemory>(4);
+    auto* const imageMemory = fakeHandle<VkDeviceMemory>(5);
     expectAllocation(64 * mebibyte, 0, bufferMemory);
     expectAllocation(64 * mebibyte, 0, imageMemory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, bufferMemory, nullptr));
     EXPECT_CALL(vulkan, vkFreeMemory(_, imageMemory, nullptr));
     auto buffer = pool->allocate(bufferRequest());
     auto request = bufferRequest();
-    request.resource = vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeVulkanHandle<VkImage>(21)}};
+    request.resource = vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeHandle<VkImage>(21)}};
     auto image = pool->allocate(request);
     ASSERT_TRUE(buffer);
     ASSERT_TRUE(image);
@@ -250,7 +250,7 @@ TEST_F(MemoryPoolTest, HonorsRequiredAndPreferredDedicatedAllocations)
     auto pool = MemoryPool::create(physical, device);
     for (const auto required : {false, true})
     {
-        auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+        auto* const memory = fakeHandle<VkDeviceMemory>(4);
         expectAllocation(64, 0, memory, true);
         EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
         auto request = bufferRequest();
@@ -268,7 +268,7 @@ TEST_F(MemoryPoolTest, HonorsRequiredAndPreferredDedicatedAllocations)
 TEST_F(MemoryPoolTest, RequestsAboveHalfBlockUseExactDedicatedMemory)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(33 * mebibyte, 0, memory, true);
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     auto allocation = pool->allocate(bufferRequest(33 * mebibyte));
@@ -279,8 +279,8 @@ TEST_F(MemoryPoolTest, RequestsAboveHalfBlockUseExactDedicatedMemory)
 TEST_F(MemoryPoolTest, KeepsAtMostOneEmptyOrdinaryBlockPerPool)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const firstMemory = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const secondMemory = fakeVulkanHandle<VkDeviceMemory>(5);
+    auto* const firstMemory = fakeHandle<VkDeviceMemory>(4);
+    auto* const secondMemory = fakeHandle<VkDeviceMemory>(5);
     expectAllocation(64 * mebibyte, 0, firstMemory);
     expectAllocation(64 * mebibyte, 0, secondMemory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, firstMemory, nullptr));
@@ -303,8 +303,8 @@ TEST_F(MemoryPoolTest, KeepsAtMostOneEmptyOrdinaryBlockPerPool)
 TEST_F(MemoryPoolTest, FailedGrowthFallsBackOnceWithoutChangingExistingAllocations)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const original = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const fallback = fakeVulkanHandle<VkDeviceMemory>(5);
+    auto* const original = fakeHandle<VkDeviceMemory>(4);
+    auto* const fallback = fakeHandle<VkDeviceMemory>(5);
     expectAllocation(64 * mebibyte, 0, original);
     EXPECT_CALL(vulkan, vkFreeMemory(_, original, nullptr));
     EXPECT_CALL(vulkan, vkFreeMemory(_, fallback, nullptr));
@@ -327,7 +327,7 @@ TEST_F(MemoryPoolTest, FailedGrowthFallsBackOnceWithoutChangingExistingAllocatio
 TEST_F(MemoryPoolTest, FailedOrdinaryAndDedicatedAttemptsPreserveLiveState)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const original = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const original = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(64 * mebibyte, 0, original);
     EXPECT_CALL(vulkan, vkFreeMemory(_, original, nullptr));
     auto first = pool->allocate(bufferRequest(32 * mebibyte));
@@ -361,13 +361,13 @@ TEST_F(MemoryPoolTest, ChecksAllocationCountBeforeCallingVulkan)
 {
     maximumCount = 1;
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(64 * mebibyte, 0, memory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     auto buffer = pool->allocate(bufferRequest());
     ASSERT_TRUE(buffer);
     auto request = bufferRequest();
-    request.resource = vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeVulkanHandle<VkImage>(21)}};
+    request.resource = vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeHandle<VkImage>(21)}};
     const auto image = pool->allocate(request);
     ASSERT_FALSE(image);
     EXPECT_EQ(image.error().code, panda::ErrorCode::ResourceExhausted);
@@ -377,8 +377,8 @@ TEST_F(MemoryPoolTest, EmptyCacheCanBeReclaimedToRespectAllocationCount)
 {
     maximumCount = 1;
     auto pool = MemoryPool::create(physical, device);
-    auto* const firstMemory = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const secondMemory = fakeVulkanHandle<VkDeviceMemory>(5);
+    auto* const firstMemory = fakeHandle<VkDeviceMemory>(4);
+    auto* const secondMemory = fakeHandle<VkDeviceMemory>(5);
     expectAllocation(64 * mebibyte, 0, firstMemory);
     auto first = pool->allocate(bufferRequest());
     ASSERT_TRUE(first);
@@ -396,7 +396,7 @@ TEST_F(MemoryPoolTest, EmptyCacheCanBeReclaimedToRespectAllocationCount)
         });
     EXPECT_CALL(vulkan, vkFreeMemory(_, secondMemory, nullptr));
     auto request = bufferRequest();
-    request.resource = vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeVulkanHandle<VkImage>(21)}};
+    request.resource = vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeHandle<VkImage>(21)}};
     auto second = pool->allocate(request);
     ASSERT_TRUE(second);
     EXPECT_EQ(pool->getStats().allocationCount, 1);
@@ -406,7 +406,7 @@ TEST_F(MemoryPoolTest, CapsBlockAtHeapAndRejectsGrowthBeyondCommittedBudget)
 {
     heapSize = 1024;
     auto pool = MemoryPool::create(physical, device);
-    auto* const firstMemory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const firstMemory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(1024, 0, firstMemory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, firstMemory, nullptr));
     auto first = pool->allocate(bufferRequest(512));
@@ -422,7 +422,7 @@ TEST_F(MemoryPoolTest, CapsBlockAtHeapAndRejectsGrowthBeyondCommittedBudget)
 TEST_F(MemoryPoolTest, MovingKeepsTheRangeOwnedUntilReset)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(64 * mebibyte, 0, memory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     auto created = pool->allocate(bufferRequest());
@@ -456,7 +456,7 @@ TEST_F(MemoryPoolTest, InvalidAndUnsupportedRequestsDoNotAllocate)
     request.resource = vk::MemoryDedicatedAllocateInfo {};
     EXPECT_FALSE(pool->allocate(request));
     request = bufferRequest();
-    request.resource.image = vk::Image {fakeVulkanHandle<VkImage>(21)};
+    request.resource.image = vk::Image {fakeHandle<VkImage>(21)};
     EXPECT_FALSE(pool->allocate(request));
     request = bufferRequest();
     request.requirements.memoryTypeBits = 0;
@@ -469,7 +469,7 @@ TEST_F(MemoryPoolTest, InvalidAndUnsupportedRequestsDoNotAllocate)
 TEST_F(MemoryPoolTest, DedicatedNoncoherentMappingFlushesTheExactAllocationTail)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(65, 1, memory, true);
     expectMapped(memory, 65);
     auto request = bufferRequest(65);
@@ -493,7 +493,7 @@ TEST_F(MemoryPoolTest, DedicatedNoncoherentMappingFlushesTheExactAllocationTail)
 TEST_F(MemoryPoolTest, MappingFailureFreesTheAttemptAndDoesNotPublishPoolState)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(8 * mebibyte, 2, memory);
     EXPECT_CALL(vulkan, vkMapMemory(_, memory, 0, 8 * mebibyte, 0, NotNull()))
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorMemoryMapFailed)));
@@ -516,8 +516,8 @@ TEST_F(MemoryPoolTest, RemainingHeapBudgetCanFitOneExactDedicatedFallback)
 {
     heapSize = 100 * mebibyte;
     auto pool = MemoryPool::create(physical, device);
-    auto* const original = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const fallback = fakeVulkanHandle<VkDeviceMemory>(5);
+    auto* const original = fakeHandle<VkDeviceMemory>(4);
+    auto* const fallback = fakeHandle<VkDeviceMemory>(5);
     expectAllocation(64 * mebibyte, 0, original);
     EXPECT_CALL(vulkan, vkFreeMemory(_, original, nullptr));
     auto first = pool->allocate(bufferRequest(32 * mebibyte));
@@ -535,8 +535,8 @@ TEST_F(MemoryPoolTest, RemainingHeapBudgetCanFitOneExactDedicatedFallback)
 TEST_F(MemoryPoolTest, FailedLargeMappingCanUseOneSmallerDedicatedMapping)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const original = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const fallback = fakeVulkanHandle<VkDeviceMemory>(5);
+    auto* const original = fakeHandle<VkDeviceMemory>(4);
+    auto* const fallback = fakeHandle<VkDeviceMemory>(5);
     expectAllocation(8 * mebibyte, 2, original);
     EXPECT_CALL(vulkan, vkMapMemory(_, original, 0, 8 * mebibyte, 0, NotNull()))
         .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorMemoryMapFailed)));
@@ -556,7 +556,7 @@ TEST_F(MemoryPoolTest, FailedLargeMappingCanUseOneSmallerDedicatedMapping)
 TEST_F(MemoryPoolTest, MoveAssignmentReleasesThePreviousRangeAndTransfersTheNewOne)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(64 * mebibyte, 0, memory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     auto first = pool->allocate(bufferRequest());
@@ -576,7 +576,7 @@ TEST_F(MemoryPoolTest, MaximumSingleAllocationSizeCapsOrdinaryBlocks)
 {
     maximumSize = 1024;
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(1024, 0, memory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     auto allocation = pool->allocate(bufferRequest());
@@ -590,8 +590,8 @@ TEST_F(MemoryPoolTest, MaximumSingleAllocationSizeCapsOrdinaryBlocks)
 TEST_F(MemoryPoolTest, DifferentMemoryTypesNeverShareOneBlock)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const firstMemory = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const secondMemory = fakeVulkanHandle<VkDeviceMemory>(5);
+    auto* const firstMemory = fakeHandle<VkDeviceMemory>(4);
+    auto* const secondMemory = fakeHandle<VkDeviceMemory>(5);
     expectAllocation(8 * mebibyte, 1, firstMemory);
     expectMapped(firstMemory, 8 * mebibyte, 0);
     expectAllocation(8 * mebibyte, 2, secondMemory);
@@ -611,7 +611,7 @@ TEST_F(MemoryPoolTest, DifferentMemoryTypesNeverShareOneBlock)
 TEST_F(MemoryPoolTest, DedicatedImageAllocationNamesOnlyItsImage)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     EXPECT_CALL(vulkan, vkAllocateMemory(_, NotNull(), nullptr, NotNull()))
         .InSequence(allocationOrder)
         .WillOnce(
@@ -621,7 +621,7 @@ TEST_F(MemoryPoolTest, DedicatedImageAllocationNamesOnlyItsImage)
                 EXPECT_NE(dedicated, nullptr);
                 if (dedicated != nullptr)
                 {
-                    EXPECT_EQ(dedicated->image, fakeVulkanHandle<VkImage>(21));
+                    EXPECT_EQ(dedicated->image, fakeHandle<VkImage>(21));
                     EXPECT_EQ(dedicated->buffer, VkBuffer {});
                 }
                 *output = memory;
@@ -629,7 +629,7 @@ TEST_F(MemoryPoolTest, DedicatedImageAllocationNamesOnlyItsImage)
             });
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     auto request = bufferRequest();
-    request.resource = vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeVulkanHandle<VkImage>(21)}};
+    request.resource = vk::MemoryDedicatedAllocateInfo {.image = vk::Image {fakeHandle<VkImage>(21)}};
     request.dedicated.prefersDedicatedAllocation = vk::True;
     auto allocation = pool->allocate(request);
     ASSERT_TRUE(allocation);
@@ -656,7 +656,7 @@ TEST_F(MemoryPoolTest, EmptyOwnerRejectsMappedOperationsAndResetIsIdempotent)
 TEST_F(MemoryPoolTest, DeviceOnlyOwnerRejectsHostCacheOperations)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(64 * mebibyte, 0, memory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     auto allocation = pool->allocate(bufferRequest());
@@ -672,7 +672,7 @@ TEST_F(MemoryPoolTest, DeviceOnlyOwnerRejectsHostCacheOperations)
 TEST_F(MemoryPoolTest, WrapperRoundsNoncoherentFlushAndPreservesNativeErrors)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(8 * mebibyte, 1, memory);
     expectMapped(memory, 8 * mebibyte);
     auto request = bufferRequest(65);
@@ -701,7 +701,7 @@ TEST_F(MemoryPoolTest, WrapperRoundsNoncoherentFlushAndPreservesNativeErrors)
 TEST_F(MemoryPoolTest, WrapperInvalidationUsesLiveSliceAndPropagatesDeviceLoss)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(8 * mebibyte, 1, memory);
     expectMapped(memory, 8 * mebibyte);
     auto request = bufferRequest(65);
@@ -730,7 +730,7 @@ TEST_F(MemoryPoolTest, WrapperInvalidationUsesLiveSliceAndPropagatesDeviceLoss)
 TEST_F(MemoryPoolTest, CoherentWrapperValidatesRangesWithoutNativeCacheCalls)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(8 * mebibyte, 2, memory);
     expectMapped(memory, 8 * mebibyte);
     auto request = bufferRequest(65);
@@ -749,7 +749,7 @@ TEST_F(MemoryPoolTest, ExplicitPreferenceOutranksTheCoherenceTieBreaker)
     memoryProperties.memoryTypes[1].propertyFlags |=
         static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eHostCached);
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(8 * mebibyte, 1, memory);
     expectMapped(memory, 8 * mebibyte);
     auto request = bufferRequest();
@@ -764,7 +764,7 @@ TEST_F(MemoryPoolTest, EqualPreferenceScoresKeepTheFirstCompatibleType)
 {
     memoryProperties.memoryTypes[1] = memoryProperties.memoryTypes[2];
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(8 * mebibyte, 1, memory);
     expectMapped(memory, 8 * mebibyte);
     auto request = bufferRequest();
@@ -787,7 +787,7 @@ TEST_F(MemoryPoolTest, UnsupportedFeatureCandidatesAreSkippedBeforeRanking)
         memoryProperties.memoryTypes[1].propertyFlags =
             static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eDeviceLocal);
         auto pool = MemoryPool::create(physical, device);
-        auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+        auto* const memory = fakeHandle<VkDeviceMemory>(4);
         expectAllocation(64 * mebibyte, 1, memory);
         EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
         auto request = bufferRequest();
@@ -802,8 +802,8 @@ TEST_F(MemoryPoolTest, HeapBudgetsAreIndependentWhileBothHeapsHaveLiveAllocation
 {
     configureTwoHeaps();
     auto pool = MemoryPool::create(physical, device);
-    auto* const firstMemory = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const secondMemory = fakeVulkanHandle<VkDeviceMemory>(5);
+    auto* const firstMemory = fakeHandle<VkDeviceMemory>(4);
+    auto* const secondMemory = fakeHandle<VkDeviceMemory>(5);
     expectAllocation(1024, 0, firstMemory);
     expectAllocation(2048, 1, secondMemory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, firstMemory, nullptr));
@@ -828,9 +828,9 @@ TEST_F(MemoryPoolTest, CacheReclamationReturnsBytesToTheCorrectHeap)
 {
     configureTwoHeaps();
     auto pool = MemoryPool::create(physical, device);
-    auto* const firstMemory = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const secondMemory = fakeVulkanHandle<VkDeviceMemory>(5);
-    auto* const replacement = fakeVulkanHandle<VkDeviceMemory>(6);
+    auto* const firstMemory = fakeHandle<VkDeviceMemory>(4);
+    auto* const secondMemory = fakeHandle<VkDeviceMemory>(5);
+    auto* const replacement = fakeHandle<VkDeviceMemory>(6);
     expectAllocation(1024, 0, firstMemory);
     expectAllocation(2048, 1, secondMemory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, firstMemory, nullptr));
@@ -859,8 +859,8 @@ TEST_F(MemoryPoolTest, AtomPlacementFailureFreesTheTemporaryBlockBeforeDedicated
 {
     heapSize = 32;
     auto pool = MemoryPool::create(physical, device);
-    auto* const temporary = fakeVulkanHandle<VkDeviceMemory>(4);
-    auto* const fallback = fakeVulkanHandle<VkDeviceMemory>(5);
+    auto* const temporary = fakeHandle<VkDeviceMemory>(4);
+    auto* const fallback = fakeHandle<VkDeviceMemory>(5);
     expectAllocation(32, 1, temporary);
     const auto freed = expectMapped(temporary, 32, 0);
     EXPECT_CALL(vulkan, vkAllocateMemory(_, NotNull(), nullptr, NotNull()))
@@ -891,7 +891,7 @@ using MemoryPoolDeathTest = MemoryPoolTest;
 TEST_F(MemoryPoolDeathTest, RejectsPoolDestructionBeforeAllocationOwners)
 {
     auto pool = MemoryPool::create(physical, device);
-    auto* const memory = fakeVulkanHandle<VkDeviceMemory>(4);
+    auto* const memory = fakeHandle<VkDeviceMemory>(4);
     expectAllocation(64 * mebibyte, 0, memory);
     EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr));
     auto allocation = pool->allocate(bufferRequest());

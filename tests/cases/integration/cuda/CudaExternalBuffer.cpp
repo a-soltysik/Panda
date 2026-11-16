@@ -27,7 +27,7 @@ TEST(CudaExternalBufferIntegration, ImportsPandaOwnedBufferOnce)
     }
     ASSERT_TRUE(context) << context.error().message;
 
-    auto session = panda::cuda::CudaSession::create(*context);
+    auto session = panda::cuda::CudaSession::create(context->getDeviceInfo().deviceUuid);
     if (!session && session.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << session.error().message;

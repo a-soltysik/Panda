@@ -18,8 +18,8 @@
 #include <tuple>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/MemoryAllocationMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"
@@ -30,7 +30,7 @@ namespace
 {
 using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::TextureResource;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Ref;
@@ -172,21 +172,21 @@ protected:
                 return std::uint64_t {9};
             });
         EXPECT_CALL(allocationMock, getMemory(9)).WillRepeatedly([](std::uint64_t) {
-            return vk::DeviceMemory {fakeVulkanHandle<VkDeviceMemory>(30)};
+            return vk::DeviceMemory {fakeHandle<VkDeviceMemory>(30)};
         });
         EXPECT_CALL(allocationMock, getRange(9)).WillRepeatedly([](std::uint64_t) {
             return panda::core::vulkan::resources::MemoryRange {.offset = 32, .size = 128};
         });
-        expectBind(image, fakeVulkanHandle<VkDeviceMemory>(30));
+        expectBind(image, fakeHandle<VkDeviceMemory>(30));
     }
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::MemoryPoolMock> poolMock;
     panda::test::ScopedMock<panda::test::MemoryAllocationMock> allocationMock;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
 };
@@ -306,8 +306,8 @@ TEST_F(TextureResourceTest, RejectsUploadReservationForMultisampledAttachment)
         .format = vk::Format::eR8G8B8A8Unorm,
         .usage = vk::ImageUsageFlagBits::eColorAttachment
     };
-    auto* const image = fakeVulkanHandle<VkImage>(20);
-    auto* const view = fakeVulkanHandle<VkImageView>(21);
+    auto* const image = fakeHandle<VkImage>(20);
+    auto* const view = fakeHandle<VkImageView>(21);
     expectBoundImage(image, desc, vk::SampleCountFlagBits::e4);
     expectView(image, view);
     auto cleanup = testing::Sequence {};
@@ -326,7 +326,7 @@ TEST_F(TextureResourceTest, RejectsUploadReservationForMultisampledAttachment)
 
 TEST_F(TextureResourceTest, PreservesImageCreationFailureWithoutDestroyingItsUndefinedOutput)
 {
-    expectImage(fakeVulkanHandle<VkImage>(20), description(), exhausted);
+    expectImage(fakeHandle<VkImage>(20), description(), exhausted);
 
     const auto created = TextureResource::create(device, *pool, description());
 
@@ -336,7 +336,7 @@ TEST_F(TextureResourceTest, PreservesImageCreationFailureWithoutDestroyingItsUnd
 
 TEST_F(TextureResourceTest, DestroysAnUnboundImageWhenPoolAllocationFails)
 {
-    auto* const image = fakeVulkanHandle<VkImage>(20);
+    auto* const image = fakeHandle<VkImage>(20);
     expectImage(image, description());
     expectRequirements(image);
     EXPECT_CALL(poolMock, allocate(Ref(*pool), _))
@@ -352,8 +352,8 @@ TEST_F(TextureResourceTest, DestroysAnUnboundImageWhenPoolAllocationFails)
 
 TEST_F(TextureResourceTest, DestroysBoundImageBeforeReleasingAllocationWhenViewCreationFails)
 {
-    auto* const image = fakeVulkanHandle<VkImage>(20);
-    auto* const view = fakeVulkanHandle<VkImageView>(21);
+    auto* const image = fakeHandle<VkImage>(20);
+    auto* const view = fakeHandle<VkImageView>(21);
     expectBoundImage(image);
     expectView(image, view, exhausted);
     auto cleanup = testing::Sequence {};
@@ -369,8 +369,8 @@ TEST_F(TextureResourceTest, DestroysBoundImageBeforeReleasingAllocationWhenViewC
 
 TEST_F(TextureResourceTest, OwnsItsViewImageAndAllocationAndTracksBatchReservations)
 {
-    auto* const image = fakeVulkanHandle<VkImage>(20);
-    auto* const view = fakeVulkanHandle<VkImageView>(21);
+    auto* const image = fakeHandle<VkImage>(20);
+    auto* const view = fakeHandle<VkImageView>(21);
     expectBoundImage(image);
     expectView(image, view);
     auto cleanup = testing::Sequence {};

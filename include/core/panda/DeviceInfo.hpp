@@ -4,7 +4,7 @@
 /// Selected Vulkan device and enabled feature diagnostics.
 
 #include <cstdint>
-#include <panda/VulkanDeviceUuid.hpp>
+#include <panda/DeviceUuid.hpp>
 #include <string>
 
 namespace panda
@@ -28,8 +28,8 @@ struct DeviceInfo
     std::string driverInfo;
     /// Driver version as reported by Vulkan; its encoding is vendor-specific.
     std::uint32_t driverVersion {0};
-    /// Stable physical-device identity for compatible external API selection.
-    VulkanDeviceUuid deviceUuid {};
+    /// Stable physical-device UUID used to select a matching external API device.
+    DeviceUuid deviceUuid {};
     /// True when external buffer memory export was enabled for this Engine.
     /// Individual buffer usages are still checked when an external buffer is created.
     bool externalBufferExportEnabled {false};

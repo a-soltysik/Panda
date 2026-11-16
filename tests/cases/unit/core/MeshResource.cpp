@@ -20,8 +20,8 @@
 #include <tuple>
 #include <utility>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/BufferResourceMock.hpp"
 #include "panda/core/MemoryAllocationMock.hpp"
@@ -33,7 +33,7 @@ namespace
 {
 using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::MeshResource;
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using panda::test::MeshLayoutPlan;
 using testing::_;
 using testing::NotNull;
@@ -99,9 +99,9 @@ protected:
     panda::test::ScopedMock<panda::test::BufferResourceMock> buffers;
     panda::test::ScopedMock<panda::test::MeshLayoutMock> layoutMock;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::unique_ptr<MemoryPool> pool;
 };
 }

@@ -28,9 +28,9 @@
 #include <vector>
 #include <vulkan/vulkan_format_traits.hpp>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MeshResource.hpp"
@@ -41,7 +41,7 @@
 
 namespace
 {
-using panda::test::fakeVulkanHandle;
+using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
@@ -164,7 +164,7 @@ protected:
             .WillRepeatedly(
                 [this](VkDevice, const VkBufferCreateInfo* info, const VkAllocationCallbacks*, VkBuffer* output) {
                     ++bufferCreations;
-                    *output = fakeVulkanHandle<VkBuffer>(nextId++);
+                    *output = fakeHandle<VkBuffer>(nextId++);
                     const auto result = bufferCreations == failBufferCreationAt ? exhausted : bufferStatus;
                     if (result == success)
                     {
@@ -207,7 +207,7 @@ protected:
             .Times(testing::AnyNumber())
             .WillRepeatedly(
                 [this](VkDevice, const VkImageCreateInfo* info, const VkAllocationCallbacks*, VkImage* output) {
-                    *output = fakeVulkanHandle<VkImage>(nextId++);
+                    *output = fakeHandle<VkImage>(nextId++);
                     images.emplace(*output,
                                    NativeImage {.extent = info->extent,
                                                 .format = static_cast<vk::Format>(info->format),
@@ -274,7 +274,7 @@ protected:
                 [this](VkDevice, const VkImageViewCreateInfo* info, const VkAllocationCallbacks*, VkImageView* output) {
                     EXPECT_TRUE(images.contains(info->image));
                     EXPECT_EQ(info->viewType, VK_IMAGE_VIEW_TYPE_2D);
-                    auto* const view = fakeVulkanHandle<VkImageView>(nextId++);
+                    auto* const view = fakeHandle<VkImageView>(nextId++);
                     *output = view;
                     imageViews.emplace(view, info->image);
                     return success;
@@ -295,7 +295,7 @@ protected:
                                    const VkMemoryAllocateInfo* info,
                                    const VkAllocationCallbacks*,
                                    VkDeviceMemory* output) {
-                *output = fakeVulkanHandle<VkDeviceMemory>(nextId++);
+                *output = fakeHandle<VkDeviceMemory>(nextId++);
                 memory.emplace(*output, std::vector<std::byte>(static_cast<std::size_t>(info->allocationSize)));
                 return success;
             });
@@ -338,14 +338,14 @@ protected:
                                    const VkAllocationCallbacks*,
                                    VkCommandPool* output) {
                 EXPECT_EQ(info->queueFamilyIndex, 0);
-                *output = fakeVulkanHandle<VkCommandPool>(nextId++);
+                *output = fakeHandle<VkCommandPool>(nextId++);
                 return poolStatus;
             });
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkDevice, const VkCommandBufferAllocateInfo* info, VkCommandBuffer* output) {
                 EXPECT_EQ(info->commandBufferCount, 1);
-                *output = fakeVulkanHandle<VkCommandBuffer>(nextId++);
+                *output = fakeHandle<VkCommandBuffer>(nextId++);
                 return allocationStatus;
             });
         configureCommandRecording();
@@ -450,13 +450,13 @@ protected:
     {
         EXPECT_CALL(vulkan, vkGetDeviceQueue(_, 0, 0, NotNull()))
             .Times(testing::AnyNumber())
-            .WillRepeatedly(testing::SetArgPointee<3>(fakeVulkanHandle<VkQueue>(4)));
+            .WillRepeatedly(testing::SetArgPointee<3>(fakeHandle<VkQueue>(4)));
         EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), nullptr, NotNull()))
             .WillOnce([](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* output) {
-                *output = fakeVulkanHandle<VkSemaphore>(5);
+                *output = fakeHandle<VkSemaphore>(5);
                 return success;
             });
-        EXPECT_CALL(vulkan, vkDestroySemaphore(_, fakeVulkanHandle<VkSemaphore>(5), nullptr));
+        EXPECT_CALL(vulkan, vkDestroySemaphore(_, fakeHandle<VkSemaphore>(5), nullptr));
         configureSubmissionResults();
     }
 
@@ -534,9 +534,9 @@ protected:
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeVulkanHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeVulkanHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeVulkanHandle<VkDevice>(3)};
+    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
+    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
+    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::unique_ptr<panda::core::vulkan::resources::MemoryPool> pool;
     std::unique_ptr<panda::detail::SubmissionQueue> submissions;
     std::unique_ptr<panda::core::vulkan::upload::UploadManager> uploads;

@@ -65,7 +65,8 @@ void runSharedBuffer()
         panda::Engine::create({.applicationName = "Panda CUDA connection",
                                .externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Required}),
         "Create a context with external-buffer support");
-    auto session = panda::expect(panda::cuda::CudaSession::create(context), "Create a matching CUDA session");
+    auto session = panda::expect(panda::cuda::CudaSession::create(context.getDeviceInfo().deviceUuid),
+                                 "Create a matching CUDA session");
     auto buffer =
         panda::expect(context.getExternalBufferManager().createBuffer(
                           {.size = sizeof(std::uint32_t),

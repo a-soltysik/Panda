@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
@@ -91,17 +92,17 @@ inline auto makeGeneration(const vk::raii::Device& device, std::uintptr_t handle
 {
     auto images = std::vector<panda::core::vulkan::SwapchainImage> {};
     images.emplace_back(panda::core::vulkan::SwapchainImage {
-        .image = vk::Image {fakeVulkanHandle<VkImage>(handle + 1U)},
+        .image = vk::Image {fakeHandle<VkImage>(handle + 1U)},
         .view = {nullptr},
-        .renderFinished = vk::raii::Semaphore {device, fakeVulkanHandle<VkSemaphore>(handle + 2U)},
-        .presentFence = vk::raii::Fence {device, fakeVulkanHandle<VkFence>(handle + 3U)},
+        .renderFinished = vk::raii::Semaphore {device, fakeHandle<VkSemaphore>(handle + 2U)},
+        .presentFence = vk::raii::Fence {device, fakeHandle<VkFence>(handle + 3U)},
         .presentPending = false,
         .initialized = false
     });
     return panda::core::vulkan::SwapchainGeneration {
-        .swapchain = vk::raii::SwapchainKHR {device,       fakeVulkanHandle<VkSwapchainKHR>(handle)},
+        .swapchain = vk::raii::SwapchainKHR {device,       fakeHandle<VkSwapchainKHR>(handle)},
         .images = std::move(images),
-        .extent = vk::Extent2D {.width = 640, .height = 480                           },
+        .extent = vk::Extent2D {.width = 640, .height = 480                     },
         .format = vk::Format::eB8G8R8A8Srgb
     };
 }
@@ -128,8 +129,8 @@ protected:
     {
         if (!_device)
         {
-            const auto physicalDevice = vk::raii::PhysicalDevice {_instance, fakeVulkanHandle<VkPhysicalDevice>(1)};
-            _device.emplace(physicalDevice, fakeVulkanHandle<VkDevice>(1));
+            const auto physicalDevice = vk::raii::PhysicalDevice {_instance, fakeHandle<VkPhysicalDevice>(1)};
+            _device.emplace(physicalDevice, fakeHandle<VkDevice>(1));
         }
         return *_device;
     }
@@ -149,7 +150,7 @@ protected:
             .Times(static_cast<int>(semaphoreCount))
             .WillRepeatedly(
                 [this](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* out) {
-                    *out = fakeVulkanHandle<VkSemaphore>(_nextHandle++);
+                    *out = fakeHandle<VkSemaphore>(_nextHandle++);
                     return static_cast<VkResult>(vk::Result::eSuccess);
                 });
         expectNativeCommandResources();
@@ -161,13 +162,13 @@ protected:
             .Times(2)
             .WillRepeatedly(
                 [this](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* out) {
-                    *out = fakeVulkanHandle<VkCommandPool>(_nextHandle++);
+                    *out = fakeHandle<VkCommandPool>(_nextHandle++);
                     return static_cast<VkResult>(vk::Result::eSuccess);
                 });
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull()))
             .Times(2)
             .WillRepeatedly([this](VkDevice, const VkCommandBufferAllocateInfo*, VkCommandBuffer* out) {
-                *out = fakeVulkanHandle<VkCommandBuffer>(_nextHandle++);
+                *out = fakeHandle<VkCommandBuffer>(_nextHandle++);
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
     }
@@ -282,7 +283,7 @@ protected:
             .WillOnce(testing::Action<decltype(panda::core::vulkan::createSwapchainGeneration)> {
                 [oldHandle](const panda::core::vulkan::SwapchainGenerationRequest& request)
                     -> std::expected<panda::core::vulkan::SwapchainGeneration, panda::Error> {
-                    EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {fakeVulkanHandle<VkSwapchainKHR>(oldHandle)});
+                    EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {fakeHandle<VkSwapchainKHR>(oldHandle)});
                     return std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "replacement failed")};
                 }});
     }
@@ -304,7 +305,7 @@ protected:
 
 private:
     vk::raii::Context _loader {vkGetInstanceProcAddr};
-    vk::raii::Instance _instance {_loader, fakeVulkanHandle<VkInstance>(1)};
+    vk::raii::Instance _instance {_loader, fakeHandle<VkInstance>(1)};
     std::optional<vk::raii::Device> _device;
     std::uintptr_t _nextHandle {100};
 };
