@@ -242,10 +242,37 @@ template <typename Value, typename Error>
     }
 }
 
-/// @brief Takes an optional by value and returns its owned value, or aborts on absence.
-/// @return An owned value; move a move-only optional into this function.
+/// @brief Borrows a required optional value, or aborts on absence.
+/// @return A reference that remains valid while the optional owns its value.
 template <typename Value>
-[[nodiscard]] auto expect(std::optional<Value> result,
+[[nodiscard]] auto expect(std::optional<Value>& result,
+                          std::string_view message,
+                          std::source_location location = std::source_location::current()) -> Value&
+{
+    if (!result)
+    {
+        panic(message, location);
+    }
+    return *result;
+}
+
+/// @brief Borrows a required value from a const optional, or aborts on absence.
+template <typename Value>
+[[nodiscard]] auto expect(const std::optional<Value>& result,
+                          std::string_view message,
+                          std::source_location location = std::source_location::current()) -> const Value&
+{
+    if (!result)
+    {
+        panic(message, location);
+    }
+    return *result;
+}
+
+/// @brief Takes an optional rvalue and returns its owned value, or aborts on absence.
+/// @return An owned value; the optional is moved into this function.
+template <typename Value>
+[[nodiscard]] auto expect(std::optional<Value>&& result,
                           std::string_view message,
                           std::source_location location = std::source_location::current()) -> Value
 {

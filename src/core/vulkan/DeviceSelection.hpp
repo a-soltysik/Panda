@@ -16,10 +16,20 @@
 
 namespace panda::core::vulkan
 {
+enum class SwapchainMaintenance : std::uint8_t
+{
+    None,
+    Khr,
+    Ext
+};
+
 struct SelectedDevice
 {
     vk::PhysicalDevice physicalDevice;
     DeviceInfo info;
+    std::uint32_t queueFamily {0};
+    std::uint32_t presentQueueFamily {0};
+    SwapchainMaintenance maintenance {SwapchainMaintenance::None};
     vk::PhysicalDeviceLimits limits;
     std::uint32_t timestampValidBits {0};
     float timestampPeriodNanoseconds {0.0F};

@@ -121,14 +121,12 @@ protected:
             });
     }
 
-    [[nodiscard]] auto makeManager(std::uint32_t validBits = 64, float period = 2.5F, bool enabled = true)
-        -> PerformanceManagerImpl
+    [[nodiscard]] auto makeManager(std::uint32_t validBits = 64, float period = 2.5F) -> PerformanceManagerImpl
     {
         return PerformanceManagerImpl {
             device,
             getSubmissionQueue(),
-            TimestampProperties {.validBits = validBits, .periodNanoseconds = period},
-            enabled
+            TimestampProperties {.validBits = validBits, .periodNanoseconds = period}
         };
     }
 
@@ -164,31 +162,10 @@ private:
 };
 }
 
-TEST_F(PerformanceManagerTest, DisabledOrUnsupportedSamplingCreatesNoPoolsAndReturnsNoSamples)
-{
-    auto disabled = makeManager(64, 2.5F, false);
-    ASSERT_TRUE(disabled.initialize());
-    const auto capabilities = disabled.getCapabilities();
-    EXPECT_TRUE(capabilities.hasGpuTimestampQueries);
-    EXPECT_FALSE(capabilities.isGpuTimestampSamplingEnabled);
-    EXPECT_TRUE(disabled.recordStart(0, command));
-    disabled.recordEnd(0, command);
-    markSubmitted(disabled, 0);
-    EXPECT_TRUE(disabled.takeNextSample());
-    ASSERT_TRUE(disabled.takeAvailableSamples());
-    EXPECT_TRUE(disabled.takeAvailableSamples()->empty());
-
-    auto unsupported = makeManager(0, 2.5F, true);
-    ASSERT_TRUE(unsupported.initialize());
-    EXPECT_FALSE(unsupported.getCapabilities().hasGpuTimestampQueries);
-    EXPECT_FALSE(unsupported.getCapabilities().isGpuTimestampSamplingEnabled);
-    EXPECT_TRUE(unsupported.getLatestSample());
-    EXPECT_FALSE(unsupported.getLatestSample()->has_value());
-}
-
 TEST_F(PerformanceManagerTest, RejectsInvalidTimestampPropertiesBeforeCreatingPools)
 {
     const auto invalidProperties = std::array {
+        TimestampProperties {.validBits = 0,  .periodNanoseconds = 2.5F                                  },
         TimestampProperties {.validBits = 65, .periodNanoseconds = 2.5F                                  },
         TimestampProperties {.validBits = 64, .periodNanoseconds = 0.0F                                  },
         TimestampProperties {.validBits = 64, .periodNanoseconds = std::numeric_limits<float>::infinity()}

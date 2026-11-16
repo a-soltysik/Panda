@@ -24,15 +24,15 @@ on a resize callback.
 ## Main flow
 
 1. **Request presentation.** The application calls
-   `WindowRenderer::render(view)`; `Presentation` prepares the current window
+   `WindowRenderer::render(view)`; `WindowPresentation` prepares the current window
    generation before acquiring an image.
-2. **Read the framebuffer extent.** `Presentation::prepareWindowFrame()` asks the
+2. **Read the framebuffer extent.** `WindowPresentation::prepareWindowFrame()` asks the
    borrowed `WindowSurface` for the current pixel extent.
 3. **Check the generation.** For a nonzero extent,
-   `Presentation::ensureWindowGeneration()` reuses the current generation when
+   `WindowPresentation::ensureWindowGeneration()` reuses the current generation when
    its extent matches and recreation is not pending. Otherwise it starts a
    replacement.
-4. **Drain prior presentation use.** `Presentation::recreate()` calls `drain()` so
+4. **Drain prior presentation use.** `WindowPresentation::recreate()` calls `drain()` so
    submitted frame work, acquired-image recovery and pending presentation fences
    are settled before generation resources are released. See the
    [UC Drain frame and presentation use](drain-presentation.md).
@@ -40,7 +40,7 @@ on a resize callback.
    surface support, creates a swapchain using the old handle when one exists,
    then creates the per-image views and synchronization objects.
 6. **Publish the complete generation.** Only after all generation resources are
-   created does `Presentation` replace its current owner and clear the pending
+   created does `WindowPresentation` replace its current owner and clear the pending
    flag.
 7. **Continue the frame.** The same `render(view)` call proceeds to the
    acquire, clear, submit and present sequence in
@@ -50,7 +50,7 @@ on a resize callback.
 sequenceDiagram
     participant A as Application
     participant C as Engine
-    participant P as Presentation
+    participant P as WindowPresentation
     participant S as WindowSurface
     participant V as Vulkan
     A->>C: Step 1 - render(view)
@@ -98,7 +98,7 @@ ready. Draining first makes it safe to release old generation resources once a
 replacement is published.
 
 **Replacement failure has no rollback guarantee.** When generation creation
-returns an error, `Presentation` discards any old generation and leaves
+returns an error, `WindowPresentation` discards any old generation and leaves
 recreation pending. The Vulkan call may have retired the old swapchain even when
 replacement creation fails, so Panda cannot promise to resume using it. Any partially built
 replacement is released by its local RAII owners. A later nonzero frame call on a
@@ -122,7 +122,7 @@ returned an error.
 
 ```mermaid
 sequenceDiagram
-    participant P as Presentation
+    participant P as WindowPresentation
     participant V as Vulkan
     participant A as Application
     P->>V: Step 5 - attempt replacement using the old swapchain handle

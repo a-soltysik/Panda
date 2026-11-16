@@ -11,21 +11,25 @@ and any mesh draws in the submitted view.
 
 **Panda** owns timestamp queries, their association with submitted frames and
 nonblocking collection. **The application** chooses whether to request sampling,
-checks device support and drains samples regularly. The manager and its buffered
-samples are owned by the Engine; the borrowed manager must not outlive it.
+checks `EngineFeatures` and drains samples regularly. The manager and its buffered
+samples are owned by the Engine; it exists only while sampling is active and its
+borrowed reference must not outlive Engine.
 
 ## Preconditions
 
-1. A live headless or windowed `Engine` exists and calls on it are serialized. Sampling is
-   requested at creation with `EngineOptions::enableFramePerformanceSampling`; it
-   cannot be enabled later on that Engine.
+1. A live headless or window-enabled `Engine` exists and calls on it are serialized.
+   Sampling was requested at creation with
+   `EngineOptions::enableFramePerformanceSampling` and is supported by the selected
+   graphics queue. Check `Engine::getFeatures().performance` before borrowing the
+   optional manager; it cannot be enabled later on that Engine.
 
 ## Main flow
 
-1. **Check capabilities.** The application gets the manager from
-   `Engine::getPerformanceManager()` and reads `getCapabilities()`. Sampling runs
-   only when `isGpuTimestampSamplingEnabled` is true; `hasGpuTimestampQueries`
-   separately reports support on the selected graphics queue.
+1. **Check capabilities.** The application reads
+   `Engine::getFeatures().performance`. It borrows the manager with
+   `Engine::getPerformanceManager()` only when `isGpuTimestampSamplingEnabled` is
+   true. `hasGpuTimestampQueries` separately reports support on the selected
+   graphics queue.
 2. **Submit a marked frame.** The application calls
    `WindowRenderer::render(view)` or `OffscreenRenderer::render(view, target)`.
    In the frame command buffer,
@@ -64,16 +68,19 @@ sequenceDiagram
     participant A as Application
     participant W as WindowRenderer
     participant R as OffscreenRenderer
-    participant F as OffscreenRendering
-    participant P as Presentation
+    participant F as OffscreenRenderBackend
+    participant P as WindowPresentation
     participant E as FrameExecution
+    participant G as Engine
     participant M as PerformanceManager
     participant Q as SubmissionQueue
     participant V as Vulkan
-    A ->> M: Step 1 - getPerformanceManager()
-    M -->> A: Borrowed manager
-    A ->> M: Step 1 - getCapabilities()
-    M -->> A: Timestamp support and sampling state
+    A ->> G: Step 1 - getFeatures().performance
+    G -->> A: Timestamp support and sampling state
+    opt Sampling is active
+        A ->> M: Step 1 - getPerformanceManager()
+        M -->> A: Borrowed manager
+    end
     alt Windowed Engine
         A ->> W: Step 2 - render(view)
         W ->> P: Step 2 - render the view
@@ -157,7 +164,7 @@ recovery outcomes.
 
 |                    | Point and condition                                                                                                                     | Response                                                                                                                                                                                  | Resulting state and next action                                                                                        |
 |--------------------|-----------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| **Variant&nbsp;1** | Step 1: sampling was not requested, or the graphics queue has no timestamp support                                                      | Capabilities report sampling disabled; no timestamp pools or paired samples are produced                                                                                                  | Enable sampling when creating a new Engine; unsupported hardware needs a queue with timestamp support                 |
+| **Variant&nbsp;1** | Step 1: sampling was not requested, or the graphics queue has no timestamp support                                                      | `EngineFeatures` reports sampling inactive; no manager or timestamp pools are created. Calling the manager getter aborts.                                                                  | Enable sampling when creating a new Engine; unsupported hardware needs a queue with timestamp support                 |
 | **Variant&nbsp;2** | Step 2: the window is suspended, the frame is skipped, or rendering fails before queue submission                                      | No submitted slot is associated with a frame index and no paired sample is produced                                                                                                       | Resume window rendering when presentation can proceed, or submit a later offscreen frame                            |
 | **Variant&nbsp;3** | Step 4: the submitted point is pending, or either query is not yet available                                                            | Return an empty optional/vector without waiting                                                                                                                                           | Keep running and query again later; the sample remains pending                                                         |
 | **Error&nbsp;1**   | Step 2: the previous slot submission is complete, but a timestamp remains unavailable when `FrameExecution` tries to reuse its query pool | Frame recording returns `BackendFailure`; after image acquisition, presentation retires that image through [UC Retire an acquired image after frame work fails](retire-acquired-image.md) | The query pool is not reset over the pending result; inspect the error and Engine state before continuing             |
@@ -170,9 +177,10 @@ for the same submitted frame and carries its Engine-local frame index. Query
 availability establishes that Panda can read the sample; it does not indicate that
 the image was displayed.
 
-**No sample.** Sampling may be disabled or unsupported, no frame may have been
-submitted, or submitted GPU work may not have made both timestamps available yet.
-These cases are not represented as zero-duration measurements.
+**No sample.** With an active manager, no frame may have been submitted or the
+submitted GPU work may not have made both timestamps available yet. The manager
+returns an empty result without waiting. Disabled or unsupported sampling has no
+manager; `EngineFeatures` reports that state before access.
 
 ## Related information
 

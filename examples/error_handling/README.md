@@ -1,6 +1,6 @@
 # Error handling example
 
-`error_handling` creates a headless Vulkan context and deliberately requests a
+`error_handling` creates a headless Vulkan engine and deliberately requests a
 zero-byte buffer. It logs the error category, message, source location and native
 status when present. Only `InvalidArgument` triggers a corrected 4096-byte request;
 other errors propagate to `main`, which reports them and exits with failure.

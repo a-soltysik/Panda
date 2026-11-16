@@ -107,7 +107,7 @@ before logical-device creation and shares it with its allocator.
 
 `CompletionPoint` identifies committed work without retaining Engine or resources.
 Every successful Engine initializes one submission clock shared by presentation
-and uploads. Empty/foreign points are rejected; Engine moves preserve
+and uploads. Empty/foreign points are rejected; moving a concrete Engine owner preserves
 issued points and unsubmitted batches. Failed submit does not consume a value,
 device loss stops new work, and outstanding values respect device limits. GPU
 completion and presentation completion are tracked separately.
@@ -140,7 +140,7 @@ batch implementation. Submission transitions the image from undefined through
 transfer destination to shader-read layout. Unwritten texels remain undefined,
 and a published sampled texture is immutable.
 
-Presentation checks clock capacity before acquire. Failed acquire retirement
+WindowPresentation checks clock capacity before acquire. Failed acquire retirement
 without a committed value rejects drain; current Engine destruction treats
 unsafe teardown as fatal. After a cleanup submission commits, presentation retains
 the image index and completion until maintenance release succeeds; drain resumes

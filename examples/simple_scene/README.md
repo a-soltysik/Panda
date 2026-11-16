@@ -18,6 +18,9 @@ offsets instead of the standard 64-byte geometry layout; its vertex data and dra
 setup are in [main.cpp](main.cpp).
 `panda::createPerspectiveCamera` builds the camera values from Core, and the
 application supplies the mesh draw; no scene or ECS library is involved.
+`Engine::createWithSurface` returns the same move-only `Engine` type used by the
+headless path. Common service access stays on Engine, and this surface-enabled
+Engine also provides `getWindowRenderer()`.
 Requires a display, Vulkan 1.3 with swapchain maintenance1, and the Khronos validation
 layer. CUDA is not needed.
 

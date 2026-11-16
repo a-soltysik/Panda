@@ -6,12 +6,14 @@
 #include "VulkanBufferReadback.hpp"
 
 #include <gtest/gtest.h>
+#include <vulkan/vulkan_core.h>
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <panda/Buffer.hpp>
@@ -20,10 +22,53 @@
 #include <span>
 #include <utility>
 
+#include "VulkanError.hpp"
 #include "resources/BufferResource.hpp"
 
 namespace panda::test
 {
+namespace
+{
+auto graphicsQueueFamily(const Engine& engine) -> Result<std::uint32_t>
+{
+    auto loader = vk::raii::Context {vkGetInstanceProcAddr};
+    const auto application = vk::ApplicationInfo {.apiVersion = vk::ApiVersion13};
+    const auto createInfo = vk::InstanceCreateInfo {.pApplicationInfo = &application};
+    auto createdInstance = panda::core::vulkan::detail::checkedCreation(loader.createInstance(createInfo));
+    if (!createdInstance)
+    {
+        return std::unexpected {createdInstance.error()};
+    }
+    auto instance = std::move(*createdInstance);
+    const auto expectedUuid = engine.getDeviceInfo().deviceUuid;
+    auto listedDevices = instance.enumeratePhysicalDevices();
+    if (listedDevices.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {makeVulkanError(listedDevices.result)};
+    }
+    auto physicalDevices = std::move(listedDevices.value);
+    const auto physicalDevice = std::ranges::find_if(physicalDevices, [&expectedUuid](const auto& device) {
+        const auto properties =
+            device.template getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceIDProperties>();
+        return std::ranges::equal(expectedUuid, properties.template get<vk::PhysicalDeviceIDProperties>().deviceUUID);
+    });
+    if (physicalDevice == physicalDevices.end())
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "The Engine's Vulkan device was not found")};
+    }
+    const auto families = physicalDevice->getQueueFamilyProperties();
+    static constexpr auto required = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute;
+    const auto family = std::ranges::find_if(families, [](const auto& properties) {
+        return properties.queueCount != 0 && (properties.queueFlags & required) == required;
+    });
+    if (family == families.end())
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "The Engine's Vulkan device has no work queue")};
+    }
+    return static_cast<std::uint32_t>(std::distance(families.begin(), family));
+}
+}
+
 VulkanBufferReadback::VulkanBufferReadback(Buffer source, Buffer destination)
     : _source {std::move(source)},
       _destination {std::move(destination)},
@@ -43,7 +88,12 @@ auto VulkanBufferReadback::create(const Engine& context, const Buffer& source)
     auto result = std::unique_ptr<VulkanBufferReadback> {
         new VulkanBufferReadback {source, std::move(*destination)}
     };
-    const auto initialized = result->initialize(context.getDeviceInfo().queueFamily);
+    const auto family = graphicsQueueFamily(context);
+    if (!family)
+    {
+        return std::unexpected {family.error()};
+    }
+    const auto initialized = result->initialize(*family);
     if (!initialized)
     {
         return std::unexpected {initialized.error()};

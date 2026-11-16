@@ -14,7 +14,9 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 
 ## Preconditions
 
-1. A live windowed `Engine` exists. Calls to it are serialized on its execution thread.
+1. A live Engine was created with `Engine::createWithSurface`; calls to it are
+   serialized on its execution thread. `getFeatures().windowRenderingEnabled`
+   is true for this Engine.
 2. Every mesh draw refers to a valid, uploaded mesh from that Engine and declares a
    layout compatible with its material. All draws require Position; Lit also requires
    Normal. Color is optional and defaults to white. A base-color map is optional; if
@@ -47,9 +49,11 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    transforms.
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
    object-to-world matrix; applications may also supply a matrix directly.
-2. **Request the window render.** The application obtains the window renderer from
-   `Engine::getWindowRenderer()` and calls `WindowRenderer::render(view)`. This
-   renderer is available only for an Engine created with a window surface.
+2. **Request the window render.** After checking
+   `Engine::getFeatures().windowRenderingEnabled`, the application calls
+   `Engine::getWindowRenderer()` and passes the view to
+   `WindowRenderer::render(view)`. A headless Engine has no window renderer and
+   the getter fails through `expect`.
 3. **Validate and collect uploads.** `WindowRenderer` checks matrices, all
    light variants, optional shadow settings, atlas resolutions/capacity, and the
    configured light budget,
@@ -62,16 +66,16 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    reclaims completed upload packets, then rejects a texture whose upload was never
    submitted. Rendering remains queued
    after any in-flight upload on the Engine submission queue.
-4. **Prepare the window frame.** `Presentation::prepareWindowFrame()` checks the
+4. **Prepare the window frame.** `WindowPresentation::prepareWindowFrame()` checks the
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
    without acquiring an image. See [UC Suspend presentation and recreate the
    swapchain](recreate-swapchain.md).
-5. **Retain resources and acquire.** `Presentation` asks `FrameExecution::prepareSlot()`
+5. **Retain resources and acquire.** `WindowPresentation` asks `FrameExecution::prepareSlot()`
    to wait for the selected slot's prior GPU completion, then retain the view's mesh
    and selected material texture handles in that slot. It checks submission capacity,
    acquires an image with its slot-owned semaphore and waits for that image's pending
    presentation fence before reuse.
-6. **Record the view.** `Presentation` begins the command buffer and transitions the
+6. **Record the view.** `WindowPresentation` begins the command buffer and transitions the
    acquired image to color-attachment layout. It passes `FrameExecution` a borrowed
    `FrameOutput` containing that image view, extent and color format. An empty mesh
    list clears the output to the configured background. Otherwise, `FrameExecution`
@@ -101,27 +105,32 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    from the dominant axis between light and shaded point. The 3x3 PCF taps clamp to
    the selected tile, so they do not read neighboring maps.
    `FrameExecution` records content and its timing markers; it does not acquire or
-   present images, or transition the output image. `Presentation` records the final
+   present images, or transition the output image. `WindowPresentation` records the final
    transition to present layout and ends the command buffer.
 7. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
    Engine timeline. Only after submission succeeds does `FrameExecution` store the
-   completion value and commit renderer and performance state. `Presentation` then
+   completion value and commit renderer and performance state. `WindowPresentation` then
    marks the image initialized and advances its slot. Mesh and texture handles remain
    retained in the execution slot until reuse after completion. See
    [UC Commit work to the Engine submission timeline](commit-context-submission.md).
-8. **Queue presentation.** `Presentation::presentFrame()` queues the image with its
-   per-image presentation fence. Normal presentation returns `Presented`; a
-   suboptimal/out-of-date result returns `RecreatePending` with the accepted submission's
-   completion point. Other failures follow [UC Recover from a presentation failure
+8. **Queue presentation.** `WindowPresentation::presentFrame()` queues the image with its
+   per-image presentation fence. Accepted presentation without recreation returns
+   `Rendered`; a suboptimal/out-of-date result returns `RecreatePending` and may carry
+   the accepted submission's completion point. Other failures follow [UC Recover from a presentation failure
    after GPU submission](recover-presentation-failure.md).
+
+`Rendered` means the submission succeeded and the presentation request was accepted;
+it does not mean GPU work completed or the image reached the display. Check
+`completion.isValid()` to determine whether work was submitted, because
+`RecreatePending` can carry a completion point.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
     participant W as WindowRenderer
     participant U as UploadManager
-    participant P as Presentation
+    participant P as WindowPresentation
     participant E as FrameExecution
     participant R as MeshRenderer
     participant RA as RenderAttachments
@@ -244,12 +253,12 @@ not cast shadows. Intersecting transparent meshes can still sort incorrectly.
 
 **Slot and image lifetimes differ.** `FrameExecution` owns two reusable execution
 slots, including command buffers and retained mesh and texture handles.
-`Presentation` owns their acquire semaphores and the independently sized set of
+`WindowPresentation` owns their acquire semaphores and the independently sized set of
 swapchain images, render-finished semaphores and presentation fences.
 
 **Output boundary.** `FrameOutput` is borrowed for one recording operation.
 `FrameExecution` uses its image view, extent and format to record clear or mesh
-content; `Presentation` alone owns the output-layout transitions and presentation.
+content; `WindowPresentation` alone owns the output-layout transitions and presentation.
 
 **Attachment publication.** `RenderAttachments` owns per-slot color, depth and shadow
 images with their committed layout history. A failed replacement leaves the renderer's
@@ -263,7 +272,7 @@ that display has finished. See the
 
 **Pre-submit failures.** After acquire succeeds, a recording or submit failure must
 consume the acquire semaphore and retire the image. `FrameExecution` discards the
-unsubmitted view handles after `Presentation` performs that recovery. See
+unsubmitted view handles after `WindowPresentation` performs that recovery. See
 [UC Retire an acquired image after frame work fails](retire-acquired-image.md).
 A frame error does not imply that already submitted work was rolled back.
 
@@ -276,7 +285,6 @@ A frame error does not imply that already submitted work was rolled back.
 | Acquire reports out-of-date                                      | Return `RecreatePending` without a completion point; the next call attempts recreation.      |
 | Acquire or present is suboptimal, or present reports out-of-date | Return `RecreatePending`; keep the accepted submission's completion point.                   |
 | Invalid view/material data, foreign mesh/texture, incompatible layout, or invalid material map | Return `InvalidArgument` before acquiring an image. |
-| Engine has no window presentation service                       | Return `Unsupported`.                                                                        |
 | Capture is requested                                              | Use `WindowRenderer::renderWithCapture(view, target)`; capture may return `Unsupported` when the surface or formats cannot blit. |
 | Recording, submission or cleanup fails after acquire             | Return the relevant error; retire the acquired image. Failed retirement faults presentation. |
 | Surface or device is lost                                        | Return the Vulkan error and fault presentation; Engine teardown still attempts its drain.   |

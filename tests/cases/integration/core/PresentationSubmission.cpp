@@ -14,18 +14,18 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <panda/DeviceInfo.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/RenderView.hpp>
 #include <span>
 #include <string>
 
+#include "DeviceSelection.hpp"
 #include "FakeHandle.hpp"
 #include "PresentationTestSupport.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "presentation/Presentation.hpp"
+#include "presentation/WindowPresentation.hpp"
 
 namespace
 {
@@ -160,8 +160,8 @@ protected:
     }
 
     auto createPresentation(
-        panda::DeviceInfo::SwapchainMaintenance maintenance = panda::DeviceInfo::SwapchainMaintenance::Khr)
-        -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
+        panda::core::vulkan::SwapchainMaintenance maintenance = panda::core::vulkan::SwapchainMaintenance::Khr)
+        -> std::expected<std::unique_ptr<panda::core::vulkan::WindowPresentation>, panda::Error>
     {
         auto& submissions = _submissions.emplace(getDevice(), 0);
         auto* const timeline = fakeHandle<VkSemaphore>(2);
@@ -186,22 +186,15 @@ protected:
         {
             return std::unexpected {initialized.error()};
         }
-        return panda::core::vulkan::Presentation::create({
-            .physicalDevice = vk::PhysicalDevice {},
-            .device = getDevice(),
-            .surface = vk::SurfaceKHR {},
-            .window = window,
-            .deviceInfo = {.name = {},
-                                                  .driverName = {},
-                                                  .driverInfo = {},
-                                                  .driverVersion = 0,
-                                                  .apiVersion = 0,
-                                                  .queueFamily = 0,
-                                                  .presentQueueFamily = 0,
-                                                  .swapchainMaintenance = maintenance},
-            .submissions = submissions,
-            .maxLights = panda::EngineOptions::defaultMaxLights
-        });
+        return panda::core::vulkan::WindowPresentation::create({.physicalDevice = vk::PhysicalDevice {},
+                                                                .device = getDevice(),
+                                                                .surface = vk::SurfaceKHR {},
+                                                                .window = window,
+                                                                .queueFamily = 0,
+                                                                .presentQueueFamily = 0,
+                                                                .maintenance = maintenance,
+                                                                .submissions = submissions,
+                                                                .maxLights = panda::EngineOptions::defaultMaxLights});
     }
 
 private:
@@ -223,7 +216,7 @@ TEST_F(PresentationSubmissionIntegration, ReportsUnavailableExtReleaseFunction)
 {
     expectQueueLookup();
     EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesEXT"))).WillOnce(Return(nullptr));
-    const auto presentation = createPresentation(panda::DeviceInfo::SwapchainMaintenance::Ext);
+    const auto presentation = createPresentation(panda::core::vulkan::SwapchainMaintenance::Ext);
     ASSERT_FALSE(presentation.has_value());
     EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(presentation.error().message.find("VK_EXT_swapchain_maintenance1"), std::string::npos);

@@ -10,7 +10,7 @@
 #include <panda/OffscreenRenderer.hpp>
 
 #include "vulkan/performance/PerformanceManagerImpl.hpp"
-#include "vulkan/presentation/OffscreenRendering.hpp"
+#include "vulkan/presentation/OffscreenRenderBackend.hpp"
 #include "vulkan/renderer/RenderViewValidation.hpp"
 #include "vulkan/resources/OffscreenTargetResource.hpp"
 #include "vulkan/upload/UploadManager.hpp"
@@ -19,25 +19,25 @@ namespace panda
 {
 namespace
 {
-auto startCpuFrameTimer(const detail::PerformanceManagerImpl& performance)
+auto startCpuFrameTimer(const detail::PerformanceManagerImpl* performance)
     -> std::optional<std::chrono::steady_clock::time_point>
 {
-    if (performance.getCapabilities().isGpuTimestampSamplingEnabled)
+    if (performance != nullptr)
     {
         return std::chrono::steady_clock::now();
     }
     return std::nullopt;
 }
 
-void recordCpuFrameDuration(detail::PerformanceManagerImpl& performance,
+void recordCpuFrameDuration(detail::PerformanceManagerImpl* performance,
                             const std::optional<std::chrono::steady_clock::time_point>& frameStart,
                             const std::optional<std::size_t>& submittedPerformanceSlot)
 {
-    if (frameStart && submittedPerformanceSlot)
+    if (performance != nullptr && frameStart && submittedPerformanceSlot)
     {
         const auto duration =
             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - *frameStart);
-        performance.recordCpuFrameDuration(*submittedPerformanceSlot, duration);
+        performance->recordCpuFrameDuration(*submittedPerformanceSlot, duration);
     }
 }
 }

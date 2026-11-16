@@ -23,10 +23,10 @@ allocation and, when available, its paired timeline semaphore.
 ## Main flow
 
 1. **Check capabilities.** The application creates `Engine` with
-   `EngineOptions::ExternalBufferSupport::Optional` and checks
-   `externalBufferExportEnabled` and `externalSemaphoreExportEnabled`. Without
-   external-memory export it uses its fallback. Semaphore support is checked
-   separately because memory can be shared without a safe cross-API handoff.
+   `EngineOptions::ExternalBufferSupport::Optional` and reads
+   `engine.getFeatures()`. Without `externalBufferExportEnabled` it uses its
+   fallback. It checks `externalSemaphoreExportEnabled` separately because memory
+   can be shared without a safe cross-API handoff.
 2. **Match CUDA.** For the CUDA path, the application calls
    `CudaSession::create(engine.getDeviceInfo().deviceUuid)` before allocating.
    The session selects the matching CUDA device and creates its stream.

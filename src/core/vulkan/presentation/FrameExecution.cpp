@@ -338,7 +338,7 @@ auto FrameExecution::drain() -> std::expected<void, Error>
 
 auto FrameExecution::isGpuTimestampSamplingEnabled() const noexcept -> bool
 {
-    return _performance != nullptr && _performance->getCapabilities().isGpuTimestampSamplingEnabled;
+    return _performance != nullptr;
 }
 
 auto FrameExecution::getSampleCount() const noexcept -> vk::SampleCountFlagBits

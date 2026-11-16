@@ -1,4 +1,4 @@
-#include "presentation/Presentation.hpp"
+#include "presentation/WindowPresentation.hpp"
 
 #include <vulkan/vulkan_core.h>
 
@@ -10,7 +10,6 @@
 #include <optional>
 #include <panda/Assert.hpp>
 #include <panda/CompletionPoint.hpp>
-#include <panda/DeviceInfo.hpp>
 #include <panda/Error.hpp>
 #include <panda/FrameResult.hpp>
 #include <panda/RenderView.hpp>
@@ -19,11 +18,12 @@
 #include <utility>
 #include <vulkan/vulkan.hpp>
 
+#include "DeviceSelection.hpp"
 #include "SubmissionQueue.hpp"
 #include "VulkanError.hpp"
 #include "VulkanHpp.hpp"  // IWYU pragma: keep
 #include "presentation/FrameExecution.hpp"
-#include "presentation/OffscreenRendering.hpp"
+#include "presentation/OffscreenRenderBackend.hpp"
 #include "presentation/SwapchainGeneration.hpp"
 
 namespace panda::core::vulkan
@@ -97,22 +97,25 @@ void transitionToPresent(vk::CommandBuffer command, const SwapchainImage& image)
 
 }
 
-Presentation::Presentation(const PresentationCreateInfo& info)
+WindowPresentation::WindowPresentation(const WindowPresentationCreateInfo& info)
     : _physicalDevice {info.physicalDevice},
       _device {info.device},
-      _presentQueue {info.device.getQueue(info.deviceInfo.presentQueueFamily, 0)},
+      _presentQueue {info.device.getQueue(info.presentQueueFamily, 0)},
       _surface {info.surface},
       _window {info.window},
-      _deviceInfo {info.deviceInfo},
+      _queueFamily {info.queueFamily},
+      _presentQueueFamily {info.presentQueueFamily},
+      _maintenance {info.maintenance},
       _submissions {info.submissions}
 {
 }
 
-Presentation::~Presentation() = default;
+WindowPresentation::~WindowPresentation() = default;
 
-auto Presentation::create(const PresentationCreateInfo& info) -> std::expected<std::unique_ptr<Presentation>, Error>
+auto WindowPresentation::create(const WindowPresentationCreateInfo& info)
+    -> std::expected<std::unique_ptr<WindowPresentation>, Error>
 {
-    auto result = std::unique_ptr<Presentation> {new Presentation {info}};
+    auto result = std::unique_ptr<WindowPresentation> {new WindowPresentation {info}};
     if (const auto initialized = result->initialize(info); !initialized)
     {
         return std::unexpected {initialized.error()};
@@ -120,7 +123,7 @@ auto Presentation::create(const PresentationCreateInfo& info) -> std::expected<s
     return result;
 }
 
-auto Presentation::ensureWindowGeneration(FramebufferExtent requested) -> std::expected<void, Error>
+auto WindowPresentation::ensureWindowGeneration(FramebufferExtent requested) -> std::expected<void, Error>
 {
     if (!_generation || _recreatePending || requested.width != _generation->extent.width ||
         requested.height != _generation->extent.height)
@@ -130,11 +133,11 @@ auto Presentation::ensureWindowGeneration(FramebufferExtent requested) -> std::e
     return {};
 }
 
-auto Presentation::prepareWindowFrame() -> std::expected<bool, Error>
+auto WindowPresentation::prepareWindowFrame() -> std::expected<bool, Error>
 {
     if (_faulted)
     {
-        return std::unexpected {makeError(ErrorCode::BackendFailure, "Windowed context is faulted")};
+        return std::unexpected {makeError(ErrorCode::BackendFailure, "Windowed Engine is faulted")};
     }
     const auto requested = _window.getFramebufferExtent();
     if (!requested)
@@ -152,7 +155,7 @@ auto Presentation::prepareWindowFrame() -> std::expected<bool, Error>
     return _generation.has_value();
 }
 
-auto Presentation::recreate(FramebufferExtent requested) -> std::expected<void, Error>
+auto WindowPresentation::recreate(FramebufferExtent requested) -> std::expected<void, Error>
 {
     if (const auto drained = drain(); !drained)
     {
@@ -164,7 +167,8 @@ auto Presentation::recreate(FramebufferExtent requested) -> std::expected<void, 
                                                  .surface = _surface,
                                                  .requested = requested,
                                                  .oldSwapchain = oldSwapchain,
-                                                 .deviceInfo = _deviceInfo});
+                                                 .queueFamily = _queueFamily,
+                                                 .presentQueueFamily = _presentQueueFamily});
     if (!generation)
     {
         // vkCreateSwapchainKHR may retire oldSwapchain even when replacement fails.
@@ -177,13 +181,13 @@ auto Presentation::recreate(FramebufferExtent requested) -> std::expected<void, 
     return {};
 }
 
-auto Presentation::render(const RenderView& view) -> std::expected<FrameResult, Error>
+auto WindowPresentation::render(const RenderView& view) -> std::expected<FrameResult, Error>
 {
     auto submittedPerformanceSlot = std::optional<std::size_t> {};
     return render(view, submittedPerformanceSlot);
 }
 
-auto Presentation::render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
+auto WindowPresentation::render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
     submittedPerformanceSlot.reset();
@@ -206,7 +210,7 @@ auto Presentation::render(const RenderView& view, std::optional<std::size_t>& su
     return executeAcquiredFrame(slotIndex, view, submittedPerformanceSlot);
 }
 
-auto Presentation::renderWithCapture(const CaptureFrameRequest& request) -> std::expected<FrameResult, Error>
+auto WindowPresentation::renderWithCapture(const CaptureFrameRequest& request) -> std::expected<FrameResult, Error>
 {
     request.submittedPerformanceSlot.reset();
     const auto ready = prepareWindowFrame();
@@ -227,7 +231,8 @@ auto Presentation::renderWithCapture(const CaptureFrameRequest& request) -> std:
     return executeAcquiredCaptureFrame(request);
 }
 
-auto Presentation::executeAcquiredCaptureFrame(const CaptureFrameRequest& request) -> std::expected<FrameResult, Error>
+auto WindowPresentation::executeAcquiredCaptureFrame(const CaptureFrameRequest& request)
+    -> std::expected<FrameResult, Error>
 {
     const auto slotIndex = _nextSlot;
     const auto acquired = acquireFrame(slotIndex);
@@ -242,7 +247,7 @@ auto Presentation::executeAcquiredCaptureFrame(const CaptureFrameRequest& reques
     return submitAcquiredCaptureFrame(*acquired, request);
 }
 
-auto Presentation::submitAcquiredCaptureFrame(const AcquiredImage& acquired, const CaptureFrameRequest& request)
+auto WindowPresentation::submitAcquiredCaptureFrame(const AcquiredImage& acquired, const CaptureFrameRequest& request)
     -> std::expected<FrameResult, Error>
 {
     const auto slotIndex = _nextSlot;
@@ -276,9 +281,9 @@ auto Presentation::submitAcquiredCaptureFrame(const AcquiredImage& acquired, con
     return presentFrame(image, acquired.index, submissionValue, acquired.suboptimal);
 }
 
-auto Presentation::executeAcquiredFrame(std::size_t slotIndex,
-                                        const RenderView& view,
-                                        std::optional<std::size_t>& submittedPerformanceSlot)
+auto WindowPresentation::executeAcquiredFrame(std::size_t slotIndex,
+                                              const RenderView& view,
+                                              std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
     const auto acquired = acquireFrame(slotIndex);
@@ -295,10 +300,10 @@ auto Presentation::executeAcquiredFrame(std::size_t slotIndex,
     return submitAcquiredFrame(*acquired, slotIndex, view, submittedPerformanceSlot);
 }
 
-auto Presentation::submitAcquiredFrame(const AcquiredImage& acquired,
-                                       std::size_t slotIndex,
-                                       const RenderView& view,
-                                       std::optional<std::size_t>& submittedPerformanceSlot)
+auto WindowPresentation::submitAcquiredFrame(const AcquiredImage& acquired,
+                                             std::size_t slotIndex,
+                                             const RenderView& view,
+                                             std::optional<std::size_t>& submittedPerformanceSlot)
     -> std::expected<FrameResult, Error>
 {
     auto& image = activeGeneration().images.at(acquired.index);
@@ -321,7 +326,7 @@ auto Presentation::submitAcquiredFrame(const AcquiredImage& acquired,
     return presentFrame(image, acquired.index, *completion, acquired.suboptimal);
 }
 
-auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) const -> std::optional<FrameResult>
+auto WindowPresentation::nonReadyFrameResult(AcquiredImage::Status status) const -> std::optional<FrameResult>
 {
     if (status == AcquiredImage::Status::Skipped)
     {
@@ -338,7 +343,7 @@ auto Presentation::nonReadyFrameResult(AcquiredImage::Status status) const -> st
     return std::nullopt;
 }
 
-auto Presentation::recordFrame(std::size_t slotIndex, const SwapchainImage& image, const RenderView& view)
+auto WindowPresentation::recordFrame(std::size_t slotIndex, const SwapchainImage& image, const RenderView& view)
     -> std::expected<void, Error>
 {
     if (const auto begun = _execution->beginCommands(slotIndex); !begun)
@@ -359,14 +364,13 @@ auto Presentation::recordFrame(std::size_t slotIndex, const SwapchainImage& imag
     return _execution->endCommands(slotIndex);
 }
 
-auto Presentation::releaseImage(std::uint32_t index) const -> std::expected<void, Error>
+auto WindowPresentation::releaseImage(std::uint32_t index) const -> std::expected<void, Error>
 {
     const auto info = vk::ReleaseSwapchainImagesInfoKHR {.swapchain = *activeGeneration().swapchain,
                                                          .imageIndexCount = 1,
                                                          .pImageIndices = &index};
-    const auto result = _deviceInfo.swapchainMaintenance == DeviceInfo::SwapchainMaintenance::Khr
-                            ? _device.releaseSwapchainImagesKHR(info)
-                            : _device.releaseSwapchainImagesEXT(info);
+    const auto result = _maintenance == SwapchainMaintenance::Khr ? _device.releaseSwapchainImagesKHR(info)
+                                                                  : _device.releaseSwapchainImagesEXT(info);
     if (result != vk::Result::eSuccess)
     {
         return std::unexpected {makeVulkanError(result)};
@@ -374,7 +378,7 @@ auto Presentation::releaseImage(std::uint32_t index) const -> std::expected<void
     return {};
 }
 
-auto Presentation::abortAcquire(FrameSelection selection) -> std::expected<void, Error>
+auto WindowPresentation::abortAcquire(FrameSelection selection) -> std::expected<void, Error>
 {
     const auto submitted = _submissions.submit({}, *_acquireSemaphores.at(selection.slotIndex), {});
     if (!submitted)
@@ -399,7 +403,7 @@ auto Presentation::abortAcquire(FrameSelection selection) -> std::expected<void,
     return {};
 }
 
-auto Presentation::acquireFrame(std::size_t slotIndex) -> std::expected<AcquiredImage, Error>
+auto WindowPresentation::acquireFrame(std::size_t slotIndex) -> std::expected<AcquiredImage, Error>
 {
     if (const auto ready = _submissions.prepareSubmit(); !ready)
     {
@@ -417,7 +421,8 @@ auto Presentation::acquireFrame(std::size_t slotIndex) -> std::expected<Acquired
     return interpretAcquiredImage(static_cast<vk::Result>(result), index);
 }
 
-auto Presentation::interpretAcquiredImage(vk::Result result, std::uint32_t index) -> std::expected<AcquiredImage, Error>
+auto WindowPresentation::interpretAcquiredImage(vk::Result result, std::uint32_t index)
+    -> std::expected<AcquiredImage, Error>
 {
     if (result == vk::Result::eTimeout || result == vk::Result::eNotReady)
     {
@@ -444,7 +449,7 @@ auto Presentation::interpretAcquiredImage(vk::Result result, std::uint32_t index
                           .suboptimal = result == vk::Result::eSuboptimalKHR};
 }
 
-auto Presentation::waitImage(std::size_t slotIndex, std::uint32_t index) -> std::expected<void, Error>
+auto WindowPresentation::waitImage(std::size_t slotIndex, std::uint32_t index) -> std::expected<void, Error>
 {
     auto& image = activeGeneration().images.at(index);
     if (!image.presentPending)
@@ -469,17 +474,18 @@ auto Presentation::waitImage(std::size_t slotIndex, std::uint32_t index) -> std:
     return {};
 }
 
-auto Presentation::submitRecordedFrame(std::size_t slotIndex, const SwapchainImage& image) -> Result<std::uint64_t>
+auto WindowPresentation::submitRecordedFrame(std::size_t slotIndex, const SwapchainImage& image)
+    -> Result<std::uint64_t>
 {
     return _submissions.submit(_execution->command(slotIndex),
                                *_acquireSemaphores.at(slotIndex),
                                *image.renderFinished);
 }
 
-auto Presentation::submitFrame(std::size_t slotIndex,
-                               SwapchainImage& image,
-                               FrameSelection selection,
-                               const RenderView& view) -> std::expected<std::uint64_t, Error>
+auto WindowPresentation::submitFrame(std::size_t slotIndex,
+                                     SwapchainImage& image,
+                                     FrameSelection selection,
+                                     const RenderView& view) -> std::expected<std::uint64_t, Error>
 {
     if (const auto recorded = recordFrame(slotIndex, image, view); !recorded)
     {
@@ -497,14 +503,14 @@ auto Presentation::submitFrame(std::size_t slotIndex,
     return completion;
 }
 
-auto Presentation::abortFrame(std::size_t slotIndex, std::uint32_t imageIndex, const Error& cause)
+auto WindowPresentation::abortFrame(std::size_t slotIndex, std::uint32_t imageIndex, const Error& cause)
     -> std::expected<std::uint64_t, Error>
 {
     const auto cleanup = abortAcquire({.slotIndex = slotIndex, .imageIndex = imageIndex});
     return std::unexpected {cleanup ? cause : cleanup.error()};
 }
 
-auto Presentation::handleSubmitFailure(FrameSelection selection, const Error& cause)
+auto WindowPresentation::handleSubmitFailure(FrameSelection selection, const Error& cause)
     -> std::expected<std::uint64_t, Error>
 {
     if (cause.code == ErrorCode::DeviceLost)
@@ -515,7 +521,7 @@ auto Presentation::handleSubmitFailure(FrameSelection selection, const Error& ca
     return abortFrame(selection.slotIndex, selection.imageIndex, cause);
 }
 
-auto Presentation::recoverPresentFailure(std::uint32_t index, vk::Result result, std::uint64_t completion)
+auto WindowPresentation::recoverPresentFailure(std::uint32_t index, vk::Result result, std::uint64_t completion)
     -> std::expected<FrameResult, Error>
 {
     _pendingImageRecovery = PendingImageRecovery {.index = index, .replaceRenderFinished = true};
@@ -533,7 +539,7 @@ auto Presentation::recoverPresentFailure(std::uint32_t index, vk::Result result,
     return std::unexpected {makeVulkanError(result)};
 }
 
-auto Presentation::finishPendingImageRecovery() -> std::expected<void, Error>
+auto WindowPresentation::finishPendingImageRecovery() -> std::expected<void, Error>
 {
     if (!_pendingImageRecovery)
     {
@@ -558,7 +564,7 @@ auto Presentation::finishPendingImageRecovery() -> std::expected<void, Error>
     return {};
 }
 
-auto Presentation::replacePendingRenderFinishedSemaphore() -> std::expected<void, Error>
+auto WindowPresentation::replacePendingRenderFinishedSemaphore() -> std::expected<void, Error>
 {
     if (!_pendingImageRecovery || !_pendingImageRecovery->replaceRenderFinished)
     {
@@ -575,7 +581,7 @@ auto Presentation::replacePendingRenderFinishedSemaphore() -> std::expected<void
     return {};
 }
 
-auto Presentation::queuePresent(const SwapchainImage& image, std::uint32_t index) -> vk::Result
+auto WindowPresentation::queuePresent(const SwapchainImage& image, std::uint32_t index) -> vk::Result
 {
     const auto swapchain = *activeGeneration().swapchain;
     const auto finished = *image.renderFinished;
@@ -590,10 +596,10 @@ auto Presentation::queuePresent(const SwapchainImage& image, std::uint32_t index
     return _presentQueue.presentKHR(presentInfo);
 }
 
-auto Presentation::presentFrame(SwapchainImage& image,
-                                std::uint32_t index,
-                                std::uint64_t completion,
-                                bool acquireSuboptimal) -> std::expected<FrameResult, Error>
+auto WindowPresentation::presentFrame(SwapchainImage& image,
+                                      std::uint32_t index,
+                                      std::uint64_t completion,
+                                      bool acquireSuboptimal) -> std::expected<FrameResult, Error>
 {
     const auto presented = queuePresent(image, index);
     if (presented == vk::Result::eSuccess || presented == vk::Result::eSuboptimalKHR ||
@@ -612,7 +618,7 @@ auto Presentation::presentFrame(SwapchainImage& image,
                                 .completion = _submissions.getPoint(completion),
                                 .effectiveSampleCount = effectiveSampleCount()};
         }
-        return FrameResult {.status = FrameResult::Status::Presented,
+        return FrameResult {.status = FrameResult::Status::Rendered,
                             .completion = _submissions.getPoint(completion),
                             .effectiveSampleCount = effectiveSampleCount()};
     }
@@ -624,10 +630,10 @@ auto Presentation::presentFrame(SwapchainImage& image,
     return recoverPresentFailure(index, presented, completion);
 }
 
-auto Presentation::verifyReleaseFunction() const -> std::expected<void, Error>
+auto WindowPresentation::verifyReleaseFunction() const -> std::expected<void, Error>
 {
     const auto* const dispatcher = _device.getDispatcher();
-    const auto khr = _deviceInfo.swapchainMaintenance == DeviceInfo::SwapchainMaintenance::Khr;
+    const auto khr = _maintenance == SwapchainMaintenance::Khr;
     const auto available =
         khr ? dispatcher->vkReleaseSwapchainImagesKHR != nullptr : dispatcher->vkReleaseSwapchainImagesEXT != nullptr;
     if (!available)
@@ -639,7 +645,7 @@ auto Presentation::verifyReleaseFunction() const -> std::expected<void, Error>
     return {};
 }
 
-auto Presentation::initializeAcquireSemaphore(vk::raii::Semaphore& semaphore) const -> std::expected<void, Error>
+auto WindowPresentation::initializeAcquireSemaphore(vk::raii::Semaphore& semaphore) const -> std::expected<void, Error>
 {
     static constexpr auto acquireInfo = vk::SemaphoreCreateInfo {};
     auto acquire = checkedCreation(_device.createSemaphore(acquireInfo));
@@ -651,7 +657,7 @@ auto Presentation::initializeAcquireSemaphore(vk::raii::Semaphore& semaphore) co
     return {};
 }
 
-auto Presentation::initialize(const PresentationCreateInfo& info) -> std::expected<void, Error>
+auto WindowPresentation::initialize(const WindowPresentationCreateInfo& info) -> std::expected<void, Error>
 {
     if (const auto initialized = initializeFrameResources(info); !initialized)
     {
@@ -660,7 +666,8 @@ auto Presentation::initialize(const PresentationCreateInfo& info) -> std::expect
     return initializeWindowPresentation();
 }
 
-auto Presentation::initializeFrameResources(const PresentationCreateInfo& info) -> std::expected<void, Error>
+auto WindowPresentation::initializeFrameResources(const WindowPresentationCreateInfo& info)
+    -> std::expected<void, Error>
 {
     if (const auto resolved = verifyReleaseFunction(); !resolved)
     {
@@ -668,7 +675,7 @@ auto Presentation::initializeFrameResources(const PresentationCreateInfo& info) 
     }
     auto execution = presentation::FrameExecution::create({.physicalDevice = _physicalDevice,
                                                            .device = _device,
-                                                           .queueFamily = _deviceInfo.queueFamily,
+                                                           .queueFamily = _queueFamily,
                                                            .submissions = _submissions,
                                                            .pool = info.pool,
                                                            .performance = info.performance,
@@ -681,7 +688,7 @@ auto Presentation::initializeFrameResources(const PresentationCreateInfo& info) 
     return initializeAcquireSemaphores();
 }
 
-auto Presentation::initializeAcquireSemaphores() -> std::expected<void, Error>
+auto WindowPresentation::initializeAcquireSemaphores() -> std::expected<void, Error>
 {
     for (auto& semaphore : _acquireSemaphores)
     {
@@ -693,7 +700,7 @@ auto Presentation::initializeAcquireSemaphores() -> std::expected<void, Error>
     return {};
 }
 
-auto Presentation::initializeWindowPresentation() -> std::expected<void, Error>
+auto WindowPresentation::initializeWindowPresentation() -> std::expected<void, Error>
 {
     const auto extent = _window.getFramebufferExtent();
     if (!extent)
@@ -708,7 +715,7 @@ auto Presentation::initializeWindowPresentation() -> std::expected<void, Error>
     return recreate(*extent);
 }
 
-auto Presentation::waitCompletion(std::uint64_t value) const -> std::expected<void, Error>
+auto WindowPresentation::waitCompletion(std::uint64_t value) const -> std::expected<void, Error>
 {
     static constexpr auto timeoutNanoseconds = std::uint64_t {10'000'000'000};
     return _submissions.waitValue(value, timeoutNanoseconds).and_then([](WaitStatus status) -> Result<void> {
@@ -720,7 +727,7 @@ auto Presentation::waitCompletion(std::uint64_t value) const -> std::expected<vo
     });
 }
 
-auto Presentation::waitPresentation() -> std::expected<void, Error>
+auto WindowPresentation::waitPresentation() -> std::expected<void, Error>
 {
     if (!_generation)
     {
@@ -744,7 +751,7 @@ auto Presentation::waitPresentation() -> std::expected<void, Error>
     return {};
 }
 
-auto Presentation::drain() -> std::expected<void, Error>
+auto WindowPresentation::drain() -> std::expected<void, Error>
 {
     if (_acquireRetirementFailed)
     {
@@ -761,7 +768,7 @@ auto Presentation::drain() -> std::expected<void, Error>
     return waitPresentation();
 }
 
-auto Presentation::activeGeneration() -> SwapchainGeneration&
+auto WindowPresentation::activeGeneration() -> SwapchainGeneration&
 {
     if (!_generation)
     {
@@ -770,7 +777,7 @@ auto Presentation::activeGeneration() -> SwapchainGeneration&
     return *_generation;
 }
 
-auto Presentation::activeGeneration() const -> const SwapchainGeneration&
+auto WindowPresentation::activeGeneration() const -> const SwapchainGeneration&
 {
     if (!_generation)
     {
@@ -779,7 +786,7 @@ auto Presentation::activeGeneration() const -> const SwapchainGeneration&
     return *_generation;
 }
 
-auto Presentation::effectiveSampleCount() const noexcept -> vk::SampleCountFlagBits
+auto WindowPresentation::effectiveSampleCount() const noexcept -> vk::SampleCountFlagBits
 {
     return _execution->getSampleCount();
 }

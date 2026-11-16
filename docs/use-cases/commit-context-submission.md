@@ -12,7 +12,7 @@ when a caller has prepared queue work and ends when `vkQueueSubmit2` accepts it 
 returns an error.
 
 Every successful Engine has initialized this queue before publication. Queue
-initialization failure is reported by the Engine factory, so this flow starts with
+initialization failure is reported by Engine creation, so this flow starts with
 a ready queue and never initializes the timeline itself.
 
 ## Main flow
@@ -20,7 +20,7 @@ a ready queue and never initializes the timeline itself.
 1. **Prepare the work.** `SubmissionQueue::submit()` calls
    `SubmissionQueue::prepareSubmit()` to reject device loss or exhausted values,
    refresh the completed counter when its outstanding-value limit is reached,
-   and fail if capacity remains unavailable. Presentation also checks capacity
+   and fail if capacity remains unavailable. WindowPresentation also checks capacity
    before image acquire so it does not acquire an image it cannot retire.
 2. **Build and enqueue.** `submit()` chooses the next candidate value and calls
    `vkQueueSubmit2`. It may include a command buffer, binary acquire wait and
@@ -33,7 +33,7 @@ a ready queue and never initializes the timeline itself.
 
 ```mermaid
 sequenceDiagram
-    participant C as Upload or Presentation caller
+    participant C as Upload or WindowPresentation caller
     participant Q as SubmissionQueue
     participant V as Vulkan queue
     C ->> Q: Step 1 - submit(work, optional binary wait/signal)
@@ -56,7 +56,7 @@ future accepted submission can use it. Callers must not publish or wait on an
 uncommitted value.
 
 **Completion is separate.** A committed value means the queue accepted work. Use
-`SubmissionManager::poll()` or `SubmissionManager::wait()` to observe completion. Presentation also
+`SubmissionManager::poll()` or `SubmissionManager::wait()` to observe completion. WindowPresentation also
 uses a per-image present fence because the queue timeline alone does not retire
 presentation-engine references.
 

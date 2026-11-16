@@ -14,7 +14,7 @@ class SubmissionQueue;
 
 /// @brief Copyable completion token; does not retain its Engine or any resource.
 /// A default token represents no submitted work. Engine outlives all uses of a
-/// token. Values are issued only after successful submission and survive Engine moves.
+/// token. Values are issued only after successful submission and survive moves of their Engine owner.
 class CompletionPoint final
 {
 public:

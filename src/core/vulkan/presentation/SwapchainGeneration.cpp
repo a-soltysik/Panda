@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <expected>
 #include <limits>
-#include <panda/DeviceInfo.hpp>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
 #include <span>
@@ -122,7 +121,7 @@ namespace
 auto createSwapchain(const SwapchainGenerationRequest& request, const SurfaceConfig& config)
     -> std::expected<vk::raii::SwapchainKHR, Error>
 {
-    const auto familyIndices = std::array {request.deviceInfo.queueFamily, request.deviceInfo.presentQueueFamily};
+    const auto familyIndices = std::array {request.queueFamily, request.presentQueueFamily};
     const auto separateFamilies = familyIndices.front() != familyIndices.back();
     const auto info = vk::SwapchainCreateInfoKHR {
         .surface = request.surface,

@@ -110,7 +110,7 @@ around the copies, so queue order alone is not treated as a memory dependency.
 
 **Initialization.** Every successful Engine initializes its shared queue and
 constructs an empty upload manager during Engine creation. This makes timeline
-creation failure an Engine factory error. Creating a batch does not allocate staging;
+creation failure an Engine creation error. Creating a batch does not allocate staging;
 staging memory and upload command resources are created only for actual writes and
 submission.
 

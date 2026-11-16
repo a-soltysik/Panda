@@ -20,6 +20,9 @@ latitude rings. Each frame supplies the current framebuffer aspect ratio to
 `Scene::createRenderView()` and passes the returned snapshot to
 `WindowRenderer::render()`. The application owns the loop and uploads; scene objects and
 snapshots retain mesh handles, so their Engine stays alive until those handles are released.
+`Engine::createWithSurface` returns the same move-only `Engine` type used by the
+headless path. Common service access stays on Engine, and this surface-enabled
+Engine also provides `getWindowRenderer()`.
 
 Requires `PANDA_BUILD_SCENE=ON`, Tools, a display, Vulkan 1.3 with swapchain
 maintenance1, and the Khronos validation layer. The development presets enable the

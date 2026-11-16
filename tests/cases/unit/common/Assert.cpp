@@ -41,6 +41,11 @@ TEST(Assert, ChecksConditionsAndExtractsOwnedResults)
     auto optional = panda::expect(std::optional<std::unique_ptr<std::uint32_t>> {std::make_unique<std::uint32_t>(9)},
                                   "required optional owner");
     EXPECT_EQ(*optional, 9);
+    auto borrowedOptional = std::optional<std::unique_ptr<std::uint32_t>> {std::make_unique<std::uint32_t>(11)};
+    auto* const borrowedValue = borrowedOptional->get();
+    EXPECT_EQ(panda::expect(borrowedOptional, "required borrowed optional owner").get(), borrowedValue);
+    const auto constOptional = std::optional<std::uint32_t> {13};
+    EXPECT_EQ(panda::expect(constOptional, "required const optional value"), 13);
     const auto copyable = std::expected<std::uint32_t, std::uint32_t> {3};
     EXPECT_EQ(panda::expect(copyable, "copy lvalue"), 3);
     EXPECT_EQ(*copyable, 3);

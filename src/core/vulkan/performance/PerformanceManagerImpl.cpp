@@ -25,12 +25,9 @@ namespace panda::detail
 {
 PerformanceManagerImpl::PerformanceManagerImpl(const vk::raii::Device& device,
                                                SubmissionQueue& submissions,
-                                               TimestampProperties timestamps,
-                                               bool enableFramePerformanceSampling)
+                                               TimestampProperties timestamps)
     : _device {device},
       _submissions {submissions},
-      _capabilities {.hasGpuTimestampQueries = timestamps.validBits != 0,
-                     .isGpuTimestampSamplingEnabled = enableFramePerformanceSampling && timestamps.validBits != 0},
       _timestampValidBits {timestamps.validBits},
       _timestampPeriodNanoseconds {timestamps.periodNanoseconds}
 {
@@ -38,11 +35,7 @@ PerformanceManagerImpl::PerformanceManagerImpl(const vk::raii::Device& device,
 
 auto PerformanceManagerImpl::initialize() -> Result<void>
 {
-    if (!_capabilities.isGpuTimestampSamplingEnabled)
-    {
-        return {};
-    }
-    if (_timestampValidBits > std::numeric_limits<std::uint64_t>::digits ||
+    if (_timestampValidBits == 0 || _timestampValidBits > std::numeric_limits<std::uint64_t>::digits ||
         !std::isfinite(_timestampPeriodNanoseconds) || _timestampPeriodNanoseconds <= 0.0F)
     {
         return std::unexpected {makeError(ErrorCode::BackendFailure, "Invalid Vulkan timestamp properties")};
@@ -59,11 +52,6 @@ auto PerformanceManagerImpl::initialize() -> Result<void>
         slot.pool = vk::raii::QueryPool {_device, queryPool};
     }
     return {};
-}
-
-auto PerformanceManagerImpl::getCapabilities() const noexcept -> PerformanceCapabilities
-{
-    return _capabilities;
 }
 
 auto PerformanceManagerImpl::duration(std::uint64_t start, std::uint64_t end) const -> Result<std::chrono::nanoseconds>
@@ -158,10 +146,6 @@ auto PerformanceManagerImpl::readReadyTimestamps(const QuerySlot& slot)
 
 auto PerformanceManagerImpl::recordStart(std::size_t slotIndex, vk::CommandBuffer command) -> Result<void>
 {
-    if (!_capabilities.isGpuTimestampSamplingEnabled)
-    {
-        return {};
-    }
     auto& slot = _slots.at(slotIndex);
     const auto collected = collect(slotIndex);
     if (!collected)
@@ -178,35 +162,26 @@ auto PerformanceManagerImpl::recordStart(std::size_t slotIndex, vk::CommandBuffe
     return {};
 }
 
-void PerformanceManagerImpl::recordEnd(std::size_t slotIndex, vk::CommandBuffer command)
+void PerformanceManagerImpl::recordEnd(std::size_t slotIndex, vk::CommandBuffer command) const
 {
-    if (_capabilities.isGpuTimestampSamplingEnabled)
-    {
-        command.writeTimestamp2(vk::PipelineStageFlagBits2::eColorAttachmentOutput, *_slots.at(slotIndex).pool, 1);
-    }
+    command.writeTimestamp2(vk::PipelineStageFlagBits2::eColorAttachmentOutput, *_slots.at(slotIndex).pool, 1);
 }
 
 void PerformanceManagerImpl::markSubmitted(std::size_t slotIndex, CompletionPoint submissionPoint) noexcept
 {
-    if (_capabilities.isGpuTimestampSamplingEnabled)
-    {
-        auto& slot = _slots.at(slotIndex);
-        slot.submitted = true;
-        slot.submissionPoint = submissionPoint;
-        slot.frameIndex = _nextFrameIndex++;
-        slot.cpuFrameDuration = {};
-    }
+    auto& slot = _slots.at(slotIndex);
+    slot.submitted = true;
+    slot.submissionPoint = submissionPoint;
+    slot.frameIndex = _nextFrameIndex++;
+    slot.cpuFrameDuration = {};
 }
 
 void PerformanceManagerImpl::recordCpuFrameDuration(std::size_t slotIndex, std::chrono::nanoseconds duration) noexcept
 {
-    if (_capabilities.isGpuTimestampSamplingEnabled)
+    auto& slot = _slots.at(slotIndex);
+    if (slot.submitted)
     {
-        auto& slot = _slots.at(slotIndex);
-        if (slot.submitted)
-        {
-            slot.cpuFrameDuration = duration;
-        }
+        slot.cpuFrameDuration = duration;
     }
 }
 
@@ -249,7 +224,7 @@ auto PerformanceManagerImpl::takeNextSample() -> Result<std::optional<FramePerfo
     }
     const auto sample = _readySamples.front().sample;
     _readySamples.erase(_readySamples.begin());
-    return std::optional<FramePerformanceSample> {sample};
+    return std::optional {sample};
 }
 
 auto PerformanceManagerImpl::takeAvailableSamples() -> Result<std::vector<FramePerformanceSample>>

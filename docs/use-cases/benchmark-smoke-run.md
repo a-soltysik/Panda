@@ -11,9 +11,8 @@ through `WindowRenderer::render(view)`. It exercises the live mesh and lighting 
 is not a representative scene benchmark or performance baseline.
 
 **The benchmark** validates settings, drives the timed phases and checks that the
-sample set is complete. **Panda** owns window/context creation and asynchronous
-frame timing. Each requested run creates and tears down its own window and
-`Engine`.
+sample set is complete. **Panda** owns window/Engine creation and asynchronous
+frame timing. Each requested run creates and tears down its own window and Engine.
 
 ## Main flow
 
@@ -29,10 +28,12 @@ frame timing. Each requested run creates and tears down its own window and
    creates the output directory and opens `panda-bench.log` as a logger sink. A
    setup error stops before any run starts.
 3. **Initialize a run.** `SmokeRun` asks `VulkanSmokeRunBackend` to create a window
-   at the requested size, then a windowed `Engine` with validation disabled, frame
+   at the requested size, then a `Engine` with validation disabled, frame
    sampling enabled and `maxLights = max(defaultMaxLights, requested light count)`.
-   The backend requires GPU timestamp support and captures the effective framebuffer
-   extent, GPU, driver and Vulkan API information. For a nonzero extent, it creates
+   `Engine::createWithSurface(surface, options)` returns Engine. The backend checks
+   `Engine::getFeatures().performance` before borrowing the optional manager, then
+   captures the effective framebuffer extent, GPU, driver and Vulkan API information.
+   For a nonzero extent, it creates
    unit-cube geometry and a matching mesh, snapshots the
    geometry through an `UploadBatch`, waits for upload completion and prepares one
    fixed camera, mesh draw and optional fixed light list. A minimized initial
@@ -40,8 +41,9 @@ frame timing. Each requested run creates and tears down its own window and
 4. **Warm up.** For the requested duration, `SmokeRun` checks that the window stays
    open and its nonzero framebuffer extent stays unchanged, submits a frame, drains
    available samples and discards them, then processes window input. Every frame
-   must be `Presented` with a valid completion point; warmup frames and their
-   samples are excluded from measurement. A zero-second warmup skips this phase.
+   must be `Presented` with a valid completion point; the adapter maps public
+   `FrameResult::Status::Rendered` to its local `FrameStatus::Presented`. Warmup
+   frames and their samples are excluded from measurement. A zero-second warmup skips this phase.
 5. **Measure.** `SmokeRun` records the first measurement frame index, then repeats
    the same controlled frame loop for the requested measurement duration. It drains
    samples during the loop and keeps only samples whose frame indices fall in the
@@ -66,6 +68,7 @@ sequenceDiagram
     participant B as Vulkan backend
     participant W as Window
     participant C as Engine
+    participant E as EngineFeatures
     participant U as UploadBatch
     participant P as PerformanceManager
     participant F as Output files
@@ -75,9 +78,11 @@ sequenceDiagram
         M ->> S: Step 3 - execute one run
         S ->> B: Step 3 - initialize with options
         B ->> W: Create requested window
-        B ->> C: Create Engine with sampling and requested light budget
+        B ->> C: Engine::createWithSurface(surface, options)
         C -->> B: Engine and selected device
-        B ->> P: Check timestamp capabilities
+        B ->> E: getFeatures().performance
+        E -->> B: Timestamp support and sampling state
+        B ->> P: Borrow active PerformanceManager
         B ->> B: Capture extent and environment
         opt Initial framebuffer extent is nonzero
             B ->> C: createMeshFromGeometry(cube geometry)
@@ -177,7 +182,7 @@ an empty sample set has no statistics summary.
 | **Variant&nbsp;2** | Step 1: warmup is zero, or more than one run is requested                                                                                                  | Skip warmup, or execute runs sequentially with a fresh backend for each                                                          | A zero-warmup run may include first-use renderer setup in its first sample; each run retains its own sample set and report entry    |
 | **Error&nbsp;1**   | Step 1: arguments are malformed, out of range or select an unimplemented profile                                                                           | Print the parser error and return `EXIT_FAILURE`                                                                                 | No benchmark run or report is started; correct the options and retry                                                                |
 | **Error&nbsp;2**   | Step 2: output directory creation or log sink setup fails                                                                                                  | Report the setup error and return `EXIT_FAILURE`                                                                                 | No run starts and no JSON report is guaranteed; choose a writable output directory                                                  |
-| **Error&nbsp;3**   | Step 3: window/context, cube mesh or upload setup fails, or the selected queue lacks timestamp support                                                     | Stop initialization; use [failed-run teardown](#failed-run-teardown); preserve `unsupported` or `failed` as the run outcome      | The benchmark still attempts to write a report if output setup succeeded; use a supported display/device or resolve the setup error |
+| **Error&nbsp;3**   | Step 3: window/Engine, cube mesh or upload setup fails, or the selected queue lacks timestamp support                                                       | Stop initialization; use [failed-run teardown](#failed-run-teardown); preserve `unsupported` or `failed` as the run outcome      | The benchmark still attempts to write a report if output setup succeeded; use a supported display/device or resolve the setup error |
 | **Error&nbsp;4**   | Steps 3 through 5: the initial or later framebuffer is minimized, the window closes, its extent changes, or a frame is not presented                       | Mark the run `invalid` and stop its timed phases; use [failed-run teardown](#failed-run-teardown)                                | Inspect the reported reason and repeat under a stable display configuration                                                         |
 | **Error&nbsp;5**   | Steps 4 through 6: a window/backend operation or sample retrieval fails, the final frame wait times out, or sample count differs from measured submissions | Stop with the returned error outcome, or mark it `invalid` for a count mismatch; use [failed-run teardown](#failed-run-teardown) | A report is attempted; fix the reported backend/query problem before comparing results                                              |
 | **Error&nbsp;6**   | Step 7: report cannot be opened or fully written                                                                                                           | Print the report error and return `EXIT_FAILURE`                                                                                 | A complete JSON report is not guaranteed; use a writable destination and rerun                                                      |
@@ -234,8 +239,9 @@ complete JSON report is not guaranteed. The process returns `EXIT_FAILURE`.
   timing boundaries, comparison rules and planned reference workloads.
 - [UC Collect paired CPU and GPU frame timings](collect-frame-timings.md) explains
   how `PerformanceManager` buffers, pairs and exposes frame samples.
-- [UC Render and present an application view](render-view.md) explains
-  the `Presented`, skipped and recreation outcomes that the controlled run checks.
+- [UC Render and present an application view](render-view.md) explains the public
+  `Rendered`, skipped and recreation outcomes; the adapter maps `Rendered` to its
+  local `Presented` result.
 - [UC Shut down an Engine safely](shutdown-context.md) explains the drain performed
   when the benchmark tears down a run with submitted work.
 - [Frame rendering and benchmark smoke test](../development/tasks/frame-rendering.md)

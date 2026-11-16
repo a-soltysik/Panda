@@ -140,7 +140,7 @@ auto centerPixel(const panda::ImageReadback& image) -> std::array<std::uint8_t, 
     return {image.rgba.at(offset), image.rgba.at(offset + 1), image.rgba.at(offset + 2), image.rgba.at(offset + 3)};
 }
 
-class OffscreenRenderingSystem : public testing::Test
+class OffscreenRenderBackendSystem : public testing::Test
 {
 protected:
     void SetUp() override
@@ -167,11 +167,7 @@ protected:
 
     auto activeEngine() -> panda::Engine&
     {
-        if (!context)
-        {
-            panda::panic("Offscreen system test has no initialized Engine");
-        }
-        return *context;
+        return panda::expect(context, "Offscreen system test has no initialized Engine");
     }
 
     panda::test::LogRecords records;
@@ -180,7 +176,7 @@ protected:
 };
 }
 
-TEST_F(OffscreenRenderingSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
+TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
 {
     auto createdTarget = activeEngine().getResourceManager().createOffscreenTarget({
         .extent = {.width = 32, .height = 32}
@@ -209,7 +205,7 @@ TEST_F(OffscreenRenderingSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
     EXPECT_TRUE(firstFrame->completion.isValid());
     const auto firstReadback = activeEngine().getOffscreenRenderer().readPixels(target, firstFrame->completion);
     ASSERT_TRUE(firstReadback) << firstReadback.error().message;
-    if (activeEngine().getPerformanceManager().getCapabilities().isGpuTimestampSamplingEnabled)
+    if (activeEngine().getFeatures().performance.isGpuTimestampSamplingEnabled)
     {
         const auto sample = activeEngine().getPerformanceManager().getLatestSample();
         ASSERT_TRUE(sample) << sample.error().message;
@@ -242,9 +238,9 @@ TEST_F(OffscreenRenderingSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
     const auto smallerExtent = vk::Extent2D {.width = 16, .height = 24};
     EXPECT_EQ(resizedReadback->extent, smallerExtent);
     EXPECT_EQ(resizedReadback->rgba.size(), 16U * 24U * 4U);
-    auto& performance = activeEngine().getPerformanceManager();
-    if (performance.getCapabilities().isGpuTimestampSamplingEnabled)
+    if (activeEngine().getFeatures().performance.isGpuTimestampSamplingEnabled)
     {
+        auto& performance = activeEngine().getPerformanceManager();
         const auto samples = performance.takeAvailableSamples();
         ASSERT_TRUE(samples) << samples.error().message;
         EXPECT_EQ(samples->size(), 3U);
@@ -261,7 +257,7 @@ TEST_F(OffscreenRenderingSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
     }
 }
 
-TEST_F(OffscreenRenderingSystem, ValidatesTargetExtentOwnershipAndLifetime)
+TEST_F(OffscreenRenderBackendSystem, ValidatesTargetExtentOwnershipAndLifetime)
 {
     const auto zeroExtent = activeEngine().getResourceManager().createOffscreenTarget({
         .extent = {.width = 0, .height = 32}

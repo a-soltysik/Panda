@@ -13,11 +13,9 @@
 #include <glm/trigonometric.hpp>
 #include <limits>
 #include <optional>
-#include <panda/Assert.hpp>
 #include <panda/Camera.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Cube.hpp>
-#include <panda/DeviceInfo.hpp>
 #include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/FrameResult.hpp>
@@ -134,7 +132,7 @@ void verifyCompletion(const panda::Engine& context, panda::CompletionPoint point
 
 auto windowRenderer(const panda::Engine& context) -> const panda::WindowRenderer&
 {
-    return panda::expect(context.getWindowRenderer(), "Window context has no renderer").get();
+    return context.getWindowRenderer();
 }
 
 auto createTestTarget(const panda::Engine& context) -> panda::Result<panda::OffscreenTarget>
@@ -649,7 +647,7 @@ auto makeCubeAndGroundView(panda::FramebufferExtent extent, const SceneMeshes& m
 
 }
 
-TEST(WindowedEngineSystem, CreatesValidatedSurfaceAndDevice)
+TEST(WindowRenderingSystem, CreatesValidatedSurfaceAndDevice)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda Vulkan window smoke");
     if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
@@ -665,6 +663,8 @@ TEST(WindowedEngineSystem, CreatesValidatedSurfaceAndDevice)
         GTEST_SKIP() << context.error().message;
     }
     ASSERT_TRUE(context.has_value()) << context.error().message;
+    EXPECT_TRUE(context->getFeatures().windowRenderingEnabled);
+    EXPECT_TRUE(context->getFeatures().validationEnabled);
     const auto* const windowRendererBeforeMove = &windowRenderer(*context);
     const auto beforeMove = windowRenderer(*context).render(panda::RenderView {});
     ASSERT_TRUE(beforeMove);
@@ -672,20 +672,20 @@ TEST(WindowedEngineSystem, CreatesValidatedSurfaceAndDevice)
     EXPECT_EQ(&windowRenderer(movedEngine), windowRendererBeforeMove);
     verifyCompletion(movedEngine, beforeMove->completion);
     EXPECT_FALSE(context->isValid());
-    EXPECT_NE(movedEngine.getDeviceInfo().swapchainMaintenance, panda::DeviceInfo::SwapchainMaintenance::None);
+    EXPECT_EQ(&movedEngine.getWindowRenderer(), windowRendererBeforeMove);
     for (auto index = 0; index < 3; ++index)
     {
         ASSERT_TRUE(window->processInput().has_value());
         const auto frame = windowRenderer(movedEngine).render(panda::RenderView {});
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
-        EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+        EXPECT_EQ(frame->status, panda::FrameResult::Status::Rendered);
         verifyCompletion(movedEngine, frame->completion);
     }
     ASSERT_TRUE(window->setSize({240, 180}).has_value());
     ASSERT_TRUE(window->processInput().has_value());
     const auto resized = windowRenderer(movedEngine).render(panda::RenderView {});
     ASSERT_TRUE(resized.has_value()) << resized.error().message;
-    EXPECT_EQ(resized->status, panda::FrameResult::Status::Presented);
+    EXPECT_EQ(resized->status, panda::FrameResult::Status::Rendered);
     EXPECT_TRUE(resized->completion.isValid());
 
     auto captureTarget = createTestTarget(movedEngine);
@@ -718,11 +718,11 @@ TEST(WindowedEngineSystem, CreatesValidatedSurfaceAndDevice)
     surface.setSuspended(false);
     const auto restored = windowRenderer(movedEngine).render(panda::RenderView {});
     ASSERT_TRUE(restored.has_value()) << restored.error().message;
-    EXPECT_EQ(restored->status, panda::FrameResult::Status::Presented);
+    EXPECT_EQ(restored->status, panda::FrameResult::Status::Rendered);
     EXPECT_TRUE(restored->completion.isValid());
 }
 
-TEST(WindowedEngineSystem, CapturesPresentedViewIntoOffscreenTarget)
+TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda capture smoke");
     if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
@@ -769,14 +769,14 @@ TEST(WindowedEngineSystem, CapturesPresentedViewIntoOffscreenTarget)
         GTEST_SKIP() << frame.error().message;
     }
     ASSERT_TRUE(frame.has_value()) << frame.error().message;
-    EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+    EXPECT_EQ(frame->status, panda::FrameResult::Status::Rendered);
     const auto pixels = context.getOffscreenRenderer().readPixels(*target, frame->completion);
     ASSERT_TRUE(pixels.has_value()) << pixels.error().message;
     EXPECT_EQ(pixels->extent, renderExtent);
     ASSERT_EQ(pixels->rgba.size(), static_cast<std::size_t>(renderExtent.width) * renderExtent.height * 4);
-    auto& performance = context.getPerformanceManager();
-    if (performance.getCapabilities().isGpuTimestampSamplingEnabled)
+    if (context.getFeatures().performance.isGpuTimestampSamplingEnabled)
     {
+        auto& performance = context.getPerformanceManager();
         const auto sample = performance.getLatestSample();
         ASSERT_TRUE(sample) << sample.error().message;
         ASSERT_TRUE(*sample);
@@ -785,7 +785,7 @@ TEST(WindowedEngineSystem, CapturesPresentedViewIntoOffscreenTarget)
     auto redPixelFound = false;
     for (auto index = std::size_t {}; index < pixels->rgba.size(); index += 4)
     {
-        redPixelFound = redPixelFound || pixels->rgba[index] > pixels->rgba[index + 1] + 20;
+        redPixelFound = redPixelFound || pixels->rgba.at(index) > pixels->rgba.at(index + 1) + 20;
     }
     EXPECT_TRUE(redPixelFound);
 }
@@ -906,7 +906,7 @@ TEST(HeadlessRendererSystem, RendersUnlitMeshWithZeroLightBudget)
     EXPECT_EQ(overBudget.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
-TEST(WindowedEngineSystem, ReportsSurfaceCreationFailures)
+TEST(WindowRenderingSystem, ReportsSurfaceCreationFailures)
 {
     auto window = panda::tools::Window::create({160, 120}, "Panda surface error smoke");
     if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))

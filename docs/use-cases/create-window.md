@@ -102,7 +102,7 @@ Panda window is alive, the application must not independently initialize or
 terminate GLFW or replace its error callback.
 
 **Surface borrowing.** `Window::createSurface()` transfers the created Vulkan
-surface to the caller, while `Engine::createWithSurface()` borrows the
+surface to the caller, while `Engine::create()` borrows the
 `WindowSurface`. Keep the `Window` alive until that Engine is destroyed; the
 [UC Create an Engine](create-context.md) follows that ownership boundary.
 

@@ -15,12 +15,12 @@ namespace panda
 {
 namespace core::vulkan
 {
-class Presentation;
+class WindowPresentation;
 struct CaptureFrameRequest;
 
 namespace presentation
 {
-class OffscreenRendering;
+class OffscreenRenderBackend;
 }
 
 namespace resources
@@ -39,9 +39,9 @@ namespace detail
 class PerformanceManagerImpl;
 }
 
-/// @brief Renders application views to the window associated with this Engine.
-/// This facade is available only when the Engine has a window surface. It is
-/// borrowed from that Engine and its address remains stable when Engine is moved.
+/// @brief Renders application views to the window associated with an Engine.
+/// This facade is available only when Engine was created with a WindowSurface.
+/// It is borrowed from that Engine and its address remains stable when Engine moves.
 class WindowRenderer final
 {
 public:
@@ -53,8 +53,9 @@ public:
 
     /// @brief Renders and presents one application-supplied view.
     /// @param view Transient render data whose resources are retained through GPU completion.
-    /// @return Checked frame result or a validation/backend/window error. A valid
-    /// completion token means submitted work, not completed presentation.
+    /// @return Rendered when submission and presentation request succeed without
+    /// recreation; otherwise a non-rendered result or a validation/backend/window error.
+    /// A valid completion token means submitted work, not completed presentation.
     [[nodiscard]] auto render(const RenderView& view) const -> Result<FrameResult>;
 
     /// @brief Renders a view once, presents it, and copies the same color output to a target.
@@ -70,11 +71,11 @@ private:
 
     struct Dependencies final
     {
-        core::vulkan::Presentation* presentation;
-        core::vulkan::presentation::OffscreenRendering& rendering;
+        core::vulkan::WindowPresentation& presentation;
+        core::vulkan::presentation::OffscreenRenderBackend& rendering;
         core::vulkan::resources::MemoryPool& pool;
         core::vulkan::upload::UploadManager& uploads;
-        detail::PerformanceManagerImpl& performance;
+        detail::PerformanceManagerImpl* performance;
         std::uint32_t maxLights;
     };
 
@@ -84,11 +85,11 @@ private:
         -> Result<FrameResult>;
     [[nodiscard]] auto captureWithUploads(core::vulkan::CaptureFrameRequest request) const -> Result<FrameResult>;
 
-    core::vulkan::Presentation* _presentation;
-    core::vulkan::presentation::OffscreenRendering& _rendering;
+    core::vulkan::WindowPresentation& _presentation;
+    core::vulkan::presentation::OffscreenRenderBackend& _rendering;
     core::vulkan::resources::MemoryPool& _pool;
     core::vulkan::upload::UploadManager& _uploads;
-    detail::PerformanceManagerImpl& _performance;
+    detail::PerformanceManagerImpl* _performance;
     std::uint32_t _maxLights;
 };
 }

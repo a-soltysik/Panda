@@ -70,29 +70,32 @@ Use the same renderer and synchronization path as applications, not a special fa
 path that bypasses production behavior.
 
 `panda-bench` is an ordinary Panda API consumer. It enables
-`EngineOptions::enableFramePerformanceSampling`, obtains the Engine-owned
-`PerformanceManager` through `Engine::getPerformanceManager()`, checks the public
-capabilities, and drains samples through `takeAvailableSamples()`. Applications use
-the same option and API; the benchmark has no private route to timestamp data.
+`EngineOptions::enableFramePerformanceSampling`, reads
+`Engine::getFeatures().performance`, and obtains the Engine-owned
+`PerformanceManager` only when sampling is active. It drains samples through
+`takeAvailableSamples()`. Applications use the same option and API; the benchmark
+has no private route to timestamp data.
 
 ## Public performance collection
 
-Every valid Engine exposes a `PerformanceManager`, including a headless Engine.
+`EngineFeatures` is available for every valid Engine, including a headless Engine.
 Frame performance sampling is disabled by default. Set
-`EngineOptions::enableFramePerformanceSampling` to enable it. `getCapabilities()` reports
-both whether the selected graphics queue supports timestamp queries and whether
-sampling is enabled for this Engine. The manager handles counter wrapping and
-converts device ticks to nanoseconds internally. A queue without timestamp support
-reports the capability as unavailable, even if sampling was requested.
+`EngineOptions::enableFramePerformanceSampling` to request it, then inspect
+`EngineFeatures::performance`. It reports whether the selected graphics queue
+supports timestamp queries and whether sampling is active. Engine exposes a
+`PerformanceManager` only when sampling is active; its getter aborts otherwise.
+The manager handles counter wrapping and converts device ticks to nanoseconds
+internally. A queue without timestamp support leaves sampling inactive, even when
+the option was requested.
 
 `getLatestSample()` peeks at a copy of the highest-frame-index sample currently ready
 and leaves it buffered. `takeNextSample()` removes and returns the lowest-frame-index
 ready sample, allowing FIFO processing one frame at a time. `takeAvailableSamples()`
 removes and returns all currently ready samples in frame-index order. These calls
-check query availability without waiting; each can return an empty result when
-sampling is disabled, unsupported, or no sample is ready yet. Samples stay buffered
-until a `take` method returns them, so long-running applications should drain samples
-regularly.
+check query availability without waiting; each can return an empty result when no
+sample is ready yet. Disabled or unsupported sampling has no manager to call.
+Samples stay buffered until a `take` method returns them, so long-running
+applications should drain samples regularly.
 
 Each sample pairs `cpuFrameDuration` with `gpuExecutionDuration` for the same
 submitted frame. Both are returned in nanoseconds. `cpuFrameDuration` is host
@@ -103,8 +106,9 @@ is short. It excludes application work outside Panda's call and display latency;
 is elapsed time, not CPU execution time. `gpuExecutionDuration` is GPU time between
 the frame's GPU timestamp markers. It excludes CPU work and presentation latency.
 The paired sample becomes available when its GPU timestamp queries are ready.
-Disabled sampling or unsupported timestamp queries produce no paired samples;
-callers inspect capabilities instead of interpreting missing data as zero.
+Disabled sampling or unsupported timestamp queries produce no manager or paired
+samples; callers inspect `EngineFeatures` instead of interpreting missing data as
+zero.
 
 Vulkan timestamp results live in query pools. Panda creates one pool for each of its
 two in-flight frame slots with `queryType = eTimestamp` and `queryCount = 2`. The

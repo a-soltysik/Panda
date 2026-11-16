@@ -9,10 +9,12 @@ acquire/present/resize/minimize and bounded failure states.
 
 Non-goal: No CUDA, scene or general render graph.
 
-Interface: `Engine::create` creates a context without a surface;
-`Engine::createWithSurface` explicitly creates one with a borrowed window surface.
-Both return the same checked context owner and use the shared `Result<T>` error
-contract. The surface and native window outlive their context.
+Interface: `Engine::create(options)` and
+`Engine::createWithSurface(surface, options)` both return the same concrete,
+move-only `Engine` through `Result<Engine>`. The surface and native window are
+borrowed and outlive a surface-enabled Engine. `Engine::getFeatures()` reports
+window and performance availability; `getWindowRenderer()` and
+`getPerformanceManager()` use `expect` when their optional services are absent.
 
 The shared error reports a recovery-oriented category, owned message, optional
 native API status and source location. Native operation names are diagnostic
@@ -34,23 +36,31 @@ Learning: Trace acquire, submission completion and presentation lifetime separat
 
 ## Current verification
 
-- Windows: `cmake --build --preset msvc-fast --parallel` and
-  `ctest --preset msvc-fast` passed. CTest registered 425 tests: 421 passed and
-  four were skipped (the Linux-only buffered-close test and three unavailable
-  noncoherent memory variants). Acquire timeout, not-ready, out-of-date and device
-  loss paths leave the image index unused.
-- WSL GCC: `cmake --build --preset gcc-fast --parallel` and
-  `ctest --preset gcc-fast` passed. CTest registered 425 tests: 422 passed and
-  three noncoherent memory variants were skipped because the device did not expose
-  that memory type.
-- Existing Windows Vulkan validation smoke presents, resizes, suspends/restores and
-  destroys a moved Engine on an NVIDIA GeForce RTX 4070 Ti. WSL system tests are
-  Linux lifecycle evidence, not proof of hardware-GPU behavior.
-- No new RenderDoc capture has been made. Previously observed capture-only
-  `VUID-vkCmdDraw-None-09600` and
-  `VUID-VkPresentInfoKHR-pImageIndices-01430` remain an integration limitation
-  to recheck; the acquire-output change does not alter rendering barriers or draw
-  commands.
+- Windows: `cmake --preset msvc-fast`,
+  `cmake --build --preset msvc-fast --parallel` and `ctest --preset msvc-fast`
+  passed. CTest registered 645 tests: 641 passed and four were skipped (one
+  Linux-only benchmark-output case and three unavailable noncoherent-memory
+  variants). Window creation, rendering, capture, resize and headless rendering
+  system tests passed.
+- WSL GCC: `.agents/skills/panda-dual-platform-build/scripts/build-wsl.ps1 -Preset
+  gcc-fast -RunTests -IncludeSystemTests` passed. CTest registered 645 tests: 637
+  passed and eight were skipped (five CUDA interop cases unavailable in WSL and
+  three unavailable noncoherent-memory variants). Window and headless system tests
+  passed in the Linux environment.
+- Commit 10 follow-up: the incremental `msvc-quality` build and its
+  `all_verify_interface_header_sets`/`panda_format_checks` targets passed. After
+  rebuilding the touched test targets, Windows CTest passed all six focused
+  offscreen, handoff and window-rendering system tests. The synchronized WSL
+  `gcc-fast` system-only run passed 43 of 50 tests; seven were skipped (four CUDA
+  interop cases and three noncoherent-memory variants). This targeted run does not
+  replace the full-suite results above.
 - `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
-  all 54 Markdown files and the task queue; `git diff --check` and Clang format
-  validation passed.
+  82 Markdown files and the task queue with no structural errors. Changed C++ files
+  were formatted with Clang 22.1.8; `git diff --check` reported no whitespace
+  errors. `cmake --preset docs-checks` and its build passed with 41 Mermaid
+  diagrams checked; the WSL `gcc-docs` preset generated public API documentation
+  without warnings.
+- No new RenderDoc capture was made. System tests exercise rendering and capture,
+  but this verification does not include visual inspection or a RenderDoc-based
+  validation pass. Earlier capture-only validation messages remain unverified in
+  this revision.

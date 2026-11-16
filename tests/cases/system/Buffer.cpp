@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <concepts>
 #include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/Error.hpp>
@@ -12,7 +13,8 @@
 
 namespace
 {
-void exerciseOwnership(panda::Engine& context, panda::BufferMemory intent)
+template <std::derived_from<panda::Engine> ConcreteEngine>
+void exerciseOwnership(ConcreteEngine& context, panda::BufferMemory intent)
 {
     auto created = context.getResourceManager().createBuffer(
         {.size = 257, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = intent});
@@ -26,7 +28,7 @@ void exerciseOwnership(panda::Engine& context, panda::BufferMemory intent)
     created->reset();
     ASSERT_TRUE(copy.isValid());
     auto moved = std::move(context);
-    // isValid explicitly supports moved-from contexts.
+    // isValid explicitly supports a moved-from Engine.
     // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
     EXPECT_FALSE(context.isValid());
     EXPECT_EQ(copy.getSize(), 257);

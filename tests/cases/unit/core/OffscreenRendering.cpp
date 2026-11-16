@@ -3,8 +3,6 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include "vulkan/presentation/OffscreenRendering.hpp"
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
@@ -21,6 +19,7 @@
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SubmissionQueueMock.hpp"
 #include "vulkan/SubmissionQueue.hpp"
+#include "vulkan/presentation/OffscreenRenderBackend.hpp"
 #include "vulkan/resources/memory/MemoryPool.hpp"
 
 namespace
@@ -32,7 +31,7 @@ using testing::NotNull;
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
 constexpr auto initializationFailure = static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
 
-class OffscreenRenderingTest : public testing::Test
+class OffscreenRenderBackendTest : public testing::Test
 {
 protected:
     void SetUp() override
@@ -50,8 +49,8 @@ protected:
                 maintenance->maxMemoryAllocationSize = 1024;
             });
         _pool = panda::core::vulkan::resources::MemoryPool::create(_physicalDevice, _device);
-        _rendering = std::make_unique<panda::core::vulkan::presentation::OffscreenRendering>(
-            panda::core::vulkan::presentation::OffscreenRenderingCreateInfo {
+        _rendering = std::make_unique<panda::core::vulkan::presentation::OffscreenRenderBackend>(
+            panda::core::vulkan::presentation::OffscreenRenderBackendCreateInfo {
                 .physicalDevice = vk::PhysicalDevice {fakeHandle<VkPhysicalDevice>(2)},
                 .device = _device,
                 .queueFamily = 0,
@@ -70,7 +69,7 @@ protected:
         std::ignore = _instance.release();
     }
 
-    auto rendering() -> panda::core::vulkan::presentation::OffscreenRendering&
+    auto rendering() -> panda::core::vulkan::presentation::OffscreenRenderBackend&
     {
         return *_rendering;
     }
@@ -85,11 +84,11 @@ private:
     vk::raii::Device _device {_physicalDevice, fakeHandle<VkDevice>(3)};
     std::optional<panda::detail::SubmissionQueue> _submissions;
     std::unique_ptr<panda::core::vulkan::resources::MemoryPool> _pool;
-    std::unique_ptr<panda::core::vulkan::presentation::OffscreenRendering> _rendering;
+    std::unique_ptr<panda::core::vulkan::presentation::OffscreenRenderBackend> _rendering;
 };
 }
 
-TEST_F(OffscreenRenderingTest, InitializationFailureIsRetryableAndSuccessIsIdempotent)
+TEST_F(OffscreenRenderBackendTest, InitializationFailureIsRetryableAndSuccessIsIdempotent)
 {
     auto* const firstPool = fakeHandle<VkCommandPool>(10);
     auto* const secondPool = fakeHandle<VkCommandPool>(11);
@@ -138,7 +137,7 @@ TEST_F(OffscreenRenderingTest, InitializationFailureIsRetryableAndSuccessIsIdemp
     EXPECT_TRUE(rendering().initialize());
 }
 
-TEST_F(OffscreenRenderingTest, UninitializedShellDrainsWithoutNativeWork)
+TEST_F(OffscreenRenderBackendTest, UninitializedShellDrainsWithoutNativeWork)
 {
     EXPECT_TRUE(rendering().drain());
 }

@@ -13,7 +13,7 @@ Non-goal: No solver, CPU bounce path or image sharing. Memory import alone does 
 make cross-API access safe; the [GPU handoff task](gpu-handoff.md) owns synchronization.
 
 Interface: `EngineOptions::ExternalBufferSupport`,
-`DeviceInfo::externalBufferExportEnabled`, `Engine::getExternalBufferManager`, `ExternalBuffer`,
+`EngineFeatures` external-export fields, `Engine::getExternalBufferManager`, `ExternalBuffer`,
 `CudaSession::create`, `CudaSession::importBuffer` and
 `SharedCudaBuffer::getBuffer`.
 

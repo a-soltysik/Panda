@@ -24,12 +24,12 @@
 
 namespace
 {
-const auto vertices = std::array {
+constexpr auto vertices = std::array {
     std::array {0.0F, 0.0F, 0.0F},
      std::array {1.0F, 0.0F, 0.0F},
      std::array {0.0F, 1.0F, 0.0F}
 };
-const auto indices = std::array<std::uint16_t, 3> {0, 1, 2};
+constexpr auto indices = std::array<std::uint16_t, 3> {0, 1, 2};
 const auto vertexBytes = std::as_bytes(std::span {vertices});
 const auto indexBytes = std::as_bytes(std::span {indices});
 
@@ -77,11 +77,7 @@ protected:
 
     auto activeEngine() -> panda::Engine&
     {
-        if (!context)
-        {
-            panda::panic("Mesh system test has no initialized Engine");
-        }
-        return *context;
+        return panda::expect(context, "Mesh system test has no initialized Engine");
     }
 
     void uploadAndWait(panda::Mesh& mesh, std::span<const std::byte> indicesToUpload = {})

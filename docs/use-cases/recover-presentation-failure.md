@@ -2,7 +2,7 @@
 
 ## Goal and boundary
 
-After `WindowRenderer` submits a validated view, `Presentation::presentFrame()` queues the
+After `WindowRenderer` submits a validated view, `WindowPresentation::presentFrame()` queues the
 swapchain image and associates a per-image present fence. If `vkQueuePresentKHR`
 returns an error for which no presentation request was enqueued, Panda must
 retire the GPU producer, replace its unconsumed render-finished semaphore, release
@@ -11,7 +11,7 @@ not rolled back.
 
 ## Main flow
 
-1. **Classify the result.** `Presentation::presentFrame()` distinguishes success,
+1. **Classify the result.** `WindowPresentation::presentFrame()` distinguishes success,
    suboptimal, out-of-date and surface-lost outcomes (which the implementation
    treats as enqueued) from other errors.
 2. **Retain recovery and wait for the producer.** For a non-enqueued present
@@ -24,30 +24,30 @@ not rolled back.
    presentation never waited on.
 4. **Release and request recreation.** Panda releases the acquired image through
    swapchain maintenance, clears pending recovery and sets recreation pending.
-   `Presentation` returns the original present error through `WindowRenderer` to
+   `WindowPresentation` returns the original present error through `WindowRenderer` to
    the application.
 
 ```mermaid
 sequenceDiagram
     participant A as Application
     participant W as WindowRenderer
-    participant P as Presentation
+    participant P as WindowPresentation
     participant Q as SubmissionQueue
     participant V as Vulkan
-    W->>P: Step 1 - render the validated view
-    P->>V: Step 1 - queue present with render-finished wait and present fence
-    V-->>P: Non-enqueued present error
-    P->>P: Step 2 - retain image index and cleanup action
-    P->>Q: Step 2 - wait for committed frame value
-    Q->>V: Host waits for the committed frame value
-    V-->>Q: GPU signals after completing the frame producer
-    P->>V: Step 3 - create replacement render-finished semaphore
-    V-->>P: New semaphore and old unused signal semaphore released
-    P->>V: Step 4 - release acquired image
-    V-->>P: Release result
-    P->>P: Mark recreation pending
-    P-->>W: Return original present error
-    W-->>A: Return Result<FrameResult>
+    W ->> P: Step 1 - render the validated view
+    P ->> V: Step 1 - queue present with render-finished wait and present fence
+    V -->> P: Non-enqueued present error
+    P ->> P: Step 2 - retain image index and cleanup action
+    P ->> Q: Step 2 - wait for committed frame value
+    Q ->> V: Host waits for the committed frame value
+    V -->> Q: GPU signals after completing the frame producer
+    P ->> V: Step 3 - create replacement render-finished semaphore
+    V -->> P: New semaphore and old unused signal semaphore released
+    P ->> V: Step 4 - release acquired image
+    V -->> P: Release result
+    P ->> P: Mark recreation pending
+    P -->> W: Return original present error
+    W -->> A: Return Result<FrameResult>
 ```
 
 ## Notes
@@ -77,14 +77,14 @@ to destroy.
 
 ## Variants and errors
 
-|                    | Point and condition                                                        | Response                                                                                    | Resulting state and next action                                                                                                      |
-|--------------------|----------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| **Variant&nbsp;1** | Step 1: present succeeds                                                   | Mark the image's present fence pending and return `Presented` with a valid completion point | Caller may observe GPU completion separately; the present fence governs resource reuse                                               |
-| **Variant&nbsp;2** | Step 1: present is suboptimal/out-of-date, or acquire was suboptimal       | Keep the presentation record and return `RecreatePending` with a valid point                | The next frame boundary drains before creating a replacement generation                                                              |
+|                    | Point and condition                                                        | Response                                                                                   | Resulting state and next action                                                                                                      |
+|--------------------|----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| **Variant&nbsp;1** | Step 1: present succeeds                                                   | Mark the image's present fence pending and return `Rendered` with a valid completion point | Caller may observe GPU completion separately; the present fence governs resource reuse                                               |
+| **Variant&nbsp;2** | Step 1: present is suboptimal/out-of-date, or acquire was suboptimal       | Keep the presentation record and return `RecreatePending` with a valid point               | The next frame boundary drains before creating a replacement generation                                                              |
 | **Error&nbsp;1**   | Step 1: surface lost                                                       | Record pending presentation, fault the Engine and return the Vulkan error                  | No automatic surface recovery; drain still waits recorded GPU/presentation work                                                      |
 | **Error&nbsp;2**   | Step 1: device lost                                                        | Fault the Engine and return the Vulkan error                                               | Stop window work; transparent device reconstruction is not promised                                                                  |
-| **Error&nbsp;3**   | Step 2 through 4: timeline wait, semaphore creation or image release fails | Fault presentation and return that cleanup error                                            | Pending recovery remains; `drain()` can resume a failed wait or semaphore creation, but refuses success after an unconfirmed release |
-| **Error&nbsp;4**   | Step 4: the original present request was not enqueued                      | Return the original present error after successful cleanup                                  | Recreation is pending; caller can make another frame call if presentation remains usable                                             |
+| **Error&nbsp;3**   | Step 2 through 4: timeline wait, semaphore creation or image release fails | Fault presentation and return that cleanup error                                           | Pending recovery remains; `drain()` can resume a failed wait or semaphore creation, but refuses success after an unconfirmed release |
+| **Error&nbsp;4**   | Step 4: the original present request was not enqueued                      | Return the original present error after successful cleanup                                 | Recreation is pending; caller can make another frame call if presentation remains usable                                             |
 
 ## Related information
 

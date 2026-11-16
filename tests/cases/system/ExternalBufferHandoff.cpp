@@ -131,7 +131,7 @@ void runTaggedHandoffs(Observations& observed)
         GTEST_SKIP() << context.error().message;
     }
     ASSERT_TRUE(context) << context.error().message;
-    if (!context->getDeviceInfo().externalSemaphoreExportEnabled)
+    if (!context->getFeatures().externalSemaphoreExportEnabled)
     {
         GTEST_SKIP() << "External timeline semaphore export is unavailable";
     }

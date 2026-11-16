@@ -59,9 +59,8 @@ auto statusFromPanda(panda::FrameResult::Status status) -> FrameStatus
 {
     switch (status)
     {
-    case panda::FrameResult::Status::Presented:
-        return FrameStatus::Presented;
     case panda::FrameResult::Status::Rendered:
+        return FrameStatus::Presented;
     case panda::FrameResult::Status::Skipped:
         return FrameStatus::Skipped;
     case panda::FrameResult::Status::Suspended:
@@ -210,17 +209,13 @@ auto VulkanSmokeRunBackend::effectiveSampleCount() const noexcept -> std::uint32
 
 auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
 {
-    const auto renderer = checkedEngine().getWindowRenderer();
-    if (!renderer)
-    {
-        return std::unexpected {backendFailure("The benchmark context has no window renderer")};
-    }
-    const auto frame = renderer->get().render(_view);
+    const auto& renderer = checkedEngine().getWindowRenderer();
+    const auto frame = renderer.render(_view);
     if (!frame)
     {
         return std::unexpected {failFromPanda(frame.error())};
     }
-    if (frame->status == panda::FrameResult::Status::Presented && !frame->completion.isValid())
+    if (frame->status == panda::FrameResult::Status::Rendered && !frame->completion.isValid())
     {
         return std::unexpected {backendFailure("A presented frame had no completion token")};
     }
@@ -323,7 +318,7 @@ auto VulkanSmokeRunBackend::createEngine(const Options& options) -> std::expecte
 
 auto VulkanSmokeRunBackend::checkPerformanceCapabilities() -> std::expected<void, Failure>
 {
-    const auto capabilities = checkedEngine().getPerformanceManager().getCapabilities();
+    const auto capabilities = checkedEngine().getFeatures().performance;
     if (!capabilities.hasGpuTimestampQueries || !capabilities.isGpuTimestampSamplingEnabled)
     {
         return std::unexpected {unsupported("The selected graphics queue does not support GPU timestamp sampling")};

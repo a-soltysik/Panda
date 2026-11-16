@@ -4,8 +4,6 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include "presentation/Presentation.hpp"
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
@@ -18,7 +16,6 @@
 #include <memory>
 #include <optional>
 #include <panda/CompletionPoint.hpp>
-#include <panda/DeviceInfo.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/PerformanceManager.hpp>
@@ -27,6 +24,7 @@
 #include <string>
 #include <thread>
 
+#include "DeviceSelection.hpp"
 #include "FakeHandle.hpp"
 #include "PresentationTestSupport.hpp"
 #include "ScopedMock.hpp"
@@ -34,6 +32,7 @@
 #include "panda/core/SubmissionQueueMock.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/FrameExecution.hpp"
+#include "presentation/WindowPresentation.hpp"
 
 namespace
 {
@@ -272,9 +271,9 @@ protected:
     }
 
     auto createPresentation(
-        panda::DeviceInfo::SwapchainMaintenance maintenance = panda::DeviceInfo::SwapchainMaintenance::Khr,
+        panda::core::vulkan::SwapchainMaintenance maintenance = panda::core::vulkan::SwapchainMaintenance::Khr,
         bool enableFramePerformanceSampling = false)
-        -> std::expected<std::unique_ptr<panda::core::vulkan::Presentation>, panda::Error>
+        -> std::expected<std::unique_ptr<panda::core::vulkan::WindowPresentation>, panda::Error>
     {
         auto& submissionQueue = _submissions.emplace(getDevice(), 0);
         EXPECT_CALL(submissions, initialize(_)).WillOnce(Return(panda::Result<void> {}));
@@ -287,30 +286,22 @@ protected:
             _performance = std::make_unique<panda::detail::PerformanceManagerImpl>(
                 getDevice(),
                 submissionQueue,
-                panda::detail::TimestampProperties {.validBits = 64, .periodNanoseconds = 2.5F},
-                true);
+                panda::detail::TimestampProperties {.validBits = 64, .periodNanoseconds = 2.5F});
             if (const auto initialized = _performance->initialize(); !initialized)
             {
                 return std::unexpected {initialized.error()};
             }
         }
-        return panda::core::vulkan::Presentation::create({
-            .physicalDevice = vk::PhysicalDevice {},
-            .device = getDevice(),
-            .surface = vk::SurfaceKHR {},
-            .window = window,
-            .deviceInfo = {.name = {},
-                                                  .driverName = {},
-                                                  .driverInfo = {},
-                                                  .driverVersion = 0,
-                                                  .apiVersion = 0,
-                                                  .queueFamily = 0,
-                                                  .presentQueueFamily = 0,
-                                                  .swapchainMaintenance = maintenance},
-            .submissions = submissionQueue,
-            .performance = _performance.get(),
-            .maxLights = panda::EngineOptions::defaultMaxLights
-        });
+        return panda::core::vulkan::WindowPresentation::create({.physicalDevice = vk::PhysicalDevice {},
+                                                                .device = getDevice(),
+                                                                .surface = vk::SurfaceKHR {},
+                                                                .window = window,
+                                                                .queueFamily = 0,
+                                                                .presentQueueFamily = 0,
+                                                                .maintenance = maintenance,
+                                                                .submissions = submissionQueue,
+                                                                .performance = _performance.get(),
+                                                                .maxLights = panda::EngineOptions::defaultMaxLights});
     }
 
     auto createFrameExecution(bool enableFramePerformanceSampling = false)
@@ -322,8 +313,7 @@ protected:
             _performance = std::make_unique<panda::detail::PerformanceManagerImpl>(
                 getDevice(),
                 submissionQueue,
-                panda::detail::TimestampProperties {.validBits = 64, .periodNanoseconds = 2.5F},
-                true);
+                panda::detail::TimestampProperties {.validBits = 64, .periodNanoseconds = 2.5F});
             if (const auto initialized = _performance->initialize(); !initialized)
             {
                 return std::unexpected {initialized.error()};
@@ -572,7 +562,7 @@ TEST_F(PresentationTest, ReportsUnavailableExtReleaseFunction)
 {
     expectQueueLookup();
     EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesEXT"))).WillOnce(Return(nullptr));
-    const auto presentation = createPresentation(panda::DeviceInfo::SwapchainMaintenance::Ext);
+    const auto presentation = createPresentation(panda::core::vulkan::SwapchainMaintenance::Ext);
     ASSERT_FALSE(presentation.has_value());
     EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
     EXPECT_NE(presentation.error().message.find("VK_EXT_swapchain_maintenance1"), std::string::npos);
@@ -962,12 +952,12 @@ TEST_F(PresentationTest, RecordsGpuTimestampsAroundFrameRenderingAndPublishesSub
         });
     expectCompletionPoint(flow);
 
-    auto presentation = createPresentation(panda::DeviceInfo::SwapchainMaintenance::Khr, true);
+    auto presentation = createPresentation(panda::core::vulkan::SwapchainMaintenance::Khr, true);
     ASSERT_TRUE(presentation);
     auto submittedPerformanceSlot = std::optional<std::size_t> {};
     const auto frame = presentation->get()->render(panda::RenderView {}, submittedPerformanceSlot);
     ASSERT_TRUE(frame);
-    EXPECT_EQ(frame->status, panda::FrameResult::Status::Presented);
+    EXPECT_EQ(frame->status, panda::FrameResult::Status::Rendered);
     EXPECT_EQ(submittedPerformanceSlot, 0U);
 
     expectCompletedSampleReadback();

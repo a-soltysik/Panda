@@ -51,7 +51,7 @@ replacement logger. `PandaTest::MockHeaders` exposes mock declarations, includin
 without selecting stub implementations. `PandaTest::VulkanMock` is the shared
 Vulkan boundary for Core unit tests; its stub forwards the entry points used by
 current scenarios to one strict mock and fails on any other Vulkan call used by
-Core. `Engine`, `DeviceSelection`, `Presentation` and the resource unit suites
+Core. `Engine`, `DeviceSelection`, `WindowPresentation` and the resource unit suites
 use it without a native window. `RangeAllocator` and `MeshLayout` are standalone
 CPU units. `MemoryBlock` replaces `RangeAllocator`, and `MemoryPool` replaces
 `MemoryBlock`; integration suites keep the real block and pool together to cover
@@ -65,7 +65,7 @@ manager and resource collaborators, `UploadManager` replaces the submission
 queue, command packet and resources, and `UploadCommand` controls Vulkan calls
 and resource accessors. `BufferUpload` integration keeps the real batch,
 manager, command packet and resources together to verify copy ordering and
-retention across submission. Presentation unit tests replace SubmissionQueue at
+retention across submission. WindowPresentation unit tests replace SubmissionQueue at
 link time; the real queue and presentation collaborate only in their integration
 target. Shared presentation fixture setup and Vulkan entry-point conversions live
 in test support. Swapchain configuration policy has separate CPU unit tests. The

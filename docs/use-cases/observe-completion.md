@@ -59,7 +59,7 @@ sequenceDiagram
 **Shared timeline.** The Engine's `SubmissionQueue` owns a Vulkan timeline
 semaphore, a GPU-updated integer counter. Each accepted queue submission signals
 the next value, and a point is complete when the counter reaches or exceeds its
-value. Upload and presentation submissions share this counter. Presentation
+value. Upload and presentation submissions share this counter. WindowPresentation
 completion is tracked separately, so this result does not mean a frame is
 displayed. See the [completion-point contract](../design/contracts/resources.md#handles-and-api-boundary).
 
@@ -97,7 +97,7 @@ submitted work and its retained upload owners.
 - [UC Reclaim completed upload packets](reclaim-completed-uploads.md) explains the
   staging, destination and command owners released after completion is observed.
 - [Handles and API boundary](../design/contracts/resources.md#handles-and-api-boundary)
-  defines token identity, Engine moves and the `poll()`/`wait()` result contract.
+  defines token identity, moving Engine and the `poll()`/`wait()` result contract.
 - [Frame and window state](../design/contracts/resources.md#frame-and-window-state)
   explains why GPU completion and presentation completion are separate.
 - [Allocation, uploads and resource lifetimes](../development/tasks/resource-lifetimes.md)

@@ -906,14 +906,13 @@ TEST_F(EngineLifecycleTest, CaptureInitializationFailureDoesNotAcquireWindowImag
 
     const auto engine = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(engine) << engine.error().message;
+    EXPECT_TRUE(engine->getFeatures().windowRenderingEnabled);
+    EXPECT_FALSE(engine->getFeatures().validationEnabled);
     const auto target = engine->getResourceManager().createOffscreenTarget({
         .extent = {.width = 32, .height = 32}
     });
     ASSERT_TRUE(target);
-    const auto windowRenderer = engine->getWindowRenderer();
-    ASSERT_TRUE(windowRenderer);
-
-    const auto result = windowRenderer->get().renderWithCapture(panda::RenderView {}, *target);
+    const auto result = engine->getWindowRenderer().renderWithCapture(panda::RenderView {}, *target);
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, panda::ErrorCode::BackendFailure);
 }
@@ -931,12 +930,12 @@ TEST_F(EngineLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOrd
     auto movedAgain = std::move(*context);
     EXPECT_FALSE(movedAgain.isValid());
     EXPECT_EQ(moved.getDeviceInfo().name, "Unit GPU");
-    EXPECT_EQ(moved.getDeviceInfo().queueFamily, 0U);
-    EXPECT_FALSE(moved.getDeviceInfo().externalBufferExportEnabled);
-    EXPECT_FALSE(moved.getWindowRenderer().has_value());
+    EXPECT_FALSE(moved.getFeatures().windowRenderingEnabled);
+    EXPECT_FALSE(moved.getFeatures().externalBufferExportEnabled);
+    EXPECT_DEATH(static_cast<void>(moved.getWindowRenderer()), "window renderer requires");
 }
 
-TEST_F(EngineLifecycleTest, ExposesTimestampSupportButKeepsSamplingDisabledByDefault)
+TEST_F(EngineLifecycleTest, ReportsTimestampSupportWithoutCreatingAnInactivePerformanceManager)
 {
     expectInstance();
     expectAdapter(false, false, TimestampScenario {.validBits = 64, .periodNanoseconds = 2.5F});
@@ -945,19 +944,25 @@ TEST_F(EngineLifecycleTest, ExposesTimestampSupportButKeepsSamplingDisabledByDef
     auto context = panda::Engine::create();
     ASSERT_TRUE(context);
 
-    auto& performance = context->getPerformanceManager();
-    const auto capabilities = performance.getCapabilities();
+    const auto capabilities = context->getFeatures().performance;
     EXPECT_TRUE(capabilities.hasGpuTimestampQueries);
     EXPECT_FALSE(capabilities.isGpuTimestampSamplingEnabled);
-    const auto latest = performance.getLatestSample();
-    ASSERT_TRUE(latest);
-    EXPECT_FALSE(*latest);
-    const auto next = performance.takeNextSample();
-    ASSERT_TRUE(next);
-    EXPECT_FALSE(*next);
-    const auto all = performance.takeAvailableSamples();
-    ASSERT_TRUE(all);
-    EXPECT_TRUE(all->empty());
+    EXPECT_DEATH(static_cast<void>(context->getPerformanceManager()), "Performance sampling is not enabled");
+}
+
+TEST_F(EngineLifecycleTest, DoesNotCreatePerformanceManagerWhenTimestampQueriesAreUnsupported)
+{
+    expectInstance();
+    expectAdapter(false);
+    expectDevice(false);
+    expectParentsDestroyed(true, false);
+    auto context = panda::Engine::create({.enableFramePerformanceSampling = true});
+    ASSERT_TRUE(context);
+
+    const auto capabilities = context->getFeatures().performance;
+    EXPECT_FALSE(capabilities.hasGpuTimestampQueries);
+    EXPECT_FALSE(capabilities.isGpuTimestampSamplingEnabled);
+    EXPECT_DEATH(static_cast<void>(context->getPerformanceManager()), "Performance sampling is not enabled");
 }
 
 TEST_F(EngineLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
@@ -972,11 +977,11 @@ TEST_F(EngineLifecycleTest, ReportsOptionalExternalBufferCapabilityAtStartup)
         panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
 
     ASSERT_TRUE(context);
-    EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
+    EXPECT_TRUE(context->getFeatures().externalBufferExportEnabled);
     EXPECT_EQ(context->getDeviceInfo().deviceUuid.at(0), 1U);
 }
 
-TEST_F(EngineLifecycleTest, ExportedBufferUsesTheFactoryDeviceUuid)
+TEST_F(EngineLifecycleTest, ExportedBufferUsesTheEngineDeviceUuid)
 {
     auto* const nativeBuffer = fakeHandle<VkBuffer>(60);
     auto* const memory = fakeHandle<VkDeviceMemory>(61);
@@ -1086,7 +1091,7 @@ TEST_F(EngineLifecycleTest, ReportsOptionalExternalBufferCapabilityUnavailableAt
         panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
 
     ASSERT_TRUE(context);
-    EXPECT_FALSE(context->getDeviceInfo().externalBufferExportEnabled);
+    EXPECT_FALSE(context->getFeatures().externalBufferExportEnabled);
 }
 
 TEST_F(EngineLifecycleTest, RequiresExternalBufferCapabilityBeforePublishingEngine)
@@ -1116,8 +1121,8 @@ TEST_F(EngineLifecycleTest, EnablesTimelineSemaphoreExportWhenTheTimelineQueryIs
         panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
 
     ASSERT_TRUE(context);
-    EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
-    EXPECT_TRUE(context->getDeviceInfo().externalSemaphoreExportEnabled);
+    EXPECT_TRUE(context->getFeatures().externalBufferExportEnabled);
+    EXPECT_TRUE(context->getFeatures().externalSemaphoreExportEnabled);
 }
 
 TEST_F(EngineLifecycleTest, DoesNotEnableBinaryOnlyExternalSemaphoreSupportForTimelineBuffers)
@@ -1133,11 +1138,11 @@ TEST_F(EngineLifecycleTest, DoesNotEnableBinaryOnlyExternalSemaphoreSupportForTi
         panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
 
     ASSERT_TRUE(context);
-    EXPECT_TRUE(context->getDeviceInfo().externalBufferExportEnabled);
-    EXPECT_FALSE(context->getDeviceInfo().externalSemaphoreExportEnabled);
+    EXPECT_TRUE(context->getFeatures().externalBufferExportEnabled);
+    EXPECT_FALSE(context->getFeatures().externalSemaphoreExportEnabled);
 }
 
-TEST_F(EngineLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePublicManager)
+TEST_F(EngineLifecycleTest, InitializesOptInSamplingAndReportsItThroughEngineFeatures)
 {
     expectInstance();
     expectAdapter(false, false, TimestampScenario {.validBits = 64, .periodNanoseconds = 2.5F});
@@ -1147,10 +1152,10 @@ TEST_F(EngineLifecycleTest, InitializesOptInSamplingAndExposesItThroughThePublic
     auto context = panda::Engine::create({.enableFramePerformanceSampling = true});
     ASSERT_TRUE(context);
 
-    auto& performance = context->getPerformanceManager();
-    const auto capabilities = performance.getCapabilities();
+    const auto capabilities = context->getFeatures().performance;
     EXPECT_TRUE(capabilities.hasGpuTimestampQueries);
     EXPECT_TRUE(capabilities.isGpuTimestampSamplingEnabled);
+    auto& performance = context->getPerformanceManager();
     const auto latest = performance.getLatestSample();
     ASSERT_TRUE(latest);
     EXPECT_FALSE(*latest);
@@ -1506,9 +1511,8 @@ TEST_F(EngineLifecycleTest, MovedSuspendedEngineRetainsItsDeviceUntilAllFrameRes
     auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
-    const auto renderer = moved.getWindowRenderer();
-    ASSERT_TRUE(renderer.has_value()) << "Moved-to window context has no renderer";
-    const auto frame = renderer.value().get().render(panda::RenderView {});
+    const auto& renderer = moved.getWindowRenderer();
+    const auto frame = renderer.render(panda::RenderView {});
     ASSERT_TRUE(frame.has_value());
     EXPECT_EQ(frame->status, panda::FrameResult::Status::Suspended);
 }
@@ -1521,8 +1525,6 @@ TEST_F(EngineLifecycleTest, SeparatePresentFamilyProducesTwoDeviceQueueRequests)
             Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}})});
     const auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
-    EXPECT_EQ(context->getDeviceInfo().queueFamily, 0U);
-    EXPECT_EQ(context->getDeviceInfo().presentQueueFamily, 1U);
 }
 
 TEST_F(EngineLifecycleTest, ExtentQueryFailureReleasesFrameResourcesAndAllParents)
@@ -1572,7 +1574,10 @@ TEST_F(EngineLifecycleTest, MovedToEngineRejectsEmptyCompletionOperations)
 
 TEST_F(EngineLifecycleTest, BorrowedServicesRemainStableAcrossEngineMoves)
 {
-    expectHeadless();
+    expectInstance();
+    expectAdapter(false, false, TimestampScenario {.validBits = 64, .periodNanoseconds = 2.5F});
+    expectDevice(false);
+    expectPerformancePools();
     auto* const native = fakeHandle<VkBuffer>(40);
     auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native);
@@ -1582,7 +1587,7 @@ TEST_F(EngineLifecycleTest, BorrowedServicesRemainStableAcrossEngineMoves)
     auto services = std::optional<BorrowedEngineServices> {};
     auto movedEngine = std::unique_ptr<panda::Engine> {};
     {
-        auto created = panda::Engine::create();
+        auto created = panda::Engine::create({.enableFramePerformanceSampling = true});
         ASSERT_TRUE(created);
         services.emplace(borrowServices(*created));
         movedEngine = std::make_unique<panda::Engine>(std::move(*created));
@@ -1604,7 +1609,7 @@ TEST_F(EngineLifecycleTest, BorrowedServicesRemainStableAcrossEngineMoves)
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 }
 
-TEST_F(EngineLifecycleDeathTest, MovedFromEngineRejectsGettersExceptValidityAndOptionalWindow)
+TEST_F(EngineLifecycleDeathTest, MovedFromEngineRejectsCommonGetters)
 {
     expectHeadless();
     expectParentsDestroyed(true, false);
@@ -1618,7 +1623,6 @@ TEST_F(EngineLifecycleDeathTest, MovedFromEngineRejectsGettersExceptValidityAndO
     EXPECT_DEATH(static_cast<void>(context->getOffscreenRenderer()), "Cannot use a moved-from Engine");
     EXPECT_DEATH(static_cast<void>(context->getPerformanceManager()), "Cannot use a moved-from Engine");
     EXPECT_DEATH(static_cast<void>(context->getExternalBufferManager()), "Cannot use a moved-from Engine");
-    EXPECT_FALSE(context->getWindowRenderer().has_value());
     auto movedAgain = std::move(*context);
     EXPECT_FALSE(movedAgain.isValid());
 }

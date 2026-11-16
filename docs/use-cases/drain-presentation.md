@@ -3,7 +3,7 @@
 ## Goal and boundary
 
 Before replacing a swapchain generation or destroying a windowed Engine,
-`Presentation::drain()` waits for submitted frame work and outstanding present
+`WindowPresentation::drain()` waits for submitted frame work and outstanding present
 operations. It starts with the current slots and generation and ends when both
 queue work, acquired-image recovery and presentation references are drained or an
 error prevents safe teardown.
@@ -13,7 +13,7 @@ error prevents safe teardown.
 1. **Reject an uncommitted acquire retirement.** If a cleanup submission after
    acquire never committed, `drain()` returns `BackendFailure`; it cannot prove
    that the binary acquire semaphore or image was retired.
-2. **Wait for submitted GPU work.** Otherwise, `Presentation::drain()` asks
+2. **Wait for submitted GPU work.** Otherwise, `WindowPresentation::drain()` asks
    `FrameExecution::drain()` to find the maximum `lastCompletion` value stored in
    any execution slot. If the timeline's known completed value is at least that
    maximum, the wait returns immediately; otherwise, it waits for the maximum
@@ -31,7 +31,7 @@ error prevents safe teardown.
 ```mermaid
 sequenceDiagram
     participant R as Recreation or Engine teardown
-    participant P as Presentation
+    participant P as WindowPresentation
     participant E as FrameExecution
     participant Q as SubmissionQueue
     participant V as Vulkan
@@ -70,7 +70,7 @@ finished on screen.
 
 **Separate acquisition state.** Waiting for a committed queue value proves that
 submitted GPU work is complete; it does not return an acquired swapchain image.
-`Presentation` retains the image index and remaining cleanup action until release
+`WindowPresentation` retains the image index and remaining cleanup action until release
 succeeds. A release error leaves the acquisition unconfirmed, so `drain()` fails
 instead of claiming the generation is safe or repeating an ambiguous release.
 See [UC Retire an acquired image after frame work fails](retire-acquired-image.md#notes) and

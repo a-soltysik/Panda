@@ -27,8 +27,8 @@
 #include "SubmissionQueue.hpp"
 #include "external/ExternalBufferInterop.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
-#include "presentation/OffscreenRendering.hpp"
-#include "presentation/Presentation.hpp"
+#include "presentation/OffscreenRenderBackend.hpp"
+#include "presentation/WindowPresentation.hpp"
 #include "renderer/FrameBindings.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
@@ -51,7 +51,7 @@ auto makeDeviceExtensions(const SelectedDevice& selected,
     if (windowed)
     {
         extensions.push_back(vk::KHRSwapchainExtensionName);
-        extensions.push_back(selected.info.swapchainMaintenance == DeviceInfo::SwapchainMaintenance::Khr
+        extensions.push_back(selected.maintenance == SwapchainMaintenance::Khr
                                  ? vk::KHRSwapchainMaintenance1ExtensionName
                                  : vk::EXTSwapchainMaintenance1ExtensionName);
     }
@@ -81,14 +81,14 @@ auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice,
 {
     static constexpr auto priority = 1.0F;
     const auto queueInfos = std::array {
-        vk::DeviceQueueCreateInfo {.queueFamilyIndex = selected.info.queueFamily,
+        vk::DeviceQueueCreateInfo {.queueFamilyIndex = selected.queueFamily,
                                    .queueCount = 1,
                                    .pQueuePriorities = &priority},
-        vk::DeviceQueueCreateInfo {.queueFamilyIndex = selected.info.presentQueueFamily,
+        vk::DeviceQueueCreateInfo {.queueFamilyIndex = selected.presentQueueFamily,
                                    .queueCount = 1,
                                    .pQueuePriorities = &priority}
     };
-    const auto queueCount = selected.info.presentQueueFamily == selected.info.queueFamily ? 1U : 2U;
+    const auto queueCount = selected.presentQueueFamily == selected.queueFamily ? 1U : 2U;
     auto maintenance = vk::PhysicalDeviceSwapchainMaintenance1FeaturesKHR {.swapchainMaintenance1 = vk::True};
     auto vulkan13 = vk::PhysicalDeviceVulkan13Features {.pNext = windowed ? &maintenance : nullptr,
                                                         .synchronization2 = vk::True,
@@ -129,7 +129,9 @@ auto initializePresentation(EngineCreateInfo& resources,
                             const WindowSurface& surface,
                             const SelectedDevice& selected,
                             std::uint32_t maxLights) -> Result<void>;
-void updateDeviceInfo(EngineCreateInfo& resources, const SelectedDevice& selected);
+void populateEngineDiagnostics(EngineCreateInfo& resources,
+                               const SelectedDevice& selected,
+                               const EngineOptions& options);
 }
 
 auto createResources(const WindowSurface* surface, const EngineOptions& options) -> Result<EngineCreateInfo>
@@ -236,14 +238,14 @@ auto initializeSelectedDevice(EngineCreateInfo& resources,
     {
         return std::unexpected {initialized.error()};
     }
-    resources.offscreenRendering = std::make_unique<presentation::OffscreenRendering>(
-        presentation::OffscreenRenderingCreateInfo {.physicalDevice = *resources.device->physicalDevice,
-                                                    .device = resources.device->device,
-                                                    .queueFamily = selected.info.queueFamily,
-                                                    .submissions = *resources.submissions,
-                                                    .pool = *resources.memoryPool,
-                                                    .performance = resources.performance.get(),
-                                                    .maxLights = resources.maxLights});
+    resources.offscreenRenderBackend = std::make_unique<presentation::OffscreenRenderBackend>(
+        presentation::OffscreenRenderBackendCreateInfo {.physicalDevice = *resources.device->physicalDevice,
+                                                        .device = resources.device->device,
+                                                        .queueFamily = selected.queueFamily,
+                                                        .submissions = *resources.submissions,
+                                                        .pool = *resources.memoryPool,
+                                                        .performance = resources.performance.get(),
+                                                        .maxLights = resources.maxLights});
     if (surface != nullptr)
     {
         if (const auto initialized = initializePresentation(resources, *surface, selected, resources.maxLights);
@@ -252,16 +254,24 @@ auto initializeSelectedDevice(EngineCreateInfo& resources,
             return std::unexpected {initialized.error()};
         }
     }
-    updateDeviceInfo(resources, selected);
+    populateEngineDiagnostics(resources, selected, options);
     return {};
 }
 
-void updateDeviceInfo(EngineCreateInfo& resources, const SelectedDevice& selected)
+void populateEngineDiagnostics(EngineCreateInfo& resources,
+                               const SelectedDevice& selected,
+                               const EngineOptions& options)
 {
     resources.device->info = selected.info;
-    resources.device->info.externalBufferExportEnabled = resources.externalInterop != nullptr;
-    resources.device->info.externalSemaphoreExportEnabled =
-        resources.externalInterop != nullptr && resources.externalInterop->supportsSemaphoreExport();
+    resources.features = EngineFeatures {
+        .windowRenderingEnabled = resources.windowPresentation != nullptr,
+        .validationEnabled = options.enableValidation,
+        .performance = {.hasGpuTimestampQueries = selected.timestampValidBits != 0,
+                        .isGpuTimestampSamplingEnabled = resources.performance != nullptr},
+        .externalBufferExportEnabled = resources.externalInterop != nullptr,
+        .externalSemaphoreExportEnabled =
+            resources.externalInterop != nullptr && resources.externalInterop->supportsSemaphoreExport()
+    };
 }
 
 void populateDeviceUuid(EngineCreateInfo& resources, SelectedDevice& selected)
@@ -277,7 +287,7 @@ auto initializeSelectedDeviceResources(EngineCreateInfo& resources,
 {
     resources.memoryPool = resources::MemoryPool::create(resources.device->physicalDevice, resources.device->device);
     resources.submissions =
-        std::make_unique<api_detail::SubmissionQueue>(resources.device->device, selected.info.queueFamily);
+        std::make_unique<api_detail::SubmissionQueue>(resources.device->device, selected.queueFamily);
     if (const auto initialized = resources.submissions->initialize(*resources.device->physicalDevice); !initialized)
     {
         return std::unexpected {initialized.error()};
@@ -285,7 +295,7 @@ auto initializeSelectedDeviceResources(EngineCreateInfo& resources,
     resources.uploads = std::make_unique<upload::UploadManager>(resources.device->device,
                                                                 *resources.memoryPool,
                                                                 *resources.submissions,
-                                                                selected.info.queueFamily);
+                                                                selected.queueFamily);
     if (options.externalSupport)
     {
         resources.externalInterop = std::make_unique<api_detail::ExternalBufferInterop>(
@@ -293,7 +303,7 @@ auto initializeSelectedDeviceResources(EngineCreateInfo& resources,
                                                            .pool = *resources.memoryPool,
                                                            .submissions = *resources.submissions,
                                                            .uploads = *resources.uploads,
-                                                           .queueFamily = selected.info.queueFamily,
+                                                           .queueFamily = selected.queueFamily,
                                                            .deviceUuid = selected.info.deviceUuid,
                                                            .support = std::move(*options.externalSupport)});
     }
@@ -304,12 +314,15 @@ auto initializePerformance(EngineCreateInfo& resources,
                            const SelectedDevice& selected,
                            bool enableFramePerformanceSampling) -> Result<void>
 {
+    if (!enableFramePerformanceSampling || selected.timestampValidBits == 0)
+    {
+        return {};
+    }
     auto performance = std::make_unique<api_detail::PerformanceManagerImpl>(
         resources.device->device,
         *resources.submissions,
         api_detail::TimestampProperties {.validBits = selected.timestampValidBits,
-                                         .periodNanoseconds = selected.timestampPeriodNanoseconds},
-        enableFramePerformanceSampling);
+                                         .periodNanoseconds = selected.timestampPeriodNanoseconds});
     if (const auto initialized = performance->initialize(); !initialized)
     {
         return std::unexpected {initialized.error()};
@@ -325,20 +338,22 @@ auto initializePresentation(EngineCreateInfo& resources,
 {
     const auto& instanceResources = resources.device->instance;
     const auto contextSurface = instanceResources.surface ? **instanceResources.surface : vk::SurfaceKHR {};
-    auto presentation = Presentation::create({.physicalDevice = selected.physicalDevice,
-                                              .device = resources.device->device,
-                                              .surface = contextSurface,
-                                              .window = surface,
-                                              .deviceInfo = selected.info,
-                                              .submissions = *resources.submissions,
-                                              .pool = resources.memoryPool.get(),
-                                              .performance = resources.performance.get(),
-                                              .maxLights = maxLights});
+    auto presentation = WindowPresentation::create({.physicalDevice = selected.physicalDevice,
+                                                    .device = resources.device->device,
+                                                    .surface = contextSurface,
+                                                    .window = surface,
+                                                    .queueFamily = selected.queueFamily,
+                                                    .presentQueueFamily = selected.presentQueueFamily,
+                                                    .maintenance = selected.maintenance,
+                                                    .submissions = *resources.submissions,
+                                                    .pool = resources.memoryPool.get(),
+                                                    .performance = resources.performance.get(),
+                                                    .maxLights = maxLights});
     if (!presentation)
     {
         return std::unexpected {presentation.error()};
     }
-    resources.presentation = std::move(*presentation);
+    resources.windowPresentation = std::move(*presentation);
     return {};
 }
 }

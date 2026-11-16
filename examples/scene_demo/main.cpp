@@ -255,7 +255,7 @@ void drawLoop(const panda::tools::Window& window,
               const AnimatedObjects& objects)
 {
     const auto start = std::chrono::steady_clock::now();
-    const auto renderer = panda::expect(context.getWindowRenderer(), "Window context has no window renderer");
+    const auto& renderer = context.getWindowRenderer();
     while (!window.shouldClose())
     {
         const auto extent = panda::expect(window.getFramebufferExtent(), "Read framebuffer size");
@@ -269,7 +269,7 @@ void drawLoop(const panda::tools::Window& window,
         animateWave(scene, objects.objects, elapsed);
         const auto aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
         const auto view = panda::expect(scene.createRenderView(aspect), "Prepare scene");
-        const auto frame = panda::expect(renderer.get().render(view), "Render scene");
+        const auto frame = panda::expect(renderer.render(view), "Render scene");
         panda::expect(frame.status == panda::FrameResult::Status::Suspended ? panda::tools::Window::waitForInput()
                                                                             : window.processInput(),
                       "Process input");

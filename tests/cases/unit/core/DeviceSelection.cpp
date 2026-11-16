@@ -367,7 +367,7 @@ TEST(DeviceSelection, SelectsExtSwapchainMaintenanceWhenKhrVariantIsUnavailable)
         panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = false, .hasExtMaintenance = true});
 
     ASSERT_TRUE(selected.has_value());
-    EXPECT_EQ(selected->info.swapchainMaintenance, panda::DeviceInfo::SwapchainMaintenance::Ext);
+    EXPECT_EQ(selected->maintenance, panda::core::vulkan::SwapchainMaintenance::Ext);
 }
 
 TEST(DeviceSelection, SelectsSeparateGraphicsAndPresentQueueFamilies)
@@ -382,8 +382,8 @@ TEST(DeviceSelection, SelectsSeparateGraphicsAndPresentQueueFamilies)
         panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false});
 
     ASSERT_TRUE(selected.has_value());
-    EXPECT_EQ(selected->info.queueFamily, 0U);
-    EXPECT_EQ(selected->info.presentQueueFamily, 1U);
+    EXPECT_EQ(selected->queueFamily, 0U);
+    EXPECT_EQ(selected->presentQueueFamily, 1U);
 }
 
 TEST(DeviceSelection, PreservesTimestampPropertiesFromTheSelectedGraphicsQueue)
