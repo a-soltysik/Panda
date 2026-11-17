@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vk_platform.h>
 #include <vulkan/vulkan.hpp>
@@ -11,9 +12,9 @@
 #include <expected>
 #include <optional>
 #include <panda/EngineOptions.hpp>
-#include <panda/Error.hpp>
-#include <panda/Logger.hpp>
-#include <panda/WindowSurface.hpp>
+#include <panda/diagnostics/Logger.hpp>
+#include <panda/vulkan/Error.hpp>
+#include <panda/vulkan/WindowSurface.hpp>
 #include <ranges>
 #include <string>
 #include <string_view>

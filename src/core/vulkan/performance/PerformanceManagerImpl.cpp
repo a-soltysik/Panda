@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 // clang-format on
@@ -15,8 +16,8 @@
 #include <iterator>
 #include <limits>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/PerformanceManager.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <vector>
 
 #include "SubmissionQueue.hpp"

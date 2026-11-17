@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 
-#include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/cuda/Cuda.hpp>
 #include <panda/cuda/CudaSession.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <utility>
 
 TEST(CudaExternalBufferIntegration, ImportsPandaOwnedBufferOnce)

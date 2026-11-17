@@ -2,10 +2,10 @@
 
 #include <algorithm>
 #include <concepts>
-#include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
-#include <panda/Error.hpp>
-#include <panda/Logger.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Logger.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <utility>
 
 #include "LogCapture.hpp"

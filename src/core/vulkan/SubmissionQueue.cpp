@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 // clang-format on
@@ -11,9 +12,9 @@
 #include <cstdint>
 #include <expected>
 #include <limits>
-#include <panda/Assert.hpp>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/submission/CompletionPoint.hpp>
+#include <panda/vulkan/Error.hpp>
 
 namespace panda::detail
 {

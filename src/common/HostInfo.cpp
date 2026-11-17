@@ -1,5 +1,5 @@
 #include <optional>
-#include <panda/HostInfo.hpp>
+#include <panda/diagnostics/HostInfo.hpp>
 #include <string>
 #include <string_view>
 

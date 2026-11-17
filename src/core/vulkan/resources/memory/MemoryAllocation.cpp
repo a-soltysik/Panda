@@ -8,8 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
 #include <span>
 #include <utility>
 

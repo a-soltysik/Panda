@@ -5,7 +5,8 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <panda/Mesh.hpp>
+#include <panda/geometry/VertexLayout.hpp>
+#include <panda/resources/Mesh.hpp>
 #include <span>
 #include <utility>
 

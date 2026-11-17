@@ -14,7 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <span>
 #include <tuple>
 #include <utility>

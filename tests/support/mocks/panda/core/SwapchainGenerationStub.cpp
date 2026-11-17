@@ -3,7 +3,7 @@
 // clang-format on
 
 #include <expected>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 
 #include "ScopedMock.hpp"
 #include "SwapchainGenerationMock.hpp"

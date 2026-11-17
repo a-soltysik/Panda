@@ -15,8 +15,8 @@
 #include <memory>
 #include <optional>
 #include <panda/EngineOptions.hpp>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <span>
 #include <string>
 

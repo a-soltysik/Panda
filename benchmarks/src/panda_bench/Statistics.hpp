@@ -3,7 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
-#include <panda/PerformanceManager.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
 #include <span>
 
 namespace panda_bench

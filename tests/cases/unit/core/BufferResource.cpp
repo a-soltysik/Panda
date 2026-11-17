@@ -16,8 +16,8 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <panda/Buffer.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <span>
 #include <tuple>
 #include <utility>

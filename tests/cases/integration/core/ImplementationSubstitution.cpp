@@ -2,8 +2,8 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
-#include <panda/Logger.hpp>
 #include <panda/Panda.hpp>
+#include <panda/diagnostics/Logger.hpp>
 #include <string_view>
 
 #include "LogCapture.hpp"

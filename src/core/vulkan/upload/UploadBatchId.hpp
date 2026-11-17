@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <panda/StrongAlias.hpp>
+#include <panda/base/StrongAlias.hpp>
 
 namespace panda::core::vulkan::upload
 {

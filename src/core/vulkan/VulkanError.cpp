@@ -1,9 +1,10 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include <panda/Error.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <source_location>
 #include <string>
 #include <utility>

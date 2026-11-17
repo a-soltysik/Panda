@@ -6,8 +6,8 @@
 #include <cstddef>
 #include <expected>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/WindowRenderer.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/WindowRenderer.hpp>
 
 #include "vulkan/performance/PerformanceManagerImpl.hpp"
 #include "vulkan/presentation/OffscreenRenderBackend.hpp"

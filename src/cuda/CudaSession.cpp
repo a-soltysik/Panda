@@ -1,10 +1,10 @@
 #include <expected>
 #include <memory>
 #include <panda/DeviceUuid.hpp>
-#include <panda/Error.hpp>
-#include <panda/ExternalBuffer.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/cuda/CudaSession.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
+#include <panda/interop/ExternalBuffer.hpp>
 #include <utility>
 
 #include "CudaAdapter.hpp"

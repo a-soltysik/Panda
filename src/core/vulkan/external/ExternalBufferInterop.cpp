@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 // clang-format on
@@ -11,11 +12,11 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <panda/Buffer.hpp>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
-#include <panda/ExternalBuffer.hpp>
-#include <panda/ExternalSemaphoreHandle.hpp>
+#include <panda/interop/ExternalBuffer.hpp>
+#include <panda/interop/ExternalSemaphoreHandle.hpp>
+#include <panda/resources/Buffer.hpp>
+#include <panda/submission/CompletionPoint.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -24,7 +25,7 @@
 #include "VulkanError.hpp"
 #include "external/ExternalBufferOwnershipTransferCommand.hpp"
 #include "external/ExternalSemaphoreResource.hpp"
-#include "panda/ExternalMemoryHandle.hpp"
+#include "panda/interop/ExternalMemoryHandle.hpp"
 #include "resources/BufferResource.hpp"
 #include "upload/UploadManager.hpp"
 

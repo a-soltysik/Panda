@@ -2,7 +2,7 @@
 
 #include <cstddef>
 #include <memory>
-#include <panda/Logger.hpp>
+#include <panda/diagnostics/Logger.hpp>
 #include <vector>
 
 namespace panda::test

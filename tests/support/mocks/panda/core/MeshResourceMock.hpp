@@ -8,8 +8,8 @@
 #include <gmock/gmock.h>
 
 #include <memory>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/Mesh.hpp>
 
 #include "BufferResource.hpp"
 #include "MeshLayout.hpp"

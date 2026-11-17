@@ -14,8 +14,8 @@
 #include <list>
 #include <memory>
 #include <optional>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
 #include <utility>
 
 #include "resources/memory/MemoryAllocation.hpp"

@@ -10,9 +10,9 @@
 #include <glm/gtc/constants.hpp>
 #include <limits>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
-#include <panda/Transform.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/math/Transform.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
 

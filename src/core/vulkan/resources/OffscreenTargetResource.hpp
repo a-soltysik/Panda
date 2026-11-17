@@ -2,8 +2,8 @@
 
 #include <cstdint>
 #include <memory>
-#include <panda/Error.hpp>
-#include <panda/OffscreenTarget.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/OffscreenTarget.hpp>
 
 #include "VulkanHpp.hpp"
 #include "resources/TextureResource.hpp"

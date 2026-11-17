@@ -5,9 +5,9 @@
 #include <expected>
 #include <memory>
 #include <optional>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
-#include <panda/Logger.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/diagnostics/Logger.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <source_location>
 #include <string>

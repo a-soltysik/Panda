@@ -9,8 +9,8 @@
 #include <glm/ext/vector_float4.hpp>
 #include <limits>
 #include <numbers>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <vector>
 
 TEST(ShadowAtlas, AllocatesRequestedTilesDeterministicallyWithGuards)

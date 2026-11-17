@@ -4,9 +4,9 @@
 /// Engine-owned upload submission and completion operations.
 
 #include <chrono>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
-#include <panda/UploadBatch.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/submission/CompletionPoint.hpp>
+#include <panda/submission/UploadBatch.hpp>
 
 namespace panda
 {

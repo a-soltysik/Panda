@@ -8,7 +8,8 @@
 #include <glm/ext/vector_float4.hpp>
 #include <glm/ext/vector_uint4.hpp>
 #include <limits>
-#include <panda/Mesh.hpp>
+#include <panda/geometry/VertexLayout.hpp>
+#include <panda/resources/Mesh.hpp>
 
 #include "ShaderInterface.inc"
 

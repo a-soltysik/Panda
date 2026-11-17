@@ -9,16 +9,16 @@
 #include <glm/trigonometric.hpp>
 #include <iostream>
 #include <memory>
-#include <panda/Assert.hpp>
-#include <panda/Camera.hpp>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Cube.hpp>
 #include <panda/Engine.hpp>
-#include <panda/Logger.hpp>
-#include <panda/Mesh.hpp>
-#include <panda/OffscreenTarget.hpp>
-#include <panda/RenderView.hpp>
-#include <panda/UploadBatch.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/diagnostics/Logger.hpp>
+#include <panda/geometry/Cube.hpp>
+#include <panda/rendering/Camera.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Mesh.hpp>
+#include <panda/resources/OffscreenTarget.hpp>
+#include <panda/submission/CompletionPoint.hpp>
+#include <panda/submission/UploadBatch.hpp>
 #include <string>
 #include <tuple>
 

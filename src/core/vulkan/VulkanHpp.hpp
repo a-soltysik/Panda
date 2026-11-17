@@ -1,6 +1,6 @@
 #pragma once
 
-#include <panda/Assert.hpp>
+#include <panda/diagnostics/Assert.hpp>
 
 // The linked Vulkan loader supplies vkGetInstanceProcAddr; do not open another loader.
 // Keep the first Vulkan-Hpp configuration in unity translation units.

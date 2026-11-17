@@ -1,6 +1,6 @@
 #include <glm/ext/vector_uint2.hpp>
 #include <memory>
-#include <panda/OffscreenTarget.hpp>
+#include <panda/resources/OffscreenTarget.hpp>
 #include <utility>
 
 #include "vulkan/resources/OffscreenTargetResource.hpp"

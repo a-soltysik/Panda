@@ -7,8 +7,8 @@
 
 #include <array>
 #include <cstdint>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/submission/CompletionPoint.hpp>
 #include <utility>
 
 namespace panda::detail

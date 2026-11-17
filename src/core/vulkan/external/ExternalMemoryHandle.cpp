@@ -1,4 +1,4 @@
-#include "panda/ExternalMemoryHandle.hpp"
+#include "panda/interop/ExternalMemoryHandle.hpp"
 
 #include <cstdint>
 #include <utility>

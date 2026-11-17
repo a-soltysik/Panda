@@ -4,7 +4,7 @@
 #include <list>
 #include <map>
 #include <memory>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <vector>
 
 #include "VulkanHpp.hpp"

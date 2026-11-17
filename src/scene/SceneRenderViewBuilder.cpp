@@ -8,9 +8,9 @@
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/matrix_access.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include <panda/Error.hpp>
-#include <panda/Projection.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/math/Projection.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <panda/scene/Scene.hpp>
 #include <variant>
 

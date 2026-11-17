@@ -18,10 +18,11 @@
 #include <glm/gtc/matrix_access.hpp>
 #include <glm/matrix.hpp>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
-#include <panda/RenderView.hpp>
-#include <panda/Texture.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/geometry/VertexLayout.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Mesh.hpp>
+#include <panda/resources/Texture.hpp>
 #include <variant>
 
 #include "Math.hpp"

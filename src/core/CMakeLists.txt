@@ -61,40 +61,41 @@ panda_add_component(panda_core
         vulkan/resources/TextureResource.cpp
         vulkan/resources/OffscreenTargetResource.cpp
     PUBLIC_HEADERS
-        panda/Buffer.hpp
-        panda/Camera.hpp
-        panda/CompletionPoint.hpp
+        panda/resources/Buffer.hpp
+        panda/rendering/Camera.hpp
+        panda/submission/CompletionPoint.hpp
         panda/Engine.hpp
         panda/DeviceInfo.hpp
         panda/EngineOptions.hpp
-        panda/Error.hpp
-        panda/FrameResult.hpp
-        panda/ExternalBuffer.hpp
-        panda/ExternalBufferManager.hpp
-        panda/ExternalMemoryHandle.hpp
-        panda/ExternalSemaphoreHandle.hpp
-        panda/ExternalTimelineValue.hpp
+        panda/base/Error.hpp
+        panda/rendering/FrameResult.hpp
+        panda/interop/ExternalBuffer.hpp
+        panda/interop/ExternalBufferManager.hpp
+        panda/interop/ExternalMemoryHandle.hpp
+        panda/interop/ExternalSemaphoreHandle.hpp
+        panda/interop/ExternalTimelineValue.hpp
         panda/DeviceUuid.hpp
-        panda/StrongAlias.hpp
-        panda/Mesh.hpp
+        panda/resources/Mesh.hpp
         panda/Panda.hpp
-        panda/PerformanceManager.hpp
-        panda/PixelFormat.hpp
-        panda/OffscreenRenderer.hpp
-        panda/ResourceManager.hpp
-        panda/SubmissionManager.hpp
-        panda/Projection.hpp
-        panda/Transform.hpp
-        panda/Cube.hpp
-        panda/Geometry.hpp
-        panda/Plane.hpp
-        panda/Sphere.hpp
-        panda/Texture.hpp
-        panda/OffscreenTarget.hpp
-        panda/UploadBatch.hpp
-        panda/WindowSurface.hpp
-        panda/WindowRenderer.hpp
-        panda/RenderView.hpp
+        panda/rendering/PerformanceManager.hpp
+        panda/resources/PixelFormat.hpp
+        panda/rendering/OffscreenRenderer.hpp
+        panda/resources/ResourceManager.hpp
+        panda/submission/SubmissionManager.hpp
+        panda/math/Projection.hpp
+        panda/math/Transform.hpp
+        panda/geometry/Cube.hpp
+        panda/geometry/Geometry.hpp
+        panda/geometry/Plane.hpp
+        panda/geometry/Sphere.hpp
+        panda/resources/Texture.hpp
+        panda/resources/OffscreenTarget.hpp
+        panda/geometry/VertexLayout.hpp
+        panda/submission/UploadBatch.hpp
+        panda/vulkan/WindowSurface.hpp
+        panda/vulkan/Error.hpp
+        panda/rendering/WindowRenderer.hpp
+        panda/rendering/RenderView.hpp
     PRIVATE_HEADERS
         Math.hpp
         vulkan/EngineCreation.hpp

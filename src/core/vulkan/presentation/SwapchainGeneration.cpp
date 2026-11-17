@@ -6,7 +6,8 @@
 #include <expected>
 #include <glm/ext/vector_uint2.hpp>
 #include <limits>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <span>
 #include <string>
 #include <utility>

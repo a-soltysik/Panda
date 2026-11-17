@@ -4,8 +4,8 @@
 /// Stateless camera construction helpers for applications and prototypes.
 
 #include <glm/ext/vector_float3.hpp>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
 
 namespace panda
 {

@@ -8,7 +8,7 @@
 #endif
 
 #include <glm/ext/matrix_float4x4.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 
 namespace panda
 {

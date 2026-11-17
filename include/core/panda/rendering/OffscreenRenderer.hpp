@@ -6,11 +6,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <panda/CompletionPoint.hpp>  // IWYU pragma: export
-#include <panda/Error.hpp>            // IWYU pragma: export
-#include <panda/FrameResult.hpp>      // IWYU pragma: export
-#include <panda/OffscreenTarget.hpp>  // IWYU pragma: export
-#include <panda/RenderView.hpp>       // IWYU pragma: export
+#include <panda/base/Error.hpp>                  // IWYU pragma: export
+#include <panda/rendering/FrameResult.hpp>       // IWYU pragma: export
+#include <panda/rendering/RenderView.hpp>        // IWYU pragma: export
+#include <panda/resources/OffscreenTarget.hpp>   // IWYU pragma: export
+#include <panda/submission/CompletionPoint.hpp>  // IWYU pragma: export
 
 namespace panda
 {

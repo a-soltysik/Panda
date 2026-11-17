@@ -4,7 +4,7 @@
 /// Result of one rendering operation.
 
 #include <cstdint>
-#include <panda/CompletionPoint.hpp>
+#include <panda/submission/CompletionPoint.hpp>
 
 namespace panda
 {

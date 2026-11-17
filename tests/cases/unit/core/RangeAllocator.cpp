@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 
 namespace
 {

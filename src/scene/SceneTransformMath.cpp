@@ -15,8 +15,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/matrix.hpp>
 #include <limits>
-#include <panda/Error.hpp>
-#include <panda/Transform.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/math/Transform.hpp>
 #include <utility>
 
 #include "Math.hpp"

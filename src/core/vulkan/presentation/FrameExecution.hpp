@@ -10,10 +10,10 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
-#include <panda/RenderView.hpp>
-#include <panda/Texture.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Mesh.hpp>
+#include <panda/resources/Texture.hpp>
 #include <vector>
 
 #include "SubmissionQueue.hpp"

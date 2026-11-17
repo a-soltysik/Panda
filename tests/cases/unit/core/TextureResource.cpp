@@ -15,10 +15,10 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
-#include <panda/PixelFormat.hpp>
-#include <panda/Texture.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/Texture.hpp>
 #include <tuple>
 #include <utility>
 

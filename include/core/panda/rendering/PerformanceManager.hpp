@@ -6,7 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <vector>
 
 namespace panda

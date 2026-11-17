@@ -3,13 +3,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
-#include <panda/CompletionPoint.hpp>
 #include <panda/Engine.hpp>
-#include <panda/Error.hpp>
-#include <panda/Logger.hpp>
-#include <panda/PixelFormat.hpp>
-#include <panda/Texture.hpp>
-#include <panda/UploadBatch.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Logger.hpp>
+#include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/Texture.hpp>
+#include <panda/submission/CompletionPoint.hpp>
+#include <panda/submission/UploadBatch.hpp>
 #include <utility>
 #include <vector>
 

@@ -12,7 +12,7 @@ Non-goal: No complete scene, shadow system or measured performance promise.
 Interface: Engine-owned `PerformanceManager` for capabilities and asynchronous samples; the benchmark is a normal
 public-API client.
 
-Paths: `include/core/panda/PerformanceManager.hpp`, `src/core/vulkan/performance/`, `src/core/vulkan/presentation/`,
+Paths: `include/core/panda/rendering/PerformanceManager.hpp`, `src/core/vulkan/performance/`, `src/core/vulkan/presentation/`,
 `tests/`, `benchmarks/` and directly affected documentation.
 Specifications: [Frame reuse](../../design/contracts/resources.md#frame-and-window-state), [rendering](../../design/contracts/rendering.md#rendering-path), [benchmarks](../benchmarking.md).
 

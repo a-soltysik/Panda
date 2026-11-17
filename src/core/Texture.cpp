@@ -1,7 +1,7 @@
 #include <glm/ext/vector_uint2.hpp>
 #include <memory>
-#include <panda/PixelFormat.hpp>
-#include <panda/Texture.hpp>
+#include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/Texture.hpp>
 #include <utility>
 
 #include "vulkan/resources/TextureResource.hpp"

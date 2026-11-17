@@ -19,10 +19,10 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <limits>
 #include <memory>
-#include <panda/Buffer.hpp>
 #include <panda/EngineOptions.hpp>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <span>
 #include <tuple>
 #include <utility>

@@ -2,12 +2,12 @@
 
 #include <array>
 #include <cstddef>
-#include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
-#include <panda/Error.hpp>
-#include <panda/ExternalBuffer.hpp>
-#include <panda/ExternalSemaphoreHandle.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/interop/ExternalBuffer.hpp>
+#include <panda/interop/ExternalSemaphoreHandle.hpp>
+#include <panda/resources/Buffer.hpp>
 
 TEST(ExternalBufferSystem, DefaultConstructsAnEmptyOwner)
 {

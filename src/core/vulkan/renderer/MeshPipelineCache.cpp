@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 // clang-format on
@@ -13,10 +14,11 @@
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/matrix.hpp>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/Logger.hpp>
-#include <panda/Mesh.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/diagnostics/Logger.hpp>
+#include <panda/geometry/VertexLayout.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Mesh.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <span>
 #include <utility>
 #include <vector>

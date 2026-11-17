@@ -9,8 +9,8 @@
 #include <cstdint>
 #include <expected>
 #include <panda/DeviceInfo.hpp>
-#include <panda/Error.hpp>
-#include <panda/Logger.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Logger.hpp>
 #include <span>
 #include <string>
 #include <string_view>

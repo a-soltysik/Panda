@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <optional>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/scene/Scene.hpp>
 #include <tuple>
 #include <utility>

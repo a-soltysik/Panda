@@ -9,8 +9,8 @@
 #include <glm/vec4.hpp>
 #include <numbers>
 #include <optional>
-#include <panda/Mesh.hpp>
-#include <panda/Texture.hpp>
+#include <panda/resources/Mesh.hpp>
+#include <panda/resources/Texture.hpp>
 #include <variant>
 #include <vector>
 

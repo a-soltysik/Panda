@@ -12,7 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <glm/ext/matrix_transform.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <tuple>
 
 #include "FakeHandle.hpp"

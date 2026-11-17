@@ -3,8 +3,8 @@
 #include <cmath>
 #include <glm/ext/vector_float3.hpp>
 #include <limits>
-#include <panda/Camera.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/Camera.hpp>
 
 TEST(Camera, CreatesPerspectiveRenderCamera)
 {

@@ -8,8 +8,8 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <panda/Error.hpp>
-#include <panda/OffscreenTarget.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/OffscreenTarget.hpp>
 #include <utility>
 
 #include "resources/TextureResource.hpp"

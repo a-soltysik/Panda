@@ -2,8 +2,8 @@
 #include <exception>
 #include <expected>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/Mesh.hpp>
 #include <utility>
 
 #include "MeshLayout.hpp"

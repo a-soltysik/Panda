@@ -3,7 +3,7 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 
 namespace panda::test
 {

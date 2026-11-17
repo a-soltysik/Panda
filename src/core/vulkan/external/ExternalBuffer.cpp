@@ -2,13 +2,13 @@
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 // clang-format on
 
-#include "panda/ExternalBuffer.hpp"
+#include "panda/interop/ExternalBuffer.hpp"
 
 #include <cstdint>
-#include <panda/Buffer.hpp>
 #include <panda/DeviceUuid.hpp>
-#include <panda/ExternalMemoryHandle.hpp>
-#include <panda/ExternalSemaphoreHandle.hpp>
+#include <panda/interop/ExternalMemoryHandle.hpp>
+#include <panda/interop/ExternalSemaphoreHandle.hpp>
+#include <panda/resources/Buffer.hpp>
 
 #include "resources/BufferResource.hpp"
 

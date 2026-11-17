@@ -7,7 +7,7 @@
 #include <exception>
 #include <expected>
 #include <memory>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 
 #include "ScopedMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"

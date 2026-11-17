@@ -1,15 +1,15 @@
 #include <gtest/gtest.h>
 
 #include <optional>
-#include <panda/Assert.hpp>
-#include <panda/Cube.hpp>
 #include <panda/Engine.hpp>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
-#include <panda/OffscreenTarget.hpp>
-#include <panda/PixelFormat.hpp>
-#include <panda/RenderView.hpp>
-#include <panda/Texture.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/geometry/Cube.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Mesh.hpp>
+#include <panda/resources/OffscreenTarget.hpp>
+#include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/Texture.hpp>
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
 #include <utility>

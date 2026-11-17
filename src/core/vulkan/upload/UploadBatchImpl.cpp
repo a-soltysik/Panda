@@ -12,9 +12,9 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
-#include <panda/UploadBatch.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/submission/CompletionPoint.hpp>
+#include <panda/submission/UploadBatch.hpp>
 #include <span>
 #include <utility>
 #include <variant>

@@ -9,9 +9,9 @@
 #include <glm/ext/vector_float4.hpp>
 #include <glm/trigonometric.hpp>
 #include <limits>
-#include <panda/Error.hpp>
-#include <panda/Projection.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/math/Projection.hpp>
+#include <panda/rendering/RenderView.hpp>
 
 TEST(ShadowView, IncludesCameraTargetInDirectionalShadowVolume)
 {

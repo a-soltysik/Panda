@@ -3,10 +3,10 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/geometric.hpp>
-#include <panda/Camera.hpp>
-#include <panda/Error.hpp>
-#include <panda/Projection.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/math/Projection.hpp>
+#include <panda/rendering/Camera.hpp>
+#include <panda/rendering/RenderView.hpp>
 
 #include "Math.hpp"
 

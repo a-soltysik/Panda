@@ -13,8 +13,8 @@
 #include <cstring>
 #include <limits>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/PerformanceManager.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
 #include <tuple>
 
 #include "FakeHandle.hpp"

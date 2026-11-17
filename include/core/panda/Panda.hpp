@@ -3,23 +3,23 @@
 /// @file
 /// Core package entry point and version query.
 
-#include <panda/Buffer.hpp>
-#include <panda/Cube.hpp>
 #include <panda/Engine.hpp>
-#include <panda/ExternalBuffer.hpp>
-#include <panda/FrameResult.hpp>
-#include <panda/Geometry.hpp>
-#include <panda/OffscreenRenderer.hpp>
-#include <panda/OffscreenTarget.hpp>
-#include <panda/PixelFormat.hpp>
-#include <panda/Plane.hpp>
-#include <panda/Projection.hpp>
-#include <panda/ResourceManager.hpp>
-#include <panda/Sphere.hpp>
-#include <panda/SubmissionManager.hpp>
-#include <panda/Texture.hpp>
-#include <panda/Transform.hpp>
-#include <panda/WindowRenderer.hpp>
+#include <panda/geometry/Cube.hpp>
+#include <panda/geometry/Geometry.hpp>
+#include <panda/geometry/Plane.hpp>
+#include <panda/geometry/Sphere.hpp>
+#include <panda/interop/ExternalBuffer.hpp>
+#include <panda/math/Projection.hpp>
+#include <panda/math/Transform.hpp>
+#include <panda/rendering/FrameResult.hpp>
+#include <panda/rendering/OffscreenRenderer.hpp>
+#include <panda/rendering/WindowRenderer.hpp>
+#include <panda/resources/Buffer.hpp>
+#include <panda/resources/OffscreenTarget.hpp>
+#include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/ResourceManager.hpp>
+#include <panda/resources/Texture.hpp>
+#include <panda/submission/SubmissionManager.hpp>
 #include <string_view>
 
 namespace panda

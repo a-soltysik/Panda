@@ -5,12 +5,12 @@
 #include <exception>
 #include <iostream>
 #include <memory>
-#include <panda/Assert.hpp>
-#include <panda/Buffer.hpp>
-#include <panda/CompletionPoint.hpp>
 #include <panda/Engine.hpp>
-#include <panda/Logger.hpp>
-#include <panda/UploadBatch.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/diagnostics/Logger.hpp>
+#include <panda/resources/Buffer.hpp>
+#include <panda/submission/CompletionPoint.hpp>
+#include <panda/submission/UploadBatch.hpp>
 #include <span>
 #include <tuple>
 

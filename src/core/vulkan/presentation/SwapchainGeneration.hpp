@@ -1,4 +1,5 @@
 #pragma once
+#include <panda/base/Error.hpp>
 
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
@@ -7,7 +8,7 @@
 
 #include <cstdint>
 #include <expected>
-#include <panda/WindowSurface.hpp>
+#include <panda/vulkan/WindowSurface.hpp>
 #include <span>
 #include <vector>
 

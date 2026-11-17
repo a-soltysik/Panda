@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <memory>
-#include <panda/UploadBatch.hpp>
+#include <panda/submission/UploadBatch.hpp>
 #include <variant>
 
 namespace panda::detail

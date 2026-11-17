@@ -2,7 +2,7 @@
 
 #include <array>
 #include <cstdint>
-#include <panda/RenderView.hpp>
+#include <panda/rendering/RenderView.hpp>
 
 #include "renderer/ShaderInterface.inc"
 

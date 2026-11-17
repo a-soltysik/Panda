@@ -3,7 +3,7 @@
 #include <gmock/gmock.h>
 
 #include <expected>
-#include <panda/Logger.hpp>
+#include <panda/diagnostics/Logger.hpp>
 
 namespace panda::test
 {

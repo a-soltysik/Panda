@@ -6,8 +6,8 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <panda/Error.hpp>
-#include <panda/ExternalTimelineValue.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/interop/ExternalTimelineValue.hpp>
 
 namespace panda
 {

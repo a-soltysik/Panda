@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan.hpp>
@@ -14,12 +15,12 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <panda/Buffer.hpp>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
-#include <panda/FrameResult.hpp>
-#include <panda/OffscreenTarget.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/rendering/FrameResult.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Buffer.hpp>
+#include <panda/resources/OffscreenTarget.hpp>
+#include <panda/submission/CompletionPoint.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <utility>
 #include <vector>
 

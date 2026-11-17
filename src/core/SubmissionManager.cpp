@@ -5,10 +5,10 @@
 #include <chrono>
 #include <cstdint>
 #include <expected>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
-#include <panda/SubmissionManager.hpp>
-#include <panda/UploadBatch.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/submission/CompletionPoint.hpp>
+#include <panda/submission/SubmissionManager.hpp>
+#include <panda/submission/UploadBatch.hpp>
 
 #include "vulkan/SubmissionQueue.hpp"
 #include "vulkan/upload/UploadBatchImpl.hpp"

@@ -8,7 +8,7 @@
 #include <gmock/gmock.h>
 
 #include <cstdint>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 
 #include "resources/memory/MemoryPool.hpp"
 

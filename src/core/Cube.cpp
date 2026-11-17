@@ -4,8 +4,8 @@
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-#include <panda/Cube.hpp>
-#include <panda/Geometry.hpp>
+#include <panda/geometry/Cube.hpp>
+#include <panda/geometry/Geometry.hpp>
 #include <vector>
 
 namespace

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <panda/Mesh.hpp>
+#include <panda/resources/Mesh.hpp>
 #include <utility>
 
 TEST(Mesh, EmptyHandleReportsNoStorage)

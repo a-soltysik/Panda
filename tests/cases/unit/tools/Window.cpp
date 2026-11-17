@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <glm/ext/vector_uint2.hpp>
 #include <limits>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <string>
 #include <thread>

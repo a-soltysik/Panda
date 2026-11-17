@@ -11,8 +11,8 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <limits>
-#include <panda/Error.hpp>
-#include <panda/Transform.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/math/Transform.hpp>
 
 namespace
 {

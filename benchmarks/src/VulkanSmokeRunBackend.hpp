@@ -3,9 +3,9 @@
 #include <chrono>
 #include <expected>
 #include <optional>
-#include <panda/CompletionPoint.hpp>
 #include <panda/Engine.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/submission/CompletionPoint.hpp>
 #include <panda/tools/gui/Window.hpp>
 
 #include "SmokeRunBackend.hpp"

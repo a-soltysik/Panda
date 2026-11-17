@@ -1,10 +1,10 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <memory>
 #include <optional>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
-#include <panda/Transform.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/math/Transform.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/ObjectId.hpp>
 #include <panda/scene/Scene.hpp>

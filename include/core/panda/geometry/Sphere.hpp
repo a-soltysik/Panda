@@ -4,8 +4,8 @@
 /// CPU geometry for a unit sphere.
 
 #include <cstdint>
-#include <panda/Error.hpp>
-#include <panda/Geometry.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/geometry/Geometry.hpp>
 
 namespace panda
 {

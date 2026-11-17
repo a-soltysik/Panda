@@ -13,8 +13,8 @@
 #include <array>
 #include <cstdint>
 #include <memory>
-#include <panda/Buffer.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <span>
 #include <utility>
 

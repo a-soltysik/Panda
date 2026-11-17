@@ -3,7 +3,7 @@
 /// @file
 /// CPU geometry for the standard unit cube.
 
-#include <panda/Geometry.hpp>
+#include <panda/geometry/Geometry.hpp>
 
 namespace panda
 {

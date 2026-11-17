@@ -2,7 +2,7 @@
 
 #include <gmock/gmock.h>
 
-#include <panda/Assert.hpp>
+#include <panda/diagnostics/Assert.hpp>
 
 namespace panda::test
 {

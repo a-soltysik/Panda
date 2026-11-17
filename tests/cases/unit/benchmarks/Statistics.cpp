@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
-#include <panda/PerformanceManager.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
 #include <panda_bench/Statistics.hpp>
 #include <vector>
 

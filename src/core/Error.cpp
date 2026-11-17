@@ -3,7 +3,7 @@
 // clang-format on
 
 #include <optional>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <source_location>
 #include <string>
 #include <utility>

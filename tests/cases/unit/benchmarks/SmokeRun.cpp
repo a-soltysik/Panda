@@ -6,7 +6,7 @@
 #include <chrono>
 #include <expected>
 #include <glm/ext/vector_uint2.hpp>
-#include <panda/PerformanceManager.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
 #include <string>
 #include <thread>
 #include <vector>

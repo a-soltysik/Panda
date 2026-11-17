@@ -5,9 +5,9 @@
 #include <glm/ext/vector_float3.hpp>
 #include <limits>
 #include <numbers>
-#include <panda/Error.hpp>
-#include <panda/Geometry.hpp>
-#include <panda/Sphere.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/geometry/Geometry.hpp>
+#include <panda/geometry/Sphere.hpp>
 #include <variant>
 #include <vector>
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <panda/base/Error.hpp>
 
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
@@ -9,8 +10,8 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <panda/CompletionPoint.hpp>
-#include <panda/PerformanceManager.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
+#include <panda/submission/CompletionPoint.hpp>
 #include <vector>
 
 #include "SubmissionQueue.hpp"
