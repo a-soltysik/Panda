@@ -7,7 +7,6 @@
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
 #include <utility>
-#include <vulkan/vulkan.hpp>
 
 #include "LogCapture.hpp"
 
@@ -17,10 +16,10 @@ template <std::derived_from<panda::Engine> ConcreteEngine>
 void exerciseOwnership(ConcreteEngine& context, panda::BufferMemory intent)
 {
     auto created = context.getResourceManager().createBuffer(
-        {.size = 257, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = intent});
+        {.size = 257, .usage = ::panda::BufferUsage::Storage, .memory = intent});
     ASSERT_TRUE(created) << created.error().message;
     auto second = context.getResourceManager().createBuffer(
-        {.size = 257, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = intent});
+        {.size = 257, .usage = ::panda::BufferUsage::Storage, .memory = intent});
     ASSERT_TRUE(second) << second.error().message;
     auto copy = *created;
     EXPECT_EQ(copy.getSize(), 257);

@@ -4,9 +4,9 @@
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <glm/ext/vector_uint2.hpp>
 #include <limits>
 #include <panda/Error.hpp>
-#include <panda/WindowSurface.hpp>
 #include <span>
 #include <string>
 #include <utility>
@@ -54,7 +54,7 @@ auto chooseCompositeAlpha(vk::CompositeAlphaFlagsKHR supported) -> vk::Composite
     return vk::CompositeAlphaFlagBitsKHR::eOpaque;
 }
 
-auto selectSurfaceConfig(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, FramebufferExtent requested)
+auto selectSurfaceConfig(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, glm::uvec2 requested)
     -> std::expected<SurfaceConfig, Error>
 {
     const auto capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
@@ -87,7 +87,7 @@ auto chooseImageCount(const vk::SurfaceCapabilitiesKHR& capabilities) -> std::ui
 
 auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
                          std::span<const vk::SurfaceFormatKHR> formats,
-                         FramebufferExtent requested) -> std::expected<SurfaceConfig, Error>
+                         glm::uvec2 requested) -> std::expected<SurfaceConfig, Error>
 {
     if (!(capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eColorAttachment))
     {
@@ -98,14 +98,14 @@ auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Surface has no supported SRGB or UNORM SDR format")};
     }
-    const auto extent = capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()
-                            ? capabilities.currentExtent
-                            : vk::Extent2D {.width = std::clamp(requested.width,
-                                                                capabilities.minImageExtent.width,
-                                                                capabilities.maxImageExtent.width),
-                                            .height = std::clamp(requested.height,
-                                                                 capabilities.minImageExtent.height,
-                                                                 capabilities.maxImageExtent.height)};
+    const auto extent =
+        capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()
+            ? capabilities.currentExtent
+            : vk::Extent2D {
+                  .width =
+                      std::clamp(requested.x, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+                  .height =
+                      std::clamp(requested.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
     if (extent.width == 0 || extent.height == 0)
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Surface has zero framebuffer extent")};

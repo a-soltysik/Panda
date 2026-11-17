@@ -12,6 +12,13 @@
 
 namespace panda::detail
 {
+struct TextureResourceCreateInfo
+{
+    vk::Extent2D extent;
+    vk::Format format;
+    vk::ImageUsageFlags usage;
+};
+
 namespace texture_resources = ::panda::core::vulkan::resources;
 namespace texture_upload = ::panda::core::vulkan::upload;
 
@@ -28,9 +35,16 @@ public:
                                      texture_resources::MemoryPool& pool,
                                      const TextureDesc& description,
                                      vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>;
+    [[nodiscard]] static auto createNative(const vk::raii::Device& device,
+                                           texture_resources::MemoryPool& pool,
+                                           const TextureResourceCreateInfo& description,
+                                           vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1)
+        -> Result<std::shared_ptr<TextureResource>>;
     [[nodiscard]] auto getExtent() const -> vk::Extent2D;
     [[nodiscard]] auto getFormat() const -> vk::Format;
     [[nodiscard]] auto getUsage() const -> vk::ImageUsageFlags;
+    [[nodiscard]] auto getPublicFormat() const -> PixelFormat;
+    [[nodiscard]] auto getPublicUsage() const -> TextureUsage;
     [[nodiscard]] auto getNative() const -> vk::Image;
     [[nodiscard]] auto getNativeView() const -> vk::ImageView;
     [[nodiscard]] auto belongsTo(const texture_resources::MemoryPool& pool) const -> bool;
@@ -42,12 +56,12 @@ public:
 private:
     [[nodiscard]] static auto createBoundResource(const vk::raii::Device& device,
                                                   texture_resources::MemoryPool& pool,
-                                                  const TextureDesc& description,
+                                                  const TextureResourceCreateInfo& description,
                                                   vk::SampleCountFlagBits samples)
         -> Result<std::shared_ptr<TextureResource>>;
     TextureResource(texture_resources::MemoryPool& pool,
                     vk::raii::Image image,
-                    const TextureDesc& description,
+                    const TextureResourceCreateInfo& description,
                     vk::SampleCountFlagBits samples);
     [[nodiscard]] auto bind(const vk::raii::Device& device) -> Result<void>;
 
@@ -59,6 +73,8 @@ private:
     vk::Format _format;
     vk::ImageUsageFlags _usage;
     vk::SampleCountFlagBits _samples;
+    PixelFormat _publicFormat {PixelFormat::Undefined};
+    TextureUsage _publicUsage {TextureUsage::None};
     std::optional<texture_upload::UploadBatchId> _uploadBatchId;
     bool _uploaded {false};
 };

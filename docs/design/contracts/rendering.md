@@ -29,7 +29,9 @@ render graph are outside this capability.
 
 `ResourceManager::createOffscreenTarget()` creates an RGBA8 sRGB target. Applications pass a target to each
 `OffscreenRenderer::render()` call and may read the latest completed output as tightly packed, top-to-bottom RGBA bytes;
-RGB is sRGB encoded and alpha is linear UNORM. `WindowRenderer::renderWithCapture()` renders once into that target,
+RGB is sRGB encoded and alpha is linear UNORM. `OffscreenTargetDesc::extent` and
+`ImageReadback::extent` are `glm::uvec2` pixel values with x as width and y as
+height. `WindowRenderer::renderWithCapture()` renders once into that target,
 copies the same output to the swapchain image and presents it.
 
 ## Built-in materials

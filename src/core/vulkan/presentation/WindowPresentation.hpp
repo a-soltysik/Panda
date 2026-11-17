@@ -110,15 +110,15 @@ private:
     [[nodiscard]] auto initializeWindowPresentation() -> std::expected<void, Error>;
     [[nodiscard]] auto verifyReleaseFunction() const -> std::expected<void, Error>;
     [[nodiscard]] auto initializeAcquireSemaphore(vk::raii::Semaphore& semaphore) const -> std::expected<void, Error>;
-    [[nodiscard]] auto recreate(FramebufferExtent requested) -> std::expected<void, Error>;
+    [[nodiscard]] auto recreate(glm::uvec2 requested) -> std::expected<void, Error>;
     [[nodiscard]] auto recordFrame(std::size_t slotIndex, const SwapchainImage& image, const RenderView& view)
         -> std::expected<void, Error>;
     [[nodiscard]] auto waitCompletion(std::uint64_t value) const -> std::expected<void, Error>;
     [[nodiscard]] auto waitPresentation() -> std::expected<void, Error>;
     [[nodiscard]] auto activeGeneration() -> SwapchainGeneration&;
     [[nodiscard]] auto activeGeneration() const -> const SwapchainGeneration&;
-    [[nodiscard]] auto effectiveSampleCount() const noexcept -> vk::SampleCountFlagBits;
-    [[nodiscard]] auto ensureWindowGeneration(FramebufferExtent requested) -> std::expected<void, Error>;
+    [[nodiscard]] auto effectiveSampleCount() const noexcept -> SampleCount;
+    [[nodiscard]] auto ensureWindowGeneration(glm::uvec2 requested) -> std::expected<void, Error>;
     [[nodiscard]] auto prepareWindowFrame() -> std::expected<bool, Error>;
     [[nodiscard]] auto nonReadyFrameResult(AcquiredImage::Status status) const -> std::optional<FrameResult>;
     [[nodiscard]] auto executeAcquiredFrame(std::size_t slotIndex,

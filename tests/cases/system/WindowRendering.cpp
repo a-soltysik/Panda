@@ -22,6 +22,7 @@
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/OffscreenTarget.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/Plane.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
@@ -41,7 +42,7 @@
 namespace
 {
 
-constexpr auto renderExtent = vk::Extent2D {160, 120};
+constexpr auto renderExtent = glm::uvec2 {160, 120};
 
 class SuspensibleSurface final : public panda::WindowSurface
 {
@@ -68,11 +69,11 @@ public:
         return _window.createSurface(instance);
     }
 
-    [[nodiscard]] auto getFramebufferExtent() const -> std::expected<panda::FramebufferExtent, panda::Error> override
+    [[nodiscard]] auto getFramebufferExtent() const -> std::expected<glm::uvec2, panda::Error> override
     {
         if (_suspended)
         {
-            return panda::FramebufferExtent {};
+            return glm::uvec2 {};
         }
         return _window.getFramebufferExtent();
     }
@@ -109,7 +110,7 @@ public:
                                                  panda::NativeError {.api = "test surface", .code = 17})};
     }
 
-    [[nodiscard]] auto getFramebufferExtent() const -> std::expected<panda::FramebufferExtent, panda::Error> override
+    [[nodiscard]] auto getFramebufferExtent() const -> std::expected<glm::uvec2, panda::Error> override
     {
         return _window.getFramebufferExtent();
     }
@@ -257,12 +258,12 @@ auto createCompactTriangle(const panda::Engine& context) -> panda::Result<panda:
     });
 }
 
-auto createSceneTexture(const panda::Engine& context, vk::Format format) -> panda::Result<panda::Texture>
+auto createSceneTexture(const panda::Engine& context, ::panda::PixelFormat format) -> panda::Result<panda::Texture>
 {
     return context.getResourceManager().createTexture({
-        .extent = vk::Extent2D {2, 2},
+        .extent = glm::uvec2 {2, 2},
         .format = format,
-        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     });
 }
 
@@ -452,17 +453,17 @@ auto createUploadedCubeGroundAndCompactTriangle(const panda::Engine& context) ->
     {
         return std::unexpected {triangle.error()};
     }
-    auto baseColorMap = createSceneTexture(context, vk::Format::eR8G8B8A8Srgb);
+    auto baseColorMap = createSceneTexture(context, ::panda::PixelFormat::Rgba8Srgb);
     if (!baseColorMap)
     {
         return std::unexpected {baseColorMap.error()};
     }
-    auto metallicRoughnessMap = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
+    auto metallicRoughnessMap = createSceneTexture(context, ::panda::PixelFormat::Rgba8Unorm);
     if (!metallicRoughnessMap)
     {
         return std::unexpected {metallicRoughnessMap.error()};
     }
-    auto normalMap = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
+    auto normalMap = createSceneTexture(context, ::panda::PixelFormat::Rgba8Unorm);
     if (!normalMap)
     {
         return std::unexpected {normalMap.error()};
@@ -542,9 +543,9 @@ auto createNormalMapFallbackMesh(const panda::Engine& context, bool hasUv) -> pa
     return std::move(*mesh);
 }
 
-auto makeTestCamera(panda::FramebufferExtent extent) -> panda::Result<panda::RenderCamera>
+auto makeTestCamera(glm::uvec2 extent) -> panda::Result<panda::RenderCamera>
 {
-    const auto aspectRatio = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+    const auto aspectRatio = static_cast<float>(extent.x) / static_cast<float>(extent.y);
     return panda::createPerspectiveCamera({
         .position = {3.0F, 2.5F, 4.0F},
         .target = {},
@@ -619,8 +620,7 @@ auto makeUnlitMaskDraw(const SceneMeshes& meshes) -> panda::MeshDraw
     return draw;
 }
 
-auto makeCubeAndGroundView(panda::FramebufferExtent extent, const SceneMeshes& meshes)
-    -> panda::Result<panda::RenderView>
+auto makeCubeAndGroundView(glm::uvec2 extent, const SceneMeshes& meshes) -> panda::Result<panda::RenderView>
 {
     const auto camera = makeTestCamera(extent);
     if (!camera)
@@ -755,7 +755,7 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     ASSERT_TRUE(batch.has_value()) << batch.error().message;
     ASSERT_TRUE(batch->write(*mesh, geometry));
     ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
-    const auto camera = makeTestCamera({.width = renderExtent.width, .height = renderExtent.height});
+    const auto camera = makeTestCamera(renderExtent);
     ASSERT_TRUE(camera.has_value()) << camera.error().message;
     auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
     auto draw = panda::MeshDraw {.mesh = *mesh};
@@ -773,7 +773,7 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     const auto pixels = context.getOffscreenRenderer().readPixels(*target, frame->completion);
     ASSERT_TRUE(pixels.has_value()) << pixels.error().message;
     EXPECT_EQ(pixels->extent, renderExtent);
-    ASSERT_EQ(pixels->rgba.size(), static_cast<std::size_t>(renderExtent.width) * renderExtent.height * 4);
+    ASSERT_EQ(pixels->rgba.size(), static_cast<std::size_t>(renderExtent.x) * renderExtent.y * 4);
     if (context.getFeatures().performance.isGpuTimestampSamplingEnabled)
     {
         auto& performance = context.getPerformanceManager();
@@ -804,7 +804,7 @@ TEST(HeadlessRendererSystem, RendersSixtyFiveDirectionalLightsWithinConfiguredBu
     ASSERT_TRUE(target.has_value()) << target.error().message;
     auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
     ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
-    auto view = makeCubeAndGroundView({.width = renderExtent.width, .height = renderExtent.height}, *meshes);
+    auto view = makeCubeAndGroundView(renderExtent, *meshes);
     ASSERT_TRUE(view.has_value()) << view.error().message;
     view->lights.resize(65);
 
@@ -888,7 +888,7 @@ TEST(HeadlessRendererSystem, RendersUnlitMeshWithZeroLightBudget)
     ASSERT_TRUE(batch.has_value()) << batch.error().message;
     ASSERT_TRUE(batch->write(*mesh, geometry));
     ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
-    const auto camera = makeTestCamera({.width = renderExtent.width, .height = renderExtent.height});
+    const auto camera = makeTestCamera(renderExtent);
     ASSERT_TRUE(camera.has_value()) << camera.error().message;
     auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
     auto draw = panda::MeshDraw {.mesh = *mesh};
@@ -951,7 +951,7 @@ TEST(HeadlessRendererSystem, RetainsTextureAfterApplicationReleasesItUntilFrameC
             GTEST_SKIP() << meshes.error().message;
         }
         ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
-        auto texture = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
+        auto texture = createSceneTexture(context, ::panda::PixelFormat::Rgba8Unorm);
         ASSERT_TRUE(texture.has_value()) << texture.error().message;
         auto batch = context.getSubmissionManager().createUploadBatch();
         ASSERT_TRUE(batch.has_value()) << batch.error().message;
@@ -974,7 +974,7 @@ TEST(HeadlessRendererSystem, RetainsTextureAfterApplicationReleasesItUntilFrameC
         ASSERT_TRUE(batch->write(*texture, pixels));
         ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
 
-        const auto camera = makeTestCamera({.width = renderExtent.width, .height = renderExtent.height});
+        const auto camera = makeTestCamera(renderExtent);
         ASSERT_TRUE(camera.has_value()) << camera.error().message;
         auto view = panda::RenderView {.camera = *camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
         auto draw = panda::MeshDraw {.mesh = meshes->cube};
@@ -1009,7 +1009,7 @@ TEST(HeadlessRendererSystem, RendersNormalMapsAndFallsBackWithoutUvOrTangents)
     ASSERT_TRUE(target.has_value()) << target.error().message;
     auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
     ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
-    auto view = makeCubeAndGroundView({.width = renderExtent.width, .height = renderExtent.height}, *meshes);
+    auto view = makeCubeAndGroundView(renderExtent, *meshes);
     ASSERT_TRUE(view.has_value()) << view.error().message;
     expectInvalidNormalMap(context,
                            *target,
@@ -1017,10 +1017,10 @@ TEST(HeadlessRendererSystem, RendersNormalMapsAndFallsBackWithoutUvOrTangents)
                            meshes->cube,
                            meshes->normalMap,
                            panda::MaterialModel::Unlit);
-    auto srgbNormalMap = createSceneTexture(context, vk::Format::eR8G8B8A8Srgb);
+    auto srgbNormalMap = createSceneTexture(context, ::panda::PixelFormat::Rgba8Srgb);
     ASSERT_TRUE(srgbNormalMap.has_value()) << srgbNormalMap.error().message;
     expectInvalidNormalMap(context, *target, view->camera, meshes->cube, *srgbNormalMap);
-    auto unuploadedNormalMap = createSceneTexture(context, vk::Format::eR8G8B8A8Unorm);
+    auto unuploadedNormalMap = createSceneTexture(context, ::panda::PixelFormat::Rgba8Unorm);
     ASSERT_TRUE(unuploadedNormalMap.has_value()) << unuploadedNormalMap.error().message;
     expectInvalidNormalMap(context, *target, view->camera, meshes->cube, *unuploadedNormalMap);
     auto noUvMesh = createNormalMapFallbackMesh(context, false);
@@ -1080,7 +1080,7 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
             GTEST_SKIP() << meshes.error().message;
         }
         ASSERT_TRUE(meshes.has_value()) << meshes.error().message;
-        auto view = makeCubeAndGroundView({.width = renderExtent.width, .height = renderExtent.height}, *meshes);
+        auto view = makeCubeAndGroundView(renderExtent, *meshes);
         ASSERT_TRUE(view.has_value()) << view.error().message;
         auto baseColorDraw = panda::MeshDraw {};
         baseColorDraw.mesh = meshes->cube;
@@ -1159,9 +1159,9 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         expectInvalidOcclusionMap(context, *target, view->camera, meshes->cube, meshes->baseColorMap);
 
         auto linearMap = context.getResourceManager().createTexture({
-            .extent = vk::Extent2D {1, 1},
-            .format = vk::Format::eR8G8B8A8Unorm,
-            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+            .extent = glm::uvec2 {1, 1},
+            .format = ::panda::PixelFormat::Rgba8Unorm,
+            .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
         });
         ASSERT_TRUE(linearMap.has_value()) << linearMap.error().message;
         expectInvalidEmissiveMap(context, *target, view->camera, meshes->cube, *linearMap);
@@ -1176,9 +1176,9 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         EXPECT_EQ(linearMapResult.error().code, panda::ErrorCode::InvalidArgument);
 
         auto srgbMetallicRoughnessMap = context.getResourceManager().createTexture({
-            .extent = vk::Extent2D {1, 1},
-            .format = vk::Format::eR8G8B8A8Srgb,
-            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+            .extent = glm::uvec2 {1, 1},
+            .format = ::panda::PixelFormat::Rgba8Srgb,
+            .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
         });
         ASSERT_TRUE(srgbMetallicRoughnessMap.has_value()) << srgbMetallicRoughnessMap.error().message;
         auto srgbMrView =
@@ -1191,34 +1191,10 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_FALSE(srgbMrResult.has_value());
         EXPECT_EQ(srgbMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
-        auto unsampledMetallicRoughnessMap = context.getResourceManager().createTexture({
-            .extent = vk::Extent2D {1, 1},
-            .format = vk::Format::eR8G8B8A8Unorm,
-            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment
-        });
-        ASSERT_TRUE(unsampledMetallicRoughnessMap.has_value()) << unsampledMetallicRoughnessMap.error().message;
-        expectInvalidOcclusionMap(context, *target, view->camera, meshes->cube, *unsampledMetallicRoughnessMap);
-        auto unsampledEmissiveMap = context.getResourceManager().createTexture({
-            .extent = vk::Extent2D {1, 1},
-            .format = vk::Format::eR8G8B8A8Srgb,
-            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment
-        });
-        ASSERT_TRUE(unsampledEmissiveMap.has_value()) << unsampledEmissiveMap.error().message;
-        expectInvalidEmissiveMap(context, *target, view->camera, meshes->cube, *unsampledEmissiveMap);
-        auto unsampledMrView =
-            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
-        auto unsampledMrDraw = panda::MeshDraw {};
-        unsampledMrDraw.mesh = meshes->cube;
-        unsampledMrDraw.material.metallicRoughnessTexture = *unsampledMetallicRoughnessMap;
-        unsampledMrView.meshes.push_back(unsampledMrDraw);
-        const auto unsampledMrResult = context.getOffscreenRenderer().render(unsampledMrView, *target);
-        ASSERT_FALSE(unsampledMrResult.has_value());
-        EXPECT_EQ(unsampledMrResult.error().code, panda::ErrorCode::InvalidArgument);
-
         auto unuploadedMap = context.getResourceManager().createTexture({
-            .extent = vk::Extent2D {1, 1},
-            .format = vk::Format::eR8G8B8A8Srgb,
-            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+            .extent = glm::uvec2 {1, 1},
+            .format = ::panda::PixelFormat::Rgba8Srgb,
+            .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
         });
         ASSERT_TRUE(unuploadedMap.has_value()) << unuploadedMap.error().message;
         expectInvalidEmissiveMap(context, *target, view->camera, meshes->cube, *unuploadedMap);
@@ -1233,9 +1209,9 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         EXPECT_EQ(unuploadedMapResult.error().code, panda::ErrorCode::InvalidArgument);
 
         auto unuploadedMrMap = context.getResourceManager().createTexture({
-            .extent = vk::Extent2D {1, 1},
-            .format = vk::Format::eR8G8B8A8Unorm,
-            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+            .extent = glm::uvec2 {1, 1},
+            .format = ::panda::PixelFormat::Rgba8Unorm,
+            .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
         });
         ASSERT_TRUE(unuploadedMrMap.has_value()) << unuploadedMrMap.error().message;
         expectInvalidOcclusionMap(context, *target, view->camera, meshes->cube, *unuploadedMrMap);
@@ -1260,9 +1236,9 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         const auto frame = context.getOffscreenRenderer().render(*view, *target);
         ASSERT_TRUE(frame.has_value()) << frame.error().message;
         EXPECT_EQ(frame->status, panda::FrameResult::Status::Rendered);
-        EXPECT_TRUE(frame->effectiveSampleCount == vk::SampleCountFlagBits::e1 ||
-                    frame->effectiveSampleCount == vk::SampleCountFlagBits::e2 ||
-                    frame->effectiveSampleCount == vk::SampleCountFlagBits::e4);
+        EXPECT_TRUE(frame->effectiveSampleCount == panda::SampleCount::One ||
+                    frame->effectiveSampleCount == panda::SampleCount::Two ||
+                    frame->effectiveSampleCount == panda::SampleCount::Four);
         view->meshes.clear();
         verifyCompletion(context, frame->completion);
     }

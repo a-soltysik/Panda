@@ -233,13 +233,13 @@ TEST_P(TextureResourceAspectTest, CreatesDefaultViewWithTheFormatAspectAndDestro
     EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanupOrder);
     EXPECT_CALL(vulkan, vkFreeMemory(deviceHandle, memory, nullptr)).InSequence(cleanupOrder);
 
-    auto resource =
-        TextureResource::create(device,
-                                *pool,
-                                {
-                                    .extent = vk::Extent2D {.width = 32, .height = 16},
-                                    .format = viewCase.format,
-                                    .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    auto resource = TextureResource::createNative(
+        device,
+        *pool,
+        {
+            .extent = vk::Extent2D {.width = 32, .height = 16},
+            .format = viewCase.format,
+            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
     });
 
     ASSERT_TRUE(resource);
@@ -271,13 +271,13 @@ TEST_F(TextureResourceTest, FailedViewCreationDoesNotAdoptItsOutputAndDestroysTh
     EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanupOrder);
     EXPECT_CALL(vulkan, vkFreeMemory(deviceHandle, memory, nullptr)).InSequence(cleanupOrder);
 
-    const auto resource =
-        TextureResource::create(device,
-                                *pool,
-                                {
-                                    .extent = vk::Extent2D {.width = 32, .height = 16},
-                                    .format = format,
-                                    .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+    const auto resource = TextureResource::createNative(
+        device,
+        *pool,
+        {
+            .extent = vk::Extent2D {.width = 32, .height = 16},
+            .format = format,
+            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
     });
 
     ASSERT_FALSE(resource);

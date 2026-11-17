@@ -143,12 +143,12 @@ auto RenderAttachments::createDepthAttachments(vk::Extent2D extent, vk::SampleCo
     for (auto index = std::size_t {}; index < _frames.size(); ++index)
     {
         auto attachment =
-            ::panda::detail::TextureResource::create(_device,
-                                                     _pool,
-                                                     {.extent = extent,
-                                                      .format = _description.depthFormat,
-                                                      .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment},
-                                                     samples);
+            ::panda::detail::TextureResource::createNative(_device,
+                                                           _pool,
+                                                           {.extent = extent,
+                                                            .format = _description.depthFormat,
+                                                            .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment},
+                                                           samples);
         if (!attachment)
         {
             return std::unexpected {attachment.error()};
@@ -169,7 +169,7 @@ auto RenderAttachments::createColorAttachments(vk::Extent2D extent, vk::Format f
     attachments.reserve(_frames.size());
     for (auto index = std::size_t {}; index < _frames.size(); ++index)
     {
-        auto attachment = ::panda::detail::TextureResource::create(
+        auto attachment = ::panda::detail::TextureResource::createNative(
             _device,
             _pool,
             {.extent = extent, .format = format, .usage = vk::ImageUsageFlagBits::eColorAttachment},
@@ -190,7 +190,7 @@ auto RenderAttachments::createShadowMaps()
     maps.reserve(_frames.size());
     for (auto index = std::size_t {}; index < _frames.size(); ++index)
     {
-        auto map = ::panda::detail::TextureResource::create(
+        auto map = ::panda::detail::TextureResource::createNative(
             _device,
             _pool,
             {.extent = shadowExtent,

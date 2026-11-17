@@ -74,23 +74,22 @@ auto getTextureBlock(vk::Format format) -> Result<TextureBlock>
 auto validateTextureRegion(vk::Extent2D textureExtent, const TextureUploadRegion& region, const TextureBlock& block)
     -> Result<void>
 {
-    if (region.extent.width == 0 || region.extent.height == 0 || region.offset.x < 0 || region.offset.y < 0)
+    if (region.extent.x == 0 || region.extent.y == 0 || region.offset.x < 0 || region.offset.y < 0)
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Texture upload region must be nonempty and nonnegative")};
     }
     const auto x = static_cast<std::uint64_t>(region.offset.x);
     const auto y = static_cast<std::uint64_t>(region.offset.y);
-    if (x > textureExtent.width || y > textureExtent.height || region.extent.width > textureExtent.width - x ||
-        region.extent.height > textureExtent.height - y)
+    if (x > textureExtent.width || y > textureExtent.height || region.extent.x > textureExtent.width - x ||
+        region.extent.y > textureExtent.height - y)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture upload region exceeds image bounds")};
     }
-    const auto reachesRightEdge = x + region.extent.width == textureExtent.width;
-    const auto reachesBottomEdge = y + region.extent.height == textureExtent.height;
-    if (x % block.width != 0 || y % block.height != 0 ||
-        (region.extent.width % block.width != 0 && !reachesRightEdge) ||
-        (region.extent.height % block.height != 0 && !reachesBottomEdge))
+    const auto reachesRightEdge = x + region.extent.x == textureExtent.width;
+    const auto reachesBottomEdge = y + region.extent.y == textureExtent.height;
+    if (x % block.width != 0 || y % block.height != 0 || (region.extent.x % block.width != 0 && !reachesRightEdge) ||
+        (region.extent.y % block.height != 0 && !reachesBottomEdge))
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Texture upload region is not aligned to format blocks")};
@@ -100,8 +99,8 @@ auto validateTextureRegion(vk::Extent2D textureExtent, const TextureUploadRegion
 
 auto makeTextureCopyLayout(const TextureBlock& block, const TextureUploadRegion& region) -> Result<TextureCopyLayout>
 {
-    const auto blockColumns = (static_cast<std::uint64_t>(region.extent.width) + block.width - 1) / block.width;
-    const auto blockRows = (static_cast<std::uint64_t>(region.extent.height) + block.height - 1) / block.height;
+    const auto blockColumns = (static_cast<std::uint64_t>(region.extent.x) + block.width - 1) / block.width;
+    const auto blockRows = (static_cast<std::uint64_t>(region.extent.y) + block.height - 1) / block.height;
     const auto rowBytes = blockColumns * block.size;
     const auto rowPitch = region.rowPitchBytes == 0 ? rowBytes : region.rowPitchBytes;
     if (rowPitch < rowBytes || rowPitch % block.size != 0)
@@ -302,9 +301,10 @@ auto UploadManager::validateTextureWrite(const std::shared_ptr<TextureResource>&
 
 auto UploadManager::createStaging(std::uint64_t size) const -> Result<std::shared_ptr<BufferResource>>
 {
-    const auto description =
-        BufferDesc {.size = size, .usage = vk::BufferUsageFlagBits::eTransferSrc, .memory = BufferMemory::Upload};
-    return BufferResource::create(_device, _pool, description);
+    const auto description = api_detail::BufferResourceCreateInfo {.size = size,
+                                                                   .usage = vk::BufferUsageFlagBits::eTransferSrc,
+                                                                   .memory = BufferMemory::Upload};
+    return BufferResource::createNative(_device, _pool, description);
 }
 
 auto UploadManager::submit(std::span<const UploadOperation> writes,

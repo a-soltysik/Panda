@@ -112,8 +112,7 @@ void recordCopy(vk::CommandBuffer command, const TextureUpload& texture)
                                                         .baseArrayLayer = 0,
                                                         .layerCount = 1},
         .imageOffset = vk::Offset3D {.x = texture.region.offset.x, .y = texture.region.offset.y, .z = 0},
-        .imageExtent =
-            vk::Extent3D {.width = texture.region.extent.width, .height = texture.region.extent.height, .depth = 1}
+        .imageExtent = vk::Extent3D {.width = texture.region.extent.x, .height = texture.region.extent.y, .depth = 1}
     };
     command.copyBufferToImage(texture.staging->getNative(),
                               texture.destination->getNative(),

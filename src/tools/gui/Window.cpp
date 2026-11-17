@@ -15,7 +15,6 @@
 #include <panda/Assert.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
-#include <panda/WindowSurface.hpp>
 #include <ranges>
 #include <source_location>
 #include <span>
@@ -59,7 +58,7 @@ auto createNativeWindow(glm::uvec2 size, const char* name, std::source_location 
     return window;
 }
 
-auto readFramebufferSize(GLFWwindow* window) -> Result<FramebufferExtent>
+auto readFramebufferSize(GLFWwindow* window) -> Result<glm::uvec2>
 {
     GlfwSession::clearError();
     auto width = 0;
@@ -73,7 +72,7 @@ auto readFramebufferSize(GLFWwindow* window) -> Result<FramebufferExtent>
     {
         return std::unexpected {makeError(ErrorCode::BackendFailure, "GLFW reported negative framebuffer dimensions")};
     }
-    return FramebufferExtent {.width = static_cast<std::uint32_t>(width), .height = static_cast<std::uint32_t>(height)};
+    return glm::uvec2 {static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)};
 }
 
 auto isWindowIconified(GLFWwindow* window) -> Result<bool>
@@ -217,7 +216,7 @@ auto Window::isMinimized() const -> Result<bool>
     {
         return std::unexpected {extent.error()};
     }
-    return extent->width == 0 || extent->height == 0;
+    return extent->x == 0 || extent->y == 0;
 }
 
 auto Window::getRequiredInstanceExtensions() const -> Result<std::vector<std::string>>
@@ -250,7 +249,7 @@ auto Window::createSurface(vk::Instance instance) const -> Result<vk::SurfaceKHR
     return surface;
 }
 
-auto Window::getFramebufferExtent() const -> Result<FramebufferExtent>
+auto Window::getFramebufferExtent() const -> Result<glm::uvec2>
 {
     checkUsable();
     const auto extent = readFramebufferSize(_window);
@@ -263,7 +262,7 @@ auto Window::getFramebufferExtent() const -> Result<FramebufferExtent>
     {
         return std::unexpected {iconified.error()};
     }
-    return *iconified ? FramebufferExtent {} : *extent;
+    return *iconified ? glm::uvec2 {} : *extent;
 }
 
 auto Window::waitForInput() -> Result<void>

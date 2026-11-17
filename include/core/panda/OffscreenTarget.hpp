@@ -4,9 +4,9 @@
 /// Explicit single-sample SDR render targets and RGBA pixel readback data.
 
 #include <cstdint>
+#include <glm/vec2.hpp>
 #include <memory>
 #include <vector>
-#include <vulkan/vulkan.hpp>
 
 namespace panda
 {
@@ -20,15 +20,15 @@ class OffscreenTargetResource;
 /// @brief Fixed-format offscreen color target creation parameters.
 struct OffscreenTargetDesc
 {
-    /// Nonzero target extent in pixels.
-    vk::Extent2D extent {};
+    /// Nonzero target extent in pixels; x is width and y is height.
+    glm::uvec2 extent {};
 };
 
 /// @brief Tightly packed pixels copied from an offscreen target.
 struct ImageReadback
 {
-    /// Pixel extent copied from the target.
-    vk::Extent2D extent {};
+    /// Pixel extent copied from the target; x is width and y is height.
+    glm::uvec2 extent {};
     /// Top-to-bottom rows in RGBA order. RGB channels are sRGB encoded; alpha is linear UNORM.
     std::vector<std::uint8_t> rgba;
 };
@@ -53,10 +53,8 @@ public:
 
     /// @brief Reports whether this handle retains a target.
     [[nodiscard]] auto isValid() const noexcept -> bool;
-    /// @brief Returns the target extent, or a zero extent for an empty handle.
-    [[nodiscard]] auto getExtent() const noexcept -> vk::Extent2D;
-    /// @brief Returns the target format, or eUndefined for an empty handle.
-    [[nodiscard]] auto getFormat() const noexcept -> vk::Format;
+    /// @brief Returns the target extent in pixels (x is width, y is height), or zero for an empty handle.
+    [[nodiscard]] auto getExtent() const noexcept -> glm::uvec2;
     /// @brief Releases this owner and leaves the handle empty; submitted work retains its use.
     void reset() noexcept;
 

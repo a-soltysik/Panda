@@ -18,6 +18,7 @@
 #include <panda/CompletionPoint.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
+#include <panda/FrameResult.hpp>
 #include <panda/PerformanceManager.hpp>
 #include <panda/RenderView.hpp>
 #include <span>
@@ -26,6 +27,7 @@
 
 #include "DeviceSelection.hpp"
 #include "FakeHandle.hpp"
+#include "FrameResultMapping.hpp"
 #include "PresentationTestSupport.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
@@ -339,6 +341,19 @@ private:
     std::optional<panda::detail::SubmissionQueue> _submissions;
     std::unique_ptr<panda::detail::PerformanceManagerImpl> _performance;
 };
+}
+
+TEST(FrameResultMapping, ConvertsSupportedVulkanSampleCounts)
+{
+    EXPECT_EQ(panda::core::vulkan::mapSampleCount(vk::SampleCountFlagBits::e1), panda::SampleCount::One);
+    EXPECT_EQ(panda::core::vulkan::mapSampleCount(vk::SampleCountFlagBits::e2), panda::SampleCount::Two);
+    EXPECT_EQ(panda::core::vulkan::mapSampleCount(vk::SampleCountFlagBits::e4), panda::SampleCount::Four);
+}
+
+TEST(FrameResultMapping, RejectsUnsupportedVulkanSampleCounts)
+{
+    EXPECT_DEATH(static_cast<void>(panda::core::vulkan::mapSampleCount(vk::SampleCountFlagBits::e8)),
+                 "Renderer selected an unsupported public sample count");
 }
 
 TEST_F(PresentationTest, FrameExecutionRecordsPlainFrameOutputWithoutWindowServices)

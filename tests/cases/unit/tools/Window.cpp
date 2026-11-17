@@ -408,7 +408,7 @@ TEST_F(WindowTest, NegativeDimensionsAreRecoverableBackendErrors)
     EXPECT_EQ(negativeWidth.error().message, "GLFW reported negative framebuffer dimensions");
 }
 
-TEST_F(WindowTest, FramebufferExtentPreservesIconifiedQueryFailure)
+TEST_F(WindowTest, FramebufferSizePreservesIconifiedQueryFailure)
 {
     expectInitialization();
     expectCreation(getFirst());

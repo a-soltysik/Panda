@@ -15,8 +15,9 @@ the Engine that created it.
 ## Main flow
 
 1. **Create the target.** The application calls
-   `Engine::getResourceManager().createOffscreenTarget()` with a nonzero extent.
-   The current target format is RGBA8 sRGB.
+   `Engine::getResourceManager().createOffscreenTarget()` with a nonzero
+   `glm::uvec2` extent in pixels (x is width, y is height). The current target
+   format is RGBA8 sRGB.
 2. **Build and upload the view.** The application supplies camera, lights and mesh
    draws. Required mesh and texture data must be uploaded; see
    [UC Upload a complete mesh payload into a batch](upload-mesh-payload.md) and
@@ -69,7 +70,8 @@ sequenceDiagram
 ## Notes
 
 **Output contract.** Pixels are top-to-bottom rows in RGBA order. RGB channels are
-sRGB encoded, alpha is linear UNORM, and rows have no extra padding. Image-file
+sRGB encoded, alpha is linear UNORM, and rows have no extra padding.
+`ImageReadback::extent` uses the same x-width/y-height pixel order. Image-file
 encoding is a separate planned `Panda::Tools` capability; see
 [Image file export](../development/tasks/image-file-export.md).
 

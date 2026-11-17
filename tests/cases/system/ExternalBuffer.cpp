@@ -2,12 +2,12 @@
 
 #include <array>
 #include <cstddef>
+#include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
 #include <panda/ExternalBuffer.hpp>
 #include <panda/ExternalSemaphoreHandle.hpp>
-#include <vulkan/vulkan.hpp>
 
 TEST(ExternalBufferSystem, DefaultConstructsAnEmptyOwner)
 {
@@ -27,8 +27,8 @@ TEST(ExternalBufferSystem, CreatesDedicatedBufferAndOwnsPlatformHandle)
     }
     ASSERT_TRUE(context) << context.error().message;
 
-    auto created = context->getExternalBufferManager().createBuffer(
-        {.size = 1024, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto created =
+        context->getExternalBufferManager().createBuffer({.size = 1024, .usage = ::panda::BufferUsage::Storage});
     if (!created && created.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << created.error().message;
@@ -75,15 +75,14 @@ TEST(ExternalBufferSystem, RejectsOrdinaryAndForeignEngineBuffers)
         GTEST_SKIP() << "Both Engines must select the same Vulkan device";
     }
 
-    auto ordinary =
-        owner->getResourceManager().createBuffer({.size = 64, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto ordinary = owner->getResourceManager().createBuffer({.size = 64, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(ordinary) << ordinary.error().message;
     const auto ordinaryRelease = owner->getExternalBufferManager().releaseToExternal(*ordinary);
     ASSERT_FALSE(ordinaryRelease);
     EXPECT_EQ(ordinaryRelease.error().code, panda::ErrorCode::InvalidArgument);
 
-    auto external = foreignOwner->getExternalBufferManager().createBuffer(
-        {.size = 64, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto external =
+        foreignOwner->getExternalBufferManager().createBuffer({.size = 64, .usage = ::panda::BufferUsage::Storage});
     if (!external && external.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << external.error().message;
@@ -111,7 +110,7 @@ TEST(ExternalBufferSystem, ReleaseSignalsTimelineAndPreventsVulkanUploadsUntilAc
 
     auto& externalBuffers = context->getExternalBufferManager();
     auto buffer = externalBuffers.createBuffer(
-        {.size = 1024, .usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst});
+        {.size = 1024, .usage = ::panda::BufferUsage::Storage | ::panda::BufferUsage::TransferDestination});
     if (!buffer && buffer.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << buffer.error().message;

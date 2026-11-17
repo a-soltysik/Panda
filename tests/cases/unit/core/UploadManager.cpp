@@ -16,6 +16,7 @@
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <span>
@@ -179,7 +180,7 @@ TEST_F(UploadManagerTest, ValidatesBufferOwnershipUsageAndRangeWithoutStaging)
     auto uploads = UploadManager {device, *pool, submissions, 0};
     auto destination = std::shared_ptr<BufferResource> {};
     const auto description = panda::BufferDesc {.size = 32,
-                                                .usage = vk::BufferUsageFlagBits::eTransferDst,
+                                                .usage = ::panda::BufferUsage::TransferDestination,
                                                 .memory = panda::BufferMemory::Device};
     EXPECT_CALL(bufferMock, create(_, Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
     auto created = BufferResource::create(device, *pool, description);
@@ -215,7 +216,7 @@ TEST_F(UploadManagerTest, RejectsWritesToAnExternallyOwnedBuffer)
     auto submissions = SubmissionQueue {device, 0};
     auto uploads = UploadManager {device, *pool, submissions, 0};
     const auto description = panda::BufferDesc {.size = 32,
-                                                .usage = vk::BufferUsageFlagBits::eTransferDst,
+                                                .usage = ::panda::BufferUsage::TransferDestination,
                                                 .memory = panda::BufferMemory::Device};
     EXPECT_CALL(bufferMock, create(_, Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
     auto created = BufferResource::create(device, *pool, description);
@@ -236,12 +237,15 @@ TEST_F(UploadManagerTest, CreatesUploadStagingWithTransferSourceUsage)
     EXPECT_CALL(submission, construct(_, 0));
     auto submissions = SubmissionQueue {device, 0};
     auto uploads = UploadManager {device, *pool, submissions, 0};
-    EXPECT_CALL(bufferMock,
-                create(Ref(device),
-                       Ref(*pool),
-                       testing::AllOf(testing::Field(&panda::BufferDesc::size, 2048),
-                                      testing::Field(&panda::BufferDesc::usage, vk::BufferUsageFlagBits::eTransferSrc),
-                                      testing::Field(&panda::BufferDesc::memory, panda::BufferMemory::Upload))))
+    EXPECT_CALL(
+        bufferMock,
+        createNative(
+            Ref(device),
+            Ref(*pool),
+            testing::AllOf(
+                testing::Field(&panda::detail::BufferResourceCreateInfo::size, 2048),
+                testing::Field(&panda::detail::BufferResourceCreateInfo::usage, vk::BufferUsageFlagBits::eTransferSrc),
+                testing::Field(&panda::detail::BufferResourceCreateInfo::memory, panda::BufferMemory::Upload))))
         .WillOnce(Return(panda::Result<void> {}));
 
     const auto staging = uploads.createStaging(2048);
@@ -255,17 +259,17 @@ TEST_F(UploadManagerTest, ValidatesTextureCopyLayoutAndSourceSize)
     auto submissions = SubmissionQueue {device, 0};
     auto uploads = UploadManager {device, *pool, submissions, 0};
     const auto description = panda::TextureDesc {
-        .extent = vk::Extent2D {.width = 8, .height = 8},
-        .format = vk::Format::eR8G8B8A8Unorm,
-        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        .extent = glm::uvec2 {8, 8},
+        .format = ::panda::PixelFormat::Rgba8Unorm,
+        .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     };
     EXPECT_CALL(textureMock, create(_, Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
     auto created = TextureResource::create(device, *pool, description);
     ASSERT_TRUE(created);
     auto destination = std::move(*created);
     const auto region = panda::TextureUploadRegion {
-        .offset = {.x = 2,     .y = 1     },
-        .extent = {.width = 2, .height = 2},
+        .offset = {2, 1},
+        .extent = {2, 2},
         .rowPitchBytes = 12
     };
     EXPECT_CALL(textureMock, belongsTo(Ref(*destination), Ref(*pool))).WillOnce(Return(true));
@@ -288,17 +292,17 @@ TEST_F(UploadManagerTest, RejectsTextureSourceThatDoesNotContainEveryPaddedRow)
     auto submissions = SubmissionQueue {device, 0};
     auto uploads = UploadManager {device, *pool, submissions, 0};
     const auto description = panda::TextureDesc {
-        .extent = vk::Extent2D {.width = 8, .height = 8},
-        .format = vk::Format::eR8G8B8A8Unorm,
-        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        .extent = glm::uvec2 {8, 8},
+        .format = ::panda::PixelFormat::Rgba8Unorm,
+        .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     };
     EXPECT_CALL(textureMock, create(_, Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
     auto created = TextureResource::create(device, *pool, description);
     ASSERT_TRUE(created);
     auto destination = std::move(*created);
     const auto region = panda::TextureUploadRegion {
-        .offset = {.x = 2,     .y = 1     },
-        .extent = {.width = 2, .height = 2},
+        .offset = {2, 1},
+        .extent = {2, 2},
         .rowPitchBytes = 12
     };
     EXPECT_CALL(textureMock, belongsTo(Ref(*destination), Ref(*pool))).WillOnce(Return(true));

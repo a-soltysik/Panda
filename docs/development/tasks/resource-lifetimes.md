@@ -73,14 +73,14 @@ live reserved ranges. Each Engine owns one manager for Panda allocations.
 memory-requirement selection, pooled/dedicated allocation and binding succeed.
 Shared resource state destroys `VkBuffer` before its `MemoryAllocation` releases
 the range. Engine has stable heap-owned state; moving it preserves buffer owners.
-`ResourceManager::createTexture` rejects invalid dimensions, formats and unsupported usage,
-including usage that cannot support its required default image view. Before creating
-the optimal-tiled, single-mip, single-layer 2D image, it checks the requested format,
-usage and extent against the physical device. It then queries image memory
-requirements, allocates device-local memory from the image partition, binds, creates
-one default 2D image view and only then publishes a copyable `Texture`. The default
-view spans the sole mip/layer and uses
-the format's color, depth or stencil aspect; combined depth/stencil formats use depth.
+`ResourceManager::createTexture` accepts Panda's four RGBA/BGRA 8-bit color formats
+and supported texture usages, rejecting invalid dimensions and unknown catalog
+values before native creation. It checks format, usage and extent against the
+physical device, then creates an optimal-tiled, single-mip, single-layer 2D image,
+queries memory requirements, allocates device-local memory from the image partition,
+binds it, creates one default color image view and only then publishes a copyable
+`Texture`. Renderer attachments use private native descriptions for formats and
+usages outside the public catalog.
 Member order destroys `VkImageView` before `VkImage`, then `MemoryAllocation` releases
 its range. Vulkan device, buffer and image-view handles remain private to the backend.
 Queue submission and synchronization remain owned by Panda. Engine destruction
@@ -132,9 +132,8 @@ unsubmitted batches and drains submitted packets before checking external buffer
 owners.
 
 Texture uploads require transfer-destination and sampled usage. Full-image writes
-and pitched rectangular writes accept single-plane 2D color formats, including
-block-compressed formats. Region alignment and source size are validated before
-staging allocation. A texture may be written only by one batch, which may enqueue
+and pitched rectangular writes accept the four public RGBA/BGRA 8-bit color formats.
+Source size is validated before staging allocation. A texture may be written only by one batch, which may enqueue
 multiple regions; its batch identity is a private typed ID, not a pointer to the
 batch implementation. Submission transitions the image from undefined through
 transfer destination to shader-read layout. Unwritten texels remain undefined,

@@ -21,11 +21,10 @@
 #include <panda/UploadBatch.hpp>
 #include <string>
 #include <tuple>
-#include <vulkan/vulkan.hpp>
 
 namespace
 {
-constexpr auto targetExtent = vk::Extent2D {640, 360};
+constexpr auto targetExtent = glm::uvec2 {640, 360};
 constexpr auto frameCount = std::size_t {4};
 
 void writeFrame(std::size_t frameIndex, const panda::ImageReadback& pixels)
@@ -35,24 +34,24 @@ void writeFrame(std::size_t frameIndex, const panda::ImageReadback& pixels)
     panda::expect(file.good(), "Open the raw RGBA output file");
     file.write(reinterpret_cast<const char*>(pixels.rgba.data()), static_cast<std::streamsize>(pixels.rgba.size()));
     panda::expect(file.good(), "Write the raw RGBA output file");
-    panda::log::info("Wrote {}x{} RGBA pixels to '{}'", pixels.extent.width, pixels.extent.height, fileName);
+    panda::log::info("Wrote {}x{} RGBA pixels to '{}'", pixels.extent.x, pixels.extent.y, fileName);
 }
 
 void renderSequence(const panda::Engine& context, const panda::Mesh& cube)
 {
     const auto target = panda::expect(context.getResourceManager().createOffscreenTarget({.extent = targetExtent}),
                                       "Create the offscreen target");
-    const auto camera = panda::expect(
-        panda::createPerspectiveCamera({
-            .position = {2.5F, 1.8F, 2.5F},
-            .target = {},
-            .up = {0.0F, 1.0F, 0.0F},
-            .verticalFieldOfViewRadians = glm::radians(50.0F),
-            .aspectRatio = static_cast<float>(targetExtent.width) / static_cast<float>(targetExtent.height),
-            .nearPlane = 0.1F,
-            .farPlane = 20.0F
+    const auto camera =
+        panda::expect(panda::createPerspectiveCamera({
+                          .position = {2.5F, 1.8F, 2.5F},
+                          .target = {},
+                          .up = {0.0F, 1.0F, 0.0F},
+                          .verticalFieldOfViewRadians = glm::radians(50.0F),
+                          .aspectRatio = static_cast<float>(targetExtent.x) / static_cast<float>(targetExtent.y),
+                          .nearPlane = 0.1F,
+                          .farPlane = 20.0F
     }),
-        "Create the camera");
+                      "Create the camera");
     auto view = panda::RenderView {.camera = camera,
                                    .lights = {panda::DirectionalLight {}},
                                    .meshes = {panda::MeshDraw {.mesh = cube}}};

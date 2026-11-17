@@ -5,10 +5,20 @@
 
 #include <cstdint>
 #include <panda/CompletionPoint.hpp>
-#include <vulkan/vulkan.hpp>
 
 namespace panda
 {
+/// @brief Effective color and depth sample count selected for rendering.
+enum class SampleCount : std::uint8_t
+{
+    /// One sample per pixel.
+    One = 1,
+    /// Two samples per pixel.
+    Two = 2,
+    /// Four samples per pixel.
+    Four = 4,
+};
+
 /// @brief Result of one rendering operation.
 struct FrameResult
 {
@@ -30,7 +40,7 @@ struct FrameResult
     /// Submitted work; valid when GPU work was committed, even if status is RecreatePending.
     /// Completion does not mean work or presentation has finished.
     CompletionPoint completion;
-    /// Selected color/depth sample count: e1, e2 or e4. A mesh view initializes the renderer and reports its choice.
-    vk::SampleCountFlagBits effectiveSampleCount {vk::SampleCountFlagBits::e1};
+    /// Selected color/depth sample count. A mesh view initializes the renderer and reports its choice.
+    SampleCount effectiveSampleCount {SampleCount::One};
 };
 }

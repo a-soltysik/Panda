@@ -13,7 +13,6 @@
 #include <panda/UploadBatch.hpp>
 #include <span>
 #include <tuple>
-#include <vulkan/vulkan.hpp>
 
 auto main() -> int
 {
@@ -23,11 +22,10 @@ auto main() -> int
         const auto context = panda::expect(
             panda::Engine::create({.applicationName = "Panda buffer allocation", .enableValidation = true}),
             "Create the Vulkan context");
-        const auto buffer =
-            panda::expect(context.getResourceManager().createBuffer({.size = 4096,
-                                                                     .usage = vk::BufferUsageFlagBits::eStorageBuffer |
-                                                                              vk::BufferUsageFlagBits::eTransferDst}),
-                          "Allocate the storage buffer");
+        const auto buffer = panda::expect(
+            context.getResourceManager().createBuffer(
+                {.size = 4096, .usage = ::panda::BufferUsage::Storage | ::panda::BufferUsage::TransferDestination}),
+            "Allocate the storage buffer");
         static constexpr auto values = std::array<std::uint32_t, 4> {1, 2, 3, 4};
         auto batch = panda::expect(context.getSubmissionManager().createUploadBatch(), "Create the upload batch");
         panda::expect(batch.write(buffer, 0, std::as_bytes(std::span {values})), "Stage four values");

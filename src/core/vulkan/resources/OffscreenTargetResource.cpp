@@ -33,16 +33,18 @@ auto OffscreenTargetResource::create(const vk::raii::Device& device,
                                      const OffscreenTargetDesc& description)
     -> Result<std::shared_ptr<OffscreenTargetResource>>
 {
-    if (description.extent.width == 0 || description.extent.height == 0)
+    if (description.extent.x == 0 || description.extent.y == 0)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Offscreen target extent must be nonzero")};
     }
-    auto color = TextureResource::create(
+    auto color = TextureResource::createNative(
         device,
         pool,
-        {.extent = description.extent,
-         .format = vk::Format::eR8G8B8A8Srgb,
-         .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc});
+        {
+            .extent = vk::Extent2D {.width = description.extent.x, .height = description.extent.y},
+            .format = vk::Format::eR8G8B8A8Srgb,
+            .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc
+    });
     if (!color)
     {
         return std::unexpected {color.error()};

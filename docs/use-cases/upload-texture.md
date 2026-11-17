@@ -93,18 +93,19 @@ sequenceDiagram
 ## Notes
 
 **Full-image and region layouts.** The full-image overload uses the texture's
-entire extent at offset zero. `TextureUploadRegion::offset` and `extent` are in
-texels. `rowPitchBytes` is the byte stride between source block rows; zero means
+entire extent at offset zero. `TextureUploadRegion::offset` is a signed
+`glm::ivec2`; `extent` is a `glm::uvec2`. Both are in texels, with x horizontal
+and y vertical. Negative offsets and empty extents are rejected. `rowPitchBytes`
+is the byte stride between source block rows; zero means
 tightly packed rows. A nonzero pitch must fit the copied row and be a multiple
 of the format's texel-block byte size, and the source span must contain all
-copied rows. For block-compressed formats, offsets and non-edge extents must
-align to the format block; an extent may end at the corresponding image edge.
+copied rows.
 
 **Supported images.** Uploads require both transfer-destination and sampled
-usage. Supported formats are single-plane 2D color formats, including
-block-compressed formats; depth/stencil and multi-plane formats are rejected.
-The format's optimal-tiling transfer and sampled support is checked when the
-texture is created.
+usage. The public formats are `Rgba8Unorm`, `Rgba8Srgb`, `Bgra8Unorm` and
+`Bgra8Srgb`. Other formats, including BC1 and depth/stencil formats, are not
+accepted by the public texture API. The format's optimal-tiling transfer and
+sampled support is checked when the texture is created.
 
 **Reservation and immutability.** One unsubmitted batch reserves a texture and
 may add multiple regions. Destroying that batch before submission releases the

@@ -1,8 +1,3 @@
-// clang-format off
-#include "VulkanHpp.hpp" // IWYU pragma: keep
-#include <vulkan/vulkan.hpp>
-// clang-format on
-
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <driver_types.h>
@@ -13,6 +8,7 @@
 #include <cstddef>
 #include <expected>
 #include <memory>
+#include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
@@ -88,7 +84,9 @@ void exerciseBuffer(panda::Engine& context,
                     Observations& observed)
 {
     auto external = context.getExternalBufferManager().createBuffer(
-        {.size = 4, .usage = vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc});
+        {.size = 4,
+         .usage = ::panda::BufferUsage::Storage | ::panda::BufferUsage::TransferSource |
+                  ::panda::BufferUsage::TransferDestination});
     ASSERT_TRUE(external) << external.error().message;
     auto buffer = session.importBuffer(std::move(*external));
     ASSERT_TRUE(buffer) << buffer.error().message;

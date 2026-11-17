@@ -26,7 +26,7 @@ namespace
 auto createMeshBuffer(const vk::raii::Device& device, MemoryPool& pool, std::uint64_t size, vk::BufferUsageFlags usage)
     -> Result<std::shared_ptr<BufferResource>>
 {
-    return BufferResource::create(device, pool, {.size = size, .usage = usage, .memory = BufferMemory::Device});
+    return BufferResource::createNative(device, pool, {.size = size, .usage = usage, .memory = BufferMemory::Device});
 }
 
 auto createIndexBuffer(const vk::raii::Device& device, MemoryPool& pool, const MeshLayout& layout)

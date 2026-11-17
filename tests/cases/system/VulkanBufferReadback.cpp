@@ -80,7 +80,7 @@ auto VulkanBufferReadback::create(const Engine& context, const Buffer& source)
     -> Result<std::unique_ptr<VulkanBufferReadback>>
 {
     auto destination = context.getResourceManager().createBuffer(
-        {.size = 8, .usage = vk::BufferUsageFlagBits::eTransferDst, .memory = BufferMemory::Readback});
+        {.size = 8, .usage = ::panda::BufferUsage::TransferDestination, .memory = BufferMemory::Readback});
     if (!destination)
     {
         return std::unexpected {destination.error()};

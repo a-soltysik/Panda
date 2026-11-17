@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <glm/vec2.hpp>
 #include <memory>
 #include <panda/Buffer.hpp>
 #include <panda/CompletionPoint.hpp>
@@ -26,10 +27,10 @@ class UploadBatchImpl;
 /// @brief Destination rectangle and source row layout for a texture upload.
 struct TextureUploadRegion
 {
-    /// Destination offset in texels; must be nonnegative and block-aligned.
-    vk::Offset2D offset {};
-    /// Nonempty copied extent in texels; compressed extents may end at an image edge.
-    vk::Extent2D extent {};
+    /// Destination offset in texels (x is horizontal, y is vertical); must be nonnegative and block-aligned.
+    glm::ivec2 offset {};
+    /// Nonempty extent in texels (x is width, y is height); compressed extents may end at an image edge.
+    glm::uvec2 extent {};
     /// Byte stride between source block rows; zero means tightly packed rows.
     std::uint64_t rowPitchBytes {0};
 };

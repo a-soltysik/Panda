@@ -15,7 +15,7 @@ class WindowSurfaceMock : public WindowSurface
 public:
     using ExtensionResult = std::expected<std::vector<std::string>, Error>;
     using SurfaceResult = std::expected<vk::SurfaceKHR, Error>;
-    using ExtentResult = std::expected<FramebufferExtent, Error>;
+    using ExtentResult = std::expected<glm::uvec2, Error>;
 
     // gMock cannot generate trailing-return declarations.
     // NOLINTBEGIN(modernize-use-trailing-return-type)

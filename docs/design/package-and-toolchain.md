@@ -181,11 +181,13 @@ and linked only when Tools is enabled, so a core-only build needs no window-syst
 The source build requires Vulkan development headers and the loader link library.
 It also requires `glslc` and `spirv-val` to compile the built-in Vulkan 1.3 shaders,
 validate their SPIR-V, and embed the result in Core. `Panda::Panda` exposes Vulkan-Hpp
-headers for public Vulkan values, flags and borrowed handles, including
-`WindowSurface` and `BufferDesc`. Runtime consumers need the Vulkan loader and driver,
+types only where the public interface carries a native Vulkan value or borrowed
+handle, such as `WindowSurface`; buffer and texture descriptions use Panda-owned
+types. Runtime consumers need the Vulkan loader and driver,
 not the shader tools. The implemented renderer draws application-described mesh
-layouts to a window surface; offscreen rendering and image encoding remain
-unimplemented. It imposes no common application-lifetime interface.
+layouts to a window surface or fixed offscreen target and can read offscreen
+results as RGBA8 bytes; image encoding remains the application's responsibility.
+It imposes no common application-lifetime interface.
 
 ### Window wrapper
 

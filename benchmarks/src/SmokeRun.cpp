@@ -8,7 +8,6 @@
 #include <format>
 #include <iterator>
 #include <panda/PerformanceManager.hpp>
-#include <panda/WindowSurface.hpp>
 #include <print>
 #include <string>
 #include <string_view>
@@ -125,13 +124,13 @@ auto SmokeRun::initialize() -> std::expected<void, Failure>
         return std::unexpected {environment.error()};
     }
     const auto extent = environment->framebufferExtent;
-    if (extent.width == 0 || extent.height == 0)
+    if (extent.x == 0 || extent.y == 0)
     {
         return std::unexpected {invalidRun("The benchmark window is minimized")};
     }
     _initialExtent = extent;
-    _run.framebufferWidth = extent.width;
-    _run.framebufferHeight = extent.height;
+    _run.framebufferWidth = extent.x;
+    _run.framebufferHeight = extent.y;
     _report.gpuModel = environment->gpuModel;
     _report.driver = environment->driver;
     _report.vulkanApiVersion = environment->vulkanApiVersion;
@@ -222,11 +221,11 @@ auto SmokeRun::checkExtent() -> std::expected<void, Failure>
     {
         return std::unexpected {extent.error()};
     }
-    if (extent->width == 0 || extent->height == 0)
+    if (extent->x == 0 || extent->y == 0)
     {
         return std::unexpected {invalidRun("The benchmark window became minimized")};
     }
-    if (extent->width != _initialExtent.width || extent->height != _initialExtent.height)
+    if (extent->x != _initialExtent.x || extent->y != _initialExtent.y)
     {
         return std::unexpected {invalidRun("The framebuffer extent changed during the run")};
     }

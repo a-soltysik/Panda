@@ -9,6 +9,7 @@
 #include <iostream>
 #include <memory>
 #include <panda/Assert.hpp>
+#include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
@@ -21,7 +22,6 @@
 #include <span>
 #include <tuple>
 #include <utility>
-#include <vulkan/vulkan.hpp>
 
 #include "ProducerBoundary.hpp"
 
@@ -70,7 +70,7 @@ void runSharedBuffer()
     auto buffer =
         panda::expect(context.getExternalBufferManager().createBuffer(
                           {.size = sizeof(std::uint32_t),
-                           .usage = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst}),
+                           .usage = ::panda::BufferUsage::Storage | ::panda::BufferUsage::TransferDestination}),
                       "Create the exportable buffer");
     auto sharedBuffer = panda::expect(session.importBuffer(std::move(buffer)), "Import the buffer into CUDA");
     for (auto pass = std::uint32_t {1}; pass <= handoffPassCount; ++pass)

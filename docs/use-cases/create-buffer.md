@@ -32,8 +32,10 @@ The implemented scope follows [Allocation, uploads and resource lifetimes](../de
    explains which packets can be released; an empty pending list returns immediately.
 3. **Validate.** `BufferResource::create` checks that size is nonzero, usage is
    nonempty and supported, and memory intent is `Device`, `Upload` or `Readback`
-   before native buffer creation. Supported usages are the ordinary transfer,
-   vertex, index, indirect, uniform/storage and texel-buffer flags.
+   before native buffer creation. `BufferUsage` supports transfer-source buffers
+   for readback/copy operations, transfer-destination buffers for uploads, and
+   storage buffers for external compute access. These usages may be combined;
+   `None` and unknown bits are rejected.
 4. **Create native storage object.** A native Vulkan buffer is created and
    adopted into unpublished `BufferResource` state. It is not yet memory-bound.
 5. **Allocate.** `BufferResource::bind` queries ordinary and dedicated memory

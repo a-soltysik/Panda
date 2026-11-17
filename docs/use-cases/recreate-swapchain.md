@@ -11,9 +11,9 @@ or an error. The application owns event processing and decides when to call
 again; `Engine` borrows the `WindowSurface` for its lifetime under the
 [ownership contract](../design/contracts/resources.md#ownership).
 
-`WindowSurface::getFramebufferExtent()` reports framebuffer pixels, not logical
-window-content units. Panda samples it during the frame call rather than relying
-on a resize callback.
+`WindowSurface::getFramebufferExtent()` returns a `glm::uvec2` in framebuffer
+pixels, not logical window-content units; x is width and y is height. Panda
+samples it during the frame call rather than relying on a resize callback.
 
 ## Preconditions
 

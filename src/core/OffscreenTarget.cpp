@@ -1,8 +1,4 @@
-// clang-format off
-#include "vulkan/VulkanHpp.hpp" // IWYU pragma: keep
-#include <vulkan/vulkan.hpp>
-// clang-format on
-
+#include <glm/ext/vector_uint2.hpp>
 #include <memory>
 #include <panda/OffscreenTarget.hpp>
 #include <utility>
@@ -28,14 +24,14 @@ auto OffscreenTarget::isValid() const noexcept -> bool
     return _resource != nullptr;
 }
 
-auto OffscreenTarget::getExtent() const noexcept -> vk::Extent2D
+auto OffscreenTarget::getExtent() const noexcept -> glm::uvec2
 {
-    return _resource ? _resource->getExtent() : vk::Extent2D {};
-}
-
-auto OffscreenTarget::getFormat() const noexcept -> vk::Format
-{
-    return _resource ? _resource->getFormat() : vk::Format::eUndefined;
+    if (!_resource)
+    {
+        return {};
+    }
+    const auto extent = _resource->getExtent();
+    return {extent.width, extent.height};
 }
 
 void OffscreenTarget::reset() noexcept

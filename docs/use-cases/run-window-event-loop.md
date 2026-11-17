@@ -31,7 +31,8 @@ provider is borrowed.
    processed, so a close event handled in Step 3 is checked on the next
    iteration.
 2. **Check the render extent.** Before projection or frame work, an application
-   with a `Engine` reads `Window::getFramebufferExtent()`. If either
+   with an `Engine` reads `Window::getFramebufferExtent()`, a `glm::uvec2` whose
+   x component is width and y is height in pixels. If either
    dimension is zero, it skips `WindowRenderer::render(view)`. Otherwise it renders;
    `WindowRenderer::render(view)` still returns `FrameResult::Status::Suspended` if the
    extent becomes zero between the query and image acquisition. [UC Render and

@@ -229,13 +229,13 @@ is needed initially: uploads handle CPU writes; a test/readback helper can expli
 wait, invalidate and copy results. Exported buffers use a separate factory, not an
 option that changes ordinary buffer behavior.
 
-The implemented `BufferDesc` provides byte size, `vk::BufferUsageFlags` and
-`BufferMemory` intent. `ResourceManager::createBuffer` creates ordinary, non-exportable
-buffers with undefined initial bytes. `ExternalBufferManager::createBuffer` is a separate
+The implemented `BufferDesc` provides byte size, `BufferUsage` and `BufferMemory`
+intent. `BufferUsage` supports `TransferSource` for readback/copy operations,
+`TransferDestination` for uploads and `Storage` for external compute access; these
+may be combined. `None` and unknown bits are rejected. `ResourceManager::createBuffer` creates ordinary, non-exportable buffers
+with undefined initial bytes. `ExternalBufferManager::createBuffer` is a separate
 operation that requires external-memory support and always uses device-local memory.
-Supported usages are transfer,
-vertex, index, indirect, uniform/storage and texel buffers; feature-dependent usages
-such as device addresses are rejected before calling Vulkan. `Device` requires
+`Device` requires
 device-local memory; `Upload` requires host visibility and prefers coherence;
 `Readback` requires host visibility and prefers caching. These intents grant no
 CPU mapping or GPU access permission.
@@ -250,8 +250,21 @@ until confirmed completion. Engine drains these internal owners before checking
 for remaining external resource owners. Unsubmitted upload batches still borrow
 Engine and must be destroyed before it.
 
-`TextureDesc` provides a 2D extent, Vulkan format and image usage. Texture creation
-fixes optimal tiling, one mip, one array layer and one sample, with undefined initial
+`TextureDesc::extent` is a `glm::uvec2` in texels (`x` width, `y` height), its
+format is `PixelFormat`, and its usage is `TextureUsage`. `PixelFormat` currently
+supports `Rgba8Unorm`, `Rgba8Srgb`, `Bgra8Unorm` and `Bgra8Srgb`, the formats used
+by Panda's public upload and material paths. `TextureUsage` supports
+`TransferDestination` and `Sampled`; texture uploads require both. `None` and
+unknown formats or usage bits are rejected. Formats such as BC1 and depth/stencil,
+and uses such as input attachments, are not part of the public texture catalog.
+Renderer-owned attachments keep their native Vulkan formats and usages private.
+`OffscreenTargetDesc::extent` and
+`ImageReadback::extent` use the same x/y order in pixels. `Texture::getExtent()`
+and `OffscreenTarget::getExtent()` return zero components for empty handles.
+`TextureUploadRegion` uses a signed `glm::ivec2` texel offset and an unsigned
+`glm::uvec2` texel extent; negative offsets are rejected before native copy
+recording. Texture creation fixes optimal tiling, one mip, one array layer and
+one sample, with undefined initial
 contents. Because each texture owns a default image view, usage must include at least
 one supported view-capable bit. `ResourceManager::createTexture` checks optimal-tiling
 format/usage support and the requested extent against the physical device before
@@ -259,15 +272,13 @@ creating the image. It then queries ordinary and dedicated requirements, request
 device-local memory from the image partition of the Engine pool and binds the image
 at that range's offset. Failure publishes no handle.
 A successful creation also gives the texture one internal default 2D image view
-spanning its sole mip and layer. The view selects color, depth or stencil from the
-format; combined depth/stencil formats use a depth-only view. The Texture retains
-the view and destroys it before the image. A last `Texture` release destroys the
-image before returning its range. Upload requires both transfer-destination and
-sampled usage. It accepts single-plane 2D color formats,
-including block-compressed formats, and snapshots source bytes into owned staging.
-Source row pitch is a byte stride between block rows; zero means tightly packed. A
-texture can be published by one batch only, while that batch may write multiple
-regions. Region offsets and non-edge extents obey format-block alignment. After submit,
+spanning its sole mip and layer. The public catalog contains color formats, so the
+view selects color. The Texture retains the view and destroys it before the image.
+A last `Texture` release destroys the image before returning its range. Upload
+requires both transfer-destination and sampled usage. It accepts the four public
+RGBA/BGRA formats and snapshots source bytes into owned staging. Source row pitch
+is a byte stride between rows; zero means tightly packed. A texture can be
+published by one batch only, while that batch may write multiple regions. After submit,
 the image transitions from undefined to transfer destination and then shader-read
 layout. Texels not covered by the supplied regions remain undefined. Published sampled
 textures are immutable; edits publish a replacement handle.

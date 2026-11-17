@@ -36,7 +36,7 @@ constexpr auto formats = std::array {
 TEST(SwapchainGeneration, SelectsPreferredSrgbFormatAndClampsVariableExtent)
 {
     const auto selected =
-        panda::core::vulkan::chooseSurfaceConfig(variableExtentCapabilities(), formats, {.width = 4000, .height = 12});
+        panda::core::vulkan::chooseSurfaceConfig(variableExtentCapabilities(), formats, glm::uvec2 {4000, 12});
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->format.format, vk::Format::eB8G8R8A8Srgb);
     EXPECT_EQ(selected->extent.width, 1920U);
@@ -52,8 +52,7 @@ TEST(SwapchainGeneration, HonorsFixedExtentAndSupportedImageCount)
     const auto supported = std::array {
         vk::SurfaceFormatKHR {.format = vk::Format::eR8G8B8A8Unorm, .colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear}
     };
-    const auto selected =
-        panda::core::vulkan::chooseSurfaceConfig(capabilities, supported, {.width = 1280, .height = 720});
+    const auto selected = panda::core::vulkan::chooseSurfaceConfig(capabilities, supported, glm::uvec2 {1280, 720});
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->format.format, vk::Format::eR8G8B8A8Unorm);
     EXPECT_EQ(selected->extent.width, 800U);
@@ -67,8 +66,7 @@ TEST(SwapchainGeneration, UsesMinimumImageCountWhenMaximumIsUnbounded)
     capabilities.minImageCount = 4;
     capabilities.maxImageCount = 0;
 
-    const auto selected =
-        panda::core::vulkan::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
+    const auto selected = panda::core::vulkan::chooseSurfaceConfig(capabilities, formats, glm::uvec2 {800, 600});
 
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->imageCount, 4U);
@@ -78,7 +76,7 @@ TEST(SwapchainGeneration, RejectsUnsupportedColorAttachmentAndFormat)
 {
     auto capabilities = variableExtentCapabilities();
     capabilities.supportedUsageFlags = vk::ImageUsageFlagBits::eTransferDst;
-    auto selected = panda::core::vulkan::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
+    auto selected = panda::core::vulkan::chooseSurfaceConfig(capabilities, formats, glm::uvec2 {800, 600});
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::Unsupported);
     capabilities.supportedUsageFlags = vk::ImageUsageFlagBits::eColorAttachment;
@@ -86,7 +84,7 @@ TEST(SwapchainGeneration, RejectsUnsupportedColorAttachmentAndFormat)
         vk::SurfaceFormatKHR {.format = vk::Format::eR16G16B16A16Sfloat,
                               .colorSpace = vk::ColorSpaceKHR::eExtendedSrgbLinearEXT}
     };
-    selected = panda::core::vulkan::chooseSurfaceConfig(capabilities, hdrOnly, {.width = 800, .height = 600});
+    selected = panda::core::vulkan::chooseSurfaceConfig(capabilities, hdrOnly, glm::uvec2 {800, 600});
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::Unsupported);
 }
@@ -95,8 +93,7 @@ TEST(SwapchainGeneration, RejectsZeroFixedFramebufferExtent)
 {
     auto capabilities = variableExtentCapabilities();
     capabilities.currentExtent = vk::Extent2D {.width = 0, .height = 0};
-    const auto selected =
-        panda::core::vulkan::chooseSurfaceConfig(capabilities, formats, {.width = 800, .height = 600});
+    const auto selected = panda::core::vulkan::chooseSurfaceConfig(capabilities, formats, glm::uvec2 {800, 600});
     ASSERT_FALSE(selected.has_value());
     EXPECT_EQ(selected.error().code, panda::ErrorCode::Unsupported);
 }

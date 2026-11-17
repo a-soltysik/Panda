@@ -16,6 +16,13 @@ namespace panda::detail
 class ExternalSemaphoreResource;
 namespace buffer_resources = ::panda::core::vulkan::resources;
 
+struct BufferResourceCreateInfo
+{
+    std::uint64_t size;
+    vk::BufferUsageFlags usage;
+    BufferMemory memory;
+};
+
 // Declaration order destroys the bound buffer before releasing its allocation.
 // The context pool and device outlive this state, including every shared owner.
 class BufferResource final
@@ -25,6 +32,10 @@ public:
     [[nodiscard]] static auto create(const vk::raii::Device& device,
                                      buffer_resources::MemoryPool& pool,
                                      const BufferDesc& description) -> Result<std::shared_ptr<BufferResource>>;
+    [[nodiscard]] static auto createNative(const vk::raii::Device& device,
+                                           buffer_resources::MemoryPool& pool,
+                                           const BufferResourceCreateInfo& description)
+        -> Result<std::shared_ptr<BufferResource>>;
     [[nodiscard]] static auto createExportable(const vk::raii::Device& device,
                                                buffer_resources::MemoryPool& pool,
                                                const BufferDesc& description,
@@ -50,14 +61,16 @@ public:
     [[nodiscard]] auto invalidate(std::uint64_t offset, std::uint64_t size) const -> Result<void>;
 
 private:
-    [[nodiscard]] static auto validateDescription(const BufferDesc& description) -> Result<void>;
-    BufferResource(buffer_resources::MemoryPool& pool, vk::raii::Buffer buffer, const BufferDesc& description);
+    [[nodiscard]] static auto validateDescription(const BufferResourceCreateInfo& description) -> Result<void>;
+    BufferResource(buffer_resources::MemoryPool& pool,
+                   vk::raii::Buffer buffer,
+                   const BufferResourceCreateInfo& description);
     [[nodiscard]] auto bind(const vk::raii::Device& device,
-                            const BufferDesc& description,
+                            const BufferResourceCreateInfo& description,
                             vk::ExternalMemoryHandleTypeFlags handleTypes) -> Result<void>;
     [[nodiscard]] static auto createInternal(const vk::raii::Device& device,
                                              buffer_resources::MemoryPool& pool,
-                                             const BufferDesc& description,
+                                             const BufferResourceCreateInfo& description,
                                              vk::ExternalMemoryHandleTypeFlags handleTypes)
         -> Result<std::shared_ptr<BufferResource>>;
 

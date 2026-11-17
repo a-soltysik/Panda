@@ -46,7 +46,7 @@ struct SwapchainGenerationRequest
     vk::PhysicalDevice physicalDevice;
     const vk::raii::Device& device;
     vk::SurfaceKHR surface;
-    FramebufferExtent requested;
+    glm::uvec2 requested;
     vk::SwapchainKHR oldSwapchain;
     std::uint32_t queueFamily;
     std::uint32_t presentQueueFamily;
@@ -54,7 +54,7 @@ struct SwapchainGenerationRequest
 
 [[nodiscard]] auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
                                        std::span<const vk::SurfaceFormatKHR> formats,
-                                       FramebufferExtent requested) -> std::expected<SurfaceConfig, Error>;
+                                       glm::uvec2 requested) -> std::expected<SurfaceConfig, Error>;
 
 [[nodiscard]] auto createSwapchainGeneration(const SwapchainGenerationRequest& request)
     -> std::expected<SwapchainGeneration, Error>;

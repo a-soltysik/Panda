@@ -185,7 +185,7 @@ protected:
     {
         EXPECT_CALL(window, getFramebufferExtent()).Times(static_cast<int>(count)).WillRepeatedly([] {
             return panda::test::WindowSurfaceMock::ExtentResult {
-                panda::FramebufferExtent {.width = 640, .height = 480}
+                glm::uvec2 {640, 480}
             };
         });
     }

@@ -8,6 +8,7 @@
 #include <cstring>
 #include <expected>
 #include <limits>
+#include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
@@ -18,7 +19,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <vulkan/vulkan.hpp>
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
@@ -39,8 +39,8 @@ TEST(ExternalBufferCudaSystem, ReleasesImportedMemoryWhenSemaphoreImportFails)
     }
     ASSERT_TRUE(context) << context.error().message;
 
-    auto buffer = context->getExternalBufferManager().createBuffer(
-        {.size = 1024, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer =
+        context->getExternalBufferManager().createBuffer({.size = 1024, .usage = ::panda::BufferUsage::Storage});
     if (!buffer && buffer.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << buffer.error().message;
@@ -143,8 +143,8 @@ TEST(ExternalBufferCudaSystem, RejectsDeviceUuidMismatchBeforeNativeImport)
     }
     ASSERT_TRUE(context) << context.error().message;
 
-    auto buffer = context->getExternalBufferManager().createBuffer(
-        {.size = 1024, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer =
+        context->getExternalBufferManager().createBuffer({.size = 1024, .usage = ::panda::BufferUsage::Storage});
     if (!buffer && buffer.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << buffer.error().message;
@@ -199,8 +199,8 @@ TEST(ExternalBufferCudaSystem, QueuesWorkBetweenTimelineWaitAndSignal)
     }
     ASSERT_TRUE(context) << context.error().message;
 
-    auto buffer = context->getExternalBufferManager().createBuffer(
-        {.size = 1024, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer =
+        context->getExternalBufferManager().createBuffer({.size = 1024, .usage = ::panda::BufferUsage::Storage});
     if (!buffer && buffer.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << buffer.error().message;

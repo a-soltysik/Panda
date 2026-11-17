@@ -40,7 +40,7 @@ private:
     Report& _report;
     RunReport& _run;
     SmokeRunBackend& _backend;
-    panda::FramebufferExtent _initialExtent {};
+    glm::uvec2 _initialExtent {};
     std::uint64_t _submittedFrameCount {0};
     std::uint64_t _firstMeasurementFrame {0};
     std::uint64_t _measurementEndFrame {0};

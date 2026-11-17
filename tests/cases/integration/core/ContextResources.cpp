@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -16,6 +17,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <panda/Assert.hpp>
 #include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/Error.hpp>
@@ -23,10 +25,10 @@
 #include <panda/Mesh.hpp>
 #include <panda/OffscreenTarget.hpp>
 #include <panda/PerformanceManager.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
-#include <panda/WindowSurface.hpp>
 #include <span>
 #include <string>
 #include <string_view>
@@ -34,11 +36,13 @@
 #include <vector>
 
 #include "FakeHandle.hpp"
+#include "ResourceMappings.hpp"
 #include "ScopedMock.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
 #include "presentation/SwapchainGeneration.hpp"
+#include "resources/TextureResource.hpp"
 
 namespace
 {
@@ -124,14 +128,14 @@ void verifyDeviceFeatures(const VkDeviceCreateInfo& info, bool windowed)
     }
 }
 
-void verifyImageIdentity(const VkImageCreateInfo& info, const panda::TextureDesc& description)
+void verifyImageIdentity(const VkImageCreateInfo& info, const panda::detail::TextureResourceCreateInfo& description)
 {
     EXPECT_EQ(info.flags, 0);
     EXPECT_EQ(info.imageType, VK_IMAGE_TYPE_2D);
     EXPECT_EQ(info.format, static_cast<VkFormat>(description.format));
 }
 
-void verifyImageDimensions(const VkImageCreateInfo& info, const panda::TextureDesc& description)
+void verifyImageDimensions(const VkImageCreateInfo& info, const panda::detail::TextureResourceCreateInfo& description)
 {
     EXPECT_EQ(info.extent.width, description.extent.width);
     EXPECT_EQ(info.extent.height, description.extent.height);
@@ -141,7 +145,8 @@ void verifyImageDimensions(const VkImageCreateInfo& info, const panda::TextureDe
     EXPECT_EQ(info.samples, VK_SAMPLE_COUNT_1_BIT);
 }
 
-void verifyImageUsageAndLayout(const VkImageCreateInfo& info, const panda::TextureDesc& description)
+void verifyImageUsageAndLayout(const VkImageCreateInfo& info,
+                               const panda::detail::TextureResourceCreateInfo& description)
 {
     EXPECT_EQ(info.tiling, VK_IMAGE_TILING_OPTIMAL);
     EXPECT_EQ(info.usage, static_cast<VkImageUsageFlags>(description.usage));
@@ -640,7 +645,7 @@ protected:
         expectParentsDestroyed(true, false);
     }
 
-    void expectImageCreation(VkImage image, const panda::TextureDesc& description)
+    void expectImageCreation(VkImage image, const panda::detail::TextureResourceCreateInfo& description)
     {
         EXPECT_CALL(vulkan,
                     vkGetPhysicalDeviceImageFormatProperties(physical,
@@ -689,10 +694,22 @@ protected:
             });
     }
 
-    void expectTexture(VkImage image, const panda::TextureDesc& description, bool dedicated = false)
+    void expectTexture(VkImage image,
+                       const panda::detail::TextureResourceCreateInfo& description,
+                       bool dedicated = false)
     {
         expectImageCreation(image, description);
         expectImageMemoryRequirements(image, dedicated);
+    }
+
+    void expectTexture(VkImage image, const panda::TextureDesc& description, bool dedicated = false)
+    {
+        const auto nativeDescription = panda::detail::TextureResourceCreateInfo {
+            .extent = {.width = description.extent.x, .height = description.extent.y},
+            .format = panda::expect(panda::detail::mapPixelFormat(description.format), "Map texture format"),
+            .usage = panda::expect(panda::detail::mapTextureUsage(description.usage), "Map texture usage")
+        };
+        expectTexture(image, nativeDescription, dedicated);
     }
 
     void expectTextureCleanup(VkImage image, const testing::ExpectationSet& ownerReleased = {})
@@ -708,7 +725,9 @@ protected:
         imageCleanup += EXPECT_CALL(vulkan, vkDestroyImage(device, image, nullptr)).After(viewReleased);
     }
 
-    void expectTextureViewCreation(VkImage image, VkImageView view, const panda::TextureDesc& description)
+    void expectTextureViewCreation(VkImage image,
+                                   VkImageView view,
+                                   const panda::detail::TextureResourceCreateInfo& description)
     {
         EXPECT_CALL(vulkan, vkCreateImageView(device, NotNull(), nullptr, NotNull()))
             .InSequence(imageBindingOrder)
@@ -725,6 +744,16 @@ protected:
                 *output = view;
                 return success;
             });
+    }
+
+    void expectTextureViewCreation(VkImage image, VkImageView view, const panda::TextureDesc& description)
+    {
+        const auto nativeDescription = panda::detail::TextureResourceCreateInfo {
+            .extent = {.width = description.extent.x, .height = description.extent.y},
+            .format = panda::expect(panda::detail::mapPixelFormat(description.format), "Map texture format"),
+            .usage = panda::expect(panda::detail::mapTextureUsage(description.usage), "Map texture usage")
+        };
+        expectTextureViewCreation(image, view, nativeDescription);
     }
 
     void expectTextureAllocation(VkDeviceMemory memory, VkImage image, std::uint32_t type = 0, bool dedicated = false)
@@ -849,18 +878,16 @@ TEST_F(ContextResourcesIntegration, EmptyBufferAndInvalidDescriptionsNeverCreate
     for (const auto description : std::array {
              panda::BufferDesc {},
              panda::BufferDesc {.size = 1, .usage = {}},
-             panda::BufferDesc {.usage = vk::BufferUsageFlagBits::eStorageBuffer},
-             panda::BufferDesc {.size = 1,
-                                .usage = vk::BufferUsageFlagBits::eStorageBuffer,
-                                .memory = invalidMemoryIntent()}
+             panda::BufferDesc {.usage = ::panda::BufferUsage::Storage},
+             panda::BufferDesc {.size = 1, .usage = ::panda::BufferUsage::Storage, .memory = invalidMemoryIntent()}
     })
     {
         const auto buffer = context->getResourceManager().createBuffer(description);
         ASSERT_FALSE(buffer);
         EXPECT_EQ(buffer.error().code, panda::ErrorCode::InvalidArgument);
     }
-    const auto unsupported =
-        context->getResourceManager().createBuffer({.size = 1, .usage = vk::BufferUsageFlagBits::eShaderDeviceAddress});
+    const auto unsupported = context->getResourceManager().createBuffer(
+        {.size = 1, .usage = std::bit_cast<::panda::BufferUsage>(std::uint8_t {0x80})});
     ASSERT_FALSE(unsupported);
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 }
@@ -873,24 +900,22 @@ TEST_F(ContextResourcesIntegration, EmptyAndInvalidTexturesNeverCreateNativeImag
     ASSERT_TRUE(context);
     auto empty = panda::Texture {};
     EXPECT_FALSE(empty.isValid());
-    EXPECT_EQ(empty.getExtent().width, 0U);
-    EXPECT_EQ(empty.getExtent().height, 0U);
-    EXPECT_EQ(empty.getFormat(), vk::Format::eUndefined);
-    EXPECT_FALSE(empty.getUsage());
+    EXPECT_EQ(empty.getExtent().x, 0U);
+    EXPECT_EQ(empty.getExtent().y, 0U);
+    EXPECT_EQ(empty.getFormat(), ::panda::PixelFormat::Undefined);
+    EXPECT_EQ(empty.getUsage(), panda::TextureUsage::None);
     empty.reset();
-    const auto validUsage = vk::ImageUsageFlagBits::eSampled;
+    const auto validUsage = ::panda::TextureUsage::Sampled;
     const auto descriptions = std::array {
         panda::TextureDesc {},
-        panda::TextureDesc {.extent = vk::Extent2D {.width = 0, .height = 1},
-                            .format = vk::Format::eR8G8B8A8Unorm,
+        panda::TextureDesc {.extent = glm::uvec2 {0, 1},
+                            .format = ::panda::PixelFormat::Rgba8Unorm,
                             .usage = validUsage},
-        panda::TextureDesc {.extent = vk::Extent2D {.width = 1, .height = 0},
-                            .format = vk::Format::eR8G8B8A8Unorm,
+        panda::TextureDesc {.extent = glm::uvec2 {1, 0},
+                            .format = ::panda::PixelFormat::Rgba8Unorm,
                             .usage = validUsage},
-        panda::TextureDesc {.extent = vk::Extent2D {.width = 1, .height = 1}, .usage = validUsage},
-        panda::TextureDesc {.extent = vk::Extent2D {.width = 1, .height = 1},
-                            .format = vk::Format::eR8G8B8A8Unorm,
-                            .usage = {}},
+        panda::TextureDesc {.extent = glm::uvec2 {1, 1}, .usage = validUsage},
+        panda::TextureDesc {.extent = glm::uvec2 {1, 1}, .format = ::panda::PixelFormat::Rgba8Unorm, .usage = {}},
     };
     for (const auto& description : descriptions)
     {
@@ -899,9 +924,10 @@ TEST_F(ContextResourcesIntegration, EmptyAndInvalidTexturesNeverCreateNativeImag
         EXPECT_EQ(texture.error().code, panda::ErrorCode::InvalidArgument);
     }
     const auto unsupported = context->getResourceManager().createTexture({
-        .extent = vk::Extent2D {.width = 1, .height = 1},
-        .format = vk::Format::eR8G8B8A8Unorm,
-        .usage = vk::ImageUsageFlagBits::eTransientAttachment
+        .extent = glm::uvec2 {1, 1},
+        .format = ::panda::PixelFormat::Rgba8Unorm,
+        .usage = std::bit_cast<::panda::TextureUsage>(std::uint8_t {0x80}
+           )
     });
     ASSERT_FALSE(unsupported);
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
@@ -1084,9 +1110,9 @@ TEST_F(ContextResourcesIntegration, SharedTexturesBindAndReleaseTheOptimalImage)
 {
     expectHeadless();
     const auto description = panda::TextureDesc {
-        .extent = vk::Extent2D {.width = 64, .height = 32},
-        .format = vk::Format::eR8G8B8A8Unorm,
-        .usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst
+        .extent = glm::uvec2 {64, 32},
+        .format = ::panda::PixelFormat::Rgba8Unorm,
+        .usage = ::panda::TextureUsage::Sampled | ::panda::TextureUsage::TransferDestination
     };
     auto* const image = fakeHandle<VkImage>(40);
     auto* const view = fakeHandle<VkImageView>(41);
@@ -1101,14 +1127,14 @@ TEST_F(ContextResourcesIntegration, SharedTexturesBindAndReleaseTheOptimalImage)
     ASSERT_TRUE(context);
     auto texture = context->getResourceManager().createTexture(description);
     ASSERT_TRUE(texture);
-    EXPECT_EQ(texture->getExtent().width, description.extent.width);
-    EXPECT_EQ(texture->getExtent().height, description.extent.height);
+    EXPECT_EQ(texture->getExtent().x, description.extent.x);
+    EXPECT_EQ(texture->getExtent().y, description.extent.y);
     EXPECT_EQ(texture->getFormat(), description.format);
     EXPECT_EQ(texture->getUsage(), description.usage);
     auto copy = *texture;
     texture->reset();
     EXPECT_TRUE(copy.isValid());
-    EXPECT_EQ(copy.getExtent().width, description.extent.width);
+    EXPECT_EQ(copy.getExtent().x, description.extent.x);
     copy.reset();
 }
 
@@ -1117,9 +1143,9 @@ TEST_F(ContextResourcesIntegration, FailedImageCreationDoesNotAdoptItsUndefinedO
     expectHeadless();
     expectParentsDestroyed(true, false);
     const auto description = panda::TextureDesc {
-        .extent = vk::Extent2D {.width = 16, .height = 16},
-        .format = vk::Format::eR8G8B8A8Unorm,
-        .usage = vk::ImageUsageFlagBits::eSampled
+        .extent = glm::uvec2 {16, 16},
+        .format = ::panda::PixelFormat::Rgba8Unorm,
+        .usage = ::panda::TextureUsage::Sampled
     };
     auto* const output = fakeHandle<VkImage>(40);
     EXPECT_CALL(vulkan, vkCreateImage(device, NotNull(), nullptr, NotNull()))
@@ -1140,9 +1166,9 @@ TEST_F(ContextResourcesIntegration, FailedTextureAllocationDestroysTheUnboundIma
     expectHeadless();
     expectParentsDestroyed(true, false);
     const auto description = panda::TextureDesc {
-        .extent = vk::Extent2D {.width = 16, .height = 16},
-        .format = vk::Format::eR8G8B8A8Unorm,
-        .usage = vk::ImageUsageFlagBits::eSampled
+        .extent = glm::uvec2 {16, 16},
+        .format = ::panda::PixelFormat::Rgba8Unorm,
+        .usage = ::panda::TextureUsage::Sampled
     };
     auto* const image = fakeHandle<VkImage>(40);
     auto* const output = fakeHandle<VkDeviceMemory>(50);
@@ -1160,9 +1186,9 @@ TEST_F(ContextResourcesIntegration, DedicatedTextureBindingFailureDestroysImageB
 {
     expectHeadless();
     const auto description = panda::TextureDesc {
-        .extent = vk::Extent2D {.width = 16, .height = 16},
-        .format = vk::Format::eR8G8B8A8Unorm,
-        .usage = vk::ImageUsageFlagBits::eSampled
+        .extent = glm::uvec2 {16, 16},
+        .format = ::panda::PixelFormat::Rgba8Unorm,
+        .usage = ::panda::TextureUsage::Sampled
     };
     auto* const image = fakeHandle<VkImage>(40);
     auto* const memory = fakeHandle<VkDeviceMemory>(50);
@@ -1193,16 +1219,14 @@ TEST_F(ContextResourcesIntegration, SharedBuffersRetainNativeStateAndReuseReleas
     expectParentsDestroyed(true, false);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
-    auto buffer =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     auto copy = *buffer;
     buffer->reset();
     EXPECT_TRUE(copy.isValid());
     EXPECT_EQ(copy.getSize(), 65);
     copy.reset();
-    auto replacement =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto replacement = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(replacement);
     EXPECT_EQ(replacement->getSize(), 65);
 }
@@ -1218,8 +1242,7 @@ TEST_F(ContextResourcesIntegration, LiveBuffersRemainBoundAcrossEngineAndHandleM
     expectParentsDestroyed(true, false);
     auto created = panda::Engine::create();
     ASSERT_TRUE(created);
-    auto buffer =
-        created->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = created->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     auto context = std::move(*created);
     auto moved = std::move(*buffer);
@@ -1242,7 +1265,7 @@ TEST_F(ContextResourcesIntegration, FailedBufferCreationDoesNotAdoptUndefinedNat
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto buffer =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_FALSE(buffer);
     EXPECT_EQ(buffer.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_EQ(buffer.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
@@ -1263,12 +1286,11 @@ TEST_F(ContextResourcesIntegration, FailedBindingReleasesTheRangeAndPreservesThe
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto failed =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_EQ(failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
-    const auto retry =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    const auto retry = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(retry);
 }
 
@@ -1283,8 +1305,7 @@ TEST_F(ContextResourcesIntegration, RequiredDedicatedBufferIsDestroyedBeforeItsE
     expectParentsDestroyed(true, false);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
-    auto buffer =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     buffer->reset();
     EXPECT_FALSE(buffer->isValid());
@@ -1305,8 +1326,7 @@ TEST_F(ContextResourcesIntegration, LastSharedOwnerControlsNativeDestruction)
     EXPECT_CALL(resetComplete, Call()).After(memoryCleanup);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
-    auto original =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto original = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(original);
     auto retained = *original;
     original->reset();
@@ -1331,7 +1351,7 @@ TEST_F(ContextResourcesIntegration, DedicatedBindingFailureDestroysBufferBeforeF
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto failed =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
     ASSERT_TRUE(failed.error().native);
@@ -1349,7 +1369,7 @@ TEST_F(ContextResourcesIntegration, AllocationFailureDestroysTheUnboundBuffer)
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto failed =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
 }
@@ -1368,10 +1388,8 @@ TEST_F(ContextResourcesIntegration, CopyAndMoveAssignmentReleaseOnlyTheReplacedO
     expectParentsDestroyed(true, false);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
-    auto source =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
-    auto target =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto source = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
+    auto target = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(source);
     ASSERT_TRUE(target);
     *target = *source;
@@ -1402,9 +1420,9 @@ TEST_F(ContextResourcesIntegration, HostMemoryIntentsSelectCoherenceForUploadsAn
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto first = context->getResourceManager().createBuffer(
-        {.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Upload});
+        {.size = 65, .usage = ::panda::BufferUsage::Storage, .memory = panda::BufferMemory::Upload});
     const auto second = context->getResourceManager().createBuffer(
-        {.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Readback});
+        {.size = 65, .usage = ::panda::BufferUsage::Storage, .memory = panda::BufferMemory::Readback});
     ASSERT_TRUE(first);
     ASSERT_TRUE(second);
 }
@@ -1424,8 +1442,7 @@ TEST_F(ContextResourcesIntegrationDeathTest, EngineRejectsDestructionBeforeTheLa
         return std::make_unique<panda::Engine>(std::move(owner));
     });
     ASSERT_TRUE(context);
-    auto buffer =
-        (*context)->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = (*context)->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     EXPECT_DEATH(context->reset(), "Engine destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
     buffer->reset();
@@ -1484,7 +1501,7 @@ TEST_F(ContextResourcesIntegration, MovedSuspendedEngineRetainsItsDeviceUntilAll
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
         .Times(2)
-        .WillRepeatedly(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
+        .WillRepeatedly(Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}}));
     auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
     const auto* windowRenderer = &context->getWindowRenderer();
@@ -1500,7 +1517,7 @@ TEST_F(ContextResourcesIntegration, SeparatePresentFamilyProducesTwoDeviceQueueR
     expectWindowed(true);
     EXPECT_CALL(window, getFramebufferExtent())
         .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
-            Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}})});
+            Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}})});
     const auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
 }
@@ -1522,8 +1539,7 @@ TEST_F(ContextResourcesIntegration, GenerationFailureReleasesFrameResourcesAndAl
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
         .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
-            Return(panda::test::WindowSurfaceMock::ExtentResult {
-                                                                 panda::FramebufferExtent {.width = 640, .height = 480}}
+            Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {640, 480}}
              )
     });
     EXPECT_CALL(generations, createSwapchainGeneration(_))
@@ -1567,7 +1583,7 @@ TEST_F(ContextResourcesIntegration, SuspendedEngineRejectsEmptyPointsAndNegative
 {
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
+        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}}));
     const auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context);
     const auto empty = panda::CompletionPoint {};
@@ -1633,7 +1649,7 @@ TEST_F(ContextResourcesIntegrationDeathTest, EngineRejectsAnUnsubmittedBatchEven
 TEST_F(ContextResourcesIntegration, HeadlessOffscreenSubmissionProducesPairedTimestampSample)
 {
     expectHeadless(vk::Result::eSuccess, 64);
-    const auto imageDescription = panda::TextureDesc {
+    const auto imageDescription = panda::detail::TextureResourceCreateInfo {
         .extent = vk::Extent2D {.width = 16, .height = 16},
         .format = vk::Format::eR8G8B8A8Srgb,
         .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc
@@ -1722,7 +1738,7 @@ TEST_F(ContextResourcesIntegration, HeadlessOffscreenSubmissionProducesPairedTim
     ASSERT_TRUE(created) << created.error().message;
     auto engine = std::optional<panda::Engine> {std::move(*created)};
     auto target = engine->getResourceManager().createOffscreenTarget({
-        .extent = {.width = 16, .height = 16}
+        .extent = {16, 16}
     });
     ASSERT_TRUE(target) << target.error().message;
     const auto frame = engine->getOffscreenRenderer().render(panda::RenderView {}, *target);
