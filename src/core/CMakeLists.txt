@@ -31,6 +31,7 @@ panda_add_component(panda_core
         vulkan/EngineCreation.cpp
         vulkan/InstanceCreation.cpp
         vulkan/DeviceSelection.cpp
+        vulkan/ResourceMappings.cpp
         vulkan/external/ExternalBufferInterop.cpp
         vulkan/performance/PerformanceManager.cpp
         vulkan/performance/PerformanceManagerImpl.cpp
@@ -78,8 +79,8 @@ panda_add_component(panda_core
         panda/Mesh.hpp
         panda/Panda.hpp
         panda/PerformanceManager.hpp
+        panda/PixelFormat.hpp
         panda/OffscreenRenderer.hpp
-        panda/Renderer.hpp
         panda/ResourceManager.hpp
         panda/SubmissionManager.hpp
         panda/Projection.hpp
@@ -100,6 +101,7 @@ panda_add_component(panda_core
         vulkan/EngineCreateInfo.hpp
         vulkan/DeviceContext.hpp
         vulkan/DeviceSelection.hpp
+        vulkan/ResourceMappings.hpp
         vulkan/InstanceResources.hpp
         vulkan/InstanceCreation.hpp
         vulkan/external/ExternalBufferInterop.hpp

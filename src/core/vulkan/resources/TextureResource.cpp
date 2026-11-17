@@ -11,9 +11,11 @@
 #include <memory>
 #include <panda/Assert.hpp>
 #include <panda/Error.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/Texture.hpp>
 #include <utility>
 
+#include "ResourceMappings.hpp"
 #include "VulkanError.hpp"
 #include "resources/memory/MemoryAllocation.hpp"
 #include "resources/memory/MemoryPool.hpp"
@@ -28,20 +30,12 @@ using core::vulkan::upload::UploadBatchId;
 
 namespace
 {
-auto validateDescription(const TextureDesc& description) -> Result<void>
+auto validateDescription(const TextureResourceCreateInfo& description) -> Result<void>
 {
-    constexpr auto supported =
-        vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled |
-        vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eColorAttachment |
-        vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eInputAttachment;
     if (description.extent.width == 0 || description.extent.height == 0 ||
         description.format == vk::Format::eUndefined || !description.usage)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid texture extent, format or usage")};
-    }
-    if (description.usage & ~supported)
-    {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "Texture usage requires an unsupported feature")};
     }
     constexpr auto viewCapable =
         vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eColorAttachment |
@@ -53,8 +47,8 @@ auto validateDescription(const TextureDesc& description) -> Result<void>
     return {};
 }
 
-auto validateFormatAndExtent(const vk::raii::PhysicalDevice& physicalDevice, const TextureDesc& description)
-    -> Result<void>
+auto validateFormatAndExtent(const vk::raii::PhysicalDevice& physicalDevice,
+                             const TextureResourceCreateInfo& description) -> Result<void>
 {
     const auto support = physicalDevice.getImageFormatProperties(description.format,
                                                                  vk::ImageType::e2D,
@@ -77,8 +71,8 @@ auto validateFormatAndExtent(const vk::raii::PhysicalDevice& physicalDevice, con
     return {};
 }
 
-auto validateTextureRequest(const vk::raii::PhysicalDevice& physicalDevice, const TextureDesc& description)
-    -> Result<void>
+auto validateTextureRequest(const vk::raii::PhysicalDevice& physicalDevice,
+                            const TextureResourceCreateInfo& description) -> Result<void>
 {
     if (const auto valid = validateDescription(description); !valid)
     {
@@ -104,8 +98,9 @@ auto validateSampleCount(vk::ImageUsageFlags usage, vk::SampleCountFlagBits samp
     return {};
 }
 
-auto createNativeImage(const vk::raii::Device& device, const TextureDesc& description, vk::SampleCountFlagBits samples)
-    -> Result<vk::raii::Image>
+auto createNativeImage(const vk::raii::Device& device,
+                       const TextureResourceCreateInfo& description,
+                       vk::SampleCountFlagBits samples) -> Result<vk::raii::Image>
 {
     const auto info = vk::ImageCreateInfo {
         .imageType = vk::ImageType::e2D,
@@ -177,7 +172,7 @@ auto TextureResource::create(const vk::raii::Device& device, MemoryPool& pool, c
 
 auto TextureResource::createBoundResource(const vk::raii::Device& device,
                                           MemoryPool& pool,
-                                          const TextureDesc& description,
+                                          const TextureResourceCreateInfo& description,
                                           vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>
 {
     auto image = createNativeImage(device, description, samples);
@@ -201,12 +196,40 @@ auto TextureResource::create(const vk::raii::Device& device,
                              const TextureDesc& description,
                              vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>
 {
+    const auto format = mapPixelFormat(description.format);
+    if (!format)
+    {
+        return std::unexpected {format.error()};
+    }
+    const auto usage = mapTextureUsage(description.usage);
+    if (!usage)
+    {
+        return std::unexpected {usage.error()};
+    }
+    const auto nativeDescription = TextureResourceCreateInfo {
+        .extent = vk::Extent2D {.width = description.extent.x, .height = description.extent.y},
+        .format = *format,
+        .usage = *usage
+    };
+    auto resource = createNative(device, pool, nativeDescription, samples);
+    if (resource)
+    {
+        (*resource)->_publicFormat = description.format;
+        (*resource)->_publicUsage = description.usage;
+    }
+    return resource;
+}
+
+auto TextureResource::createNative(const vk::raii::Device& device,
+                                   MemoryPool& pool,
+                                   const TextureResourceCreateInfo& description,
+                                   vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>
+{
     if (const auto validSamples = validateSampleCount(description.usage, samples); !validSamples)
     {
         return std::unexpected {validSamples.error()};
     }
-    const auto valid = validateTextureRequest(pool.getPhysicalDevice(), description);
-    if (!valid)
+    if (const auto valid = validateTextureRequest(pool.getPhysicalDevice(), description); !valid)
     {
         return std::unexpected {valid.error()};
     }
@@ -226,7 +249,7 @@ auto TextureResource::create(const vk::raii::Device& device,
 
 TextureResource::TextureResource(MemoryPool& pool,
                                  vk::raii::Image image,
-                                 const TextureDesc& description,
+                                 const TextureResourceCreateInfo& description,
                                  vk::SampleCountFlagBits samples)
     : _image {std::move(image)},
       _pool {pool},
@@ -278,6 +301,16 @@ auto TextureResource::getFormat() const -> vk::Format
 auto TextureResource::getUsage() const -> vk::ImageUsageFlags
 {
     return _usage;
+}
+
+auto TextureResource::getPublicFormat() const -> PixelFormat
+{
+    return _publicFormat;
+}
+
+auto TextureResource::getPublicUsage() const -> TextureUsage
+{
+    return _publicUsage;
 }
 
 auto TextureResource::getNative() const -> vk::Image

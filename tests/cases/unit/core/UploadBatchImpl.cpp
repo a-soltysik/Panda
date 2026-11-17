@@ -19,6 +19,7 @@
 #include <panda/CompletionPoint.hpp>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <span>
@@ -67,17 +68,15 @@ using testing::ReturnRef;
 
 auto bufferDescription(std::uint64_t size) -> panda::BufferDesc
 {
-    return {.size = size,
-            .usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
-            .memory = panda::BufferMemory::Upload};
+    return {.size = size, .usage = ::panda::BufferUsage::TransferDestination, .memory = panda::BufferMemory::Upload};
 }
 
 auto textureDescription() -> panda::TextureDesc
 {
     return {
-        .extent = vk::Extent2D {.width = 16, .height = 16},
-        .format = vk::Format::eR8G8B8A8Unorm,
-        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        .extent = glm::uvec2 {16, 16},
+        .format = ::panda::PixelFormat::Rgba8Unorm,
+        .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     };
 }
 
@@ -381,12 +380,12 @@ TEST_F(UploadBatchImplTest, AlignsTextureRegionsAndCommitsOneReservationAfterSub
     const auto firstBytes = std::array {std::byte {1}, std::byte {2}, std::byte {3}};
     const auto secondBytes = std::array {std::byte {4}, std::byte {5}};
     const auto firstRegion = panda::TextureUploadRegion {
-        .offset = {.x = 0,     .y = 0     },
-        .extent = {.width = 1, .height = 1}
+        .offset = {0, 0},
+        .extent = {1, 1}
     };
     const auto secondRegion = panda::TextureUploadRegion {
-        .offset = {.x = 1,     .y = 0     },
-        .extent = {.width = 1, .height = 1}
+        .offset = {1, 0},
+        .extent = {1, 1}
     };
     const auto layout = panda::core::vulkan::upload::TextureUploadLayout {.rowLength = 4, .bufferOffsetAlignment = 4};
 
@@ -433,8 +432,8 @@ TEST_F(UploadBatchImplTest, CancelsTextureReservationWhenStagingFails)
     auto batch = makeBatch();
     const auto bytes = std::array {std::byte {1}, std::byte {2}};
     const auto region = panda::TextureUploadRegion {
-        .offset = {.x = 0,     .y = 0     },
-        .extent = {.width = 1, .height = 1}
+        .offset = {0, 0},
+        .extent = {1, 1}
     };
     EXPECT_CALL(managerMock, validateTextureWrite(Ref(*manager), texture, _, bytes.size()))
         .WillOnce(

@@ -5,8 +5,8 @@
 
 #include <chrono>
 #include <expected>
+#include <glm/ext/vector_uint2.hpp>
 #include <panda/PerformanceManager.hpp>
-#include <panda/WindowSurface.hpp>
 #include <string>
 #include <thread>
 #include <vector>
@@ -39,7 +39,7 @@ class MockSmokeRunBackend : public SmokeRunBackend
 public:
     MOCK_METHOD((std::expected<SmokeRunEnvironment, Failure>), initialize, (const Options&), (override));
     MOCK_METHOD(bool, shouldClose, (), (const, override));
-    MOCK_METHOD((std::expected<panda::FramebufferExtent, Failure>), getFramebufferExtent, (), (const, override));
+    MOCK_METHOD((std::expected<glm::uvec2, Failure>), getFramebufferExtent, (), (const, override));
     MOCK_METHOD((std::expected<FrameStatus, Failure>), submitFrame, (), (override));
     MOCK_METHOD((std::expected<std::vector<panda::FramePerformanceSample>, Failure>),
                 takeAvailableSamples,
@@ -55,7 +55,7 @@ public:
 class SmokeRunTest : public testing::Test
 {
 protected:
-    void expectReadyBackend(panda::FramebufferExtent extent = {.width = 640, .height = 480})
+    void expectReadyBackend(glm::uvec2 extent = {640, 480})
     {
         EXPECT_CALL(backend, initialize(_))
             .Times(1)
@@ -68,7 +68,7 @@ protected:
         EXPECT_CALL(backend, shouldClose()).Times(AnyNumber()).WillRepeatedly(Return(false));
         EXPECT_CALL(backend, getFramebufferExtent())
             .Times(AnyNumber())
-            .WillRepeatedly(Return(std::expected<panda::FramebufferExtent, Failure> {extent}));
+            .WillRepeatedly(Return(std::expected<glm::uvec2, Failure> {extent}));
         EXPECT_CALL(backend, submitFrame()).Times(AnyNumber()).WillRepeatedly(Return(FrameStatus::Presented));
         EXPECT_CALL(backend, takeAvailableSamples())
             .Times(AnyNumber())
@@ -111,7 +111,7 @@ TEST_F(SmokeRunTest, InitializationFailureIsPropagatedAndTornDown)
 
 TEST_F(SmokeRunTest, RejectsAZeroSizedInitialFramebuffer)
 {
-    expectReadyBackend({.width = 0, .height = 480});
+    expectReadyBackend(glm::uvec2 {0, 480});
 
     const auto result = execute();
 
@@ -137,10 +137,10 @@ TEST_F(SmokeRunTest, RejectsAFramebufferResizeDuringMeasurement)
 {
     expectReadyBackend();
     EXPECT_CALL(backend, getFramebufferExtent())
-        .WillOnce(Return(std::expected<panda::FramebufferExtent, Failure> {
-            {.width = 640, .height = 480}
+        .WillOnce(Return(std::expected<glm::uvec2, Failure> {
+            glm::uvec2 {640, 480}
     }))
-        .WillOnce(Return(std::expected<panda::FramebufferExtent, Failure> {{.width = 800, .height = 600}}));
+        .WillOnce(Return(std::expected<glm::uvec2, Failure> {{800, 600}}));
 
     const auto result = execute();
 

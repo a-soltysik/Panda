@@ -29,6 +29,12 @@ public:
                 (const vk::raii::Device&, panda::core::vulkan::resources::MemoryPool&, const panda::BufferDesc&),
                 ());
     MOCK_METHOD(panda::Result<void>,
+                createNative,
+                (const vk::raii::Device&,
+                 panda::core::vulkan::resources::MemoryPool&,
+                 const panda::detail::BufferResourceCreateInfo&),
+                ());
+    MOCK_METHOD(panda::Result<void>,
                 createExportable,
                 (const vk::raii::Device&,
                  panda::core::vulkan::resources::MemoryPool&,

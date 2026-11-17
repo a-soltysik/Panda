@@ -259,7 +259,7 @@ void drawLoop(const panda::tools::Window& window,
     while (!window.shouldClose())
     {
         const auto extent = panda::expect(window.getFramebufferExtent(), "Read framebuffer size");
-        if (extent.width == 0 || extent.height == 0)
+        if (extent.x == 0 || extent.y == 0)
         {
             panda::expect(panda::tools::Window::waitForInput(), "Wait while framebuffer is suspended");
             continue;
@@ -267,7 +267,7 @@ void drawLoop(const panda::tools::Window& window,
         const auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
         animateGroup(scene, objects.group, elapsed);
         animateWave(scene, objects.objects, elapsed);
-        const auto aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+        const auto aspect = static_cast<float>(extent.x) / static_cast<float>(extent.y);
         const auto view = panda::expect(scene.createRenderView(aspect), "Prepare scene");
         const auto frame = panda::expect(renderer.render(view), "Render scene");
         panda::expect(frame.status == panda::FrameResult::Status::Suspended ? panda::tools::Window::waitForInput()

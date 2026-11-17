@@ -26,6 +26,13 @@ public:
                 create,
                 (const vk::raii::Device&, panda::core::vulkan::resources::MemoryPool&, const panda::TextureDesc&),
                 ());
+    MOCK_METHOD(panda::Result<void>,
+                createNative,
+                (const vk::raii::Device&,
+                 panda::core::vulkan::resources::MemoryPool&,
+                 const panda::detail::TextureResourceCreateInfo&,
+                 vk::SampleCountFlagBits),
+                ());
     // cppcheck cannot parse this gMock declaration with a resource reference.
     // cppcheck-suppress syntaxError
     MOCK_METHOD(vk::Extent2D, getExtent, (const TextureResource&), (const));

@@ -14,7 +14,6 @@
 #include <expected>
 #include <memory>
 #include <optional>
-#include <panda/Buffer.hpp>
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <tuple>
@@ -27,6 +26,7 @@
 #include "panda/core/MemoryAllocationMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"
 #include "panda/core/MeshLayoutMock.hpp"
+#include "resources/BufferResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace
@@ -124,7 +124,8 @@ TEST_F(MeshResourceTest, PropagatesVertexBufferFailure)
     const auto mesh = description();
     expectLayout(mesh, 36, 6);
     EXPECT_CALL(layoutMock, getVertexSize(_)).WillOnce(Return(36));
-    EXPECT_CALL(buffers, create(_, Ref(*pool), testing::Field(&panda::BufferDesc::size, 36)))
+    EXPECT_CALL(buffers,
+                createNative(_, Ref(*pool), testing::Field(&panda::detail::BufferResourceCreateInfo::size, 36)))
         .WillOnce(Return(panda::Result<void> {
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "Controlled vertex failure")}}));
 
@@ -140,9 +141,10 @@ TEST_F(MeshResourceTest, ReleasesTheVertexBufferWhenIndexBufferCreationFails)
     expectLayout(mesh, 36, 6);
     EXPECT_CALL(layoutMock, getVertexSize(_)).WillOnce(Return(36));
     EXPECT_CALL(layoutMock, getIndexSize(_)).WillRepeatedly(Return(6));
-    EXPECT_CALL(buffers, create(_, Ref(*pool), testing::Field(&panda::BufferDesc::size, 36)))
+    EXPECT_CALL(buffers,
+                createNative(_, Ref(*pool), testing::Field(&panda::detail::BufferResourceCreateInfo::size, 36)))
         .WillOnce(Return(panda::Result<void> {}));
-    EXPECT_CALL(buffers, create(_, Ref(*pool), testing::Field(&panda::BufferDesc::size, 6)))
+    EXPECT_CALL(buffers, createNative(_, Ref(*pool), testing::Field(&panda::detail::BufferResourceCreateInfo::size, 6)))
         .WillOnce(Return(panda::Result<void> {
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "Controlled index failure")}}));
 
@@ -158,9 +160,10 @@ TEST_F(MeshResourceTest, CreatesAndRetainsTheDescribedBuffers)
     expectLayout(mesh, 36, 6);
     EXPECT_CALL(layoutMock, getVertexSize(_)).WillOnce(Return(36));
     EXPECT_CALL(layoutMock, getIndexSize(_)).WillRepeatedly(Return(6));
-    EXPECT_CALL(buffers, create(_, Ref(*pool), testing::Field(&panda::BufferDesc::size, 36)))
+    EXPECT_CALL(buffers,
+                createNative(_, Ref(*pool), testing::Field(&panda::detail::BufferResourceCreateInfo::size, 36)))
         .WillOnce(Return(panda::Result<void> {}));
-    EXPECT_CALL(buffers, create(_, Ref(*pool), testing::Field(&panda::BufferDesc::size, 6)))
+    EXPECT_CALL(buffers, createNative(_, Ref(*pool), testing::Field(&panda::detail::BufferResourceCreateInfo::size, 6)))
         .WillOnce(Return(panda::Result<void> {}));
     EXPECT_CALL(layoutMock, getVertexCount(_)).WillOnce(Return(3));
 
@@ -178,7 +181,8 @@ TEST_F(MeshResourceTest, CreatesOnlyAVertexBufferForNonIndexedMeshes)
     expectLayout(mesh, 36, 0);
     EXPECT_CALL(layoutMock, getVertexSize(_)).WillOnce(Return(36));
     EXPECT_CALL(layoutMock, getIndexSize(_)).WillOnce(Return(0));
-    EXPECT_CALL(buffers, create(_, Ref(*pool), testing::Field(&panda::BufferDesc::size, 36)))
+    EXPECT_CALL(buffers,
+                createNative(_, Ref(*pool), testing::Field(&panda::detail::BufferResourceCreateInfo::size, 36)))
         .WillOnce(Return(panda::Result<void> {}));
 
     const auto created = MeshResource::create(device, *pool, mesh);

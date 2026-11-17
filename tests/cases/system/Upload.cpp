@@ -1,6 +1,5 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
-#include <vulkan/vulkan.hpp>
 // clang-format on
 
 #include <gtest/gtest.h>
@@ -53,7 +52,7 @@ protected:
     auto makeDestination(panda::BufferMemory intent = panda::BufferMemory::Readback) -> panda::Buffer
     {
         auto buffer = activeEngine().getResourceManager().createBuffer(
-            {.size = 512, .usage = vk::BufferUsageFlagBits::eTransferDst, .memory = intent});
+            {.size = 512, .usage = ::panda::BufferUsage::TransferDestination, .memory = intent});
         return panda::expect(std::move(buffer), "Test upload destination creation failed");
     }
 

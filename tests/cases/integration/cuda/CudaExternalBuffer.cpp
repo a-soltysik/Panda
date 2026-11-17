@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/Error.hpp>
@@ -7,7 +8,6 @@
 #include <panda/cuda/CudaSession.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
 #include <utility>
-#include <vulkan/vulkan.hpp>
 
 TEST(CudaExternalBufferIntegration, ImportsPandaOwnedBufferOnce)
 {
@@ -34,8 +34,8 @@ TEST(CudaExternalBufferIntegration, ImportsPandaOwnedBufferOnce)
     }
     ASSERT_TRUE(session) << session.error().message;
 
-    auto externalBuffer = context->getExternalBufferManager().createBuffer(
-        {.size = 1024, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto externalBuffer =
+        context->getExternalBufferManager().createBuffer({.size = 1024, .usage = ::panda::BufferUsage::Storage});
     if (!externalBuffer && externalBuffer.error().code == panda::ErrorCode::Unsupported)
     {
         GTEST_SKIP() << externalBuffer.error().message;

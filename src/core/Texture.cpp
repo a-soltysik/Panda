@@ -1,9 +1,6 @@
-// clang-format off
-#include "VulkanHpp.hpp" // IWYU pragma: keep
-#include <vulkan/vulkan.hpp>
-// clang-format on
-
+#include <glm/ext/vector_uint2.hpp>
 #include <memory>
+#include <panda/PixelFormat.hpp>
 #include <panda/Texture.hpp>
 #include <utility>
 
@@ -28,19 +25,24 @@ auto Texture::isValid() const noexcept -> bool
     return _resource != nullptr;
 }
 
-auto Texture::getExtent() const noexcept -> vk::Extent2D
+auto Texture::getExtent() const noexcept -> glm::uvec2
 {
-    return _resource ? _resource->getExtent() : vk::Extent2D {};
+    if (!_resource)
+    {
+        return {};
+    }
+    const auto extent = _resource->getExtent();
+    return {extent.width, extent.height};
 }
 
-auto Texture::getFormat() const noexcept -> vk::Format
+auto Texture::getFormat() const noexcept -> PixelFormat
 {
-    return _resource ? _resource->getFormat() : vk::Format::eUndefined;
+    return _resource ? _resource->getPublicFormat() : PixelFormat::Undefined;
 }
 
-auto Texture::getUsage() const noexcept -> vk::ImageUsageFlags
+auto Texture::getUsage() const noexcept -> TextureUsage
 {
-    return _resource ? _resource->getUsage() : vk::ImageUsageFlags {};
+    return _resource ? _resource->getPublicUsage() : TextureUsage::None;
 }
 
 void Texture::reset() noexcept

@@ -318,7 +318,7 @@ protected:
             .physicalDevice = *physicalDevice,
             .device = device,
             .surface = surface,
-            .requested = {.width = 320, .height = 240},
+            .requested = {320, 240},
             .oldSwapchain = vk::SwapchainKHR {oldSwapchain},
             .queueFamily = 2,
             .presentQueueFamily = separateQueues ? 3U : 2U

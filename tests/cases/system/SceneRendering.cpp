@@ -7,16 +7,16 @@
 #include <panda/Error.hpp>
 #include <panda/Mesh.hpp>
 #include <panda/OffscreenTarget.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
 #include <utility>
-#include <vulkan/vulkan.hpp>
 
 namespace
 {
-constexpr auto renderExtent = vk::Extent2D {160, 120};
+constexpr auto renderExtent = glm::uvec2 {160, 120};
 
 class SceneRenderingSystem : public testing::Test
 {
@@ -185,9 +185,9 @@ TEST_F(SceneRenderingSystem, RejectsTexturesFromAnotherEngineBeforeSubmission)
     auto other = panda::Engine::create();
     ASSERT_TRUE(other);
     auto texture = other->getResourceManager().createTexture({
-        .extent = vk::Extent2D {1, 1},
-        .format = vk::Format::eR8G8B8A8Srgb,
-        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        .extent = glm::uvec2 {1, 1},
+        .format = ::panda::PixelFormat::Rgba8Srgb,
+        .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     });
     ASSERT_TRUE(texture);
 

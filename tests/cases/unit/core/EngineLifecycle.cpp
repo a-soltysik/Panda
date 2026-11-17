@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -32,7 +33,6 @@
 #include <panda/PerformanceManager.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/SubmissionManager.hpp>
-#include <panda/WindowSurface.hpp>
 #include <span>
 #include <string>
 #include <string_view>
@@ -901,7 +901,7 @@ TEST_F(EngineLifecycleTest, CaptureInitializationFailureDoesNotAcquireWindowImag
     expectOffscreenTarget(image, imageView, memory);
     expectWindowed(false, true);
     EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
+        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}}));
     EXPECT_CALL(vulkan, vkAcquireNextImageKHR(_, _, _, _, _, _)).Times(0);
 
     const auto engine = panda::Engine::createWithSurface(window);
@@ -909,7 +909,7 @@ TEST_F(EngineLifecycleTest, CaptureInitializationFailureDoesNotAcquireWindowImag
     EXPECT_TRUE(engine->getFeatures().windowRenderingEnabled);
     EXPECT_FALSE(engine->getFeatures().validationEnabled);
     const auto target = engine->getResourceManager().createOffscreenTarget({
-        .extent = {.width = 32, .height = 32}
+        .extent = {32, 32}
     });
     ASSERT_TRUE(target);
     const auto result = engine->getWindowRenderer().renderWithCapture(panda::RenderView {}, *target);
@@ -1018,7 +1018,7 @@ TEST_F(EngineLifecycleTest, ExportedBufferUsesTheEngineDeviceUuid)
         panda::Engine::create({.externalBufferSupport = panda::EngineOptions::ExternalBufferSupport::Optional});
     ASSERT_TRUE(engine);
     auto exported =
-        engine->getExternalBufferManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        engine->getExternalBufferManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
 
     ASSERT_TRUE(exported);
     EXPECT_EQ(engine->getDeviceInfo().deviceUuid.at(0), 1U);
@@ -1033,7 +1033,7 @@ TEST_F(EngineLifecycleTest, RejectsExternalBufferOperationsWhenExportIsUnavailab
     ASSERT_TRUE(context);
 
     auto& externalBuffers = context->getExternalBufferManager();
-    const auto created = externalBuffers.createBuffer({.size = 1, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    const auto created = externalBuffers.createBuffer({.size = 1, .usage = ::panda::BufferUsage::Storage});
     ASSERT_FALSE(created);
     EXPECT_EQ(created.error().code, panda::ErrorCode::Unsupported);
     const auto released = externalBuffers.releaseToExternal(panda::Buffer {});
@@ -1069,7 +1069,7 @@ TEST_F(EngineLifecycleTest, RejectsEmptyHandoffsWhenMemoryExportIsAvailable)
     EXPECT_EQ(acquired.error().code, panda::ErrorCode::InvalidArgument);
 
     const auto ordinary =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(ordinary);
     const auto ordinaryRelease = externalBuffers.releaseToExternal(*ordinary);
     ASSERT_FALSE(ordinaryRelease);
@@ -1180,18 +1180,16 @@ TEST_F(EngineLifecycleTest, EmptyBufferAndInvalidDescriptionsNeverCreateNativeRe
     for (const auto description : std::array {
              panda::BufferDesc {},
              panda::BufferDesc {.size = 1, .usage = {}},
-             panda::BufferDesc {.usage = vk::BufferUsageFlagBits::eStorageBuffer},
-             panda::BufferDesc {.size = 1,
-                                .usage = vk::BufferUsageFlagBits::eStorageBuffer,
-                                .memory = invalidMemoryIntent()}
+             panda::BufferDesc {.usage = ::panda::BufferUsage::Storage},
+             panda::BufferDesc {.size = 1, .usage = ::panda::BufferUsage::Storage, .memory = invalidMemoryIntent()}
     })
     {
         const auto buffer = context->getResourceManager().createBuffer(description);
         ASSERT_FALSE(buffer);
         EXPECT_EQ(buffer.error().code, panda::ErrorCode::InvalidArgument);
     }
-    const auto unsupported =
-        context->getResourceManager().createBuffer({.size = 1, .usage = vk::BufferUsageFlagBits::eShaderDeviceAddress});
+    const auto unsupported = context->getResourceManager().createBuffer(
+        {.size = 1, .usage = std::bit_cast<::panda::BufferUsage>(std::uint8_t {0x80})});
     ASSERT_FALSE(unsupported);
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 }
@@ -1210,16 +1208,14 @@ TEST_F(EngineLifecycleTest, SharedBuffersRetainNativeStateAndReuseReleasedRanges
     expectParentsDestroyed(true, false);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
-    auto buffer =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     auto copy = *buffer;
     buffer->reset();
     EXPECT_TRUE(copy.isValid());
     EXPECT_EQ(copy.getSize(), 65);
     copy.reset();
-    auto replacement =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto replacement = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(replacement);
     EXPECT_EQ(replacement->getSize(), 65);
 }
@@ -1237,7 +1233,7 @@ TEST_F(EngineLifecycleTest, LiveBuffersRemainBoundAcrossEngineAndHandleMoves)
     auto created = panda::Engine::create();
     ASSERT_TRUE(created);
     const auto& resourceManager = created->getResourceManager();
-    auto buffer = resourceManager.createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = resourceManager.createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     auto context = std::move(*created);
     auto moved = std::move(*buffer);
@@ -1248,7 +1244,7 @@ TEST_F(EngineLifecycleTest, LiveBuffersRemainBoundAcrossEngineAndHandleMoves)
     moved.reset();
     expectBuffer(movedNative);
     expectBinding(movedNative, memory);
-    auto replacement = resourceManager.createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto replacement = resourceManager.createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(replacement);
     replacement->reset();
 }
@@ -1265,7 +1261,7 @@ TEST_F(EngineLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutpu
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto buffer =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_FALSE(buffer);
     EXPECT_EQ(buffer.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_EQ(buffer.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
@@ -1286,12 +1282,11 @@ TEST_F(EngineLifecycleTest, FailedBindingReleasesTheRangeAndPreservesTheNativeEr
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto failed =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
     EXPECT_EQ(failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
-    const auto retry =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    const auto retry = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(retry);
 }
 
@@ -1306,8 +1301,7 @@ TEST_F(EngineLifecycleTest, RequiredDedicatedBufferIsDestroyedBeforeItsExactAllo
     expectParentsDestroyed(true, false);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
-    auto buffer =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     buffer->reset();
     EXPECT_FALSE(buffer->isValid());
@@ -1328,8 +1322,7 @@ TEST_F(EngineLifecycleTest, LastSharedOwnerControlsNativeDestruction)
     EXPECT_CALL(resetComplete, Call()).After(memoryCleanup);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
-    auto original =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto original = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(original);
     auto retained = *original;
     original->reset();
@@ -1354,7 +1347,7 @@ TEST_F(EngineLifecycleTest, DedicatedBindingFailureDestroysBufferBeforeFreeingIt
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto failed =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
     ASSERT_TRUE(failed.error().native);
@@ -1372,7 +1365,7 @@ TEST_F(EngineLifecycleTest, AllocationFailureDestroysTheUnboundBuffer)
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto failed =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
 }
@@ -1391,10 +1384,8 @@ TEST_F(EngineLifecycleTest, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
     expectParentsDestroyed(true, false);
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
-    auto source =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
-    auto target =
-        context->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto source = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
+    auto target = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(source);
     ASSERT_TRUE(target);
     *target = *source;
@@ -1425,9 +1416,9 @@ TEST_F(EngineLifecycleTest, HostMemoryIntentsSelectCoherenceForUploadsAndCaching
     const auto context = panda::Engine::create();
     ASSERT_TRUE(context);
     const auto first = context->getResourceManager().createBuffer(
-        {.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Upload});
+        {.size = 65, .usage = ::panda::BufferUsage::Storage, .memory = panda::BufferMemory::Upload});
     const auto second = context->getResourceManager().createBuffer(
-        {.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Readback});
+        {.size = 65, .usage = ::panda::BufferUsage::Storage, .memory = panda::BufferMemory::Readback});
     ASSERT_TRUE(first);
     ASSERT_TRUE(second);
 }
@@ -1447,8 +1438,7 @@ TEST_F(EngineLifecycleDeathTest, EngineRejectsDestructionBeforeTheLastResourceOw
         return std::make_unique<panda::Engine>(std::move(owner));
     });
     ASSERT_TRUE(context);
-    auto buffer =
-        (*context)->getResourceManager().createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = (*context)->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     EXPECT_DEATH(context->reset(), "Engine destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
     buffer->reset();
@@ -1507,7 +1497,7 @@ TEST_F(EngineLifecycleTest, MovedSuspendedEngineRetainsItsDeviceUntilAllFrameRes
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
         .Times(2)
-        .WillRepeatedly(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
+        .WillRepeatedly(Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}}));
     auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
     auto moved = std::move(*context);
@@ -1522,7 +1512,7 @@ TEST_F(EngineLifecycleTest, SeparatePresentFamilyProducesTwoDeviceQueueRequests)
     expectWindowed(true);
     EXPECT_CALL(window, getFramebufferExtent())
         .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
-            Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}})});
+            Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}})});
     const auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context.has_value());
 }
@@ -1544,8 +1534,7 @@ TEST_F(EngineLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParents
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
         .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
-            Return(panda::test::WindowSurfaceMock::ExtentResult {
-                                                                 panda::FramebufferExtent {.width = 640, .height = 480}}
+            Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {640, 480}}
              )
     });
     EXPECT_CALL(generations, createSwapchainGeneration(_))
@@ -1594,8 +1583,7 @@ TEST_F(EngineLifecycleTest, BorrowedServicesRemainStableAcrossEngineMoves)
     }
 
     expectSameServices(*movedEngine, *services);
-    auto buffer =
-        services->resourceManager->createBuffer({.size = 65, .usage = vk::BufferUsageFlagBits::eStorageBuffer});
+    auto buffer = services->resourceManager->createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     buffer->reset();
     const auto batch = services->submissionManager->createUploadBatch();
@@ -1631,7 +1619,7 @@ TEST_F(EngineLifecycleTest, SuspendedEngineRejectsEmptyPointsAndNegativeTimeout)
 {
     expectWindowed();
     EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {panda::FramebufferExtent {}}));
+        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}}));
     const auto context = panda::Engine::createWithSurface(window);
     ASSERT_TRUE(context);
     const auto empty = panda::CompletionPoint {};

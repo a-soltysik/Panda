@@ -17,7 +17,7 @@ class VulkanSmokeRunBackend final : public SmokeRunBackend
 public:
     [[nodiscard]] auto initialize(const Options& options) -> std::expected<SmokeRunEnvironment, Failure> override;
     [[nodiscard]] auto shouldClose() const -> bool override;
-    [[nodiscard]] auto getFramebufferExtent() const -> std::expected<panda::FramebufferExtent, Failure> override;
+    [[nodiscard]] auto getFramebufferExtent() const -> std::expected<glm::uvec2, Failure> override;
     [[nodiscard]] auto effectiveSampleCount() const noexcept -> std::uint32_t override;
     [[nodiscard]] auto submitFrame() -> std::expected<FrameStatus, Failure> override;
     [[nodiscard]] auto takeAvailableSamples()
@@ -33,8 +33,7 @@ private:
     [[nodiscard]] auto createEngine(const Options& options) -> std::expected<void, Failure>;
     [[nodiscard]] auto checkPerformanceCapabilities() -> std::expected<void, Failure>;
     [[nodiscard]] auto captureEnvironment() -> std::expected<SmokeRunEnvironment, Failure>;
-    [[nodiscard]] auto createStaticCube(panda::FramebufferExtent extent, std::uint32_t lightCount)
-        -> std::expected<void, Failure>;
+    [[nodiscard]] auto createStaticCube(glm::uvec2 extent, std::uint32_t lightCount) -> std::expected<void, Failure>;
 
     std::optional<panda::tools::Window> _window;
     std::optional<panda::Engine> _engine;

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <expected>
+#include <glm/vec2.hpp>
 #include <optional>
 #include <panda/PerformanceManager.hpp>
 #include <panda/WindowSurface.hpp>
@@ -22,7 +23,7 @@ struct Failure
 
 struct SmokeRunEnvironment
 {
-    panda::FramebufferExtent framebufferExtent {};
+    glm::uvec2 framebufferExtent {};
     std::string gpuModel;
     std::optional<DriverReport> driver;
     std::optional<std::uint32_t> vulkanApiVersion;
@@ -48,7 +49,7 @@ public:
 
     [[nodiscard]] virtual auto initialize(const Options& options) -> std::expected<SmokeRunEnvironment, Failure> = 0;
     [[nodiscard]] virtual auto shouldClose() const -> bool = 0;
-    [[nodiscard]] virtual auto getFramebufferExtent() const -> std::expected<panda::FramebufferExtent, Failure> = 0;
+    [[nodiscard]] virtual auto getFramebufferExtent() const -> std::expected<glm::uvec2, Failure> = 0;
 
     [[nodiscard]] virtual auto effectiveSampleCount() const noexcept -> std::uint32_t
     {

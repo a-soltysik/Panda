@@ -35,6 +35,7 @@
 #include "panda/core/TextureResourceMock.hpp"
 #include "renderer/MeshRenderer.hpp"
 #include "renderer/ShaderData.hpp"
+#include "resources/BufferResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace
@@ -90,7 +91,7 @@ protected:
                 properties->limits.framebufferDepthSampleCounts = allSampleCounts;
             });
         installDescriptorDefaults();
-        EXPECT_CALL(buffers, create(_, Ref(*pool), _))
+        EXPECT_CALL(buffers, createNative(_, Ref(*pool), _))
             .Times(AnyNumber())
             .WillRepeatedly(Return(panda::Result<void> {}));
         EXPECT_CALL(buffers, getNative(_)).Times(AnyNumber()).WillRepeatedly([this](const BufferResource&) {
@@ -150,7 +151,7 @@ protected:
                 properties->sampleCounts = supportedSamples;
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
-        EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
+        EXPECT_CALL(textures, createNative(Ref(device), Ref(*pool), _, _))
             .Times(AnyNumber())
             .WillRepeatedly(Return(panda::Result<void> {}));
         EXPECT_CALL(textures, getNative(_)).Times(AnyNumber()).WillRepeatedly(Return(fakeHandle<VkImage>(91)));
@@ -347,7 +348,10 @@ TEST_F(FrameBindingsTest, MaterialBufferGrowthFailureCanBeRetried)
     ASSERT_TRUE(created);
     auto bindings = std::move(*created);
     const auto largerBufferSize = sizeof(MaterialRecord) * 2;
-    EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), testing::Field(&panda::BufferDesc::size, largerBufferSize)))
+    EXPECT_CALL(buffers,
+                createNative(Ref(device),
+                             Ref(*pool),
+                             testing::Field(&panda::detail::BufferResourceCreateInfo::size, largerBufferSize)))
         .Times(2)
         .WillOnce(Return(panda::Result<void> {
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "buffer growth failed")}}))
@@ -505,7 +509,10 @@ TEST_F(FrameBindingsTest, LightBufferGrowthFailureCanBeRetried)
     ASSERT_TRUE(created);
     auto bindings = std::move(*created);
     const auto largerBufferSize = sizeof(LightRecord) * 2U;
-    EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), testing::Field(&panda::BufferDesc::size, largerBufferSize)))
+    EXPECT_CALL(buffers,
+                createNative(Ref(device),
+                             Ref(*pool),
+                             testing::Field(&panda::detail::BufferResourceCreateInfo::size, largerBufferSize)))
         .Times(2)
         .WillOnce(Return(panda::Result<void> {
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "buffer growth failed")}}))
@@ -737,11 +744,11 @@ TEST_F(FrameBindingsTest, PropagatesSamplerCreationFailures)
 
 TEST_F(FrameBindingsTest, PropagatesUniformAndMaterialBufferCreationFailures)
 {
-    EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), _)).WillOnce(Return(bufferFailure()));
+    EXPECT_CALL(buffers, createNative(Ref(device), Ref(*pool), _)).WillOnce(Return(bufferFailure()));
     const auto uniformBuffer = createBindings();
     ASSERT_FALSE(uniformBuffer);
 
-    EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), _))
+    EXPECT_CALL(buffers, createNative(Ref(device), Ref(*pool), _))
         .Times(2)
         .WillOnce(Return(panda::Result<void> {}))
         .WillOnce(Return(bufferFailure()));
@@ -877,7 +884,7 @@ TEST_F(FrameBindingsTest, PropagatesMeshRendererDepthQueryAndShadowCreationFailu
             properties->sampleCounts = VK_SAMPLE_COUNT_1_BIT;
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
-    EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
+    EXPECT_CALL(textures, createNative(Ref(device), Ref(*pool), _, _))
         .WillOnce(Return(panda::Result<void> {
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "shadow allocation failed")}}));
     const auto shadowFailed = panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
@@ -893,7 +900,7 @@ TEST_F(FrameBindingsTest, MeshRendererResizeFailureKeepsPreviousSampleCount)
     EXPECT_TRUE((*renderer)->resize({.width = 64, .height = 64}, vk::Format::eR8G8B8A8Unorm));
     EXPECT_FALSE((*renderer)->resize({.width = 0, .height = 64}, vk::Format::eR8G8B8A8Unorm));
 
-    EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
+    EXPECT_CALL(textures, createNative(Ref(device), Ref(*pool), _, _))
         .WillOnce(Return(panda::Result<void> {
             std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "depth allocation failed")}}));
     const auto resized = (*renderer)->resize({.width = 128, .height = 64}, vk::Format::eR8G8B8A8Unorm);
@@ -1027,7 +1034,7 @@ TEST_F(FrameBindingsTest, PropagatesFrameBindingsInitializationFailure)
             properties->sampleCounts = allSampleCounts;
             return static_cast<VkResult>(vk::Result::eSuccess);
         });
-    EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
+    EXPECT_CALL(textures, createNative(Ref(device), Ref(*pool), _, _))
         .Times(AnyNumber())
         .WillRepeatedly(Return(panda::Result<void> {}));
 

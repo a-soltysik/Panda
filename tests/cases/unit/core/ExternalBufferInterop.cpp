@@ -388,7 +388,7 @@ TEST_F(ExternalBufferInteropTest, ReleaseAndAcquireRecordOwnershipBarriersAndTim
     auto* const nativeBuffer = fakeHandle<VkBuffer>(40);
     auto* const nativeMemory = fakeHandle<VkDeviceMemory>(41);
     auto* const nativeSemaphore = fakeHandle<VkSemaphore>(42);
-    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    const auto description = panda::BufferDesc {.size = 80, .usage = ::panda::BufferUsage::Storage};
     auto externalInterop = makeEngine();
     EXPECT_CALL(submissionQueueMock, isDeviceLost()).Times(2).WillRepeatedly(Return(false));
     auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
@@ -429,7 +429,7 @@ TEST_F(ExternalBufferInteropTest, ReleaseAndAcquireRecordOwnershipBarriersAndTim
 TEST_F(ExternalBufferInteropTest, MemoryOnlyExportIsMarkedExportableButCannotHandoff)
 {
     auto* const nativeMemory = fakeHandle<VkDeviceMemory>(43);
-    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    const auto description = panda::BufferDesc {.size = 80, .usage = ::panda::BufferUsage::Storage};
     auto externalInterop = makeEngine(false);
     expectBufferResourceCreation(description, nativeMemory);
     expectExternalHandleExports(nativeMemory, std::nullopt);
@@ -452,7 +452,7 @@ TEST_F(ExternalBufferInteropTest, MemoryOnlyExportIsMarkedExportableButCannotHan
 TEST_F(ExternalBufferInteropTest, PropagatesMemoryHandleExportFailure)
 {
     auto* const nativeMemory = fakeHandle<VkDeviceMemory>(44);
-    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    const auto description = panda::BufferDesc {.size = 80, .usage = ::panda::BufferUsage::Storage};
     auto externalInterop = makeEngine();
     expectBufferResourceCreation(description, nativeMemory);
 #ifdef _WIN32
@@ -484,7 +484,7 @@ TEST_F(ExternalBufferInteropTest, FailedReleaseSubmissionKeepsVulkanOwnershipAnd
     auto* const nativeBuffer = fakeHandle<VkBuffer>(60);
     auto* const nativeMemory = fakeHandle<VkDeviceMemory>(61);
     auto* const nativeSemaphore = fakeHandle<VkSemaphore>(62);
-    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    const auto description = panda::BufferDesc {.size = 80, .usage = ::panda::BufferUsage::Storage};
     auto externalInterop = makeEngine();
     EXPECT_CALL(submissionQueueMock, isDeviceLost()).WillOnce(Return(false));
     auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
@@ -514,7 +514,7 @@ TEST_F(ExternalBufferInteropTest, ReleaseRejectsTimelineValueWithoutRoomForExter
 {
     auto* const nativeMemory = fakeHandle<VkDeviceMemory>(66);
     auto* const nativeSemaphore = fakeHandle<VkSemaphore>(67);
-    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    const auto description = panda::BufferDesc {.size = 80, .usage = ::panda::BufferUsage::Storage};
     auto externalInterop = makeEngine();
     auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);
     ASSERT_TRUE(created);
@@ -536,7 +536,7 @@ TEST_F(ExternalBufferInteropTest, FailedAcquireSubmissionKeepsExternalOwnershipA
     auto* const nativeBuffer = fakeHandle<VkBuffer>(70);
     auto* const nativeMemory = fakeHandle<VkDeviceMemory>(71);
     auto* const nativeSemaphore = fakeHandle<VkSemaphore>(72);
-    const auto description = panda::BufferDesc {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    const auto description = panda::BufferDesc {.size = 80, .usage = ::panda::BufferUsage::Storage};
     auto externalInterop = makeEngine();
     EXPECT_CALL(submissionQueueMock, isDeviceLost()).Times(2).WillRepeatedly(Return(false));
     auto created = createExternalBuffer(externalInterop, description, nativeMemory, nativeSemaphore);

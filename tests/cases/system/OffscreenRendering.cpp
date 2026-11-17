@@ -24,7 +24,6 @@
 #include <panda/UploadBatch.hpp>
 #include <utility>
 #include <vector>
-#include <vulkan/vulkan.hpp>
 
 #include "LogCapture.hpp"
 #include "resources/OffscreenTargetResource.hpp"
@@ -135,8 +134,7 @@ auto expectedCenterPixel() -> std::array<std::uint8_t, 4>
 
 auto centerPixel(const panda::ImageReadback& image) -> std::array<std::uint8_t, 4>
 {
-    const auto offset =
-        ((static_cast<std::size_t>(image.extent.height / 2) * image.extent.width) + (image.extent.width / 2)) * 4;
+    const auto offset = ((static_cast<std::size_t>(image.extent.y / 2) * image.extent.x) + (image.extent.x / 2)) * 4;
     return {image.rgba.at(offset), image.rgba.at(offset + 1), image.rgba.at(offset + 2), image.rgba.at(offset + 3)};
 }
 
@@ -179,7 +177,7 @@ protected:
 TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
 {
     auto createdTarget = activeEngine().getResourceManager().createOffscreenTarget({
-        .extent = {.width = 32, .height = 32}
+        .extent = {32, 32}
     });
     if (!createdTarget && createdTarget.error().code == panda::ErrorCode::Unsupported)
     {
@@ -227,7 +225,7 @@ TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrd
     ASSERT_EQ(secondReadback->rgba.size(), firstReadback->rgba.size());
 
     auto smallerTarget = activeEngine().getResourceManager().createOffscreenTarget({
-        .extent = {.width = 16, .height = 24}
+        .extent = {16, 24}
     });
     ASSERT_TRUE(smallerTarget) << smallerTarget.error().message;
     const auto resizedFrame = activeEngine().getOffscreenRenderer().render(*secondView, *smallerTarget);
@@ -235,7 +233,7 @@ TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrd
     const auto resizedReadback =
         activeEngine().getOffscreenRenderer().readPixels(*smallerTarget, resizedFrame->completion);
     ASSERT_TRUE(resizedReadback) << resizedReadback.error().message;
-    const auto smallerExtent = vk::Extent2D {.width = 16, .height = 24};
+    const auto smallerExtent = glm::uvec2 {16, 24};
     EXPECT_EQ(resizedReadback->extent, smallerExtent);
     EXPECT_EQ(resizedReadback->rgba.size(), 16U * 24U * 4U);
     if (activeEngine().getFeatures().performance.isGpuTimestampSamplingEnabled)
@@ -260,15 +258,15 @@ TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrd
 TEST_F(OffscreenRenderBackendSystem, ValidatesTargetExtentOwnershipAndLifetime)
 {
     const auto zeroExtent = activeEngine().getResourceManager().createOffscreenTarget({
-        .extent = {.width = 0, .height = 32}
+        .extent = {0, 32}
     });
     ASSERT_FALSE(zeroExtent);
     EXPECT_EQ(zeroExtent.error().code, panda::ErrorCode::InvalidArgument);
 
     auto emptyTarget = panda::OffscreenTarget {};
     EXPECT_FALSE(emptyTarget.isValid());
-    EXPECT_EQ(emptyTarget.getExtent(), vk::Extent2D {});
-    EXPECT_EQ(emptyTarget.getFormat(), vk::Format::eUndefined);
+    EXPECT_EQ(emptyTarget.getExtent(), glm::uvec2 {});
+    EXPECT_FALSE(emptyTarget.isValid());
     const auto emptyReadback = activeEngine().getOffscreenRenderer().readPixels(emptyTarget, {});
     ASSERT_FALSE(emptyReadback);
     EXPECT_EQ(emptyReadback.error().code, panda::ErrorCode::InvalidArgument);
@@ -276,7 +274,7 @@ TEST_F(OffscreenRenderBackendSystem, ValidatesTargetExtentOwnershipAndLifetime)
     auto other = panda::Engine::create();
     ASSERT_TRUE(other);
     auto foreignTarget = other->getResourceManager().createOffscreenTarget({
-        .extent = {.width = 16, .height = 16}
+        .extent = {16, 16}
     });
     if (!foreignTarget && foreignTarget.error().code == panda::ErrorCode::Unsupported)
     {
@@ -293,12 +291,11 @@ TEST_F(OffscreenRenderBackendSystem, ValidatesTargetExtentOwnershipAndLifetime)
     ASSERT_TRUE(foreignFrame) << foreignFrame.error().message;
 
     auto target = activeEngine().getResourceManager().createOffscreenTarget({
-        .extent = {.width = 16, .height = 16}
+        .extent = {16, 16}
     });
     ASSERT_TRUE(target) << target.error().message;
-    const auto targetExtent = vk::Extent2D {.width = 16, .height = 16};
+    const auto targetExtent = glm::uvec2 {16, 16};
     EXPECT_EQ(target->getExtent(), targetExtent);
-    EXPECT_EQ(target->getFormat(), vk::Format::eR8G8B8A8Srgb);
 
     const auto unrenderedReadback = activeEngine().getOffscreenRenderer().readPixels(*target, {});
     ASSERT_FALSE(unrenderedReadback);

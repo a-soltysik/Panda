@@ -10,7 +10,6 @@
 #include <panda/Logger.hpp>
 #include <tuple>
 #include <utility>
-#include <vulkan/vulkan.hpp>
 
 namespace
 {
@@ -30,7 +29,7 @@ void reportError(const panda::Error& error)
 
 auto allocateWithRetry(const panda::Engine& context) -> panda::Result<void>
 {
-    auto description = panda::BufferDesc {.size = 0, .usage = vk::BufferUsageFlagBits::eStorageBuffer};
+    auto description = panda::BufferDesc {.size = 0, .usage = ::panda::BufferUsage::Storage};
     auto buffer = context.getResourceManager().createBuffer(description);
     panda::expect(!buffer, "A zero-byte buffer must be rejected");
     reportError(buffer.error());

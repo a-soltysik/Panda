@@ -22,7 +22,6 @@
 #include <panda/PerformanceManager.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/UploadBatch.hpp>
-#include <panda/WindowSurface.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -71,7 +70,7 @@ auto statusFromPanda(panda::FrameResult::Status status) -> FrameStatus
     return FrameStatus::Skipped;
 }
 
-auto configureCubeCamera(panda::RenderView& view, panda::FramebufferExtent extent) -> std::expected<void, Failure>
+auto configureCubeCamera(panda::RenderView& view, glm::uvec2 extent) -> std::expected<void, Failure>
 {
     const auto cameraPosition = glm::vec3 {3.0F, 2.5F, 4.0F};
     const auto camera = panda::createPerspectiveCamera({
@@ -79,7 +78,7 @@ auto configureCubeCamera(panda::RenderView& view, panda::FramebufferExtent exten
         .target = {},
         .up = {0, 1, 0},
         .verticalFieldOfViewRadians = glm::radians(50.0F),
-        .aspectRatio = static_cast<float>(extent.width) / static_cast<float>(extent.height),
+        .aspectRatio = static_cast<float>(extent.x) / static_cast<float>(extent.y),
         .nearPlane = 0.1F,
         .farPlane = 100.0F
     });
@@ -192,7 +191,7 @@ auto VulkanSmokeRunBackend::shouldClose() const -> bool
     return checkedWindow().shouldClose();
 }
 
-auto VulkanSmokeRunBackend::getFramebufferExtent() const -> std::expected<panda::FramebufferExtent, Failure>
+auto VulkanSmokeRunBackend::getFramebufferExtent() const -> std::expected<glm::uvec2, Failure>
 {
     const auto extent = checkedWindow().getFramebufferExtent();
     if (!extent)
@@ -347,10 +346,10 @@ auto VulkanSmokeRunBackend::captureEnvironment() -> std::expected<SmokeRunEnviro
     return environment;
 }
 
-auto VulkanSmokeRunBackend::createStaticCube(panda::FramebufferExtent extent, std::uint32_t lightCount)
+auto VulkanSmokeRunBackend::createStaticCube(glm::uvec2 extent, std::uint32_t lightCount)
     -> std::expected<void, Failure>
 {
-    if (extent.width == 0 || extent.height == 0)
+    if (extent.x == 0 || extent.y == 0)
     {
         return {};
     }

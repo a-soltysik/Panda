@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <glm/ext/vector_uint2.hpp>
+#include <glm/vec2.hpp>
 #include <memory>
 #include <panda/Error.hpp>
 #include <panda/WindowSurface.hpp>
@@ -80,8 +81,8 @@ public:
     /// @brief Creates a GLFW Vulkan surface and transfers it to the caller.
     [[nodiscard]] auto createSurface(vk::Instance instance) const -> Result<vk::SurfaceKHR> override;
 
-    /// @brief Returns pixel dimensions, including zero while minimized.
-    [[nodiscard]] auto getFramebufferExtent() const -> Result<FramebufferExtent> override;
+    /// @brief Returns pixel dimensions (x is width, y is height), including zero while minimized.
+    [[nodiscard]] auto getFramebufferExtent() const -> Result<glm::uvec2> override;
 
     /// @brief Non-owning identity valid for this window's lifetime; may be reused later.
     [[nodiscard]] auto getId() const -> Id;

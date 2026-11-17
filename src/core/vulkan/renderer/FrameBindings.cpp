@@ -536,10 +536,10 @@ auto FrameBindings::initializeFrameShadowBuffersForSlot(FrameResources& frame) -
 auto FrameBindings::createUploadBuffer(vk::DeviceSize size, vk::BufferUsageFlagBits usage)
     -> std::expected<std::shared_ptr<::panda::detail::BufferResource>, Error>
 {
-    return ::panda::detail::BufferResource::create(
+    return ::panda::detail::BufferResource::createNative(
         _device,
         _pool,
-        BufferDesc {.size = size, .usage = usage, .memory = BufferMemory::Upload});
+        ::panda::detail::BufferResourceCreateInfo {.size = size, .usage = usage, .memory = BufferMemory::Upload});
 }
 
 auto FrameBindings::initializeSamplers() -> std::expected<void, Error>
@@ -610,10 +610,11 @@ auto FrameBindings::ensureLightBuffer(FrameResources& frame, std::size_t lightCo
     const auto requiredCapacity = sizeof(LightRecord) * std::max<std::size_t>(lightCount, 1U);
     if (frame.lightBufferCapacity < requiredCapacity)
     {
-        const auto description = BufferDesc {.size = requiredCapacity,
-                                             .usage = vk::BufferUsageFlagBits::eStorageBuffer,
-                                             .memory = BufferMemory::Upload};
-        auto buffer = ::panda::detail::BufferResource::create(_device, _pool, description);
+        const auto description =
+            ::panda::detail::BufferResourceCreateInfo {.size = requiredCapacity,
+                                                       .usage = vk::BufferUsageFlagBits::eStorageBuffer,
+                                                       .memory = BufferMemory::Upload};
+        auto buffer = ::panda::detail::BufferResource::createNative(_device, _pool, description);
         if (!buffer)
         {
             return std::unexpected {buffer.error()};
@@ -685,10 +686,11 @@ auto FrameBindings::ensureMaterialBuffer(FrameResources& frame, std::size_t draw
     const auto requiredCapacity = sizeof(MaterialRecord) * std::max<std::size_t>(drawCount, 1);
     if (frame.materialBufferCapacity < requiredCapacity)
     {
-        const auto description = BufferDesc {.size = requiredCapacity,
-                                             .usage = vk::BufferUsageFlagBits::eStorageBuffer,
-                                             .memory = BufferMemory::Upload};
-        auto buffer = ::panda::detail::BufferResource::create(_device, _pool, description);
+        const auto description =
+            ::panda::detail::BufferResourceCreateInfo {.size = requiredCapacity,
+                                                       .usage = vk::BufferUsageFlagBits::eStorageBuffer,
+                                                       .memory = BufferMemory::Upload};
+        auto buffer = ::panda::detail::BufferResource::createNative(_device, _pool, description);
         if (!buffer)
         {
             return std::unexpected {buffer.error()};

@@ -16,6 +16,7 @@
 #include <span>
 #include <utility>
 
+#include "ResourceMappings.hpp"
 #include "resources/memory/MemoryAllocation.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
@@ -46,7 +47,7 @@ void configureMemory(MemoryRequest& request, BufferMemory intent)
 
 auto makeMemoryRequest(const vk::raii::Device& device,
                        vk::Buffer buffer,
-                       const BufferDesc& description,
+                       const BufferResourceCreateInfo& description,
                        vk::ExternalMemoryHandleTypeFlags handleTypes) -> MemoryRequest
 {
     const auto requirements =
@@ -68,11 +69,10 @@ auto makeMemoryRequest(const vk::raii::Device& device,
 }
 
 auto validateExternalBufferSupport(const vk::raii::PhysicalDevice& physicalDevice,
-                                   const BufferDesc& description,
+                                   vk::BufferUsageFlags usage,
                                    vk::ExternalMemoryHandleTypeFlagBits handleType) -> Result<void>
 {
-    const auto externalInfo =
-        vk::PhysicalDeviceExternalBufferInfo {.usage = description.usage, .handleType = handleType};
+    const auto externalInfo = vk::PhysicalDeviceExternalBufferInfo {.usage = usage, .handleType = handleType};
     const auto properties = physicalDevice.getExternalBufferProperties(externalInfo).externalMemoryProperties;
     if (!(properties.externalMemoryFeatures & vk::ExternalMemoryFeatureFlagBits::eExportable) ||
         !(properties.compatibleHandleTypes & handleType))
@@ -84,7 +84,7 @@ auto validateExternalBufferSupport(const vk::raii::PhysicalDevice& physicalDevic
 }
 
 auto createNativeBuffer(const vk::raii::Device& device,
-                        const BufferDesc& description,
+                        const BufferResourceCreateInfo& description,
                         vk::ExternalMemoryHandleTypeFlags handleTypes) -> Result<vk::raii::Buffer>
 {
     const auto externalInfo = vk::ExternalMemoryBufferCreateInfo {.handleTypes = handleTypes};
@@ -102,23 +102,13 @@ auto createNativeBuffer(const vk::raii::Device& device,
 }
 }
 
-auto BufferResource::validateDescription(const BufferDesc& description) -> Result<void>
+auto BufferResource::validateDescription(const BufferResourceCreateInfo& description) -> Result<void>
 {
-    constexpr auto supported = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst |
-                               vk::BufferUsageFlagBits::eUniformTexelBuffer |
-                               vk::BufferUsageFlagBits::eStorageTexelBuffer | vk::BufferUsageFlagBits::eUniformBuffer |
-                               vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eIndexBuffer |
-                               vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndirectBuffer;
     if (description.size == 0 || !description.usage ||
         (description.memory != BufferMemory::Device && description.memory != BufferMemory::Upload &&
          description.memory != BufferMemory::Readback))
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid buffer size, usage or memory intent")};
-    }
-    if (description.usage & ~supported)
-    {
-        return std::unexpected {
-            makeError(ErrorCode::Unsupported, "Buffer usage requires an unsupported device feature")};
     }
     return {};
 }
@@ -131,8 +121,27 @@ auto BufferResource::getResource(const Buffer& buffer) -> const std::shared_ptr<
 auto BufferResource::create(const vk::raii::Device& device, MemoryPool& pool, const BufferDesc& description)
     -> Result<std::shared_ptr<BufferResource>>
 {
-    const auto valid = validateDescription(description);
+    const auto usage = mapBufferUsage(description.usage);
+    if (!usage)
+    {
+        return std::unexpected {usage.error()};
+    }
+    const auto nativeDescription =
+        BufferResourceCreateInfo {.size = description.size, .usage = *usage, .memory = description.memory};
+    const auto valid = validateDescription(nativeDescription);
     if (!valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    return createInternal(device, pool, nativeDescription, {});
+}
+
+auto BufferResource::createNative(const vk::raii::Device& device,
+                                  MemoryPool& pool,
+                                  const BufferResourceCreateInfo& description)
+    -> Result<std::shared_ptr<BufferResource>>
+{
+    if (const auto valid = validateDescription(description); !valid)
     {
         return std::unexpected {valid.error()};
     }
@@ -150,22 +159,28 @@ auto BufferResource::createExportable(const vk::raii::Device& device,
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Exported buffers require device-local memory")};
     }
-    const auto valid = validateDescription(description);
+    const auto usage = mapBufferUsage(description.usage);
+    if (!usage)
+    {
+        return std::unexpected {usage.error()};
+    }
+    const auto nativeDescription =
+        BufferResourceCreateInfo {.size = description.size, .usage = *usage, .memory = description.memory};
+    const auto valid = validateDescription(nativeDescription);
     if (!valid)
     {
         return std::unexpected {valid.error()};
     }
-    if (const auto supported = validateExternalBufferSupport(pool.getPhysicalDevice(), description, handleType);
-        !supported)
+    if (const auto supported = validateExternalBufferSupport(pool.getPhysicalDevice(), *usage, handleType); !supported)
     {
         return std::unexpected {supported.error()};
     }
-    return createInternal(device, pool, description, handleTypes);
+    return createInternal(device, pool, nativeDescription, handleTypes);
 }
 
 auto BufferResource::createInternal(const vk::raii::Device& device,
                                     MemoryPool& pool,
-                                    const BufferDesc& description,
+                                    const BufferResourceCreateInfo& description,
                                     vk::ExternalMemoryHandleTypeFlags handleTypes)
     -> Result<std::shared_ptr<BufferResource>>
 {
@@ -185,7 +200,7 @@ auto BufferResource::createInternal(const vk::raii::Device& device,
     return resource;
 }
 
-BufferResource::BufferResource(MemoryPool& pool, vk::raii::Buffer buffer, const BufferDesc& description)
+BufferResource::BufferResource(MemoryPool& pool, vk::raii::Buffer buffer, const BufferResourceCreateInfo& description)
     : _pool {pool},
       _buffer {std::move(buffer)},
       _size {description.size},
@@ -195,7 +210,7 @@ BufferResource::BufferResource(MemoryPool& pool, vk::raii::Buffer buffer, const 
 }
 
 auto BufferResource::bind(const vk::raii::Device& device,
-                          const BufferDesc& description,
+                          const BufferResourceCreateInfo& description,
                           vk::ExternalMemoryHandleTypeFlags handleTypes) -> Result<void>
 {
     const auto request = makeMemoryRequest(device, *_buffer, description, handleTypes);

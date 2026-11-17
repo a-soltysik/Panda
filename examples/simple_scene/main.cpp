@@ -19,6 +19,7 @@
 #include <panda/Geometry.hpp>
 #include <panda/Logger.hpp>
 #include <panda/Mesh.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/Plane.hpp>
 #include <panda/RenderView.hpp>
 #include <panda/Texture.hpp>
@@ -27,7 +28,6 @@
 #include <panda/tools/gui/Window.hpp>
 #include <span>
 #include <tuple>
-#include <vulkan/vulkan.hpp>
 
 namespace
 {
@@ -147,8 +147,8 @@ auto createBaseColorMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {2, 2},
-                             .format = vk::Format::eR8G8B8A8Srgb,
-                             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+                             .format = ::panda::PixelFormat::Rgba8Srgb,
+                             .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     }),
                          "Create the cube base-color map");
 }
@@ -157,8 +157,8 @@ auto createMetallicRoughnessMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {1, 1},
-                             .format = vk::Format::eR8G8B8A8Unorm,
-                             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+                             .format = ::panda::PixelFormat::Rgba8Unorm,
+                             .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     }),
                          "Create the cube metallic-roughness map");
 }
@@ -167,8 +167,8 @@ auto createEmissiveMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {2, 2},
-                             .format = vk::Format::eR8G8B8A8Srgb,
-                             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+                             .format = ::panda::PixelFormat::Rgba8Srgb,
+                             .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     }),
                          "Create the cube emissive map");
 }
@@ -177,8 +177,8 @@ auto createNormalMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {4, 4},
-                             .format = vk::Format::eR8G8B8A8Unorm,
-                             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+                             .format = ::panda::PixelFormat::Rgba8Unorm,
+                             .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     }),
                          "Create the cube normal map");
 }
@@ -187,8 +187,8 @@ auto createOcclusionMap(const panda::Engine& context) -> panda::Texture
 {
     return panda::expect(context.getResourceManager().createTexture({
                              .extent = {4, 4},
-                             .format = vk::Format::eR8G8B8A8Unorm,
-                             .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+                             .format = ::panda::PixelFormat::Rgba8Unorm,
+                             .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
     }),
                          "Create the cube occlusion map");
 }
@@ -284,22 +284,21 @@ void run(const panda::tools::Window& window, const panda::Engine& context, const
     while (!window.shouldClose())
     {
         const auto extent = panda::expect(window.getFramebufferExtent(), "Read framebuffer size");
-        if (extent.width == 0 || extent.height == 0)
+        if (extent.x == 0 || extent.y == 0)
         {
             panda::expect(panda::tools::Window::waitForInput(), "Wait while framebuffer is suspended");
             continue;
         }
-        view.camera =
-            panda::expect(panda::createPerspectiveCamera({
-                              .position = cameraPosition,
-                              .target = {},
-                              .up = {0, 1, 0},
-                              .verticalFieldOfViewRadians = glm::radians(50.0F),
-                              .aspectRatio = static_cast<float>(extent.width) / static_cast<float>(extent.height),
-                              .nearPlane = 0.1F,
-                              .farPlane = 100.0F
+        view.camera = panda::expect(panda::createPerspectiveCamera({
+                                        .position = cameraPosition,
+                                        .target = {},
+                                        .up = {0, 1, 0},
+                                        .verticalFieldOfViewRadians = glm::radians(50.0F),
+                                        .aspectRatio = static_cast<float>(extent.x) / static_cast<float>(extent.y),
+                                        .nearPlane = 0.1F,
+                                        .farPlane = 100.0F
         }),
-                          "Create the camera");
+                                    "Create the camera");
         const auto frame = panda::expect(renderer.render(view), "Render the scene");
         // A resize can suspend rendering after the extent check above.
         panda::expect(frame.status == panda::FrameResult::Status::Suspended ? panda::tools::Window::waitForInput()

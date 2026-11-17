@@ -12,9 +12,11 @@
 #include <span>
 #include <utility>
 
+#include "ResourceMappings.hpp"
 #include "ScopedMock.hpp"
 #include "external/ExternalSemaphoreResource.hpp"
 #include "panda/core/BufferResourceMock.hpp"
+#include "resources/BufferResource.hpp"
 #include "resources/memory/MemoryAllocation.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
@@ -29,8 +31,31 @@ auto BufferResource::create(const vk::raii::Device& device,
                             buffer_resources::MemoryPool& pool,
                             const BufferDesc& description) -> Result<std::shared_ptr<BufferResource>>
 {
+    const auto usage = mapBufferUsage(description.usage);
+    if (!usage)
+    {
+        return std::unexpected {usage.error()};
+    }
     auto& mock = test::ScopedMock<test::BufferResourceMock>::getActiveMock();
     const auto created = mock.create(device, pool, description);
+    if (!created)
+    {
+        return std::unexpected {created.error()};
+    }
+    const auto nativeDescription =
+        BufferResourceCreateInfo {.size = description.size, .usage = *usage, .memory = description.memory};
+    return std::shared_ptr<BufferResource> {
+        new BufferResource {pool, vk::raii::Buffer {nullptr}, nativeDescription}
+    };
+}
+
+auto BufferResource::createNative(const vk::raii::Device& device,
+                                  buffer_resources::MemoryPool& pool,
+                                  const BufferResourceCreateInfo& description)
+    -> Result<std::shared_ptr<BufferResource>>
+{
+    auto& mock = test::ScopedMock<test::BufferResourceMock>::getActiveMock();
+    const auto created = mock.createNative(device, pool, description);
     if (!created)
     {
         return std::unexpected {created.error()};
@@ -46,20 +71,27 @@ auto BufferResource::createExportable(const vk::raii::Device& device,
                                       vk::ExternalMemoryHandleTypeFlagBits handleType)
     -> Result<std::shared_ptr<BufferResource>>
 {
+    const auto usage = mapBufferUsage(description.usage);
+    if (!usage)
+    {
+        return std::unexpected {usage.error()};
+    }
     auto& mock = test::ScopedMock<test::BufferResourceMock>::getActiveMock();
     const auto created = mock.createExportable(device, pool, description, handleType);
     if (!created)
     {
         return std::unexpected {created.error()};
     }
+    const auto nativeDescription =
+        BufferResourceCreateInfo {.size = description.size, .usage = *usage, .memory = description.memory};
     return std::shared_ptr<BufferResource> {
-        new BufferResource {pool, vk::raii::Buffer {nullptr}, description}
+        new BufferResource {pool, vk::raii::Buffer {nullptr}, nativeDescription}
     };
 }
 
 BufferResource::BufferResource(buffer_resources::MemoryPool& pool,
                                vk::raii::Buffer buffer,
-                               const BufferDesc& description)
+                               const BufferResourceCreateInfo& description)
     : _pool {pool},
       _buffer {std::move(buffer)},
       _size {description.size},

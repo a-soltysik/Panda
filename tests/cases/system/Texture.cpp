@@ -7,11 +7,11 @@
 #include <panda/Engine.hpp>
 #include <panda/Error.hpp>
 #include <panda/Logger.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/Texture.hpp>
 #include <panda/UploadBatch.hpp>
 #include <utility>
 #include <vector>
-#include <vulkan/vulkan.hpp>
 
 #include "LogCapture.hpp"
 
@@ -27,9 +27,9 @@ TEST(TextureSystem, UploadsTextureRegionsAndReleasesSharedImageOwnersWithoutVali
         }
         ASSERT_TRUE(context) << context.error().message;
         const auto description = panda::TextureDesc {
-            .extent = vk::Extent2D {32, 16},
-            .format = vk::Format::eR8G8B8A8Unorm,
-            .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+            .extent = glm::uvec2 {32, 16},
+            .format = ::panda::PixelFormat::Rgba8Unorm,
+            .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
         };
         auto created = context->getResourceManager().createTexture(description);
         if (!created && created.error().code == panda::ErrorCode::Unsupported)
@@ -38,8 +38,8 @@ TEST(TextureSystem, UploadsTextureRegionsAndReleasesSharedImageOwnersWithoutVali
         }
         ASSERT_TRUE(created) << created.error().message;
         EXPECT_TRUE(created->isValid());
-        EXPECT_EQ(created->getExtent().width, description.extent.width);
-        EXPECT_EQ(created->getExtent().height, description.extent.height);
+        EXPECT_EQ(created->getExtent().x, description.extent.x);
+        EXPECT_EQ(created->getExtent().y, description.extent.y);
         EXPECT_EQ(created->getFormat(), description.format);
         EXPECT_EQ(created->getUsage(), description.usage);
 
@@ -48,12 +48,12 @@ TEST(TextureSystem, UploadsTextureRegionsAndReleasesSharedImageOwnersWithoutVali
         const auto top = std::vector<std::byte>(std::size_t {8} * 136, std::byte {0x25});
         const auto bottom = std::vector<std::byte>(std::size_t {32} * 8 * 4, std::byte {0x6a});
         const auto topRegion = panda::TextureUploadRegion {
-            .extent = vk::Extent2D {32, 8},
+            .extent = glm::uvec2 {32, 8},
             .rowPitchBytes = 136
         };
         const auto bottomRegion = panda::TextureUploadRegion {
-            .offset = vk::Offset2D {0,  8},
-            .extent = vk::Extent2D {32, 8}
+            .offset = glm::ivec2 {0,  8},
+            .extent = glm::uvec2 {32, 8}
         };
         const auto topUpload = batch->write(*created, top, topRegion);
         ASSERT_TRUE(topUpload) << topUpload.error().message;

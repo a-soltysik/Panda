@@ -76,10 +76,9 @@ protected:
 
     auto makeBuffer(std::uint64_t size) -> std::shared_ptr<BufferResource>
     {
-        const auto description =
-            panda::BufferDesc {.size = size,
-                               .usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
-                               .memory = panda::BufferMemory::Upload};
+        const auto description = panda::BufferDesc {.size = size,
+                                                    .usage = ::panda::BufferUsage::TransferDestination,
+                                                    .memory = panda::BufferMemory::Upload};
         // GMock's WillOnce wrapper triggers a false-positive leak report in clang-analyzer.
         EXPECT_CALL(buffers, create(Ref(device), Ref(*pool), testing::Field(&panda::BufferDesc::size, size)))
             .Times(1)

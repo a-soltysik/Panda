@@ -5,22 +5,13 @@
 /// @file
 /// Window-system boundary used by the Vulkan context.
 
-#include <cstdint>
+#include <glm/vec2.hpp>
 #include <panda/Error.hpp>
 #include <string>
 #include <vector>
 
 namespace panda
 {
-
-/// @brief Current framebuffer dimensions in pixels; zero means rendering is suspended.
-struct FramebufferExtent
-{
-    /// Framebuffer width in pixels.
-    std::uint32_t width {0};
-    /// Framebuffer height in pixels.
-    std::uint32_t height {0};
-};
 
 /// @brief Window-system operations borrowed by a windowed Engine.
 /// Calls follow the implementation's thread requirements, outside callbacks.
@@ -46,8 +37,8 @@ public:
     [[nodiscard]] virtual auto createSurface(vk::Instance instance) const -> Result<vk::SurfaceKHR> = 0;
 
     /// @brief Queries the actual framebuffer size, including zero while minimized.
-    /// @return Pixel extent or a window-system failure.
-    [[nodiscard]] virtual auto getFramebufferExtent() const -> Result<FramebufferExtent> = 0;
+    /// @return Pixel extent with x as width and y as height, or a window-system failure.
+    [[nodiscard]] virtual auto getFramebufferExtent() const -> Result<glm::uvec2> = 0;
 };
 
 }

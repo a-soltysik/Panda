@@ -11,6 +11,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -22,6 +23,7 @@
 #include <utility>
 
 #include "FakeHandle.hpp"
+#include "ResourceMappings.hpp"
 #include "ScopedMock.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/MemoryAllocationMock.hpp"
@@ -45,7 +47,12 @@ constexpr auto exhausted = static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMe
 
 auto validDescription(panda::BufferMemory memory = panda::BufferMemory::Device) -> panda::BufferDesc
 {
-    return {.size = 80, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = memory};
+    return {.size = 80, .usage = panda::BufferUsage::Storage, .memory = memory};
+}
+
+auto unsupportedBufferUsage() -> panda::BufferUsage
+{
+    return std::bit_cast<panda::BufferUsage>(std::uint8_t {0x80});
 }
 
 class BufferResourceTest : public testing::Test
@@ -124,12 +131,27 @@ protected:
 };
 }
 
+TEST(ResourceMappings, MapsOnlyPublicBufferUsages)
+{
+    EXPECT_EQ(*panda::detail::mapBufferUsage(panda::BufferUsage::TransferSource),
+              vk::BufferUsageFlagBits::eTransferSrc);
+    EXPECT_EQ(*panda::detail::mapBufferUsage(panda::BufferUsage::TransferDestination),
+              vk::BufferUsageFlagBits::eTransferDst);
+    EXPECT_EQ(*panda::detail::mapBufferUsage(panda::BufferUsage::Storage), vk::BufferUsageFlagBits::eStorageBuffer);
+    EXPECT_EQ(*panda::detail::mapBufferUsage(panda::BufferUsage::TransferSource |
+                                             panda::BufferUsage::TransferDestination | panda::BufferUsage::Storage),
+              vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst |
+                  vk::BufferUsageFlagBits::eStorageBuffer);
+    EXPECT_EQ(*panda::detail::mapBufferUsage(panda::BufferUsage::None), vk::BufferUsageFlags {});
+    EXPECT_EQ(panda::detail::mapBufferUsage(unsupportedBufferUsage()).error().code, panda::ErrorCode::Unsupported);
+}
+
 TEST_F(BufferResourceTest, RejectsInvalidDescriptionsBeforeCallingDependencies)
 {
     const auto empty = BufferResource::create(
         device,
         *pool,
-        {.size = 0, .usage = vk::BufferUsageFlagBits::eStorageBuffer, .memory = panda::BufferMemory::Device});
+        {.size = 0, .usage = panda::BufferUsage::Storage, .memory = panda::BufferMemory::Device});
     const auto zeroUsage =
         BufferResource::create(device, *pool, {.size = 80, .usage = {}, .memory = panda::BufferMemory::Device});
 
@@ -137,6 +159,15 @@ TEST_F(BufferResourceTest, RejectsInvalidDescriptionsBeforeCallingDependencies)
     ASSERT_FALSE(zeroUsage);
     EXPECT_EQ(empty.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_EQ(zeroUsage.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(BufferResourceTest, RejectsUnknownPublicUsageBeforeCallingDependencies)
+{
+    EXPECT_CALL(vulkan, vkCreateBuffer(_, _, _, _)).Times(0);
+    const auto unsupported = BufferResource::create(device, *pool, {.size = 80, .usage = unsupportedBufferUsage()});
+
+    ASSERT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 }
 
 TEST_F(BufferResourceTest, RejectsNonDeviceMemoryBeforeExternalExport)

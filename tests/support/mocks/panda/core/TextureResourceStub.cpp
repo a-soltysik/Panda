@@ -6,11 +6,14 @@
 #include <expected>
 #include <memory>
 #include <panda/Error.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/Texture.hpp>
 #include <utility>
 
+#include "ResourceMappings.hpp"
 #include "ScopedMock.hpp"
 #include "panda/core/TextureResourceMock.hpp"
+#include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryAllocation.hpp"
 #include "resources/memory/MemoryPool.hpp"
 #include "upload/UploadBatchId.hpp"
@@ -34,8 +37,42 @@ auto TextureResource::create(const vk::raii::Device& device,
                              const TextureDesc& description,
                              vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>
 {
+    const auto format = mapPixelFormat(description.format);
+    if (!format)
+    {
+        return std::unexpected {format.error()};
+    }
+    const auto usage = mapTextureUsage(description.usage);
+    if (!usage)
+    {
+        return std::unexpected {usage.error()};
+    }
     auto& mock = test::ScopedMock<test::TextureResourceMock>::getActiveMock();
     const auto created = mock.create(device, pool, description);
+    if (!created)
+    {
+        return std::unexpected {created.error()};
+    }
+    const auto nativeDescription = TextureResourceCreateInfo {
+        .extent = vk::Extent2D {.width = description.extent.x, .height = description.extent.y},
+        .format = *format,
+        .usage = *usage
+    };
+    auto resource = std::shared_ptr<TextureResource> {
+        new TextureResource {pool, vk::raii::Image {nullptr}, nativeDescription, samples}
+    };
+    resource->_publicFormat = description.format;
+    resource->_publicUsage = description.usage;
+    return resource;
+}
+
+auto TextureResource::createNative(const vk::raii::Device& device,
+                                   texture_resources::MemoryPool& pool,
+                                   const TextureResourceCreateInfo& description,
+                                   vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>
+{
+    auto& mock = test::ScopedMock<test::TextureResourceMock>::getActiveMock();
+    const auto created = mock.createNative(device, pool, description, samples);
     if (!created)
     {
         return std::unexpected {created.error()};
@@ -47,7 +84,7 @@ auto TextureResource::create(const vk::raii::Device& device,
 
 TextureResource::TextureResource(texture_resources::MemoryPool& pool,
                                  vk::raii::Image image,
-                                 const TextureDesc& description,
+                                 const TextureResourceCreateInfo& description,
                                  vk::SampleCountFlagBits samples)
     : _image {std::move(image)},
       _pool {pool},
@@ -71,6 +108,16 @@ auto TextureResource::getFormat() const -> vk::Format
 auto TextureResource::getUsage() const -> vk::ImageUsageFlags
 {
     return test::ScopedMock<test::TextureResourceMock>::getActiveMock().getUsage(*this);
+}
+
+auto TextureResource::getPublicFormat() const -> PixelFormat
+{
+    return _publicFormat;
+}
+
+auto TextureResource::getPublicUsage() const -> TextureUsage
+{
+    return _publicUsage;
 }
 
 auto TextureResource::getNative() const -> vk::Image

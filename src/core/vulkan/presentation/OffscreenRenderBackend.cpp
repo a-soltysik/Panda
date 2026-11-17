@@ -23,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include "FrameResultMapping.hpp"
 #include "presentation/FrameExecution.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/OffscreenTargetResource.hpp"
@@ -358,7 +359,8 @@ auto OffscreenRenderBackend::renderWithCapture(const WindowCaptureRequest& reque
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Capture needs a swapchain image and semaphores")};
     }
-    const auto sourceFeatures = _physicalDevice.getFormatProperties(request.target.getFormat()).optimalTilingFeatures;
+    const auto& target = ::panda::detail::OffscreenTargetResource::getResource(request.target);
+    const auto sourceFeatures = _physicalDevice.getFormatProperties(target->getFormat()).optimalTilingFeatures;
     const auto destinationFeatures = _physicalDevice.getFormatProperties(request.output.format).optimalTilingFeatures;
     if (!(sourceFeatures & vk::FormatFeatureFlagBits::eBlitSrc) ||
         !(destinationFeatures & vk::FormatFeatureFlagBits::eBlitDst))
@@ -429,7 +431,7 @@ auto OffscreenRenderBackend::submitFrame(std::size_t slotIndex,
     _nextSlot = (_nextSlot + 1) % FrameExecution::slotCount;
     return FrameResult {.status = FrameResult::Status::Rendered,
                         .completion = _submissions.getPoint(*submitted),
-                        .effectiveSampleCount = _execution->getSampleCount()};
+                        .effectiveSampleCount = mapSampleCount(_execution->getSampleCount())};
 }
 
 auto OffscreenRenderBackend::readPixels(const OffscreenTarget& target, CompletionPoint completion)
@@ -462,10 +464,12 @@ auto OffscreenRenderBackend::submitReadback(const std::shared_ptr<::panda::detai
     {
         return std::unexpected {size.error()};
     }
-    auto buffer = ::panda::detail::BufferResource::create(
+    auto buffer = ::panda::detail::BufferResource::createNative(
         _device,
         _pool,
-        {.size = *size, .usage = vk::BufferUsageFlagBits::eTransferDst, .memory = BufferMemory::Readback});
+        ::panda::detail::BufferResourceCreateInfo {.size = *size,
+                                                   .usage = vk::BufferUsageFlagBits::eTransferDst,
+                                                   .memory = BufferMemory::Readback});
     if (!buffer)
     {
         return std::unexpected {buffer.error()};
@@ -543,7 +547,10 @@ auto OffscreenRenderBackend::copyReadbackBytes(const ::panda::detail::BufferReso
     {
         return std::unexpected {mapped.error()};
     }
-    auto pixels = ImageReadback {.extent = extent, .rgba = std::vector<std::uint8_t>(static_cast<std::size_t>(*size))};
+    auto pixels = ImageReadback {
+        .extent = {extent.width, extent.height},
+        .rgba = std::vector<std::uint8_t>(static_cast<std::size_t>(*size))
+    };
     std::ranges::transform(*mapped, pixels.rgba.begin(), [](std::byte value) {
         return std::to_integer<std::uint8_t>(value);
     });

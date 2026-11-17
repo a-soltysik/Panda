@@ -25,6 +25,7 @@
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/Texture.hpp"
 #include "panda/core/TextureResourceMock.hpp"
+#include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace
@@ -109,9 +110,12 @@ protected:
 
     void expectTextureResourceCalls()
     {
-        EXPECT_CALL(textures, create(_, _, _))
+        EXPECT_CALL(textures, createNative(_, _, _, _))
             .Times(AnyNumber())
-            .WillRepeatedly([this](const vk::raii::Device&, MemoryPool&, const panda::TextureDesc& description) {
+            .WillRepeatedly([this](const vk::raii::Device&,
+                                   MemoryPool&,
+                                   const panda::detail::TextureResourceCreateInfo& description,
+                                   vk::SampleCountFlagBits) {
                 createdUsages.push_back(description.usage);
                 if (failColorAt128 && description.extent.width == 128 &&
                     description.usage == vk::ImageUsageFlagBits::eColorAttachment)

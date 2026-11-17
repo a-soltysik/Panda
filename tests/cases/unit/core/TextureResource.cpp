@@ -10,15 +10,20 @@
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
 
+#include <array>
+#include <bit>
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <panda/Assert.hpp>
 #include <panda/Error.hpp>
+#include <panda/PixelFormat.hpp>
 #include <panda/Texture.hpp>
 #include <tuple>
 #include <utility>
 
 #include "FakeHandle.hpp"
+#include "ResourceMappings.hpp"
 #include "ScopedMock.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/MemoryAllocationMock.hpp"
@@ -39,13 +44,23 @@ using testing::Return;
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
 constexpr auto exhausted = static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory);
 
-auto description(vk::Format format = vk::Format::eR8G8B8A8Unorm) -> panda::TextureDesc
+auto description(panda::PixelFormat format = panda::PixelFormat::Rgba8Unorm) -> panda::TextureDesc
 {
     return {
-        .extent = {.width = 32, .height = 16},
+        .extent = {32, 16},
         .format = format,
-        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled
     };
+}
+
+auto unsupportedPixelFormat() -> panda::PixelFormat
+{
+    return std::bit_cast<panda::PixelFormat>(std::uint8_t {0xff});
+}
+
+auto unsupportedTextureUsage() -> panda::TextureUsage
+{
+    return std::bit_cast<panda::TextureUsage>(std::uint8_t {0x80});
 }
 
 class TextureResourceTest : public testing::Test
@@ -96,7 +111,7 @@ protected:
     }
 
     void expectImage(VkImage image,
-                     const panda::TextureDesc& desc,
+                     const panda::detail::TextureResourceCreateInfo& desc,
                      VkResult result = success,
                      vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1)
     {
@@ -118,6 +133,19 @@ protected:
                 }
                 return result;
             });
+    }
+
+    void expectImage(VkImage image,
+                     const panda::TextureDesc& desc,
+                     VkResult result = success,
+                     vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1)
+    {
+        const auto nativeDescription = panda::detail::TextureResourceCreateInfo {
+            .extent = {.width = desc.extent.x, .height = desc.extent.y},
+            .format = panda::expect(panda::detail::mapPixelFormat(desc.format), "Map texture format"),
+            .usage = panda::expect(panda::detail::mapTextureUsage(desc.usage), "Map texture usage")
+        };
+        expectImage(image, nativeDescription, result, samples);
     }
 
     void expectRequirements(VkImage image)
@@ -143,16 +171,19 @@ protected:
             });
     }
 
-    void expectView(VkImage image, VkImageView view, VkResult result = success)
+    void expectView(VkImage image,
+                    VkImageView view,
+                    VkResult result = success,
+                    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT)
     {
         EXPECT_CALL(vulkan, vkCreateImageView(deviceHandle, NotNull(), nullptr, NotNull()))
-            .WillOnce([image, view, result](VkDevice,
-                                            const VkImageViewCreateInfo* info,
-                                            const VkAllocationCallbacks*,
-                                            VkImageView* output) {
+            .WillOnce([image, view, result, aspect](VkDevice,
+                                                    const VkImageViewCreateInfo* info,
+                                                    const VkAllocationCallbacks*,
+                                                    VkImageView* output) {
                 EXPECT_EQ(info->image, image);
                 EXPECT_EQ(info->viewType, VK_IMAGE_VIEW_TYPE_2D);
-                EXPECT_EQ(info->subresourceRange.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+                EXPECT_EQ(info->subresourceRange.aspectMask, aspect);
                 if (result == success)
                 {
                     *output = view;
@@ -162,7 +193,7 @@ protected:
     }
 
     void expectBoundImage(VkImage image,
-                          const panda::TextureDesc& desc = description(),
+                          const panda::detail::TextureResourceCreateInfo& desc,
                           vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1)
     {
         expectImage(image, desc, success, samples);
@@ -180,6 +211,18 @@ protected:
         expectBind(image, fakeHandle<VkDeviceMemory>(30));
     }
 
+    void expectBoundImage(VkImage image,
+                          const panda::TextureDesc& desc = description(),
+                          vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1)
+    {
+        const auto nativeDescription = panda::detail::TextureResourceCreateInfo {
+            .extent = {.width = desc.extent.x, .height = desc.extent.y},
+            .format = panda::expect(panda::detail::mapPixelFormat(desc.format), "Map texture format"),
+            .usage = panda::expect(panda::detail::mapTextureUsage(desc.usage), "Map texture usage")
+        };
+        expectBoundImage(image, nativeDescription, samples);
+    }
+
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::MemoryPoolMock> poolMock;
     panda::test::ScopedMock<panda::test::MemoryAllocationMock> allocationMock;
@@ -192,6 +235,31 @@ protected:
 };
 }
 
+TEST(ResourceMappings, MapsOnlyPublicTextureFormatsAndUsages)
+{
+    constexpr auto formats = std::array {
+        std::pair {panda::PixelFormat::Rgba8Unorm, vk::Format::eR8G8B8A8Unorm},
+        std::pair {panda::PixelFormat::Rgba8Srgb,  vk::Format::eR8G8B8A8Srgb },
+        std::pair {panda::PixelFormat::Bgra8Unorm, vk::Format::eB8G8R8A8Unorm},
+        std::pair {panda::PixelFormat::Bgra8Srgb,  vk::Format::eB8G8R8A8Srgb }
+    };
+    for (const auto& [format, native] : formats)
+    {
+        EXPECT_EQ(*panda::detail::mapPixelFormat(format), native);
+    }
+    EXPECT_EQ(panda::detail::mapPixelFormat(panda::PixelFormat::Undefined).error().code,
+              panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(panda::detail::mapPixelFormat(unsupportedPixelFormat()).error().code, panda::ErrorCode::Unsupported);
+
+    EXPECT_EQ(*panda::detail::mapTextureUsage(panda::TextureUsage::TransferDestination),
+              vk::ImageUsageFlagBits::eTransferDst);
+    EXPECT_EQ(*panda::detail::mapTextureUsage(panda::TextureUsage::Sampled), vk::ImageUsageFlagBits::eSampled);
+    EXPECT_EQ(*panda::detail::mapTextureUsage(panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled),
+              vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled);
+    EXPECT_EQ(*panda::detail::mapTextureUsage(panda::TextureUsage::None), vk::ImageUsageFlags {});
+    EXPECT_EQ(panda::detail::mapTextureUsage(unsupportedTextureUsage()).error().code, panda::ErrorCode::Unsupported);
+}
+
 TEST_F(TextureResourceTest, RejectsInvalidDescriptionsBeforeCreatingNativeObjects)
 {
     EXPECT_CALL(vulkan,
@@ -201,13 +269,13 @@ TEST_F(TextureResourceTest, RejectsInvalidDescriptionsBeforeCreatingNativeObject
     const auto empty = TextureResource::create(
         device,
         *pool,
-        {.extent = {}, .format = vk::Format::eR8G8B8A8Unorm, .usage = vk::ImageUsageFlagBits::eSampled});
+        {.extent = {}, .format = panda::PixelFormat::Rgba8Unorm, .usage = panda::TextureUsage::Sampled});
     const auto undefined = TextureResource::create(device,
                                                    *pool,
                                                    {
-                                                       .extent = {.width = 1, .height = 1},
-                                                       .format = vk::Format::eUndefined,
-                                                       .usage = vk::ImageUsageFlagBits::eSampled
+                                                       .extent = {1, 1},
+                                                       .format = panda::PixelFormat::Undefined,
+                                                       .usage = panda::TextureUsage::Sampled
     });
 
     ASSERT_FALSE(empty);
@@ -218,12 +286,40 @@ TEST_F(TextureResourceTest, RejectsInvalidDescriptionsBeforeCreatingNativeObject
     const auto transferOnly = TextureResource::create(device,
                                                       *pool,
                                                       {
-                                                          .extent = {.width = 1, .height = 1},
-                                                          .format = vk::Format::eR8G8B8A8Unorm,
-                                                          .usage = vk::ImageUsageFlagBits::eTransferDst
+                                                          .extent = {1, 1},
+                                                          .format = panda::PixelFormat::Rgba8Unorm,
+                                                          .usage = panda::TextureUsage::TransferDestination
     });
     ASSERT_FALSE(transferOnly);
     EXPECT_EQ(transferOnly.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(TextureResourceTest, RejectsUnknownPublicCatalogValuesBeforeCreatingNativeObjects)
+{
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
+        .Times(0);
+    EXPECT_CALL(vulkan, vkCreateImage(_, _, _, _)).Times(0);
+    const auto unknownFormat =
+        TextureResource::create(device,
+                                *pool,
+                                {
+                                    .extent = {1, 1},
+                                    .format = unsupportedPixelFormat(),
+                                    .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled
+    });
+    const auto unknownUsage = TextureResource::create(device,
+                                                      *pool,
+                                                      {
+                                                          .extent = {1, 1},
+                                                          .format = panda::PixelFormat::Rgba8Unorm,
+                                                          .usage = unsupportedTextureUsage()
+    });
+
+    ASSERT_FALSE(unknownFormat);
+    ASSERT_FALSE(unknownUsage);
+    EXPECT_EQ(unknownFormat.error().code, panda::ErrorCode::Unsupported);
+    EXPECT_EQ(unknownUsage.error().code, panda::ErrorCode::Unsupported);
 }
 
 TEST_F(TextureResourceTest, RejectsUnsupportedFormatUsageAndExtentBeforeCreatingImage)
@@ -265,7 +361,7 @@ TEST_F(TextureResourceTest, RejectsExtentBeyondDeviceLimitBeforeCreatingImage)
         });
     EXPECT_CALL(vulkan, vkCreateImage(_, _, _, _)).Times(0);
     auto desc = description();
-    desc.extent.width = 32;
+    desc.extent.x = 32;
     const auto oversized = TextureResource::create(device, *pool, desc);
     ASSERT_FALSE(oversized);
     EXPECT_EQ(oversized.error().code, panda::ErrorCode::InvalidArgument);
@@ -301,7 +397,7 @@ TEST_F(TextureResourceTest, RejectsInvalidSamplesAndMultisampledNonAttachments)
 
 TEST_F(TextureResourceTest, RejectsUploadReservationForMultisampledAttachment)
 {
-    const auto desc = panda::TextureDesc {
+    const auto desc = panda::detail::TextureResourceCreateInfo {
         .extent = {.width = 32, .height = 16},
         .format = vk::Format::eR8G8B8A8Unorm,
         .usage = vk::ImageUsageFlagBits::eColorAttachment
@@ -309,14 +405,14 @@ TEST_F(TextureResourceTest, RejectsUploadReservationForMultisampledAttachment)
     auto* const image = fakeHandle<VkImage>(20);
     auto* const view = fakeHandle<VkImageView>(21);
     expectBoundImage(image, desc, vk::SampleCountFlagBits::e4);
-    expectView(image, view);
+    expectView(image, view, success, VK_IMAGE_ASPECT_COLOR_BIT);
     auto cleanup = testing::Sequence {};
     EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, view, nullptr)).InSequence(cleanup);
     EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanup);
     EXPECT_CALL(poolMock, release(Ref(*pool), 9)).InSequence(cleanup);
 
     {
-        auto created = TextureResource::create(device, *pool, desc, vk::SampleCountFlagBits::e4);
+        auto created = TextureResource::createNative(device, *pool, desc, vk::SampleCountFlagBits::e4);
         ASSERT_TRUE(created);
         const auto reservation = (*created)->reserveUpload(panda::core::vulkan::upload::UploadBatchId {1});
         ASSERT_FALSE(reservation);
@@ -383,7 +479,10 @@ TEST_F(TextureResourceTest, OwnsItsViewImageAndAllocationAndTracksBatchReservati
         ASSERT_TRUE(created);
         EXPECT_EQ((*created)->getExtent(), (vk::Extent2D {.width = 32, .height = 16}));
         EXPECT_EQ((*created)->getFormat(), vk::Format::eR8G8B8A8Unorm);
-        EXPECT_EQ((*created)->getUsage(), description().usage);
+        EXPECT_EQ((*created)->getUsage(), vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled);
+        EXPECT_EQ((*created)->getPublicFormat(), panda::PixelFormat::Rgba8Unorm);
+        EXPECT_EQ((*created)->getPublicUsage(),
+                  panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled);
         EXPECT_EQ((*created)->getNative(), vk::Image {image});
 
         const auto firstBatch = panda::core::vulkan::upload::UploadBatchId {1};

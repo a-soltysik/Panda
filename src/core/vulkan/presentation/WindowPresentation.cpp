@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <glm/ext/vector_uint2.hpp>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -19,6 +20,7 @@
 #include <vulkan/vulkan.hpp>
 
 #include "DeviceSelection.hpp"
+#include "FrameResultMapping.hpp"
 #include "SubmissionQueue.hpp"
 #include "VulkanError.hpp"
 #include "VulkanHpp.hpp"  // IWYU pragma: keep
@@ -123,10 +125,10 @@ auto WindowPresentation::create(const WindowPresentationCreateInfo& info)
     return result;
 }
 
-auto WindowPresentation::ensureWindowGeneration(FramebufferExtent requested) -> std::expected<void, Error>
+auto WindowPresentation::ensureWindowGeneration(glm::uvec2 requested) -> std::expected<void, Error>
 {
-    if (!_generation || _recreatePending || requested.width != _generation->extent.width ||
-        requested.height != _generation->extent.height)
+    if (!_generation || _recreatePending || requested.x != _generation->extent.width ||
+        requested.y != _generation->extent.height)
     {
         return recreate(requested);
     }
@@ -144,7 +146,7 @@ auto WindowPresentation::prepareWindowFrame() -> std::expected<bool, Error>
     {
         return std::unexpected {requested.error()};
     }
-    if (requested->width == 0 || requested->height == 0)
+    if (requested->x == 0 || requested->y == 0)
     {
         return false;
     }
@@ -155,7 +157,7 @@ auto WindowPresentation::prepareWindowFrame() -> std::expected<bool, Error>
     return _generation.has_value();
 }
 
-auto WindowPresentation::recreate(FramebufferExtent requested) -> std::expected<void, Error>
+auto WindowPresentation::recreate(glm::uvec2 requested) -> std::expected<void, Error>
 {
     if (const auto drained = drain(); !drained)
     {
@@ -707,7 +709,7 @@ auto WindowPresentation::initializeWindowPresentation() -> std::expected<void, E
     {
         return std::unexpected {extent.error()};
     }
-    if (extent->width == 0 || extent->height == 0)
+    if (extent->x == 0 || extent->y == 0)
     {
         _recreatePending = true;
         return {};
@@ -786,9 +788,9 @@ auto WindowPresentation::activeGeneration() const -> const SwapchainGeneration&
     return *_generation;
 }
 
-auto WindowPresentation::effectiveSampleCount() const noexcept -> vk::SampleCountFlagBits
+auto WindowPresentation::effectiveSampleCount() const noexcept -> SampleCount
 {
-    return _execution->getSampleCount();
+    return mapSampleCount(_execution->getSampleCount());
 }
 
 }

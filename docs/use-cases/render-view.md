@@ -244,7 +244,8 @@ The required captures still need to tune directional coverage, bias and filterin
 [Materials, lights and shadows](../development/tasks/materials-and-shadows.md).
 The first mesh draw selects the highest common color/depth
 attachment sample count supported by the active formats and device limits (4x, then
-2x, then 1x); `FrameResult::effectiveSampleCount` reports it.
+2x, then 1x); `FrameResult::effectiveSampleCount` reports `SampleCount::Four`,
+`SampleCount::Two` or `SampleCount::One` using Panda's public sample-count enum.
 
 `AlphaMode::Blend` uses the combined texture, material, draw and optional vertex alpha
 for straight-alpha compositing. It runs after Opaque and Mask with depth testing enabled

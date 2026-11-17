@@ -1,11 +1,11 @@
 #pragma once
 
 /// @file
-/// Shared ownership of fixed-size Vulkan buffers.
+/// Shared ownership of fixed-size buffers.
 
+#include <bit>
 #include <cstdint>
 #include <memory>
-#include <vulkan/vulkan.hpp>
 
 namespace panda
 {
@@ -28,14 +28,26 @@ enum class BufferMemory : std::uint8_t
     Readback
 };
 
+/// @brief Supported operations for a public buffer.
+enum class BufferUsage : std::uint8_t
+{
+    /// No operation; buffer creation rejects this value.
+    None = 0,
+    /// Buffer may be read by a transfer operation.
+    TransferSource = 1U << 0U,
+    /// Buffer may be a transfer destination.
+    TransferDestination = 1U << 1U,
+    /// Buffer may be used as storage by an external compute API.
+    Storage = 1U << 2U,
+};
+
 /// @brief Ordinary non-exportable buffer, initially containing undefined bytes.
 struct BufferDesc
 {
     /// Fixed payload size in bytes; must be nonzero.
     std::uint64_t size {0};
-    /// Nonzero Vulkan transfer, vertex, index, indirect, uniform/storage or texel usage.
-    /// Device-address and extension usages are currently unsupported.
-    vk::BufferUsageFlags usage;
+    /// Nonzero combination of supported buffer operations.
+    BufferUsage usage {BufferUsage::None};
     /// Required device-local or host-visible memory, with intent-specific preferences.
     BufferMemory memory {BufferMemory::Device};
 };
@@ -73,4 +85,25 @@ private:
     explicit Buffer(std::shared_ptr<detail::BufferResource> resource);
     std::shared_ptr<detail::BufferResource> _resource;
 };
+
+/// @brief Combines two buffer operation flags.
+[[nodiscard]] constexpr auto operator|(BufferUsage left, BufferUsage right) noexcept -> BufferUsage
+{
+    return std::bit_cast<BufferUsage>(
+        static_cast<std::uint8_t>(static_cast<std::uint32_t>(left) | static_cast<std::uint32_t>(right)));
+}
+
+/// @brief Returns the buffer operation flags present in both values.
+[[nodiscard]] constexpr auto operator&(BufferUsage left, BufferUsage right) noexcept -> BufferUsage
+{
+    return std::bit_cast<BufferUsage>(
+        static_cast<std::uint8_t>(static_cast<std::uint32_t>(left) & static_cast<std::uint32_t>(right)));
+}
+
+/// @brief Adds buffer operation flags to the left-hand value.
+constexpr auto operator|=(BufferUsage& left, BufferUsage right) noexcept -> BufferUsage&
+{
+    left = left | right;
+    return left;
+}
 }

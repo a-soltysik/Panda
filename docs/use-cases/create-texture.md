@@ -8,6 +8,9 @@ An application requests a fixed-size 2D GPU image through
 and created its internal default image view. Initial texels are **undefined**.
 Creation submits no GPU work and does not upload or initialize contents.
 
+`TextureDesc::extent` is a `glm::uvec2` in texels: `x` is width and `y` is
+height. An empty extent component is rejected before native image creation.
+
 **Panda** owns the native image, its memory range and the default view. **The application** chooses extent, format and
 usage, and keeps `Engine` alive
 for every `Texture` owner. The implemented scope follows
@@ -31,12 +34,12 @@ for every `Texture` owner. The implemented scope follows
 2. **Release completed upload resources.** `ResourceManager` calls
    `UploadManager::collect()` before creating the texture. [UC Reclaim completed upload packets](reclaim-completed-uploads.md)
    explains which packets can be released; an empty pending list returns immediately.
-3. **Validate.** `TextureResource::create` requires nonzero dimensions, a
-   concrete format and nonempty supported usage. Usage must include a
-   view-capable use such as sampled, storage or attachment; transfer-only usage
-   cannot create the required view. The physical device is queried for the
-   requested format/usage with 2D optimal tiling, and the extent is checked
-   against its limits before image creation.
+3. **Validate.** `TextureResource::create` requires nonzero x and y dimensions,
+   one of Panda's supported RGBA/BGRA 8-bit formats, and supported usage bits.
+   Uploadable textures use both transfer-destination and sampled usage. Unknown
+   formats or usage bits are rejected before native resource creation. The
+   physical device is queried for the requested format/usage with 2D optimal
+   tiling, and the extent is checked against its limits before image creation.
 4. **Create unpublished image.** Vulkan creates one optimal-tiled 2D image with
    one mip, one array layer, one sample and undefined initial layout. Its
    contents are not initialized.
@@ -44,9 +47,8 @@ for every `Texture` owner. The implemented scope follows
    dedicated requirements and requests device-local memory from the image
    partition. [UC Allocate a compatible device-memory range](allocate-memory-range.md)
    returns an aligned range; the creator binds the image at its offset.
-6. **Create the default view.** Vulkan creates an internal 2D image view over
-   the sole mip and layer. Its aspect comes from the format: stencil for
-   stencil-only, depth for depth and combined depth/stencil, otherwise color.
+6. **Create the default view.** Vulkan creates an internal 2D color image view
+   over the sole mip and layer.
 7. **Publish.** Only after the view succeeds does `TextureResource` return its
    complete state. `ResourceManager` wraps it in the public `Texture` and returns
    it to the application.
@@ -90,9 +92,10 @@ escapes if validation, allocation, binding or view creation fails. An allocation
 is not enough: the image must also be bound and have its default view.
 
 **Default view.** `Texture` keeps the view private to the backend. The view
-spans the single mip and layer; combined depth/stencil formats use a depth-only
-aspect. The public handle reports extent, format and usage, but does not expose
-the native image or view.
+spans the single mip and layer. The public handle reports Panda's format and
+usage values, but does not expose the native image or view. The public texture
+catalog currently includes RGBA/BGRA 8-bit color formats; renderer attachments
+use separate private native descriptions.
 
 **Contents and lifetime.** Image creation does not initialize texels or enqueue
 work. A copied `Texture` retains the same resource state; it does not copy image
@@ -107,8 +110,8 @@ and [UC Return a resource memory range](release-memory-range.md) define those bo
 |------------------|----------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
 | **Error&nbsp;1** | Step 1: manager requested from a moved-from `Engine`                                  | Checked fatal diagnostic                                                                                                | No recoverable result; use a live `Engine`                                  |
 | **Error&nbsp;2** | Step 2: completed-upload collection fails                                              | Propagate its error before validating or creating the image                                                             | No new image; follow the error category rather than retrying unconditionally |
-| **Error&nbsp;3** | Step 3: zero extent, undefined format, empty usage or usage without a view-capable bit | Return `InvalidArgument`                                                                                                | No native image is created; correct the description                          |
-| **Error&nbsp;4** | Step 3: unsupported usage bit or format/usage combination                              | Return `Unsupported`                                                                                                    | No native image is created; choose a supported usage or format               |
+| **Error&nbsp;3** | Step 3: zero extent, undefined format or empty usage                                    | Return `InvalidArgument`                                                                                                | No native image is created; correct the description                          |
+| **Error&nbsp;4** | Step 3: unknown format or usage bit, or unsupported format/usage combination            | Return `Unsupported`                                                                                                    | No native image is created; choose a supported usage or format               |
 | **Error&nbsp;5** | Step 3: extent exceeds the device limit or the support query fails                     | Return `InvalidArgument` for an excessive extent, otherwise the classified Vulkan error                                 | No native image is created; adjust the request or follow the reported error  |
 | **Error&nbsp;6** | Step 4: native image creation fails                                                    | Convert the Vulkan status without adopting its failed output                                                            | No resource state or public handle is created                                |
 | **Error&nbsp;7** | Step 5: memory allocation fails                                                        | Destroy the unpublished image and propagate the allocation error                                                        | No range or public handle escapes; existing live allocations remain owned    |
