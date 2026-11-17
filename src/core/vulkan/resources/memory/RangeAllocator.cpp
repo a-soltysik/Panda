@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <expected>
 #include <iterator>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 
 namespace panda::core::vulkan::resources
 {

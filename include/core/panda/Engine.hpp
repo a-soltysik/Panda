@@ -6,13 +6,13 @@
 #include <memory>
 #include <panda/DeviceInfo.hpp>
 #include <panda/EngineOptions.hpp>
-#include <panda/Error.hpp>
-#include <panda/ExternalBufferManager.hpp>
-#include <panda/OffscreenRenderer.hpp>
-#include <panda/PerformanceManager.hpp>
-#include <panda/ResourceManager.hpp>
-#include <panda/SubmissionManager.hpp>
-#include <panda/WindowRenderer.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/interop/ExternalBufferManager.hpp>
+#include <panda/rendering/OffscreenRenderer.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
+#include <panda/rendering/WindowRenderer.hpp>
+#include <panda/resources/ResourceManager.hpp>
+#include <panda/submission/SubmissionManager.hpp>
 
 namespace panda
 {

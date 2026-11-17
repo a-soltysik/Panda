@@ -19,10 +19,10 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Mesh.hpp>
 #include <utility>
 #include <vector>
 

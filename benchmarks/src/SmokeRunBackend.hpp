@@ -5,8 +5,8 @@
 #include <expected>
 #include <glm/vec2.hpp>
 #include <optional>
-#include <panda/PerformanceManager.hpp>
-#include <panda/WindowSurface.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
+#include <panda/vulkan/WindowSurface.hpp>
 #include <string>
 #include <vector>
 

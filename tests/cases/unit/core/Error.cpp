@@ -2,7 +2,8 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <source_location>
 #include <string>
 #include <utility>

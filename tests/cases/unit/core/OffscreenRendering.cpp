@@ -10,7 +10,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <tuple>
 #include <utility>
 

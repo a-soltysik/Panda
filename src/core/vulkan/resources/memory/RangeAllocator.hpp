@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <map>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 
 namespace panda::core::vulkan::resources
 {

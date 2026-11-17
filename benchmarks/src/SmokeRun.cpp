@@ -7,7 +7,7 @@
 #include <expected>
 #include <format>
 #include <iterator>
-#include <panda/PerformanceManager.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
 #include <print>
 #include <string>
 #include <string_view>

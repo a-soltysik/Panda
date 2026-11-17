@@ -1,5 +1,5 @@
 #include <expected>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/cuda/Cuda.hpp>
 
 #include "CudaAdapter.hpp"

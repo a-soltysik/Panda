@@ -1,9 +1,9 @@
 #pragma once
 
-#include <panda/Buffer.hpp>
-#include <panda/Error.hpp>
-#include <panda/PixelFormat.hpp>
-#include <panda/Texture.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/Buffer.hpp>
+#include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/Texture.hpp>
 
 #include "VulkanHpp.hpp"
 

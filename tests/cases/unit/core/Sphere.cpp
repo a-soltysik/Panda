@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <glm/geometric.hpp>
-#include <panda/Sphere.hpp>
+#include <panda/geometry/Sphere.hpp>
 #include <variant>
 #include <vector>
 

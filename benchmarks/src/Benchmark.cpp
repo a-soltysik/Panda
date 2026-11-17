@@ -7,8 +7,8 @@
 #include <exception>
 #include <expected>
 #include <filesystem>
-#include <panda/HostInfo.hpp>
-#include <panda/Logger.hpp>
+#include <panda/diagnostics/HostInfo.hpp>
+#include <panda/diagnostics/Logger.hpp>
 #include <panda_bench/Arguments.hpp>
 #include <panda_bench/Report.hpp>
 #include <panda_bench/Revision.hpp>

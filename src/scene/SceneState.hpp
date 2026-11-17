@@ -1,10 +1,10 @@
 #pragma once
-
 #include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
+#include <panda/base/Error.hpp>
 #include <panda/scene/Scene.hpp>
 #include <string>
 #include <utility>

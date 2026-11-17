@@ -9,8 +9,8 @@
 #include <cstdint>
 #include <expected>
 #include <map>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <span>
 #include <vector>
 

@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
@@ -9,10 +10,10 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
-#include <panda/PixelFormat.hpp>
-#include <panda/Texture.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/Texture.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <utility>
 
 #include "ResourceMappings.hpp"

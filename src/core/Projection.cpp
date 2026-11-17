@@ -3,8 +3,8 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <numbers>
-#include <panda/Error.hpp>
-#include <panda/Projection.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/math/Projection.hpp>
 
 #include "Math.hpp"
 

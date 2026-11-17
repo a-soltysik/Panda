@@ -3,8 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <glm/geometric.hpp>
-#include <panda/Cube.hpp>
-#include <panda/Geometry.hpp>
+#include <panda/geometry/Cube.hpp>
+#include <panda/geometry/Geometry.hpp>
 #include <vector>
 
 TEST(CubeGeometry, HasStandardLayoutAndOutwardTriangles)

@@ -1,6 +1,6 @@
 #pragma once
-
 #include <cstddef>
+#include <panda/base/Error.hpp>
 
 #include "SceneState.hpp"
 

@@ -13,7 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <tuple>
 #include <utility>
 #include <vector>

@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/ExternalBuffer.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
+#include <panda/interop/ExternalBuffer.hpp>
 
 #include "CudaAdapter.hpp"
 #include "CudaSessionState.hpp"

@@ -2,7 +2,7 @@
 
 #include <fstream>
 #include <ios>
-#include <panda/Logger.hpp>
+#include <panda/diagnostics/Logger.hpp>
 #include <source_location>
 #include <sstream>
 #include <string>

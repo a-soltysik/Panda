@@ -1,5 +1,7 @@
 #include "panda/tools/gui/Window.hpp"
 
+#include <panda/base/Error.hpp>
+
 #include "GlfwSession.hpp"
 
 #define GLFW_INCLUDE_NONE
@@ -12,9 +14,9 @@
 #include <glm/ext/vector_uint2.hpp>
 #include <limits>
 #include <memory>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
-#include <panda/Logger.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/diagnostics/Logger.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <ranges>
 #include <source_location>
 #include <span>

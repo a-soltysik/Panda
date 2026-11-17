@@ -2,10 +2,10 @@
 
 #include <array>
 #include <cstddef>
-#include <panda/Buffer.hpp>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
-#include <panda/UploadBatch.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/Buffer.hpp>
+#include <panda/resources/Mesh.hpp>
+#include <panda/submission/UploadBatch.hpp>
 #include <utility>
 
 TEST(UploadBatch, EmptyHandleRejectsWriteAndSubmit)

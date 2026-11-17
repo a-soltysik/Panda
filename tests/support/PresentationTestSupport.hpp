@@ -15,8 +15,8 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/WindowSurface.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/vulkan/WindowSurface.hpp>
 #include <span>
 #include <tuple>
 #include <utility>

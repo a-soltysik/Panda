@@ -8,8 +8,8 @@
 #include <gmock/gmock.h>
 
 #include <cstdint>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/submission/CompletionPoint.hpp>
 
 namespace panda::test
 {

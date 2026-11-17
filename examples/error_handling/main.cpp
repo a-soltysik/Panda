@@ -3,11 +3,11 @@
 #include <expected>
 #include <iostream>
 #include <memory>
-#include <panda/Assert.hpp>
-#include <panda/Buffer.hpp>
 #include <panda/Engine.hpp>
-#include <panda/Error.hpp>
-#include <panda/Logger.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/diagnostics/Logger.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <tuple>
 #include <utility>
 

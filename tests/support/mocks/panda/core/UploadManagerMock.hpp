@@ -10,8 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/submission/CompletionPoint.hpp>
 #include <span>
 
 #include "upload/UploadManager.hpp"

@@ -16,15 +16,15 @@
 #include <expected>
 #include <map>
 #include <memory>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <utility>
 #include <vector>
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "external/vulkan/VulkanMock.hpp"
-#include "panda/Texture.hpp"
 #include "panda/core/TextureResourceMock.hpp"
+#include "panda/resources/Texture.hpp"
 #include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 

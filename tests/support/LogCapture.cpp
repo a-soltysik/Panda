@@ -3,7 +3,7 @@
 #include <gmock/gmock.h>
 
 #include <memory>
-#include <panda/Logger.hpp>
+#include <panda/diagnostics/Logger.hpp>
 #include <tuple>
 
 #include "panda/common/SinkMock.hpp"

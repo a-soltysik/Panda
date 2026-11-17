@@ -12,8 +12,8 @@
 #include <cstdint>
 #include <iterator>
 #include <limits>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/submission/CompletionPoint.hpp>
 #include <span>
 #include <utility>
 

@@ -8,10 +8,10 @@
 #include <expected>
 #include <limits>
 #include <memory>
-#include <panda/Buffer.hpp>
-#include <panda/Error.hpp>
-#include <panda/ExternalBuffer.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
+#include <panda/interop/ExternalBuffer.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <string>
 #include <utility>
 

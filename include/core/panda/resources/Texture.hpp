@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <glm/vec2.hpp>
 #include <memory>
-#include <panda/PixelFormat.hpp>
+#include <panda/resources/PixelFormat.hpp>
 
 namespace panda
 {

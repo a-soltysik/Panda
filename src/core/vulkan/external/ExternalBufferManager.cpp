@@ -6,11 +6,11 @@
 #include <expected>
 #include <functional>
 #include <optional>
-#include <panda/Buffer.hpp>
-#include <panda/Error.hpp>
-#include <panda/ExternalBuffer.hpp>
-#include <panda/ExternalBufferManager.hpp>
-#include <panda/ExternalTimelineValue.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/interop/ExternalBuffer.hpp>
+#include <panda/interop/ExternalBufferManager.hpp>
+#include <panda/interop/ExternalTimelineValue.hpp>
+#include <panda/resources/Buffer.hpp>
 
 #include "external/ExternalBufferInterop.hpp"
 

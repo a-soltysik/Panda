@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 // clang-format on
@@ -9,8 +10,8 @@
 #include <expected>
 #include <limits>
 #include <memory>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <span>
 #include <variant>
 

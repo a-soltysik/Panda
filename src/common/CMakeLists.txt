@@ -3,7 +3,11 @@ panda_add_component(panda_common
     TYPE OBJECT
     INCLUDE_DIRECTORY "${PROJECT_SOURCE_DIR}/include/common"
     SOURCES Logger.cpp Assert.cpp FunctionName.cpp SourcePath.cpp Stacktrace.cpp HostInfo.cpp
-    PUBLIC_HEADERS panda/Assert.hpp panda/Logger.hpp panda/HostInfo.hpp
+    PUBLIC_HEADERS
+        panda/base/StrongAlias.hpp
+        panda/diagnostics/Assert.hpp
+        panda/diagnostics/Logger.hpp
+        panda/diagnostics/HostInfo.hpp
     PRIVATE_HEADERS FunctionName.hpp Overloaded.hpp SourcePath.hpp Stacktrace.hpp)
 target_compile_definitions(panda_common PRIVATE
     PANDA_SOURCE_DIRECTORY="${PROJECT_SOURCE_DIR}/")

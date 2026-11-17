@@ -9,8 +9,9 @@
 #include <expected>
 #include <numeric>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/geometry/VertexLayout.hpp>
+#include <panda/resources/Mesh.hpp>
 #include <utility>
 #include <vector>
 

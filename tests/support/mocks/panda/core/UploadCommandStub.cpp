@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <span>
 #include <vector>
 

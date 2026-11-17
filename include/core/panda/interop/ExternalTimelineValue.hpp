@@ -4,7 +4,7 @@
 /// Strongly typed value for an external timeline semaphore.
 
 #include <cstdint>
-#include <panda/StrongAlias.hpp>
+#include <panda/base/StrongAlias.hpp>
 
 namespace panda
 {

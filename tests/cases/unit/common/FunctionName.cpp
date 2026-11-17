@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <panda/Logger.hpp>
+#include <panda/diagnostics/Logger.hpp>
 #include <source_location>
 #include <sstream>
 #include <string>

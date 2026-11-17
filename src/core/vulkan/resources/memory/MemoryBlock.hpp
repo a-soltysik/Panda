@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <span>
 
 #include "VulkanHpp.hpp"

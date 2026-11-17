@@ -1,4 +1,4 @@
-#include "panda/Logger.hpp"
+#include "panda/diagnostics/Logger.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -22,7 +22,7 @@
 #include "FunctionName.hpp"
 #include "SourcePath.hpp"
 #include "Stacktrace.hpp"
-#include "panda/Assert.hpp"
+#include "panda/diagnostics/Assert.hpp"
 
 namespace panda::log
 {

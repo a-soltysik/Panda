@@ -4,7 +4,7 @@
 #include <glm/ext/vector_float4.hpp>
 #include <glm/gtc/constants.hpp>
 #include <limits>
-#include <panda/Transform.hpp>
+#include <panda/math/Transform.hpp>
 
 TEST(Transform, DefaultsToIdentity)
 {

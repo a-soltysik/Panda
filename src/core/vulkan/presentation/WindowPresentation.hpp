@@ -1,4 +1,5 @@
 #pragma once
+#include <panda/base/Error.hpp>
 
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
@@ -11,10 +12,10 @@
 #include <expected>
 #include <memory>
 #include <optional>
-#include <panda/FrameResult.hpp>
-#include <panda/OffscreenTarget.hpp>
-#include <panda/RenderView.hpp>
-#include <panda/WindowSurface.hpp>
+#include <panda/rendering/FrameResult.hpp>
+#include <panda/rendering/RenderView.hpp>
+#include <panda/resources/OffscreenTarget.hpp>
+#include <panda/vulkan/WindowSurface.hpp>
 
 #include "SubmissionQueue.hpp"
 #include "performance/PerformanceManagerImpl.hpp"

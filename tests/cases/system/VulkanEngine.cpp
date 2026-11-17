@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <panda/Engine.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <string>
 #include <thread>
 #include <utility>

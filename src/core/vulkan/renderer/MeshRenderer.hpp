@@ -10,8 +10,8 @@
 #include <expected>
 #include <memory>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <vector>
 
 #include "renderer/FrameBindings.hpp"

@@ -4,7 +4,7 @@
 /// Optional CUDA availability and external-buffer interoperability API.
 
 #include <cstdint>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/cuda/CudaSession.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
 

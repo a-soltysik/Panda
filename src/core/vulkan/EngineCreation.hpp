@@ -1,8 +1,8 @@
 #pragma once
 
 #include <panda/EngineOptions.hpp>
-#include <panda/Error.hpp>
-#include <panda/WindowSurface.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/vulkan/WindowSurface.hpp>
 
 #include "EngineCreateInfo.hpp"
 

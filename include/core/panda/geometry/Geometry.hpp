@@ -8,7 +8,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
-#include <panda/Mesh.hpp>
+#include <panda/geometry/VertexLayout.hpp>
 #include <variant>
 #include <vector>
 

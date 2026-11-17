@@ -9,8 +9,8 @@
 #include <glm/ext/vector_uint2.hpp>
 #include <glm/vec2.hpp>
 #include <memory>
-#include <panda/Error.hpp>
-#include <panda/WindowSurface.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/vulkan/WindowSurface.hpp>
 #include <string>
 #include <vector>
 

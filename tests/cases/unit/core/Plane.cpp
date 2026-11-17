@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <glm/geometric.hpp>
-#include <panda/Plane.hpp>
+#include <panda/geometry/Plane.hpp>
 #include <vector>
 
 TEST(PlaneGeometry, HasUpwardFacingUnitSquare)

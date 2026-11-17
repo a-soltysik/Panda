@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
@@ -19,7 +20,7 @@
 #include <iostream>
 #include <iterator>
 #include <optional>
-#include <panda/Error.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <string>
 #include <string_view>
 #include <tuple>

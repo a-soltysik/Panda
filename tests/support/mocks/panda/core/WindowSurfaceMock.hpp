@@ -1,9 +1,9 @@
 #pragma once
-
 #include <gmock/gmock.h>
 
 #include <expected>
-#include <panda/WindowSurface.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/vulkan/WindowSurface.hpp>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.hpp>

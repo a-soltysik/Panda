@@ -1,4 +1,4 @@
-#include "panda/ExternalSemaphoreHandle.hpp"
+#include "panda/interop/ExternalSemaphoreHandle.hpp"
 
 #include <cstdint>
 #include <utility>

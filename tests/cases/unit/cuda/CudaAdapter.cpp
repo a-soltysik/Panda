@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <panda/DeviceUuid.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/cuda/Cuda.hpp>
 #include <span>
 #include <utility>

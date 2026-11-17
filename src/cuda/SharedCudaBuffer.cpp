@@ -1,10 +1,10 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <panda/Buffer.hpp>
-#include <panda/Error.hpp>
-#include <panda/ExternalTimelineValue.hpp>
+#include <panda/base/Error.hpp>
 #include <panda/cuda/SharedCudaBuffer.hpp>
+#include <panda/interop/ExternalTimelineValue.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <utility>
 
 #include "SharedCudaBufferState.hpp"

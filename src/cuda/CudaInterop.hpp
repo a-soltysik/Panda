@@ -3,10 +3,10 @@
 #include <cstdint>
 #include <optional>
 #include <panda/DeviceUuid.hpp>
-#include <panda/Error.hpp>
-#include <panda/ExternalBuffer.hpp>
-#include <panda/ExternalMemoryHandle.hpp>
-#include <panda/ExternalSemaphoreHandle.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/interop/ExternalBuffer.hpp>
+#include <panda/interop/ExternalMemoryHandle.hpp>
+#include <panda/interop/ExternalSemaphoreHandle.hpp>
 #include <string>
 #include <string_view>
 

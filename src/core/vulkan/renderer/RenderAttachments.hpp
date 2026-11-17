@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <expected>
 #include <memory>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <vector>
 
 #include "renderer/ShadowAtlas.hpp"

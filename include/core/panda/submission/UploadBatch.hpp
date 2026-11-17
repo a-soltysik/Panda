@@ -7,11 +7,11 @@
 #include <cstdint>
 #include <glm/vec2.hpp>
 #include <memory>
-#include <panda/Buffer.hpp>
-#include <panda/CompletionPoint.hpp>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
-#include <panda/Texture.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/Buffer.hpp>
+#include <panda/resources/Mesh.hpp>
+#include <panda/resources/Texture.hpp>
+#include <panda/submission/CompletionPoint.hpp>
 #include <span>
 
 namespace panda

@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <panda/PerformanceManager.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
 #include <panda_bench/Statistics.hpp>
 #include <span>
 #include <vector>

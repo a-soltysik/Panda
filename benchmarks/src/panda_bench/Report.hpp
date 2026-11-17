@@ -5,7 +5,7 @@
 #include <expected>
 #include <filesystem>
 #include <optional>
-#include <panda/PerformanceManager.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
 #include <string>
 #include <vector>
 

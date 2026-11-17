@@ -3,7 +3,7 @@
 #include <glm/ext/vector_float4.hpp>
 #include <limits>
 #include <numbers>
-#include <panda/Projection.hpp>
+#include <panda/math/Projection.hpp>
 
 TEST(Projection, PerspectiveMapsDepthAndFlipsY)
 {

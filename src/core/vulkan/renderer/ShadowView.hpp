@@ -4,8 +4,8 @@
 #include <cstddef>
 #include <expected>
 #include <glm/mat4x4.hpp>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
 
 namespace panda::core::vulkan::renderer
 {

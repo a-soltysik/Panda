@@ -2,8 +2,8 @@
 
 #include <memory>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/Texture.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/Texture.hpp>
 
 #include "VulkanHpp.hpp"
 #include "resources/memory/MemoryAllocation.hpp"

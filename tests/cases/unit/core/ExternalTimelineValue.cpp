@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
-#include <panda/ExternalTimelineValue.hpp>
+#include <panda/interop/ExternalTimelineValue.hpp>
 #include <type_traits>
 
 static_assert(!std::is_convertible_v<std::uint64_t, panda::ExternalTimelineValue>);

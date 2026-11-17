@@ -4,7 +4,7 @@
 
 #include <cstdint>
 #include <memory>
-#include <panda/Buffer.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <utility>
 
 #include "vulkan/resources/BufferResource.hpp"

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <panda/HostInfo.hpp>
+#include <panda/diagnostics/HostInfo.hpp>
 
 TEST(HostInfo, ReturnsNonEmptyCpuModelWhenAvailable)
 {

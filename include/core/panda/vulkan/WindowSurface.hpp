@@ -6,7 +6,7 @@
 /// Window-system boundary used by the Vulkan context.
 
 #include <glm/vec2.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <string>
 #include <vector>
 

@@ -8,8 +8,8 @@
 #include <iterator>
 #include <limits>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <span>
 #include <variant>
 #include <vector>

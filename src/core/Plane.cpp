@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
-#include <panda/Geometry.hpp>
-#include <panda/Plane.hpp>
+#include <panda/geometry/Geometry.hpp>
+#include <panda/geometry/Plane.hpp>
 #include <vector>
 
 namespace panda

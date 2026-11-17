@@ -1,4 +1,5 @@
 // clang-format off
+#include <panda/base/Error.hpp>
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 // clang-format on
 
@@ -7,17 +8,17 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <panda/Assert.hpp>
 #include <panda/DeviceInfo.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
-#include <panda/ExternalBufferManager.hpp>
-#include <panda/OffscreenRenderer.hpp>
-#include <panda/PerformanceManager.hpp>
-#include <panda/ResourceManager.hpp>
-#include <panda/SubmissionManager.hpp>
-#include <panda/WindowRenderer.hpp>
-#include <panda/WindowSurface.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/interop/ExternalBufferManager.hpp>
+#include <panda/rendering/OffscreenRenderer.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
+#include <panda/rendering/WindowRenderer.hpp>
+#include <panda/resources/ResourceManager.hpp>
+#include <panda/submission/SubmissionManager.hpp>
+#include <panda/vulkan/WindowSurface.hpp>
 #include <utility>
 
 #include "DeviceContext.hpp"

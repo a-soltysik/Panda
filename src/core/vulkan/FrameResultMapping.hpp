@@ -5,8 +5,8 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
-#include <panda/Assert.hpp>
-#include <panda/FrameResult.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/rendering/FrameResult.hpp>
 
 namespace panda::core::vulkan
 {

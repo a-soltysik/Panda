@@ -9,8 +9,8 @@
 #include <glm/gtc/matrix_access.hpp>
 #include <limits>
 #include <optional>
-#include <panda/Error.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <panda/scene/Scene.hpp>
 
 #include "SceneState.hpp"

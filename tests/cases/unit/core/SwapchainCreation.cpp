@@ -13,7 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <span>
 #include <string>
 #include <tuple>

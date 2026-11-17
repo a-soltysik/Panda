@@ -5,8 +5,8 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <panda/Assert.hpp>
-#include <panda/Logger.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/diagnostics/Logger.hpp>
 #include <sstream>
 #include <system_error>
 #include <tuple>

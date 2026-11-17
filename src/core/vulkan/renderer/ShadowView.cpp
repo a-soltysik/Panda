@@ -13,9 +13,9 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/matrix.hpp>
 #include <numbers>
-#include <panda/Error.hpp>
-#include <panda/Projection.hpp>
-#include <panda/RenderView.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/math/Projection.hpp>
+#include <panda/rendering/RenderView.hpp>
 
 #include "Math.hpp"
 

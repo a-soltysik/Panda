@@ -1,4 +1,4 @@
-#include "panda/Assert.hpp"
+#include "panda/diagnostics/Assert.hpp"
 
 #include <array>
 #include <charconv>
@@ -15,7 +15,7 @@
 #include "FunctionName.hpp"
 #include "SourcePath.hpp"
 #include "Stacktrace.hpp"
-#include "panda/Logger.hpp"
+#include "panda/diagnostics/Logger.hpp"
 
 namespace panda
 {

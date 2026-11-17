@@ -2,8 +2,8 @@
 
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/quaternion_float.hpp>
-#include <panda/Error.hpp>
-#include <panda/Transform.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/math/Transform.hpp>
 #include <utility>
 
 namespace panda::scene::detail

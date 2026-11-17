@@ -9,7 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
 #include <span>
 
 #include "resources/memory/MemoryBlock.hpp"

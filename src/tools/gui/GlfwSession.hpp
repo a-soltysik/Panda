@@ -1,5 +1,5 @@
 #pragma once
-
+#include <panda/base/Error.hpp>
 #include <panda/tools/gui/Window.hpp>
 
 #define GLFW_INCLUDE_NONE

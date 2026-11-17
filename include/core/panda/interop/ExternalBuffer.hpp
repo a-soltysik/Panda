@@ -4,11 +4,11 @@
 /// Vulkan buffer and platform handle exported for another GPU API.
 
 #include <cstdint>
-#include <panda/Buffer.hpp>
 #include <panda/DeviceUuid.hpp>
-#include <panda/Error.hpp>
-#include <panda/ExternalMemoryHandle.hpp>
-#include <panda/ExternalSemaphoreHandle.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/interop/ExternalMemoryHandle.hpp>
+#include <panda/interop/ExternalSemaphoreHandle.hpp>
+#include <panda/resources/Buffer.hpp>
 
 namespace panda
 {

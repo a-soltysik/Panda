@@ -1,4 +1,5 @@
 #pragma once
+#include <panda/base/Error.hpp>
 
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep

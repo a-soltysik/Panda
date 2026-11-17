@@ -3,11 +3,11 @@
 /// @file
 /// Engine-owned creation of ordinary GPU resources.
 
-#include <panda/Buffer.hpp>
-#include <panda/Error.hpp>
-#include <panda/Mesh.hpp>
-#include <panda/OffscreenTarget.hpp>
-#include <panda/Texture.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/resources/Buffer.hpp>
+#include <panda/resources/Mesh.hpp>
+#include <panda/resources/OffscreenTarget.hpp>
+#include <panda/resources/Texture.hpp>
 
 namespace vk::raii
 {

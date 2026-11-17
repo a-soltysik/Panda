@@ -1,10 +1,10 @@
 #pragma once
-
 #include <cstdint>
 #include <expected>
 #include <functional>
-#include <panda/Assert.hpp>
-#include <panda/Error.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Assert.hpp>
+#include <panda/vulkan/Error.hpp>
 #include <source_location>
 #include <tuple>
 #include <utility>

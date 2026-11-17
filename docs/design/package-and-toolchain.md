@@ -13,7 +13,7 @@ static linking of every OS/driver/dependency library.
 
 | Target           | Public entry point                                      | Build switch          |
 |------------------|---------------------------------------------------------|-----------------------|
-| `Panda::Panda`   | `panda/Panda.hpp` and focused renderer/resource headers | Always built          |
+| `Panda::Panda`   | `panda/Panda.hpp` and focused headers under `panda/` | Always built          |
 | `Panda::Scene`   | `panda/scene/Scene.hpp`                                 | `PANDA_BUILD_SCENE`   |
 | `Panda::Import`  | `panda/Import.hpp`                                      | `PANDA_BUILD_IMPORT`  |
 | `Panda::Tools`   | `panda/Tools.hpp`                                       | `PANDA_BUILD_TOOLS`   |
@@ -49,11 +49,17 @@ the same module archives as applications;
 see [controlled dependencies](../development/testing.md#controlled-dependencies).
 
 Keep module headers under `include/<module>/panda` and implementations under
-`src/<module>`, plus `shaders/` and `cmake/`. Shared diagnostics live in
-`include/common/panda` and `src/common`. The internal `panda_common` object library
-has no public alias or separate archive. Core embeds its objects and propagates
-its header requirements; add-ons use the same definitions through their public
-core dependency. Do not embed these objects again in add-on archives.
+`src/<module>`, plus `shaders/` and `cmake/`. Core headers are grouped under
+`panda/base`, `panda/geometry`, `panda/math`, `panda/resources`, `panda/rendering`,
+`panda/submission`, `panda/interop` and `panda/vulkan`; the C++ namespace remains
+`panda`. `panda/base/Error.hpp` has no Vulkan dependency, while
+`panda/vulkan/Error.hpp` owns Vulkan error conversion. CPU geometry and mesh
+descriptions share `panda/geometry/VertexLayout.hpp`. Shared diagnostics live in
+`include/common/panda/diagnostics` and `StrongAlias` in `include/common/panda/base`.
+The internal `panda_common` object library has no public alias or separate archive.
+Core embeds its objects and propagates its header requirements; add-ons use the
+same definitions through their public core dependency. Do not embed these objects
+again in add-on archives.
 Introduce examples, engine tests, and
 benchmark directories when their contents exist, not as empty design scaffolding.
 Never include `legacy/` in new targets. `.agents/` is maintenance infrastructure,

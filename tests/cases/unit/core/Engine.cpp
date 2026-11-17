@@ -11,10 +11,10 @@
 #include <concepts>
 #include <cstdint>
 #include <panda/Engine.hpp>
-#include <panda/Error.hpp>
-#include <panda/Logger.hpp>
-#include <panda/PerformanceManager.hpp>
-#include <panda/WindowRenderer.hpp>
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Logger.hpp>
+#include <panda/rendering/PerformanceManager.hpp>
+#include <panda/rendering/WindowRenderer.hpp>
 #include <span>
 #include <string>
 #include <string_view>

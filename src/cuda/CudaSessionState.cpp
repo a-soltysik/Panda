@@ -1,7 +1,7 @@
 #include "CudaSessionState.hpp"
 
-#include <panda/Assert.hpp>
 #include <panda/DeviceUuid.hpp>
+#include <panda/diagnostics/Assert.hpp>
 #include <utility>
 
 #include "CudaAdapter.hpp"

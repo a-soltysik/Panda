@@ -3,7 +3,7 @@
 /// @file
 /// CPU geometry for a unit plane.
 
-#include <panda/Geometry.hpp>
+#include <panda/geometry/Geometry.hpp>
 
 namespace panda
 {
