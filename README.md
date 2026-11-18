@@ -3,125 +3,91 @@
 [![Quality](https://github.com/a-soltysik/Panda/actions/workflows/quality.yml/badge.svg?branch=master)](https://github.com/a-soltysik/Panda/actions/workflows/quality.yml)
 [![Coverage](https://codecov.io/gh/a-soltysik/Panda/branch/master/graph/badge.svg)](https://codecov.io/gh/a-soltysik/Panda)
 
-Panda is a C++23 Vulkan graphics engine for application-owned rendering and
-compute. The implementation includes an optional scene module, GLFW window
-tools, reusable core camera helpers, and optional CUDA external-buffer import
-with ordered GPU handoff.
+Panda is a C++23 Vulkan engine for application-owned rendering. Core provides
+mesh data, primitive generators, transforms and projection matrices; scene,
+window and CUDA are optional modules.
 
-## Features
+## Libraries
 
-- Static libraries with separate core, optional scene and window tools, and
-  optional CUDA interoperability.
-- Formatted logging with timestamps, source locations, and stream or file sinks.
-- Diagnostics, optional standard stack traces, and recoverable window errors
-  through `std::expected`.
-- Vulkan 1.3 context creation, reusable camera construction, and windowed
-  application-view rendering.
-- Optional scene management and CUDA buffer sharing with application-scheduled
-  GPU work.
-- CMake/Ninja builds and GoogleTest tests on Windows and Linux.
+| Target            | What it provides                                              | Selection                              |
+|-------------------|---------------------------------------------------------------|----------------------------------------|
+| `Panda::Panda`    | Vulkan engine, mesh data, shape generators and CPU math      | `PANDA_BUILD_ENGINE` (ON by default)   |
+| `Panda::Scene`    | Scene objects and render-view preparation                     | `PANDA_BUILD_SCENE` (OFF by default)   |
+| `Panda::Tools`    | GLFW windows and camera helpers                               | `PANDA_BUILD_TOOLS` (OFF by default)   |
+| `Panda::Cuda`     | CUDA device matching, buffer import and GPU handoff           | `PANDA_BUILD_CUDA` (OFF by default)    |
+| `Panda::All`      | Interface target for every production library enabled above   | Always available; no separate switch   |
 
-## Requirements
+`Panda::All` is convenient while prototyping. As the application narrows its needs,
+link specific targets; add-ons bring their requirements transitively. The Core
+target owns the shared mesh contract, primitive generators and CPU math.
 
-- CMake 3.28 or newer and Ninja.
-- A C++23 compiler and standard library supporting `std::format` and
-  `std::expected`.
-- clang-tidy, clang-format and cppcheck for the quality presets.
+The engine uses GLM and requires Vulkan 1.3 headers and loader
+plus `glslc` and `spirv-val` for built-in shaders. GLFW is fetched only with Tools
+enabled. CUDA is discovered only when its module is enabled. Common error and
+diagnostic support is included through the targets that use it. CPM fetches GLM,
+GLFW and GoogleTest as needed; first-time setup requires network access.
 
-On Windows, install Visual Studio or Build Tools with the **Desktop development
-with C++** workload, a Windows SDK and a Vulkan SDK. MSVC builds work from
-ordinary PowerShell; Panda loads the compiler environment automatically. GCC
-through MSYS2 UCRT64 is also supported.
+## Quick start
 
-On Ubuntu, install the Vulkan, window-system and shader build dependencies:
+Full engine builds need CMake 3.28+, Ninja and a C++23 toolchain. On Windows, install
+Visual Studio or Build Tools with the **Desktop development with C++** workload and
+the Vulkan SDK. On Ubuntu, install the Vulkan, window-system and shader tools:
 
 ```sh
 sudo apt-get install libvulkan-dev xorg-dev libwayland-dev libxkbcommon-dev glslc spirv-tools
 ```
 
-CMake downloads GLFW, GLM and, when tests are enabled, GoogleTest through CPM.
-An internet connection is needed for the first configuration. The CUDA module
-needs the CUDA Toolkit; its example also needs NVCC and a compatible host
-compiler. Ordinary builds with CUDA off do not discover either.
+Build the window example on Windows:
 
-## Build and run
-
-After cloning or downloading the repository, open a terminal in its root
-directory. Follow the [Vulkan window example](examples/simple_scene/README.md)
-to configure, build and run on Windows or Linux. The core library can be used
-without a window or display.
-
-For a CUDA build and a small application-owned kernel, follow the
-[CUDA connection example](examples/cuda_connection/README.md). It can start and
-report an unavailable driver or device without disabling Panda core use.
-
-The `gcc-development` and `msvc-development` presets build the libraries and
-window example with compiler warnings but without tests, static analyzers or
-formatting checks. Use a `*-tests` preset when working on tests and a
-`*-quality` preset for public-header verification and the full analysis build.
-CMake also labels declared targets in the IDE model under `Panda/Libraries`,
-`Panda/Tests`, `Panda/Test support`, `Panda/Examples`, `Panda/Documentation`.
-
-Downloaded dependency sources are cached in `.cache/cpm`, outside build
-directories. Deleting a build directory preserves the downloads. Set
-`CPM_SOURCE_CACHE` in your environment or pass `-DCPM_SOURCE_CACHE=<path>` to
-choose another location.
-
-Stack traces are enabled by default for fatal diagnostics. Explicit traced
-logging is available without adding traces to ordinary entries:
-
-```cpp
-panda::log::writeWithStacktrace(panda::log::Level::Error, "Operation failed: {}", reason);
+```powershell
+cmake --preset msvc-development
+cmake --build --preset msvc-development --target simple_scene --parallel
+./build-msvc-development/examples/simple_scene/simple_scene.exe
 ```
 
-The build checks `std::stacktrace` support and links `stdc++exp` when required
-by libstdc++. If your standard library does not support it, configure with
-`-DPANDA_ENABLE_STACKTRACE=OFF`. Traces show the current call stack; useful
-names and source lines require debug symbols.
-
-## Tests
-
-The CPU test presets build core and Tools without requiring CUDA or analysis
-tools. They exclude the `system` label, so they do not run native-window tests.
-The `*-fast` presets run the full registered suite. Enable `PANDA_BUILD_CUDA` in
-a test configuration to add CUDA availability and interoperability integration
-cases; the CUDA connection example remains a separate program. Use `msvc-tests`
-on Windows, `gcc-tests` on Linux or Windows/MSYS2, or `clang-tests` on Linux.
-For example:
+Build it on Linux:
 
 ```sh
-cmake --preset gcc-tests
-cmake --build --preset gcc-tests
-ctest --preset gcc-tests
+cmake --preset gcc-development
+cmake --build --preset gcc-development --target simple_scene --parallel
+./build-gcc-development-Linux/examples/simple_scene/simple_scene
 ```
 
-For runtime diagnostics, use `gcc-sanitizers` on Linux (ASan + UBSan) or
-`msvc-sanitizers` on Windows (ASan) with the same command sequence. The
-`gcc-coverage` preset instruments Linux CPU tests, including benchmark unit
-tests. The Tests workflow attaches an HTML and XML report named
-`panda-coverage`; the badge above reflects that run. No minimum percentage is
-required. Generated coverage files stay in the build directory.
+The development presets enable Tools and Scene. `simple_scene` renders
+application-provided mesh and camera data through a GLFW window. Other examples cover
+headless allocation, offscreen rendering, error handling, scene rendering and CUDA
+connection.
 
-## Use Panda in your application
+## Use Panda in an application
 
-Panda currently supports consumption directly from source through
-`add_subdirectory` or CPM. Link the core target, and add the Tools target when
-your application needs a window:
+Add Panda from source and link all libraries selected by the configuration:
 
 ```cmake
 add_subdirectory(path/to/Panda)
-target_link_libraries(my_application PRIVATE Panda::Panda)
+target_link_libraries(my_application PRIVATE Panda::All)
 ```
 
-To include the optional scene module, enable `PANDA_BUILD_SCENE` and link
-`Panda::Scene`. For a window, enable `PANDA_BUILD_TOOLS` and link
-`Panda::Tools`. For CUDA buffer sharing, enable `PANDA_BUILD_CUDA` and link
-`Panda::Cuda`. Dependencies are fetched automatically. Public targets propagate
-their C++23 and include-directory requirements.
+Or link only the targets the application uses:
 
-See [the documentation](docs/README.md) for API contracts and build
-configuration, the [window example](examples/simple_scene/README.md), and the
-[headless offscreen example](examples/offscreen_rendering/README.md). The Quality workflow also provides generated API HTML
-as the `panda-api-docs` downloadable artifact. Locally, run
-`cmake --preset gcc-docs` and `cmake --build --preset gcc-docs`, then open
-`build-gcc-docs-Linux/docs/api/generated/html/index.html`.
+```cmake
+target_link_libraries(my_application PRIVATE Panda::Scene Panda::Tools)
+```
+
+## Tests and quality
+
+`PANDA_BUILD_TESTS=ON` builds tests for selected targets; it does not enable the
+engine or Tools. Full test presets explicitly select the modules they cover. Use
+`msvc-tests` on Windows or `gcc-tests` on Linux for noninteractive tests, and
+`msvc-fast` or `gcc-fast` for the full suite including system tests:
+
+```sh
+cmake --preset gcc-tests
+cmake --build --preset gcc-tests --parallel
+ctest --preset gcc-tests
+```
+
+The `*-quality` presets add static analysis, formatting and public-header checks.
+The [development plan](docs/development/PLAN.md) and [documentation index](docs/README.md)
+describe current work and API contracts. See the [examples](examples/) for runnable
+programs and the [CUDA connection guide](examples/cuda_connection/README.md) for
+application-owned kernels.

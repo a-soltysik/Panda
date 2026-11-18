@@ -4,7 +4,6 @@
 #include <panda/Engine.hpp>
 #include <panda/base/Error.hpp>
 #include <panda/diagnostics/Assert.hpp>
-#include <panda/geometry/Cube.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
@@ -13,6 +12,8 @@
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
 #include <utility>
+
+#include "TestGeometry.hpp"
 
 namespace
 {
@@ -58,7 +59,7 @@ TEST_F(SceneRenderingSystem, BuildsHeadlessSnapshotAndRetainsDeletedObjectMesh)
     auto scene = panda::scene::Scene {};
 
     selectCamera(scene);
-    auto mesh = activeEngine().getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = activeEngine().getResourceManager().createMeshFromGeometry(panda::test::makeTestTriangleGeometry());
     ASSERT_TRUE(mesh);
     const auto object = scene.createEntity({.name = {}, .transform = {.position = {2.0F, 0.0F, 0.0F}}});
     ASSERT_TRUE(object);
@@ -145,7 +146,7 @@ TEST(ScenePublicApi, ExercisesObjectIdentityAndOrthographicCameraApi)
 
     const auto child = scene.createEntity({.name = "Mesh and light"});
     ASSERT_TRUE(child);
-    auto mesh = created->getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = created->getResourceManager().createMeshFromGeometry(panda::test::makeTestTriangleGeometry());
     ASSERT_TRUE(mesh);
     ASSERT_TRUE(scene.setParent(*child, *camera));
     ASSERT_TRUE(scene.setMesh(*child, panda::scene::MeshInstance {.mesh = *mesh}));
@@ -162,7 +163,7 @@ TEST_F(SceneRenderingSystem, RejectsMeshesFromAnotherEngineBeforeSubmission)
 {
     auto other = panda::Engine::create();
     ASSERT_TRUE(other);
-    auto mesh = other->getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = other->getResourceManager().createMeshFromGeometry(panda::test::makeTestTriangleGeometry());
     ASSERT_TRUE(mesh);
     auto scene = panda::scene::Scene {};
 
@@ -196,7 +197,7 @@ TEST_F(SceneRenderingSystem, RejectsTexturesFromAnotherEngineBeforeSubmission)
     selectCamera(scene);
     const auto object = scene.createEntity();
     ASSERT_TRUE(object);
-    auto mesh = activeEngine().getResourceManager().createMeshFromGeometry(panda::createCubeGeometry());
+    auto mesh = activeEngine().getResourceManager().createMeshFromGeometry(panda::test::makeTestTriangleGeometry());
     ASSERT_TRUE(mesh);
     ASSERT_TRUE(scene.setMesh(*object, panda::scene::MeshInstance {.mesh = *mesh}));
     auto view = scene.createRenderView(1.0F);

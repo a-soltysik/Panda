@@ -7,9 +7,10 @@ system.
 ## Execution model
 
 Provide a standalone `panda-bench`, enabled with `PANDA_BUILD_BENCHMARKS=ON` and
-disabled by default. The smoke profile is implemented; reference profiles remain
-planned. Profiles select settings at runtime; changing window extent, duration,
-workload size, or output directory must not require recompilation.
+disabled by default. It requires `PANDA_BUILD_TOOLS=ON` for its window. The smoke
+profile is implemented; reference profiles remain planned. Profiles select settings
+at runtime; changing window extent, duration, workload size, or output directory
+must not require recompilation.
 
 The current smoke profile accepts:
 

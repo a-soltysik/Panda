@@ -10,7 +10,6 @@
 #include <panda/base/Error.hpp>
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/diagnostics/Logger.hpp>
-#include <panda/geometry/Cube.hpp>
 #include <panda/geometry/Geometry.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/submission/CompletionPoint.hpp>
@@ -21,6 +20,7 @@
 #include <vector>
 
 #include "LogCapture.hpp"
+#include "TestGeometry.hpp"
 
 namespace
 {
@@ -136,9 +136,9 @@ TEST_F(MeshSystem, UploadsNonIndexedMeshWithoutIndexBytes)
     EXPECT_FALSE(mesh.isValid());
 }
 
-TEST_F(MeshSystem, UploadsUnitCubeGeometry)
+TEST_F(MeshSystem, UploadsIndexedGeometry)
 {
-    const auto geometry = panda::createCubeGeometry();
+    const auto geometry = panda::test::makeTestTriangleGeometry();
     auto mesh = activeEngine().getResourceManager().createMeshFromGeometry(geometry);
     ASSERT_TRUE(mesh) << mesh.error().message;
     EXPECT_EQ(mesh->getIndexType(), panda::MeshIndexType::UInt16);
@@ -173,7 +173,7 @@ TEST_F(MeshSystem, UploadsApplicationOwnedNonIndexedGeometry)
 
 TEST_F(MeshSystem, RejectsGeometryWithMismatchedIndexType)
 {
-    const auto geometry = panda::createCubeGeometry();
+    const auto geometry = panda::test::makeTestTriangleGeometry();
     const auto& cubeIndices = std::get<std::vector<std::uint16_t>>(geometry.indices);
     const auto description = panda::MeshDesc {
         .vertexCount = static_cast<std::uint32_t>(geometry.vertices.size()),

@@ -4,13 +4,12 @@ panda_add_component(panda_core
     SOURCES
         Panda.cpp
         Camera.cpp
-        Error.cpp
         Math.cpp
         Projection.cpp
         Transform.cpp
-        Cube.cpp
-        Plane.cpp
-        Sphere.cpp
+        geometry/Cube.cpp
+        geometry/Plane.cpp
+        geometry/Sphere.cpp
         Buffer.cpp
         Mesh.cpp
         Texture.cpp
@@ -67,7 +66,13 @@ panda_add_component(panda_core
         panda/Engine.hpp
         panda/DeviceInfo.hpp
         panda/EngineOptions.hpp
-        panda/base/Error.hpp
+        panda/geometry/Cube.hpp
+        panda/geometry/Geometry.hpp
+        panda/geometry/Plane.hpp
+        panda/geometry/Sphere.hpp
+        panda/geometry/VertexLayout.hpp
+        panda/math/Projection.hpp
+        panda/math/Transform.hpp
         panda/rendering/FrameResult.hpp
         panda/interop/ExternalBuffer.hpp
         panda/interop/ExternalBufferManager.hpp
@@ -82,15 +87,8 @@ panda_add_component(panda_core
         panda/rendering/OffscreenRenderer.hpp
         panda/resources/ResourceManager.hpp
         panda/submission/SubmissionManager.hpp
-        panda/math/Projection.hpp
-        panda/math/Transform.hpp
-        panda/geometry/Cube.hpp
-        panda/geometry/Geometry.hpp
-        panda/geometry/Plane.hpp
-        panda/geometry/Sphere.hpp
         panda/resources/Texture.hpp
         panda/resources/OffscreenTarget.hpp
-        panda/geometry/VertexLayout.hpp
         panda/submission/UploadBatch.hpp
         panda/vulkan/WindowSurface.hpp
         panda/vulkan/Error.hpp
@@ -141,9 +139,22 @@ panda_add_component(panda_core
         vulkan/renderer/ShaderData.hpp
         vulkan/renderer/RenderViewValidation.hpp
         vulkan/renderer/ShadowView.hpp
-    LIBRARIES PUBLIC panda_common Vulkan::Headers glm::glm PRIVATE Vulkan::Vulkan)
-target_include_directories(panda_core PRIVATE "${PROJECT_SOURCE_DIR}/src/core" "${PROJECT_SOURCE_DIR}/src/common")
+    LIBRARIES PUBLIC panda_base Vulkan::Headers glm::glm
+             PRIVATE Vulkan::Vulkan)
+target_include_directories(panda_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_library(panda_core_internal INTERFACE)
+set_target_properties(panda_core_internal PROPERTIES FOLDER "Panda/Internal")
+target_include_directories(panda_core_internal INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(panda_core PRIVATE panda_base_internal)
 panda_add_builtin_shaders(panda_core)
+
+if(PANDA_BUILD_CUDA)
+    # Supply DeviceUuid headers without Core's C++23 requirement to the CUDA 20 adapter.
+    add_library(panda_core_cuda_adapter_api INTERFACE)
+    set_target_properties(panda_core_cuda_adapter_api PROPERTIES FOLDER "Panda/Internal")
+    target_include_directories(panda_core_cuda_adapter_api INTERFACE "${PROJECT_SOURCE_DIR}/include/core")
+    target_link_libraries(panda_core_cuda_adapter_api INTERFACE Vulkan::Headers)
+endif()
 
 set_target_properties(panda_core PROPERTIES OUTPUT_NAME panda)
 target_compile_definitions(panda_core PRIVATE PANDA_VERSION_TEXT="${PROJECT_VERSION}")
