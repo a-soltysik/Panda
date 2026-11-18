@@ -2,7 +2,6 @@
 #include <cstddef>
 #include <cstdlib>
 #include <exception>
-#include <fstream>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
@@ -19,6 +18,7 @@
 #include <panda/resources/OffscreenTarget.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
+#include <panda/tools/image/Writer.hpp>
 #include <string>
 #include <tuple>
 
@@ -29,12 +29,12 @@ constexpr auto frameCount = std::size_t {4};
 
 void writeFrame(std::size_t frameIndex, const panda::ImageReadback& pixels)
 {
-    const auto fileName = std::string {"offscreen_frame_"} + std::to_string(frameIndex) + ".rgba";
-    auto file = std::ofstream {fileName, std::ios::binary};
-    panda::expect(file.good(), "Open the raw RGBA output file");
-    file.write(reinterpret_cast<const char*>(pixels.rgba.data()), static_cast<std::streamsize>(pixels.rgba.size()));
-    panda::expect(file.good(), "Write the raw RGBA output file");
-    panda::log::info("Wrote {}x{} RGBA pixels to '{}'", pixels.extent.x, pixels.extent.y, fileName);
+    const auto fileName = std::string {"offscreen_frame_"} + std::to_string(frameIndex);
+    panda::expect(panda::tools::image::writePng(pixels, fileName + ".png"), "Write the offscreen PNG");
+    panda::expect(panda::tools::image::writeRawRgba(pixels, fileName + ".rgba"), "Write the raw RGBA frame");
+    panda::expect(panda::tools::image::writeBmp(pixels, fileName + ".bmp"), "Write the offscreen BMP");
+    panda::expect(panda::tools::image::writeJpeg(pixels, fileName + ".jpg"), "Write the offscreen JPEG");
+    panda::log::info("Wrote {}x{} image files for frame {}", pixels.extent.x, pixels.extent.y, frameIndex);
 }
 
 void renderSequence(const panda::Engine& context, const panda::Mesh& cube)

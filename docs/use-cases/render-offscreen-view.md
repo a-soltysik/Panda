@@ -72,8 +72,8 @@ sequenceDiagram
 **Output contract.** Pixels are top-to-bottom rows in RGBA order. RGB channels are
 sRGB encoded, alpha is linear UNORM, and rows have no extra padding.
 `ImageReadback::extent` uses the same x-width/y-height pixel order. Image-file
-encoding is a separate planned `Panda::Tools` capability; see
-[Image file export](../development/tasks/image-file-export.md).
+encoding is a separate `Panda::Tools` operation; see
+[UC Write an image file](write-image-file.md).
 
 **GPU work and readback.** Rendering writes a GPU image and does not copy it to host
 memory. `readPixels()` performs that copy only when requested, then waits so the
