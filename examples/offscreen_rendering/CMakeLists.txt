@@ -3,5 +3,5 @@ set_target_properties(offscreen_rendering PROPERTIES
     FOLDER "Panda/Examples"
     UNITY_BUILD "${PANDA_ENABLE_UNITY}"
 )
-target_link_libraries(offscreen_rendering PRIVATE Panda::Panda)
+target_link_libraries(offscreen_rendering PRIVATE Panda::Tools)
 panda_configure_target(offscreen_rendering)

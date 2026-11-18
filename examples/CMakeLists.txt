@@ -1,7 +1,7 @@
 if(TARGET Panda::Tools)
     add_subdirectory(simple_scene)
 endif()
-if(TARGET Panda::Panda)
+if(TARGET Panda::Panda AND TARGET Panda::Tools)
     add_subdirectory(offscreen_rendering)
 endif()
 if(TARGET Panda::Scene AND TARGET Panda::Tools)

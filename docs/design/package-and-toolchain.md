@@ -266,7 +266,7 @@ destruction. This wrapper does not create Vulkan surfaces or implement rendering
 | Windowing       | GLFW                    | Private window/input implementation                                                                               |
 | Engine math     | GLM                     | Public value types with a documented layout/configuration contract                                                |
 | Scene parser    | nlohmann/json           | Private; schema and integration follow the [scene specification](contracts/scene.md#persistence-import-and-tools) |
-| Image codec     | `stb_image`             | Private adapter with a restricted, tested feature set                                                             |
+| Image codec     | `stb_image` / `stb_image_write` | Private adapter with a restricted, tested feature set                                           |
 | Model import    | Assimp                  | Only `Panda::Import`; selected static importers                                                                   |
 | GUI/gizmos      | Dear ImGui and ImGuizmo | Only `Panda::Tools`; direct application ImGui panels remain possible                                              |
 | Physics         | Panda code              | No external physics engine                                                                                        |
@@ -331,7 +331,11 @@ types and compatible configuration; implementation probes must check those layou
 Do not silently accept ABI-changing consumer macros.
 
 The source build pins GLFW `3.4` (when Tools is enabled), GLM `1.0.3`, and
-GoogleTest/gMock `1.18.0` (when tests are enabled) through CPM. GLFW is static
+GoogleTest/gMock `1.18.0` (when tests are enabled) through CPM. When Tools is
+enabled, it fetches stb commit `9600522de53973336fa033a289858a4354cbb04c`
+(`stb_image` 2.32 and `stb_image_write` 1.18) for the test decoder and the
+PNG/BMP/JPEG writer. The upstream headers are public domain or MIT licensed; no
+other stb features are built into Panda. GLFW is static
 independently of the parent's `BUILD_SHARED_LIBS`; GLM keeps its upstream default
 library build enabled.
 Dependency tests, examples, documentation and installation are disabled where
@@ -433,8 +437,9 @@ do not assume complete C++23 support or require modules/C++26 features.
 
 When support libraries are first needed, check current upstream releases and
 centralize their declarations in `cmake/Dependencies.cmake`. Apply the same version
-review to CPM itself. Pin an explicit release tag and record the version; retain
-the hash supplied by the upstream CPM bootstrap. Keep Vulkan
+review to CPM itself. Pin an explicit release tag, or a full immutable commit when
+upstream provides no release tags, and record the upstream version; retain the hash
+supplied by the upstream CPM bootstrap. Keep Vulkan
 headers/Hpp compatible. Reuse a compatible parent-provided target; reject incompatible
 versions/configurations clearly instead of creating another conflicting copy.
 

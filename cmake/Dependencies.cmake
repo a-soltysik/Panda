@@ -26,6 +26,13 @@ if (PANDA_BUILD_TOOLS)
             "GLFW_INSTALL OFF"
     )
     panda_enable_sanitizers(glfw)
+
+    # stb_image_write 1.18 is private to image export in Panda::Tools.
+    panda_add_dependency(stb 1.18
+            GIT_TAG 9600522de53973336fa033a289858a4354cbb04c
+            GIT_SHALLOW FALSE
+            GITHUB_REPOSITORY nothings/stb
+            DOWNLOAD_ONLY YES)
 endif ()
 
 if(PANDA_BUILD_ENGINE)
