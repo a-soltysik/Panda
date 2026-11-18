@@ -10,6 +10,7 @@
 
 namespace panda::tools::image
 {
+/// @brief Default JPEG compression quality used by writeJpeg.
 inline constexpr auto defaultJpegQuality = std::uint8_t {90};
 
 /// @brief Writes the readback's top-to-bottom RGBA bytes without a header or metadata.

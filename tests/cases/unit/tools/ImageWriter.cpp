@@ -200,6 +200,22 @@ TEST(ImageWriter, WritesJpegWithValidatedQualityAndLinearAlphaComposite)
     EXPECT_EQ(center.alpha, 255);
 }
 
+TEST(ImageWriter, PreservesOpaqueLowSrgbValuesInBitmap)
+{
+    const auto output = TemporaryImage {".bmp"};
+    const auto image = ImageReadback {
+        .extent = {2, 1},
+        .rgba = {1, 4, 0, 255, 128, 64, 255, 128}
+    };
+    ASSERT_TRUE(writeBmp(image, output.getPath()));
+
+    const auto decoded = decode(output.getPath());
+    ASSERT_NE(decoded.pixels, nullptr);
+    const auto firstPixel = rgbaPixels(decoded).first(rgbaChannels);
+    static constexpr auto expected = std::array<stbi_uc, 4> {1, 4, 0, 255};
+    EXPECT_TRUE(std::ranges::equal(firstPixel, expected));
+}
+
 TEST(ImageWriter, RejectsInvalidPixelsAndJpegQualityBeforeOpeningOutput)
 {
     const auto output = TemporaryImage {".jpg"};
@@ -212,8 +228,19 @@ TEST(ImageWriter, RejectsInvalidPixelsAndJpegQualityBeforeOpeningOutput)
         .extent = {std::numeric_limits<std::uint32_t>::max(), 1},
         .rgba = {}
     };
+    const auto oversizedHeight = ImageReadback {
+        .extent = {1, std::numeric_limits<std::uint32_t>::max()},
+        .rgba = {}
+    };
+    const auto tooManyPixels = ImageReadback {
+        .extent = {32768, 32768},
+        .rgba = {}
+    };
     const auto valid = translucentImage();
 
+    const auto invalidRaw = writeRawRgba(empty, output.getPath());
+    ASSERT_FALSE(invalidRaw);
+    EXPECT_EQ(invalidRaw.error().code, panda::ErrorCode::InvalidArgument);
     const auto zeroExtent = writePng(empty, output.getPath());
     ASSERT_FALSE(zeroExtent);
     EXPECT_EQ(zeroExtent.error().code, panda::ErrorCode::InvalidArgument);
@@ -223,6 +250,15 @@ TEST(ImageWriter, RejectsInvalidPixelsAndJpegQualityBeforeOpeningOutput)
     const auto unsupportedExtent = writePng(oversized, output.getPath());
     ASSERT_FALSE(unsupportedExtent);
     EXPECT_EQ(unsupportedExtent.error().code, panda::ErrorCode::InvalidArgument);
+    const auto unsupportedHeight = writePng(oversizedHeight, output.getPath());
+    ASSERT_FALSE(unsupportedHeight);
+    EXPECT_EQ(unsupportedHeight.error().code, panda::ErrorCode::InvalidArgument);
+    const auto excessivePixelCount = writePng(tooManyPixels, output.getPath());
+    ASSERT_FALSE(excessivePixelCount);
+    EXPECT_EQ(excessivePixelCount.error().code, panda::ErrorCode::InvalidArgument);
+    const auto invalidJpeg = writeJpeg(empty, output.getPath());
+    ASSERT_FALSE(invalidJpeg);
+    EXPECT_EQ(invalidJpeg.error().code, panda::ErrorCode::InvalidArgument);
     const auto lowQuality = writeJpeg(valid, output.getPath(), 0);
     ASSERT_FALSE(lowQuality);
     EXPECT_EQ(lowQuality.error().code, panda::ErrorCode::InvalidArgument);
@@ -237,7 +273,40 @@ TEST(ImageWriter, ReturnsFileErrorsWithoutRequiringGpuHardware)
     const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto output =
         std::filesystem::temp_directory_path() / ("panda-image-missing-" + std::to_string(ticks)) / "image.png";
-    const auto result = writePng(translucentImage(), output);
-    ASSERT_FALSE(result);
-    EXPECT_EQ(result.error().code, panda::ErrorCode::BackendFailure);
+    const auto image = translucentImage();
+    const auto rawResult = writeRawRgba(image, output);
+    ASSERT_FALSE(rawResult);
+    EXPECT_EQ(rawResult.error().code, panda::ErrorCode::BackendFailure);
+    const auto pngResult = writePng(image, output);
+    ASSERT_FALSE(pngResult);
+    EXPECT_EQ(pngResult.error().code, panda::ErrorCode::BackendFailure);
+    const auto bmpResult = writeBmp(image, output);
+    ASSERT_FALSE(bmpResult);
+    EXPECT_EQ(bmpResult.error().code, panda::ErrorCode::BackendFailure);
+    const auto jpegResult = writeJpeg(image, output);
+    ASSERT_FALSE(jpegResult);
+    EXPECT_EQ(jpegResult.error().code, panda::ErrorCode::BackendFailure);
+}
+
+TEST(ImageWriter, ReturnsWriteErrorsWhenTheOutputDeviceIsFull)
+{
+    const auto output = std::filesystem::path {"/dev/full"};
+    if (!std::filesystem::exists(output))
+    {
+        GTEST_SKIP() << "The full output device is unavailable on this platform";
+    }
+
+    const auto image = translucentImage();
+    const auto rawResult = writeRawRgba(image, output);
+    ASSERT_FALSE(rawResult);
+    EXPECT_EQ(rawResult.error().code, panda::ErrorCode::BackendFailure);
+    const auto pngResult = writePng(image, output);
+    ASSERT_FALSE(pngResult);
+    EXPECT_EQ(pngResult.error().code, panda::ErrorCode::BackendFailure);
+    const auto bmpResult = writeBmp(image, output);
+    ASSERT_FALSE(bmpResult);
+    EXPECT_EQ(bmpResult.error().code, panda::ErrorCode::BackendFailure);
+    const auto jpegResult = writeJpeg(image, output);
+    ASSERT_FALSE(jpegResult);
+    EXPECT_EQ(jpegResult.error().code, panda::ErrorCode::BackendFailure);
 }
