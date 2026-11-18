@@ -20,7 +20,7 @@ namespace panda
 {
 namespace
 {
-auto startCpuFrameTimer(const detail::PerformanceManagerImpl* performance)
+auto startWindowCpuFrameTimer(const detail::PerformanceManagerImpl* performance)
     -> std::optional<std::chrono::steady_clock::time_point>
 {
     if (performance != nullptr)
@@ -30,9 +30,9 @@ auto startCpuFrameTimer(const detail::PerformanceManagerImpl* performance)
     return std::nullopt;
 }
 
-void recordCpuFrameDuration(detail::PerformanceManagerImpl* performance,
-                            const std::optional<std::chrono::steady_clock::time_point>& frameStart,
-                            const std::optional<std::size_t>& submittedPerformanceSlot)
+void recordWindowCpuFrameDuration(detail::PerformanceManagerImpl* performance,
+                                  const std::optional<std::chrono::steady_clock::time_point>& frameStart,
+                                  const std::optional<std::size_t>& submittedPerformanceSlot)
 {
     if (performance != nullptr && frameStart && submittedPerformanceSlot)
     {
@@ -67,14 +67,14 @@ WindowRenderer::WindowRenderer(Dependencies dependencies) noexcept
 
 auto WindowRenderer::render(const RenderView& view) const -> Result<FrameResult>
 {
-    const auto frameStart = startCpuFrameTimer(_performance);
+    const auto frameStart = startWindowCpuFrameTimer(_performance);
     auto submittedPerformanceSlot = std::optional<std::size_t> {};
     if (const auto valid = core::vulkan::renderer::validateRenderView(view, _maxLights, _pool); !valid)
     {
         return std::unexpected {valid.error()};
     }
     auto result = renderWithUploads(view, submittedPerformanceSlot);
-    recordCpuFrameDuration(_performance, frameStart, submittedPerformanceSlot);
+    recordWindowCpuFrameDuration(_performance, frameStart, submittedPerformanceSlot);
     return result;
 }
 
@@ -94,7 +94,7 @@ auto WindowRenderer::renderWithUploads(const RenderView& view,
 auto WindowRenderer::renderWithCapture(const RenderView& view, const OffscreenTarget& target) const
     -> Result<FrameResult>
 {
-    const auto frameStart = startCpuFrameTimer(_performance);
+    const auto frameStart = startWindowCpuFrameTimer(_performance);
     auto submittedPerformanceSlot = std::optional<std::size_t> {};
     if (const auto valid = validateCaptureTarget(target, _pool); !valid)
     {
@@ -109,7 +109,7 @@ auto WindowRenderer::renderWithCapture(const RenderView& view, const OffscreenTa
                                                               .target = target,
                                                               .rendering = _rendering,
                                                               .submittedPerformanceSlot = submittedPerformanceSlot});
-    recordCpuFrameDuration(_performance, frameStart, submittedPerformanceSlot);
+    recordWindowCpuFrameDuration(_performance, frameStart, submittedPerformanceSlot);
     return result;
 }
 
