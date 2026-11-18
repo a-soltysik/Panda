@@ -50,7 +50,7 @@ Test-only CMake aliases describe their role: `PandaTest::Support` provides gMock
 and Base without pulling in the engine, `PandaTest::LogCapture` observes the real
 logger, and `PandaTest::GlfwMock` replaces GLFW when Tools is enabled. Log capture
 is an observer/helper, not a replacement logger. `PandaTest::MockHeaders` exposes mock declarations, including
-`mocks/panda/common/SinkMock.hpp` and `mocks/panda/core/WindowSurfaceMock.hpp`,
+`mocks/panda/base/SinkMock.hpp` and `mocks/panda/core/WindowSurfaceMock.hpp`,
 without selecting stub implementations. `PandaTest::VulkanMock` is the shared
 Vulkan boundary for Core unit tests; its stub forwards the entry points used by
 current scenarios to one strict mock and fails on any other Vulkan call used by

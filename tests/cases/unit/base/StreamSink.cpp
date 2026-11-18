@@ -18,8 +18,8 @@ TEST(StreamSink, FormatsDiagnosticAndPreservesMetadata)
     ASSERT_TRUE(sink.write(entry).has_value());
     ASSERT_TRUE(sink.flush().has_value());
     EXPECT_TRUE(stream.str().contains("Z [WRN]"));
-    EXPECT_TRUE(stream.str().contains("tests/cases/unit/common/StreamSink.cpp:") ||
-                stream.str().contains("tests\\cases\\unit\\common\\StreamSink.cpp:"));
+    EXPECT_TRUE(stream.str().contains("tests/cases/unit/base/StreamSink.cpp:") ||
+                stream.str().contains("tests\\cases\\unit\\base\\StreamSink.cpp:"));
     EXPECT_FALSE(stream.str().contains(entry.location.file_name()));
     EXPECT_TRUE(stream.str().ends_with("stream diagnostic\n"));
 }

@@ -13,4 +13,4 @@ target_link_libraries(panda_test_log_capture PUBLIC PandaTest::Support PRIVATE P
 panda_configure_test(panda_test_log_capture HEADERS
     LogCapture.hpp
     ScopedMock.hpp
-    mocks/panda/common/SinkMock.hpp)
+    mocks/panda/base/SinkMock.hpp)

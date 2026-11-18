@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "LogCapture.hpp"
-#include "panda/common/SinkMock.hpp"
+#include "panda/base/SinkMock.hpp"
 
 namespace
 {

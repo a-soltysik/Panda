@@ -14,7 +14,7 @@ the executable validates settings, collects samples and writes its report.
 ## Build
 
 Enable benchmarks when configuring Panda, then build the target from the
-zxrepository root. The benchmark needs `PANDA_BUILD_TOOLS=ON` for its window; the
+repository root. The benchmark needs `PANDA_BUILD_TOOLS=ON` for its window; the
 cube generator is included in Core.
 
 Windows (MSVC):

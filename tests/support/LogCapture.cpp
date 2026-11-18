@@ -6,7 +6,7 @@
 #include <panda/diagnostics/Logger.hpp>
 #include <tuple>
 
-#include "panda/common/SinkMock.hpp"
+#include "panda/base/SinkMock.hpp"
 
 namespace panda::test
 {
