@@ -11,17 +11,19 @@ A minimal static `Panda::Panda` source package with a reproducible development s
 that subsequent engine tasks can extend. Formatting, warnings, static analysis and
 the first C++ behavior test work together from the first source files.
 
-Paths: root CMake/presets and quality configuration, `cmake/`, `../../../include/core/panda`,
-`../../../include/common/panda`,
-`src/`, `tests/`, CI and affected documentation.
+Paths: root CMake/presets and quality configuration, `cmake/`,
+`../../../include/base/panda`, `../../../include/core/panda/geometry`,
+`../../../include/core/panda`, `src/`, `tests/`, CI and affected documentation.
 No renderer, CUDA implementation, optional module scaffolding or legacy source edits.
 
 ## Acceptance
 
-- The core builds as C++23 with no CUDA discovery or reference-tree dependencies.
-  Language/include requirements propagate; private diagnostics do not leak to consumers.
-- Shared diagnostics compile in an internal object target and are embedded once in
-  core. Add-ons inherit them through core; no separate common archive is delivered.
+- Common Base support is an internal C++23 static library linked transitively by
+  Engine; applications do not select it separately. Core owns mesh data, math and
+  the primitive generators under `src/core/geometry`; no separate Geometry or
+  MeshData target exists.
+- Public usage requirements travel through the library graph. Private helpers remain
+  implementation-only, and common symbols have a single archive owner.
 - Options and development/quality presets express the supported workflows. CI tools
   are version-pinned; compatible local versions work with the same configuration.
   Ordinary quality builds are non-unity.
@@ -78,31 +80,16 @@ The compiler, linker and analyzers share the recorded MSVC environment through t
 ordinary `MsvcRun.cmake` launcher. A temporary
 duplicate mock selection in the real Window unit target failed configuration with
 the expected diagnostic; the normal configuration was restored.
-Windows also passed the full noninteractive suite with `PANDA_BUILD_TESTS=ON`
-and cached `PANDA_BUILD_TOOLS=OFF`, confirming tests enable Tools. With both OFF,
-the core-only build passed and its target graph contains no Tools or GLFW.
-Tools also built with tests OFF and `PANDA_BUILD_TOOLS=ON`. Requesting examples
-with both OFF was rejected before dependency discovery.
 The build uses upstream GLFW 3.4, GLM 1.0.3 and GoogleTest/gMock 1.18.0 sources
 through CPM; GLFW and GLM use cached source overrides, while GoogleTest was fetched
 by CPM. Dependency notices remain in those source trees.
 
-`panda_common` compiles Logger.cpp, Assert.cpp and FunctionName.cpp with only standard-library
-headers. Core embeds their object files and publicly propagates the common
-include directory. There is no common
-archive or public Common target. The Tools module publicly links core and inherits the
-same definitions and headers. Current Tools/example build evidence is recorded in
-the [window task](window-wrapper.md).
-
-An intentional formatting violation in the common Logger.hpp failed the actual
-`panda_common` build. The header was restored and the quality build/test suite
-then passed. The object target's formatting dependency also runs without a link
-step. CMake registers one formatting check per target source directory after
-declaring the targets, and each target depends on its directory's check. Compiler
-and analyzer findings in the moved headers were reported by the real target builds.
-The constructor that intentionally converts
-format literals has one documented cppcheck suppression; other diagnostics
-remain enabled.
+The current build uses internal support for common errors and diagnostics. Core
+owns the shared mesh headers, transforms, projections and shape generators. Full
+test presets select the optional modules they cover; Engine can be disabled to
+build only internal Base tests.
+Current module and dependency rules are in the
+[package contract](../../design/package-and-toolchain.md).
 
 The header inclusion filter is stored in `.clang-tidy`; dependency/reference
 exclusions and compiler compatibility arguments are supplied by CMake. A temporary
@@ -160,7 +147,6 @@ unverified for the current source. The subsequent toolchain
 and tests/API-documentation tasks retain their acceptance scope. Maintainer
 acceptance and later-phase authorization remain separate.
 
-Learning: a directly linked CMake object library contributes its objects to the
-core archive, while transitive consumers inherit its usage requirements without
-embedding the objects again. This keeps a single logger definition and avoids
-an additional library for the application's link command.
+Learning: shape generators return the public mesh payload consumed by Core's upload
+API. Both live in `Panda::Panda`, which propagates their headers and GLM requirement.
+Common Base support remains internal and independent of the graphics stack.

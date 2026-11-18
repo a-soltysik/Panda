@@ -19,7 +19,8 @@ set_target_properties(panda-bench PROPERTIES
     FOLDER "Panda/Benchmarks"
 )
 target_include_directories(panda-bench PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(panda-bench PRIVATE Panda::Panda Panda::Tools argparse::argparse nlohmann_json::nlohmann_json)
+target_link_libraries(panda-bench PRIVATE
+    Panda::Panda Panda::Tools argparse::argparse nlohmann_json::nlohmann_json)
 
 set(PANDA_BENCH_GENERATED_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(PANDA_BENCH_REVISION_HEADER "${PANDA_BENCH_GENERATED_DIRECTORY}/panda_bench/Revision.hpp")

@@ -5,12 +5,15 @@ selects cases discovered by GoogleTest. Dependencies are pinned through
 CPM only when `PANDA_BUILD_TESTS` is enabled. Tests do not introduce virtual functions
 or mock configuration into production interfaces.
 
-`PANDA_BUILD_TESTS=ON` builds every test level for the selected modules and enables
-Tools tests even when `PANDA_BUILD_TOOLS` is OFF in the cache. Scene is selected with
-`PANDA_BUILD_SCENE`; standard test, fast and quality presets enable it. CUDA remains
-selected explicitly with `PANDA_BUILD_CUDA` so an ordinary test build needs no
-toolkit. The CUDA connection is a runnable example, not a CTest
-case. With CUDA selected, unit cases run the real `CudaAdapter.cpp` against a
+`PANDA_BUILD_TESTS=ON` builds every test level available for the selected targets;
+it does not enable Engine or Tools. Internal Base is always tested. Math and shape
+generator tests are part of Core, so they follow `PANDA_BUILD_ENGINE`. Scene and
+Tools suites follow their selected targets. Standard full-test, fast and quality
+presets explicitly enable Tools and Scene. CUDA remains selected
+explicitly with `PANDA_BUILD_CUDA` so ordinary CPU test configurations need no
+toolkit. Core owns both mesh upload and shape generation. Internal Base tests can
+run with `PANDA_BUILD_ENGINE=OFF`. The CUDA connection is a
+runnable example, not a CTest case. With CUDA selected, unit cases run the real `CudaAdapter.cpp` against a
 controlled `cudaGetDeviceCount` call, and an integration case calls the real
 CUDA Runtime through the public facade;
 the latter can run on a machine without a usable device. Select execution
@@ -43,17 +46,20 @@ links the same `GTest::gmock_main` runner; tests do not define their own main. T
 helper prefixes each CTest name with its level (`unit.`, `integration.`, `system.`)
 and applies the matching label. GoogleTest suite and case names stay unchanged.
 
-Test-only CMake aliases describe their role: `PandaTest::Support` exposes the
-generic mock fixture, `PandaTest::LogCapture` observes the real logger, and
-`PandaTest::GlfwMock` replaces GLFW. Log capture is an observer/helper, not a
-replacement logger. `PandaTest::MockHeaders` exposes mock declarations, including
+Test-only CMake aliases describe their role: `PandaTest::Support` provides gMock
+and Base without pulling in the engine, `PandaTest::LogCapture` observes the real
+logger, and `PandaTest::GlfwMock` replaces GLFW when Tools is enabled. Log capture
+is an observer/helper, not a replacement logger. `PandaTest::MockHeaders` exposes mock declarations, including
 `mocks/panda/common/SinkMock.hpp` and `mocks/panda/core/WindowSurfaceMock.hpp`,
 without selecting stub implementations. `PandaTest::VulkanMock` is the shared
 Vulkan boundary for Core unit tests; its stub forwards the entry points used by
 current scenarios to one strict mock and fails on any other Vulkan call used by
-Core. `Engine`, `DeviceSelection`, `WindowPresentation` and the resource unit suites
-use it without a native window. `RangeAllocator` and `MeshLayout` are standalone
-CPU units. `MemoryBlock` replaces `RangeAllocator`, and `MemoryPool` replaces
+Core. It is configured only when the engine target exists. `Engine`, `DeviceSelection`,
+`WindowPresentation` and the resource unit suites use it without a native window.
+Base error/logging tests use the internal support target. Math and shape-generator
+tests are Core units and use the public Core target.
+`RangeAllocator` and
+`MeshLayout` are Core units. `MemoryBlock` replaces `RangeAllocator`, and `MemoryPool` replaces
 `MemoryBlock`; integration suites keep the real block and pool together to cover
 allocation lifetimes. Buffer, texture and mesh resource units replace their pool,
 allocation and resource collaborators so creation, validation and cleanup paths

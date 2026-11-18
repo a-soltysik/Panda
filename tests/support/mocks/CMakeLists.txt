@@ -4,13 +4,16 @@ add_library(PandaTest::MockHeaders ALIAS panda_test_mock_headers)
 target_link_libraries(panda_test_mock_headers INTERFACE PandaTest::Support)
 target_include_directories(panda_test_mock_headers INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 
-panda_add_mock(panda_test_glfw_mock
-    REPLACES glfw
-    SOURCES external/glfw/GlfwStub.cpp
-    HEADERS external/glfw/GlfwMock.hpp
-    LIBRARIES PandaTest::MockHeaders)
-add_library(PandaTest::GlfwMock ALIAS panda_test_glfw_mock)
+if(TARGET Panda::Tools)
+    panda_add_mock(panda_test_glfw_mock
+        REPLACES glfw
+        SOURCES external/glfw/GlfwStub.cpp
+        HEADERS external/glfw/GlfwMock.hpp
+        LIBRARIES PandaTest::MockHeaders Vulkan::Headers)
+    add_library(PandaTest::GlfwMock ALIAS panda_test_glfw_mock)
+endif()
 
+if(TARGET Panda::Panda)
 # The unit boundary is Vulkan as a library, not an individual entry point.
 # The stub provides the calls controlled by current Core unit scenarios.
 panda_add_mock(panda_test_vulkan_mock
@@ -19,6 +22,8 @@ panda_add_mock(panda_test_vulkan_mock
     API_LIBRARY Vulkan::Headers
     SOURCES external/vulkan/VulkanStub.cpp
     HEADERS external/vulkan/VulkanMock.hpp
+            "${PROJECT_SOURCE_DIR}/tests/support/VulkanTestSupport.hpp"
+            "${PROJECT_SOURCE_DIR}/tests/support/mocks/panda/core/WindowSurfaceMock.hpp"
     LIBRARIES PandaTest::MockHeaders)
 add_library(PandaTest::VulkanMock ALIAS panda_test_vulkan_mock)
 
@@ -150,8 +155,9 @@ panda_add_mock(panda_test_core_version_mock
     HEADERS panda/core/VersionMock.hpp
     LIBRARIES PandaTest::MockHeaders)
 add_library(PandaTest::CoreVersionMock ALIAS panda_test_core_version_mock)
+endif()
 
-if(PANDA_BUILD_CUDA)
+if(TARGET Panda::Cuda)
     panda_add_mock(panda_test_cuda_runtime_mock
         REPLACES cudaGetDeviceCount
         API_LIBRARY CUDA::cudart_static

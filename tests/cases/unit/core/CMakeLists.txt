@@ -3,26 +3,6 @@ panda_add_test(panda_unit_range_allocator unit
     SOURCES RangeAllocator.cpp
     LIBRARIES Panda::Panda)
 
-panda_add_test(panda_unit_projection unit
-    SOURCES Projection.cpp
-    LIBRARIES Panda::Panda)
-
-panda_add_test(panda_unit_transform unit
-    SOURCES Transform.cpp
-    LIBRARIES Panda::Panda)
-
-panda_add_test(panda_unit_cube unit
-    SOURCES Cube.cpp
-    LIBRARIES Panda::Panda)
-
-panda_add_test(panda_unit_plane unit
-    SOURCES Plane.cpp
-    LIBRARIES Panda::Panda)
-
-panda_add_test(panda_unit_sphere unit
-    SOURCES Sphere.cpp
-    LIBRARIES Panda::Panda)
-
 panda_add_test(panda_unit_memory_block unit
     VULKAN_INTERNAL
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"
@@ -64,13 +44,33 @@ panda_add_test(panda_unit_mesh_layout unit
     SOURCES MeshLayout.cpp
     LIBRARIES Panda::Panda)
 
+panda_add_test(panda_unit_vulkan_error unit
+    SOURCES VulkanError.cpp
+    LIBRARIES Panda::Panda)
+
 panda_add_test(panda_unit_core unit
     VULKAN_INTERNAL
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core"
     SOURCES Version.cpp DeviceSelection.cpp SwapchainGeneration.cpp OffscreenRendering.cpp
-            SwapchainCreation.cpp ExternalTimelineValue.cpp Math.cpp RenderViewValidation.cpp ShadowAtlas.cpp ShadowView.cpp
+            SwapchainCreation.cpp ExternalTimelineValue.cpp RenderViewValidation.cpp ShadowAtlas.cpp ShadowView.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock PandaTest::SubmissionQueueMock)
+
+panda_add_test(panda_unit_math unit
+    SOURCES Math.cpp Projection.cpp Transform.cpp
+    LIBRARIES Panda::Panda panda_core_internal)
+
+panda_add_test(panda_unit_cube unit
+    SOURCES Cube.cpp
+    LIBRARIES Panda::Panda)
+
+panda_add_test(panda_unit_plane unit
+    SOURCES Plane.cpp
+    LIBRARIES Panda::Panda)
+
+panda_add_test(panda_unit_sphere unit
+    SOURCES Sphere.cpp
+    LIBRARIES Panda::Panda)
 target_compile_definitions(panda_unit_core PRIVATE
     PANDA_EXPECTED_VERSION="${PROJECT_VERSION}")
 
@@ -81,6 +81,8 @@ panda_add_test(panda_unit_camera unit
 panda_add_test(panda_unit_engine unit
     VULKAN_INTERNAL
     SOURCES Engine.cpp EngineLifecycle.cpp
+    HEADERS "${PROJECT_SOURCE_DIR}/tests/support/VulkanTestSupport.hpp"
+            "${PROJECT_SOURCE_DIR}/tests/support/mocks/panda/core/WindowSurfaceMock.hpp"
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock PandaTest::SwapchainGenerationMock)
 
@@ -90,10 +92,6 @@ panda_add_test(panda_unit_external_buffer_interop unit
     SOURCES ExternalBufferInterop.cpp
     LIBRARIES Panda::Panda PandaTest::Support
     MOCKS PandaTest::VulkanMock PandaTest::BufferResourceMock PandaTest::SubmissionQueueMock)
-
-panda_add_test(panda_unit_error unit
-    SOURCES Error.cpp
-    LIBRARIES Panda::Panda)
 
 panda_add_test(panda_unit_upload_batch unit
     SOURCES UploadBatch.cpp
@@ -146,6 +144,9 @@ panda_add_test(panda_unit_performance_manager unit
 panda_add_test(panda_unit_presentation unit
     VULKAN_INTERNAL
     SOURCES Presentation.cpp
+    HEADERS "${PROJECT_SOURCE_DIR}/tests/support/PresentationTestSupport.hpp"
+            "${PROJECT_SOURCE_DIR}/tests/support/VulkanTestSupport.hpp"
+            "${PROJECT_SOURCE_DIR}/tests/support/mocks/panda/core/WindowSurfaceMock.hpp"
     LIBRARIES Panda::Panda PandaTest::Support
     MOCKS PandaTest::VulkanMock PandaTest::SwapchainGenerationMock PandaTest::SubmissionQueueMock)
 

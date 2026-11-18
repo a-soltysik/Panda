@@ -16,8 +16,7 @@
 #include <panda/Engine.hpp>
 #include <panda/base/Error.hpp>
 #include <panda/diagnostics/Logger.hpp>
-#include <panda/geometry/Cube.hpp>
-#include <panda/geometry/Plane.hpp>
+#include <panda/geometry/Geometry.hpp>
 #include <panda/geometry/VertexLayout.hpp>
 #include <panda/rendering/Camera.hpp>
 #include <panda/rendering/FrameResult.hpp>
@@ -39,6 +38,7 @@
 
 #include "GlfwTestSupport.hpp"
 #include "LogCapture.hpp"
+#include "TestGeometry.hpp"
 
 namespace
 {
@@ -437,8 +437,8 @@ auto uploadSceneMeshes(const panda::Engine& context,
 
 auto createUploadedCubeGroundAndCompactTriangle(const panda::Engine& context) -> panda::Result<SceneMeshes>
 {
-    const auto cubeGeometry = panda::createCubeGeometry();
-    const auto groundGeometry = panda::createPlaneGeometry();
+    const auto cubeGeometry = panda::test::makeTestTriangleGeometry();
+    const auto groundGeometry = panda::test::makeTestTriangleGeometry();
     auto cube = context.getResourceManager().createMeshFromGeometry(cubeGeometry);
     if (!cube)
     {
@@ -749,7 +749,7 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     const auto foreignCapture = windowRenderer(context).renderWithCapture(panda::RenderView {}, *foreignTarget);
     ASSERT_FALSE(foreignCapture);
     EXPECT_EQ(foreignCapture.error().code, panda::ErrorCode::InvalidArgument);
-    const auto geometry = panda::createCubeGeometry();
+    const auto geometry = panda::test::makeTestTriangleGeometry();
     auto mesh = context.getResourceManager().createMeshFromGeometry(geometry);
     ASSERT_TRUE(mesh.has_value()) << mesh.error().message;
     auto batch = context.getSubmissionManager().createUploadBatch();
@@ -882,7 +882,7 @@ TEST(HeadlessRendererSystem, RendersUnlitMeshWithZeroLightBudget)
     auto context = std::move(*created);
     auto target = createTestTarget(context);
     ASSERT_TRUE(target.has_value()) << target.error().message;
-    const auto geometry = panda::createCubeGeometry();
+    const auto geometry = panda::test::makeTestTriangleGeometry();
     auto mesh = context.getResourceManager().createMeshFromGeometry(geometry);
     ASSERT_TRUE(mesh.has_value()) << mesh.error().message;
     auto batch = context.getSubmissionManager().createUploadBatch();

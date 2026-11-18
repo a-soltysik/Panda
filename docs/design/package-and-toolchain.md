@@ -11,14 +11,13 @@ install/export package. Source consumption satisfies the initial integration goa
 without adding a second distribution workflow. Static Panda libraries do not imply
 static linking of every OS/driver/dependency library.
 
-| Target           | Public entry point                                      | Build switch          |
-|------------------|---------------------------------------------------------|-----------------------|
-| `Panda::Panda`   | `panda/Panda.hpp` and focused headers under `panda/` | Always built          |
-| `Panda::Scene`   | `panda/scene/Scene.hpp`                                 | `PANDA_BUILD_SCENE`   |
-| `Panda::Import`  | `panda/Import.hpp`                                      | `PANDA_BUILD_IMPORT`  |
-| `Panda::Tools`   | `panda/Tools.hpp`                                       | `PANDA_BUILD_TOOLS`   |
-| `Panda::Cuda`    | `panda/cuda/Cuda.hpp`                                   | `PANDA_BUILD_CUDA`    |
-| `Panda::Physics` | `panda/Physics.hpp`                                     | `PANDA_BUILD_PHYSICS` |
+| Target            | Public entry point                                   | Build selection                         |
+|-------------------|------------------------------------------------------|-----------------------------------------|
+| `Panda::Panda`    | `panda/Panda.hpp`, engine, geometry and math headers | `PANDA_BUILD_ENGINE`                    |
+| `Panda::Scene`    | `panda/scene/Scene.hpp`                              | `PANDA_BUILD_SCENE`                     |
+| `Panda::Tools`    | `panda/tools/gui/Window.hpp`                         | `PANDA_BUILD_TOOLS`                     |
+| `Panda::Cuda`     | `panda/cuda/Cuda.hpp`                                | `PANDA_BUILD_CUDA`                      |
+| `Panda::All`      | Configured production targets; no umbrella header    | Always available as an interface target |
 
 Core, Tools, the CUDA availability facade and the first CPU identity/transform
 slice of Scene are implemented; Import and Physics remain planned. Scene starts
@@ -29,11 +28,14 @@ The C++ scene API lives in `panda::scene`, including `Scene`, `Entity`, `ObjectI
 `MeshInstance`, `PerspectiveCamera`, `OrthographicCamera` and `DirectionalLight`.
 Shared renderer resources and math remain in `panda`; `Panda::Scene` is the CMake
 target name.
-Introduce each optional CMake switch with its implementation; do not expose switches
-for unavailable modules. The
-umbrella includes only core headers. Add-ons publicly depend on the core;
-disabled add-ons expose no usable target and trigger no discovery of their exclusive
-dependencies. Internal compilation boundaries need not become extra public targets.
+Engine defaults to ON to retain the full source build. Core owns the mesh data,
+CPU math and primitive generators; there is no separate Geometry target or build
+switch. The internal Base library provides common errors and diagnostics through
+Core; consumers do not select or link Base separately. With `PANDA_BUILD_ENGINE=OFF`,
+the Core APIs and GLM are omitted, along with Vulkan, GLFW, shader tools and CUDA
+discovery unless another selected module needs them. Disabled add-ons expose no
+usable public target and trigger no discovery of their exclusive dependencies.
+Scene, Tools and CUDA publicly depend on Core.
 `Panda::Scene` is optional and works without tools or a GUI. Future scene-editing
 tools depend on it, but the existing `Panda::Tools` window wrapper must remain
 usable without the scene module. Choose the editor's target boundary when it is
@@ -43,6 +45,10 @@ implemented; do not introduce a switch or target before its implementation.
 `Panda::Cuda` is an optional static module with a C++23 availability query and a
 private C++20 Runtime adapter for device matching and importing one Panda-owned
 dedicated external buffer. Cross-API synchronization remains planned.
+`Panda::All` is an interface convenience that links every production target enabled
+by the current configuration. It does not enable modules or discover dependencies.
+Applications can start with `Panda::All` and later link specific targets; their
+transitive requirements already provide the lower-level libraries.
 Production libraries follow module responsibilities, not unit-test boundaries.
 Tests can supply mock object files for individual implementations while linking
 the same module archives as applications;
@@ -52,14 +58,15 @@ Keep module headers under `include/<module>/panda` and implementations under
 `src/<module>`, plus `shaders/` and `cmake/`. Core headers are grouped under
 `panda/base`, `panda/geometry`, `panda/math`, `panda/resources`, `panda/rendering`,
 `panda/submission`, `panda/interop` and `panda/vulkan`; the C++ namespace remains
-`panda`. `panda/base/Error.hpp` has no Vulkan dependency, while
-`panda/vulkan/Error.hpp` owns Vulkan error conversion. CPU geometry and mesh
-descriptions share `panda/geometry/VertexLayout.hpp`. Shared diagnostics live in
-`include/common/panda/diagnostics` and `StrongAlias` in `include/common/panda/base`.
-The internal `panda_common` object library has no public alias or separate archive.
-Core embeds its objects and propagates its header requirements; add-ons use the
-same definitions through their public core dependency. Do not embed these objects
-again in add-on archives.
+`panda`. The internal Base implementation owns `panda/base/Error.hpp`, `StrongAlias`
+and diagnostics under `include/base/panda`, with sources in `src/base`; it has no
+public alias. Core owns mesh payload, vertex-layout, primitive-generator and math
+headers under `include/core/panda`, with implementations under `src/core` and
+`src/core/geometry`. `Panda::Panda` is the only target for these features.
+`panda/base/Error.hpp`
+has no Vulkan dependency, while `panda/vulkan/Error.hpp` owns Vulkan error conversion.
+Compiled targets are linked once through the normal target graph; Core and add-ons
+do not embed their objects.
 Introduce examples, engine tests, and
 benchmark directories when their contents exist, not as empty design scaffolding.
 Never include `legacy/` in new targets. `.agents/` is maintenance infrastructure,
@@ -67,9 +74,10 @@ not part of the runtime package.
 
 ## Build configuration
 
-Module selection switches use `PANDA_BUILD_<MODULE>`. When introduced, optional
-module switches default to OFF. Keep build switches
-for available features only. Planned defaults are:
+Module selection switches use `PANDA_BUILD_<MODULE>`. Engine defaults to ON to
+preserve the complete source build; implemented add-on switches default to OFF.
+Geometry and math are part of Core and have no separate switches. The remaining
+build defaults are:
 
 - `PANDA_BUILD_EXAMPLES`, `PANDA_BUILD_TESTS`, `PANDA_BUILD_BENCHMARKS`, `PANDA_BUILD_DOCS`.
 - `PANDA_ENABLE_SHADER_RELOAD`, `PANDA_ENABLE_UNITY`.
@@ -90,12 +98,39 @@ is included by an application. The quality build enables all four.
 presets enable this mode; local quality presets retain integrated analysis. An example
 requested with a disabled required module fails configuration clearly.
 
-`PANDA_BUILD_TESTS=ON` enables implemented CPU-only modules, currently including
-Tools, and builds all test levels. `PANDA_BUILD_CUDA` stays explicit so tests can
-run without toolkit discovery. `PANDA_BUILD_TOOLS` defaults to OFF and controls
-Tools when tests are disabled. The test override is scoped to the configuration;
-it does not rewrite the cached module preference. CTest labels select execution
-levels independently of which suites are built.
+`PANDA_BUILD_TESTS=ON` builds tests for the selected targets and does not enable
+Tools or the engine. Full test, fast and quality presets select their intended
+modules explicitly. `PANDA_BUILD_CUDA` stays explicit so CPU test configurations
+need no toolkit discovery. `PANDA_BUILD_TOOLS` defaults to OFF. CTest labels select
+execution levels independently of which suites are built. `PANDA_BUILD_BENCHMARKS`
+requires Tools for its window.
+
+Applications link Core for rendering, CPU math and shape generators:
+
+```cmake
+target_link_libraries(my_application PRIVATE Panda::Panda)
+```
+
+`Panda::Panda` supplies the engine, mesh contract, transforms, projections and
+shape generators. Common error and diagnostic support arrives through the internal
+Base dependency. Tests may stay enabled with Engine disabled to exercise the
+independent Base support.
+
+```cpp
+#include <panda/base/Error.hpp>
+#include <panda/diagnostics/Logger.hpp>
+
+const auto error = panda::makeError(panda::ErrorCode::InvalidArgument, "bad input");
+panda::log::error("{}", error.message);
+```
+
+```cpp
+#include <panda/Panda.hpp>
+
+const auto cube = panda::createCubeGeometry();
+const auto model = panda::createModelMatrix({});
+const auto projection = panda::createPerspectiveProjection(1.0F, 16.0F / 9.0F, 0.1F, 100.0F);
+```
 
 Use target-scoped language requirements, warnings, and definitions. Do not force
 global `CMAKE_CXX_STANDARD`, `BUILD_SHARED_LIBS`, exception flags, dependency test
@@ -110,8 +145,8 @@ tests; it is not propagated to consumers, dependencies, CUDA or GCC.
 ### Component declarations
 
 `cmake/Targets.cmake` provides `panda_add_component`. Components default to
-`STATIC`; `TYPE OBJECT` is reserved for embedded code such as common diagnostics.
-These are the only supported component types.
+`STATIC`; the helper also accepts `OBJECT`. Production modules are static libraries;
+test replacement objects use the separate `panda_add_mock` helper.
 
 ```cmake
 panda_add_component(panda_tools
@@ -157,9 +192,9 @@ the build directory when replacing its recorded toolchain/SDK installation.
 headless Engine-owned allocation, Buffer diagnostics and RAII shutdown through the public
 API. It uses Core only and submits no GPU work.
 
-`PANDA_BUILD_EXAMPLES` (OFF by default) adds the
-[`simple_scene`](../../examples/simple_scene/README.md) executable and
-requires Tools, enabled by `PANDA_BUILD_TOOLS=ON` or `PANDA_BUILD_TESTS=ON`.
+`PANDA_BUILD_EXAMPLES` (OFF by default) requires the engine. It adds the headless
+`buffer_allocation`, `error_handling` and `offscreen_rendering` examples. When Tools
+is enabled, it also adds [`simple_scene`](../../examples/simple_scene/README.md).
 The example creates a local Window without an OpenGL context, then a Vulkan
 Engine borrowing that window. It creates and uploads standard cube geometry,
 then passes camera and draw data to the renderer each frame. The renderer uses
@@ -169,7 +204,7 @@ loop; destruction releases the Engine before the Window, including failure or
 exception unwinding. Creation, event and frame errors are logged and return a
 failing process exit status.
 
-When `PANDA_BUILD_SCENE=ON`, the example switch also builds
+When both `PANDA_BUILD_SCENE=ON` and `PANDA_BUILD_TOOLS=ON`, the example switch builds
 [`scene_demo`](../../examples/scene_demo/README.md). It puts meshes, a camera and a
 directional light into scene objects and renders snapshots from
 `Scene::createRenderView()`. An animated hierarchy demonstrates shared meshes and
@@ -183,8 +218,9 @@ examples.
 
 The optional Tools component provides the GLFW window wrapper and stateless camera
 construction helpers. Core has no dependency on Tools or a display. GLFW is discovered
-and linked only when Tools is enabled, so a core-only build needs no window-system packages.
-The source build requires Vulkan development headers and the loader link library.
+only when Tools is enabled. An Engine-off build needs no window-system packages,
+Vulkan SDK or shader tools. An engine build requires Vulkan development headers
+and the loader link library.
 It also requires `glslc` and `spirv-val` to compile the built-in Vulkan 1.3 shaders,
 validate their SPIR-V, and embed the result in Core. `Panda::Panda` exposes Vulkan-Hpp
 types only where the public interface carries a native Vulkan value or borrowed
@@ -198,7 +234,8 @@ It imposes no common application-lifetime interface.
 ### Window wrapper
 
 The implemented `Panda::Tools` target is selected by `PANDA_BUILD_TOOLS` (OFF by
-default), and is always enabled when building tests. Its window API is in
+default). Tests do not enable it implicitly; full test presets select it explicitly.
+Its window API is in
 [`panda/tools/gui/Window.hpp`](../../include/tools/panda/tools/gui/Window.hpp).
 `Window::create` returns a move-only owner through `std::expected`; recoverable
 errors own the operation, description and native GLFW status. Size/minimization
@@ -227,7 +264,7 @@ destruction. This wrapper does not create Vulkan surfaces or implement rendering
 | Vulkan binding  | Vulkan-Hpp              | Public values, flags and borrowed `vk` handles; private `vk::raii` owners                                         |
 | Shader metadata | SPIRV-Reflect           | Private shader-load validation                                                                                    |
 | Windowing       | GLFW                    | Private window/input implementation                                                                               |
-| Math            | GLM                     | Public value types with a documented layout/configuration contract                                                |
+| Engine math     | GLM                     | Public value types with a documented layout/configuration contract                                                |
 | Scene parser    | nlohmann/json           | Private; schema and integration follow the [scene specification](contracts/scene.md#persistence-import-and-tools) |
 | Image codec     | `stb_image`             | Private adapter with a restricted, tested feature set                                                             |
 | Model import    | Assimp                  | Only `Panda::Import`; selected static importers                                                                   |

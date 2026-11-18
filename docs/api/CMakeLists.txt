@@ -16,13 +16,23 @@ set(DOXYGEN_WARN_AS_ERROR FAIL_ON_WARNINGS)
 set(DOXYGEN_RECURSIVE YES)
 set(DOXYGEN_FILE_PATTERNS "*.hpp")
 
-set(api_directories
-        "${PROJECT_SOURCE_DIR}/include/common"
-        "${PROJECT_SOURCE_DIR}/include/core"
-        "${PROJECT_SOURCE_DIR}/include/scene"
-        "${PROJECT_SOURCE_DIR}/include/tools"
-        "${PROJECT_SOURCE_DIR}/include/cuda")
+set(api_targets panda_base panda_core panda_scene panda_tools panda_cuda)
+set(api_headers)
+foreach(target IN LISTS api_targets)
+    if(TARGET ${target})
+        get_target_property(header_sets ${target} INTERFACE_HEADER_SETS)
+        if(header_sets)
+            foreach(header_set IN LISTS header_sets)
+                get_target_property(target_headers ${target} "HEADER_SET_${header_set}")
+                if(target_headers)
+                    list(APPEND api_headers ${target_headers})
+                endif()
+            endforeach()
+        endif()
+    endif()
+endforeach()
+list(REMOVE_DUPLICATES api_headers)
 
-doxygen_add_docs(panda_docs ${api_directories}
+doxygen_add_docs(panda_docs ${api_headers}
         COMMENT "Checking and generating Panda public API documentation")
 set_target_properties(panda_docs PROPERTIES FOLDER "Panda/Documentation")

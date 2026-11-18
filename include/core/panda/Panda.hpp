@@ -8,6 +8,7 @@
 #include <panda/geometry/Geometry.hpp>
 #include <panda/geometry/Plane.hpp>
 #include <panda/geometry/Sphere.hpp>
+#include <panda/geometry/VertexLayout.hpp>
 #include <panda/interop/ExternalBuffer.hpp>
 #include <panda/math/Projection.hpp>
 #include <panda/math/Transform.hpp>

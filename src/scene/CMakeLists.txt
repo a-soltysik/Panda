@@ -5,5 +5,5 @@ panda_add_component(panda_scene
             SceneRenderViewBuilder.cpp SceneTransformMath.cpp
     PUBLIC_HEADERS panda/scene/Entity.hpp panda/scene/ObjectId.hpp panda/scene/Scene.hpp
     PRIVATE_HEADERS SceneState.hpp SceneRenderViewBuilder.hpp SceneTransformMath.hpp
-    LIBRARIES PUBLIC Panda::Panda glm::glm)
-target_include_directories(panda_scene PRIVATE "${PROJECT_SOURCE_DIR}/src/core" "${PROJECT_SOURCE_DIR}/src/common")
+    LIBRARIES PUBLIC Panda::Panda)
+target_link_libraries(panda_scene PRIVATE panda_base_internal panda_core_internal)
