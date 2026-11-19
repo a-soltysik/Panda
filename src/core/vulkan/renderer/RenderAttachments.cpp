@@ -6,15 +6,19 @@
 
 #include "renderer/RenderAttachments.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <limits>
 #include <memory>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/vulkan/Error.hpp>
+#include <ranges>
 #include <utility>
 #include <vector>
 
+#include "FrameResultMapping.hpp"
 #include "resources/TextureResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
@@ -83,6 +87,11 @@ RenderAttachments::RenderAttachments(vk::PhysicalDevice physicalDevice,
 
 RenderAttachments::~RenderAttachments() = default;
 
+namespace
+{
+auto chooseDepthFormat(vk::PhysicalDevice physicalDevice) -> Result<vk::Format>;
+}
+
 auto RenderAttachments::create(const RenderAttachmentsCreateInfo& info)
     -> std::expected<std::unique_ptr<RenderAttachments>, Error>
 {
@@ -94,16 +103,16 @@ auto RenderAttachments::create(const RenderAttachmentsCreateInfo& info)
     auto attachments = std::unique_ptr<RenderAttachments> {
         new RenderAttachments {info.physicalDevice, info.device, info.pool, info.frameCount}
     };
-    if (const auto initialized = attachments->initialize(info.extent, info.colorFormat); !initialized)
+    if (const auto initialized = attachments->initialize(info); !initialized)
     {
         return std::unexpected {initialized.error()};
     }
     return attachments;
 }
 
-auto RenderAttachments::initialize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>
+auto RenderAttachments::initialize(const RenderAttachmentsCreateInfo& info) -> std::expected<void, Error>
 {
-    const auto depthFormat = chooseDepthFormat();
+    const auto depthFormat = chooseDepthFormat(_physicalDevice);
     if (!depthFormat)
     {
         return std::unexpected {depthFormat.error()};
@@ -113,7 +122,7 @@ auto RenderAttachments::initialize(vk::Extent2D extent, vk::Format colorFormat) 
     {
         return shadows;
     }
-    auto resize = prepareResize(extent, colorFormat);
+    auto resize = prepareResize(info.extent, info.colorFormat, info.requestedSampleCount);
     if (!resize)
     {
         return std::unexpected {resize.error()};
@@ -208,11 +217,16 @@ auto RenderAttachments::createShadowMaps(std::uint32_t layerCount)
     return maps;
 }
 
-auto RenderAttachments::chooseDepthFormat() const -> std::expected<vk::Format, Error>
+namespace
+{
+constexpr auto sampleCountChoices =
+    std::array {vk::SampleCountFlagBits::e4, vk::SampleCountFlagBits::e2, vk::SampleCountFlagBits::e1};
+
+auto chooseDepthFormat(vk::PhysicalDevice physicalDevice) -> Result<vk::Format>
 {
     for (const auto format : {vk::Format::eD32Sfloat, vk::Format::eD16Unorm})
     {
-        const auto supported = depthFormatSupported(_physicalDevice, format);
+        const auto supported = depthFormatSupported(physicalDevice, format);
         if (!supported)
         {
             return std::unexpected {supported.error()};
@@ -225,35 +239,65 @@ auto RenderAttachments::chooseDepthFormat() const -> std::expected<vk::Format, E
     return std::unexpected {makeError(ErrorCode::Unsupported, "Device has no supported depth attachment format")};
 }
 
-auto RenderAttachments::chooseSampleCount(vk::Format colorFormat) const -> std::expected<vk::SampleCountFlagBits, Error>
+auto supportedSampleCounts(vk::PhysicalDevice physicalDevice, vk::Format colorFormat, vk::Format depthFormat)
+    -> Result<vk::SampleCountFlags>
 {
-    const auto colorSamples = querySampleCounts(_physicalDevice,
+    const auto colorSamples = querySampleCounts(physicalDevice,
                                                 colorFormat,
                                                 vk::ImageUsageFlagBits::eColorAttachment,
-                                                "Swapchain format cannot be multisampled");
+                                                "Output format cannot be used as a color attachment");
     if (!colorSamples)
     {
         return std::unexpected {colorSamples.error()};
     }
-    const auto depthSamples = querySampleCounts(_physicalDevice,
-                                                _description.depthFormat,
+    const auto depthSamples = querySampleCounts(physicalDevice,
+                                                depthFormat,
                                                 vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                                                "Depth format cannot be multisampled");
+                                                "Depth format cannot be used as a depth attachment");
     if (!depthSamples)
     {
         return std::unexpected {depthSamples.error()};
     }
-    const auto limits = _physicalDevice.getProperties().limits;
+    const auto limits = physicalDevice.getProperties().limits;
     const auto framebufferSamples = limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
-    const auto supportedSamples = *colorSamples & *depthSamples & framebufferSamples;
-    for (const auto samples : {vk::SampleCountFlagBits::e4, vk::SampleCountFlagBits::e2, vk::SampleCountFlagBits::e1})
+    return *colorSamples & *depthSamples & framebufferSamples;
+}
+
+auto chooseSampleCount(vk::SampleCountFlags supportedSamples, SampleCount requested) -> Result<vk::SampleCountFlagBits>
+{
+    auto available = sampleCountChoices | std::views::filter([&](vk::SampleCountFlagBits candidate) {
+                         return mapSampleCount(candidate) <= requested && (supportedSamples & candidate);
+                     });
+    if (!available.empty())
     {
-        if ((supportedSamples & samples) != vk::SampleCountFlags {})
-        {
-            return samples;
-        }
+        return available.front();
     }
     return std::unexpected {makeError(ErrorCode::Unsupported, "No common color and depth sample count is supported")};
+}
+}
+
+auto RenderAttachments::getSupportedSampleCounts(vk::PhysicalDevice physicalDevice, vk::Format colorFormat)
+    -> Result<std::vector<SampleCount>>
+{
+    const auto depthFormat = chooseDepthFormat(physicalDevice);
+    if (!depthFormat)
+    {
+        return std::unexpected {depthFormat.error()};
+    }
+    const auto supported = supportedSampleCounts(physicalDevice, colorFormat, *depthFormat);
+    if (!supported)
+    {
+        return std::unexpected {supported.error()};
+    }
+    auto counts = std::vector<SampleCount> {};
+    for (const auto samples : sampleCountChoices)
+    {
+        if (*supported & samples)
+        {
+            counts.push_back(mapSampleCount(samples));
+        }
+    }
+    return counts;
 }
 
 auto RenderAttachments::getOutputDescription() const noexcept -> const OutputDescription&
@@ -282,7 +326,7 @@ auto RenderAttachments::getColorView(std::size_t frameIndex) const -> vk::ImageV
     return attachment ? attachment->getNativeView() : vk::ImageView {};
 }
 
-auto RenderAttachments::prepareResize(vk::Extent2D extent, vk::Format colorFormat)
+auto RenderAttachments::prepareResize(vk::Extent2D extent, vk::Format colorFormat, SampleCount requestedSampleCount)
     -> std::expected<PendingResize, Error>
 {
     if (extent.width == 0 || extent.height == 0 || colorFormat == vk::Format::eUndefined)
@@ -291,11 +335,14 @@ auto RenderAttachments::prepareResize(vk::Extent2D extent, vk::Format colorForma
     }
     const auto extentChanged = extent.width != _description.extent.width || extent.height != _description.extent.height;
     const auto formatChanged = colorFormat != _description.colorFormat;
-    if (!extentChanged && !formatChanged)
+    if (!extentChanged && !formatChanged && requestedSampleCount == _description.requestedSampleCount)
     {
         return PendingResize {.description = _description, .colorAttachments = {}, .depthAttachments = {}};
     }
-    const auto sampleCount = chooseSampleCount(colorFormat);
+    const auto sampleCount = supportedSampleCounts(_physicalDevice, colorFormat, _description.depthFormat)
+                                 .and_then([&](vk::SampleCountFlags supported) {
+                                     return chooseSampleCount(supported, requestedSampleCount);
+                                 });
     if (!sampleCount)
     {
         return std::unexpected {sampleCount.error()};
@@ -303,7 +350,8 @@ auto RenderAttachments::prepareResize(vk::Extent2D extent, vk::Format colorForma
     const auto description = OutputDescription {.extent = extent,
                                                 .colorFormat = colorFormat,
                                                 .depthFormat = _description.depthFormat,
-                                                .sampleCount = *sampleCount};
+                                                .sampleCount = *sampleCount,
+                                                .requestedSampleCount = requestedSampleCount};
     return createResizeAttachments(description, extentChanged, formatChanged);
 }
 

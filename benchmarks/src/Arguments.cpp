@@ -7,6 +7,7 @@
 #include <expected>
 #include <limits>
 #include <panda/EngineOptions.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda_bench/Arguments.hpp>
 #include <string>
 #include <string_view>
@@ -31,6 +32,7 @@ struct ParsingState
     std::int64_t measurementSeconds {3};
     std::int64_t runCount {1};
     std::string presentationMode {"fifo"};
+    std::int64_t sampleCount {static_cast<std::int64_t>(panda::SampleCount::Four)};
 };
 
 void addProfileOptions(argparse::ArgumentParser& parser, ParsingState& state)
@@ -53,6 +55,12 @@ void addProfileOptions(argparse::ArgumentParser& parser, ParsingState& state)
         .nargs(1)
         .required()
         .store_into(state.presentationMode);
+    parser.add_argument("--samples")
+        .help("Requested samples per pixel (1 disables MSAA; 1, 2 or 4)")
+        .default_value(state.sampleCount)
+        .nargs(1)
+        .required()
+        .store_into(state.sampleCount);
 }
 
 void addLightingOptions(argparse::ArgumentParser& parser, ParsingState& state)
@@ -213,6 +221,11 @@ auto validateProfileAndPresentationMode(ParsingState& state) -> std::expected<vo
         return std::unexpected {presentationMode.error()};
     }
     state.options.presentationMode = *presentationMode;
+    if (state.sampleCount != 1 && state.sampleCount != 2 && state.sampleCount != 4)
+    {
+        return std::unexpected {"Sample count must be 1, 2 or 4"};
+    }
+    state.options.sampleCount = static_cast<panda::SampleCount>(state.sampleCount);
     return {};
 }
 

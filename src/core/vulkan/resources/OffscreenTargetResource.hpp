@@ -14,6 +14,8 @@ namespace panda::detail
 class OffscreenTargetResource final
 {
 public:
+    static constexpr auto colorFormat = vk::Format::eR8G8B8A8Srgb;
+
     [[nodiscard]] static auto getResource(const OffscreenTarget& target)
         -> const std::shared_ptr<OffscreenTargetResource>&;
     [[nodiscard]] static auto create(const vk::raii::Device& device,

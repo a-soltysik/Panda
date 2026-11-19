@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>  // IWYU pragma: keep
 #include <nlohmann/json_fwd.hpp>
 #include <panda/EngineOptions.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda_bench/Report.hpp>
 #include <utility>
 
@@ -23,6 +24,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     report.requestedLightCount = 200;
     report.requestedShadowedLightCount = 65;
     report.requestedPresentationMode = panda::EngineOptions::PresentationMode::Mailbox;
+    report.requestedSampleCount = panda::SampleCount::Four;
     report.requestedWarmup = std::chrono::seconds {2};
     report.requestedMeasurement = std::chrono::seconds {4};
     report.requestedRuns = 1;
@@ -65,6 +67,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     EXPECT_EQ(json.at("settings").at("requestedLightCount"), 200);
     EXPECT_EQ(json.at("settings").at("requestedShadowedLightCount"), 65);
     EXPECT_EQ(json.at("settings").at("requestedPresentationMode"), "mailbox");
+    EXPECT_EQ(json.at("settings").at("requestedSampleCount"), 4);
     EXPECT_EQ(json.at("settings").at("requestedMeasurementNanoseconds"), 4'000'000'000LL);
     EXPECT_EQ(json.at("runs").size(), 1U);
     EXPECT_EQ(json.at("runs").at(0).at("effectiveFramebufferExtent").at("width"), 1920);

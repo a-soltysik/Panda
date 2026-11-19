@@ -48,6 +48,7 @@ auto makeReport(const Options& options) -> Report
     report.requestedLightCount = options.lightCount;
     report.requestedShadowedLightCount = options.shadowedLightCount;
     report.requestedPresentationMode = options.presentationMode;
+    report.requestedSampleCount = options.sampleCount;
     report.requestedWarmup = options.warmupDuration;
     report.requestedMeasurement = options.measurementDuration;
     report.requestedRuns = options.runCount;

@@ -7,6 +7,7 @@
 #include <optional>
 #include <panda/EngineOptions.hpp>
 #include <panda/rendering/PerformanceManager.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,7 @@ struct Report
     std::uint32_t requestedLightCount {0};
     std::uint32_t requestedShadowedLightCount {0};
     panda::EngineOptions::PresentationMode requestedPresentationMode {panda::EngineOptions::PresentationMode::Fifo};
+    panda::SampleCount requestedSampleCount {panda::SampleCount::Four};
     std::chrono::seconds requestedWarmup {0};
     std::chrono::seconds requestedMeasurement {0};
     std::uint64_t requestedRuns {0};

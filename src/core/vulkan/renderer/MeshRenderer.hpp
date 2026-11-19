@@ -12,6 +12,7 @@
 #include <optional>
 #include <panda/base/Error.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <vector>
 
 #include "renderer/FrameBindings.hpp"
@@ -38,6 +39,7 @@ struct MeshRendererCreateInfo
     vk::Format colorFormat;
     std::size_t frameCount;
     std::uint32_t maxLights;
+    SampleCount requestedSampleCount {SampleCount::Four};
 };
 
 class MeshRenderer final
@@ -52,7 +54,10 @@ public:
     auto operator=(MeshRenderer&&) -> MeshRenderer& = delete;
     ~MeshRenderer();
 
-    [[nodiscard]] auto resize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
+    [[nodiscard]] auto resize(vk::Extent2D extent,
+                              vk::Format colorFormat,
+                              SampleCount requestedSampleCount = SampleCount::Four) -> std::expected<void, Error>;
+    [[nodiscard]] auto getOutputDescription() const noexcept -> const OutputDescription&;
     [[nodiscard]] auto updateFrame(std::size_t frameIndex, const RenderView& view) -> std::expected<void, Error>;
     [[nodiscard]] auto getSampleCount() const noexcept -> vk::SampleCountFlagBits;
     void record(vk::CommandBuffer command, vk::ImageView colorView, std::size_t frameIndex, const RenderView& view);
@@ -82,8 +87,8 @@ private:
 
     [[nodiscard]] auto pipelineCache() -> MeshPipelineCache&;
     [[nodiscard]] auto pipelineCache() const -> const MeshPipelineCache&;
-    [[nodiscard]] auto initialize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeAttachments(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
+    [[nodiscard]] auto initialize(const MeshRendererCreateInfo& info) -> std::expected<void, Error>;
+    [[nodiscard]] auto initializeAttachments(const MeshRendererCreateInfo& info) -> std::expected<void, Error>;
     [[nodiscard]] auto initializeBindingsAndPipeline() -> std::expected<void, Error>;
     void recordShadowPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
     void recordShadowLayer(vk::CommandBuffer command,

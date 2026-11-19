@@ -55,11 +55,18 @@ struct SwapchainGenerationRequest
     panda::EngineOptions::PresentationMode presentationMode;
 };
 
+struct SwapchainGenerationError
+{
+    Error cause;
+    bool oldSwapchainRetired {false};
+};
+
+using SwapchainGenerationResult = std::expected<SwapchainGeneration, SwapchainGenerationError>;
+
 [[nodiscard]] auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
                                        std::span<const vk::SurfaceFormatKHR> formats,
                                        glm::uvec2 requested) -> std::expected<SurfaceConfig, Error>;
 
-[[nodiscard]] auto createSwapchainGeneration(const SwapchainGenerationRequest& request)
-    -> std::expected<SwapchainGeneration, Error>;
+[[nodiscard]] auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> SwapchainGenerationResult;
 
 }

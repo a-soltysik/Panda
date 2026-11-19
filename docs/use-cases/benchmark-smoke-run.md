@@ -17,7 +17,7 @@ frame timing. Each requested run creates and tears down its own window and Engin
 ## Main flow
 
 1. **Parse the request.** `parseArguments()` accepts the smoke profile, output
-   directory, requested window size, total and shadowed light counts, presentation mode, warmup and
+   directory, requested window size, total and shadowed light counts, presentation mode, MSAA sample count, warmup and
    measurement durations, and run count. Defaults are `smoke`, `results`, 1280 by
    720 pixels, 65 total and shadowed lights, FIFO presentation, 1 second warmup,
    3 seconds measurement and one run. `--present-mode` accepts `fifo`, `mailbox` or
@@ -40,12 +40,13 @@ frame timing. Each requested run creates and tears down its own window and Engin
    `maxLights = max(defaultMaxLights, requested light count)`.
    `Engine::createWithSurface(surface, options)` returns Engine. The backend checks
    `Engine::getFeatures().performance` before borrowing the optional manager, then
-   captures `EngineFeatures::presentationMode` as the effective mode together with
-   framebuffer extent, GPU, driver and Vulkan API information.
+   checks the framebuffer extent and reads the active mode from
+   `WindowRenderer::getEffectivePresentationMode()` alongside the GPU, driver
+   and Vulkan API information.
    For a nonzero extent, it creates
    plane, cube and sphere geometry and matching meshes, snapshots each through an
    `UploadBatch`, waits for upload completion and prepares one fixed camera, ten
-   colored draws and the requested fixed light list. A minimized initial
+   colored draws, the requested fixed light list and the requested MSAA sample count. A minimized initial
    framebuffer makes the run invalid.
 4. **Warm up.** For the requested duration, `SmokeRun` checks that the window stays
    open and its nonzero framebuffer extent stays unchanged, submits a frame, drains
@@ -66,7 +67,7 @@ frame timing. Each requested run creates and tears down its own window and Engin
    success or failure; the Vulkan backend releases the view's mesh handle, destroys
    the `Engine`, then destroys its borrowed window. `runBenchmark()` appends the run
    result, stops further runs after a failure, writes requested settings and each
-   run's effective presentation mode to the JSON report when output setup succeeded,
+   run's effective presentation mode and sample count to the JSON report when output setup succeeded,
    and prints the summary and report/log paths when the report was written.
 
 ```mermaid
@@ -78,6 +79,7 @@ sequenceDiagram
     participant W as Window
     participant C as Engine
     participant E as EngineFeatures
+    participant R as WindowRenderer
     participant U as UploadBatch
     participant P as PerformanceManager
     participant F as Output files
@@ -91,8 +93,10 @@ sequenceDiagram
         C -->> B: Engine and selected device
         B ->> E: getFeatures().performance
         E -->> B: Timestamp support and sampling state
-        B ->> E: getFeatures().presentationMode
-        E -->> B: Effective presentation mode
+        B ->> W: Read framebuffer extent
+        B ->> C: Borrow WindowRenderer
+        B ->> R: getEffectivePresentationMode()
+        R -->> B: Active swapchain mode
         B ->> P: Borrow active PerformanceManager
         B ->> B: Capture extent and environment
         opt Initial framebuffer extent is nonzero

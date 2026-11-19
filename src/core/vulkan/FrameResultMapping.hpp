@@ -6,7 +6,7 @@
 // clang-format on
 
 #include <panda/diagnostics/Assert.hpp>
-#include <panda/rendering/FrameResult.hpp>
+#include <panda/rendering/SampleCount.hpp>
 
 namespace panda::core::vulkan
 {

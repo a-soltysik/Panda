@@ -17,12 +17,14 @@
 #include <new>
 #include <numeric>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/Texture.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/vulkan/Error.hpp>
 #include <utility>
 #include <vector>
 
+#include "FrameResultMapping.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "renderer/MaterialTextureSlots.hpp"
 #include "renderer/MeshRenderer.hpp"
@@ -228,10 +230,6 @@ auto FrameExecution::recordMeshDraws(ExecutionSlot& slot,
                                      const FrameOutput& output,
                                      const RenderView& view) -> std::expected<void, Error>
 {
-    if (const auto ready = createOrResizeMeshRenderer(output); !ready)
-    {
-        return std::unexpected {ready.error()};
-    }
     if (const auto updated = _renderer->updateFrame(index, view); !updated)
     {
         return std::unexpected {updated.error()};
@@ -240,29 +238,46 @@ auto FrameExecution::recordMeshDraws(ExecutionSlot& slot,
     return {};
 }
 
-auto FrameExecution::createOrResizeMeshRenderer(const FrameOutput& output) -> std::expected<void, Error>
+auto FrameExecution::prepareOutput(vk::Extent2D extent, vk::Format colorFormat, const RenderView& view) -> Result<void>
+{
+    if (view.meshes.empty())
+    {
+        return {};
+    }
+    if (!_renderer)
+    {
+        return initializeMeshRenderer(extent, colorFormat, view.requestedSampleCount);
+    }
+    const auto& current = _renderer->getOutputDescription();
+    if (current.extent == extent && current.colorFormat == colorFormat &&
+        current.requestedSampleCount == view.requestedSampleCount)
+    {
+        return {};
+    }
+    // The attachment and pipeline replacements may release objects used by either slot.
+    return drain().and_then([&] {
+        return _renderer->resize(extent, colorFormat, view.requestedSampleCount);
+    });
+}
+
+auto FrameExecution::initializeMeshRenderer(vk::Extent2D extent, vk::Format colorFormat, SampleCount requested)
+    -> Result<void>
 {
     if (_pool == nullptr)
     {
         return std::unexpected {makeError(ErrorCode::BackendFailure, "Mesh rendering requires an Engine memory pool")};
     }
-    if (!_renderer)
-    {
-        auto renderer = renderer::MeshRenderer::create({.physicalDevice = _physicalDevice,
-                                                        .device = _device,
-                                                        .pool = *_pool,
-                                                        .extent = output.extent,
-                                                        .colorFormat = output.colorFormat,
-                                                        .frameCount = _slots.size(),
-                                                        .maxLights = _maxLights});
-        if (!renderer)
-        {
-            return std::unexpected {renderer.error()};
-        }
-        _renderer = std::move(*renderer);
-        return {};
-    }
-    return _renderer->resize(output.extent, output.colorFormat);
+    return renderer::MeshRenderer::create({.physicalDevice = _physicalDevice,
+                                           .device = _device,
+                                           .pool = *_pool,
+                                           .extent = extent,
+                                           .colorFormat = colorFormat,
+                                           .frameCount = _slots.size(),
+                                           .maxLights = _maxLights,
+                                           .requestedSampleCount = requested})
+        .transform([this](std::unique_ptr<renderer::MeshRenderer> meshRenderer) {
+            _renderer = std::move(meshRenderer);
+        });
 }
 
 auto FrameExecution::endCommands(std::size_t index) -> std::expected<void, Error>
@@ -342,8 +357,8 @@ auto FrameExecution::isGpuTimestampSamplingEnabled() const noexcept -> bool
     return _performance != nullptr;
 }
 
-auto FrameExecution::getSampleCount() const noexcept -> vk::SampleCountFlagBits
+auto FrameExecution::getSampleCount(const RenderView& view) const noexcept -> SampleCount
 {
-    return _renderer != nullptr ? _renderer->getSampleCount() : vk::SampleCountFlagBits::e1;
+    return view.meshes.empty() ? SampleCount::One : mapSampleCount(_renderer->getSampleCount());
 }
 }

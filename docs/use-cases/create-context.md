@@ -17,9 +17,9 @@ checked during creation, even at zero extent.
 `Engine::getFeatures()` reports the negotiated optional facilities on every live
 Engine. A window renderer exists only for window-enabled creation. A performance
 manager exists only when timestamp sampling was requested and the selected device
-supports it. The effective presentation mode is reported only for a window-enabled
-Engine. Calling an unavailable service getter is a fatal contract error;
-applications check `EngineFeatures` first.
+supports it. `WindowRenderer::getEffectivePresentationMode()` reports the active swapchain
+mode during [window rendering](recreate-swapchain.md). Calling an unavailable
+service getter is a fatal contract error; applications check `EngineFeatures` first.
 
 ## Preconditions
 
@@ -58,7 +58,7 @@ its callbacks.
 7. **Publish the Engine.** `Engine::Impl` takes the completed `EngineCreateInfo`,
    constructs common service facades, and constructs only the available optional
    facades. The Engine stores one stable `Impl` owner. `EngineFeatures` records
-   the effective presentation mode and other available facilities.
+   the available facilities.
 
 The headless and window-enabled paths share device and service initialization.
 The surface path adds required instance extensions, surface-compatible device

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -90,18 +91,19 @@ auto settingsJson(const Report& report) -> Json
 {
     return Json {
         {"requestedWindowExtent",
-         Json {{"width", report.requestedWindowWidth}, {"height", report.requestedWindowHeight}}  },
-        {"requestedLightCount",             report.requestedLightCount                            },
-        {"requestedShadowedLightCount",     report.requestedShadowedLightCount                    },
-        {"requestedPresentationMode",       presentationModeName(report.requestedPresentationMode)},
-        {"validationEnabled",               false                                                 },
-        {"externalProfilerEnabled",         false                                                 },
-        {"framePerformanceSamplingEnabled", true                                                  },
+         Json {{"width", report.requestedWindowWidth}, {"height", report.requestedWindowHeight}}   },
+        {"requestedLightCount",             report.requestedLightCount                             },
+        {"requestedShadowedLightCount",     report.requestedShadowedLightCount                     },
+        {"requestedPresentationMode",       presentationModeName(report.requestedPresentationMode) },
+        {"requestedSampleCount",            static_cast<std::uint32_t>(report.requestedSampleCount)},
+        {"validationEnabled",               false                                                  },
+        {"externalProfilerEnabled",         false                                                  },
+        {"framePerformanceSamplingEnabled", true                                                   },
         {"requestedWarmupNanoseconds",
-         std::chrono::duration_cast<std::chrono::nanoseconds>(report.requestedWarmup).count()     },
+         std::chrono::duration_cast<std::chrono::nanoseconds>(report.requestedWarmup).count()      },
         {"requestedMeasurementNanoseconds",
-         std::chrono::duration_cast<std::chrono::nanoseconds>(report.requestedMeasurement).count()},
-        {"requestedRuns",                   report.requestedRuns                                  }
+         std::chrono::duration_cast<std::chrono::nanoseconds>(report.requestedMeasurement).count() },
+        {"requestedRuns",                   report.requestedRuns                                   }
     };
 }
 

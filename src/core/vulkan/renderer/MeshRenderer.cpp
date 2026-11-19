@@ -22,6 +22,7 @@
 #include <panda/base/Error.hpp>
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <utility>
 #include <vector>
@@ -115,7 +116,7 @@ auto MeshRenderer::create(const MeshRendererCreateInfo& info) -> std::expected<s
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid mesh renderer creation parameters")};
     }
     auto renderer = std::unique_ptr<MeshRenderer> {new MeshRenderer {info}};
-    if (auto initialized = renderer->initialize(info.extent, info.colorFormat); !initialized)
+    if (auto initialized = renderer->initialize(info); !initialized)
     {
         const auto& failure = initialized.error();
         return std::unexpected {makeError(failure.code, failure.message, failure.native, failure.source)};
@@ -123,7 +124,7 @@ auto MeshRenderer::create(const MeshRendererCreateInfo& info) -> std::expected<s
     return renderer;
 }
 
-auto MeshRenderer::initialize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>
+auto MeshRenderer::initialize(const MeshRendererCreateInfo& info) -> std::expected<void, Error>
 {
     if (_physicalDevice.getProperties().limits.maxPushConstantsSize < sizeof(DrawConstants))
     {
@@ -134,21 +135,22 @@ auto MeshRenderer::initialize(vk::Extent2D extent, vk::Format colorFormat) -> st
     {
         return supported;
     }
-    if (const auto attachments = initializeAttachments(extent, colorFormat); !attachments)
+    if (const auto attachments = initializeAttachments(info); !attachments)
     {
         return attachments;
     }
     return initializeBindingsAndPipeline();
 }
 
-auto MeshRenderer::initializeAttachments(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>
+auto MeshRenderer::initializeAttachments(const MeshRendererCreateInfo& info) -> std::expected<void, Error>
 {
     return RenderAttachments::create({.physicalDevice = _physicalDevice,
                                       .device = _device,
                                       .pool = _pool,
-                                      .extent = extent,
-                                      .colorFormat = colorFormat,
-                                      .frameCount = _frameCount})
+                                      .extent = info.extent,
+                                      .colorFormat = info.colorFormat,
+                                      .frameCount = _frameCount,
+                                      .requestedSampleCount = info.requestedSampleCount})
         .transform([this](std::unique_ptr<RenderAttachments> attachments) {
             _attachments = std::move(attachments);
         });
@@ -174,9 +176,10 @@ auto MeshRenderer::initializeBindingsAndPipeline() -> std::expected<void, Error>
     return {};
 }
 
-auto MeshRenderer::resize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>
+auto MeshRenderer::resize(vk::Extent2D extent, vk::Format colorFormat, SampleCount requestedSampleCount)
+    -> std::expected<void, Error>
 {
-    auto pending = _attachments->prepareResize(extent, colorFormat);
+    auto pending = _attachments->prepareResize(extent, colorFormat, requestedSampleCount);
     if (!pending)
     {
         return std::unexpected {pending.error()};
@@ -215,7 +218,12 @@ auto MeshRenderer::updateFrame(std::size_t frameIndex, const RenderView& view) -
 
 auto MeshRenderer::getSampleCount() const noexcept -> vk::SampleCountFlagBits
 {
-    return _attachments->getOutputDescription().sampleCount;
+    return getOutputDescription().sampleCount;
+}
+
+auto MeshRenderer::getOutputDescription() const noexcept -> const OutputDescription&
+{
+    return _attachments->getOutputDescription();
 }
 
 void MeshRenderer::record(vk::CommandBuffer command,

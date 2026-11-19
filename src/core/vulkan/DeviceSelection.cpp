@@ -217,6 +217,34 @@ auto requestedPresentMode(EngineOptions::PresentationMode requested)
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Unknown presentation mode")};
     }
 }
+
+auto querySurfacePresentModes(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface)
+    -> Result<std::vector<vk::PresentModeKHR>>
+{
+    return enumerateVulkan<vk::PresentModeKHR>([&](std::uint32_t* count, vk::PresentModeKHR* output) {
+        return physicalDevice.getSurfacePresentModesKHR(surface, count, output);
+    });
+}
+}
+
+auto queryPresentationModes(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface)
+    -> Result<std::vector<EngineOptions::PresentationMode>>
+{
+    using Mode = EngineOptions::PresentationMode;
+    const auto modes = querySurfacePresentModes(physicalDevice, surface);
+    if (!modes)
+    {
+        return std::unexpected {modes.error()};
+    }
+    auto supported = std::vector<Mode> {};
+    for (const auto mode : {Mode::Fifo, Mode::Mailbox, Mode::Immediate})
+    {
+        if (std::ranges::find(*modes, requestedPresentMode(mode)->first) != modes->end())
+        {
+            supported.push_back(mode);
+        }
+    }
+    return supported;
 }
 
 auto selectPresentMode(vk::PhysicalDevice physicalDevice,
@@ -228,9 +256,7 @@ auto selectPresentMode(vk::PhysicalDevice physicalDevice,
     {
         return std::unexpected {requestedMode.error()};
     }
-    const auto modes = enumerateVulkan<vk::PresentModeKHR>([&](std::uint32_t* count, vk::PresentModeKHR* output) {
-        return physicalDevice.getSurfacePresentModesKHR(surface, count, output);
-    });
+    const auto modes = querySurfacePresentModes(physicalDevice, surface);
     if (!modes)
     {
         return std::unexpected {modes.error()};

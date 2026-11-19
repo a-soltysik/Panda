@@ -25,10 +25,11 @@ the Engine that created it.
 3. **Submit the render.** The application calls
    `Engine::getOffscreenRenderer().render(view, target)`. `OffscreenRenderer`
    validates the view and target, collects completed uploads, then lazily initializes
-   `OffscreenRenderBackend` before recording the built-in rendering path. The rendering
-   path retains the target and view resources, then submits the command buffer on the
-   Engine queue. Success returns `FrameResult::Status::Rendered` and a
-   `CompletionPoint`; it does not present a frame or wait for rendering to finish.
+   `OffscreenRenderBackend` before recording the built-in rendering path. It
+   prepares mesh attachments for the target and the requested sample count,
+   retains the target and view resources, then submits the command buffer on
+   the Engine queue. Success returns `FrameResult::Status::Rendered`, a
+   `CompletionPoint` and the effective sample count.
 4. **Request pixels.** When CPU pixels are needed, the application calls
    `readPixels(target, completion)` with a point covering that target's latest
    render. Panda validates the target and point, submits an image-to-buffer copy,
@@ -53,6 +54,7 @@ sequenceDiagram
     U-->>R: Collection result
     R->>R: Reject material maps without a submitted upload
     R->>O: Initialize lazily and submit offscreen frame
+    O->>E: Prepare target format, extent and sample count
     O->>E: Retain target and view resources and record content
     E->>V: Transition target and record clear/draws
     O->>Q: Submit command buffer
@@ -84,6 +86,10 @@ asynchronous.
 images across calls. The supplied completion must cover the latest render of the
 chosen target; submitted work retains the target until it is safe to release. See
 the [resource lifetime contract](../design/contracts/resources.md#frame-and-window-state).
+
+**Sample count.** Request a count through `RenderView` and query supported choices
+with `OffscreenRenderer::getSupportedSampleCounts()`. Multisampled mesh color is
+resolved into the single-sample target before readback or window capture.
 
 **Window capture.** A windowed Engine can use
 `WindowRenderer::renderWithCapture(view, target)` to render once, present the same

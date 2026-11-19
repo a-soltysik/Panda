@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -35,6 +36,7 @@
 #include "panda/core/SubmissionQueueMock.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
 #include "presentation/FrameExecution.hpp"
+#include "presentation/SwapchainGeneration.hpp"
 #include "presentation/WindowPresentation.hpp"
 
 namespace
@@ -106,6 +108,33 @@ protected:
             .InSequence(flow)
             .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
         expectCompletionPoint(flow);
+    }
+
+    void expectSupportedModes(bool mailbox)
+    {
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceSurfacePresentModesKHR(_, _, NotNull(), _))
+            .WillOnce(testing::DoAll(testing::SetArgPointee<2>(mailbox ? 3U : 2U), Return(VK_SUCCESS)))
+            .WillOnce([mailbox](VkPhysicalDevice, VkSurfaceKHR, std::uint32_t*, VkPresentModeKHR* modes) {
+                const auto available = std::array {VK_PRESENT_MODE_FIFO_KHR,
+                                                   VK_PRESENT_MODE_FIFO_RELAXED_KHR,
+                                                   VK_PRESENT_MODE_MAILBOX_KHR};
+                std::ranges::copy(std::span {available}.first(mailbox ? 3U : 2U), modes);
+                return VK_SUCCESS;
+            });
+    }
+
+    void expectModeReplacement(Sequence& flow,
+                               std::uintptr_t oldHandle,
+                               std::uintptr_t newHandle,
+                               panda::EngineOptions::PresentationMode mode)
+    {
+        EXPECT_CALL(swapchains, createSwapchainGeneration(_))
+            .InSequence(flow)
+            .WillOnce([=](const panda::core::vulkan::SwapchainGenerationRequest& request) {
+                EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {fakeHandle<VkSwapchainKHR>(oldHandle)});
+                EXPECT_EQ(request.presentationMode, mode);
+                return panda::test::makeGeneration(request.device, newHandle);
+            });
     }
 
     void expectRetirementSubmit(Sequence& flow, vk::Result result = vk::Result::eSuccess)
@@ -651,26 +680,10 @@ TEST_F(PresentationTest, RetiresAcquiredImageWhenCommandRecordingCannotStart)
     EXPECT_EQ(native.code, static_cast<VkResult>(vk::Result::eErrorInitializationFailed));
 }
 
-TEST_F(PresentationTest, RejectsMeshRenderingWithoutEngineMemoryPool)
+TEST_F(PresentationTest, RejectsMeshRenderingWithoutEngineMemoryPoolBeforeAcquire)
 {
     expectWindowFrame();
-    auto flow = Sequence {};
-    expectAcquiredImage(flow, vk::Result::eSuccess);
-    EXPECT_CALL(vulkan, vkResetCommandPool(_, _, _))
-        .InSequence(flow)
-        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
-    EXPECT_CALL(vulkan, vkBeginCommandBuffer(_, NotNull()))
-        .InSequence(flow)
-        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
-    EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull()))
-        .InSequence(flow)
-        .WillOnce(
-            testing::Action<decltype(vkCmdPipelineBarrier2)> {[](VkCommandBuffer, const VkDependencyInfo* dependency) {
-                panda::test::expectTransitionToColorAttachment(dependency);
-            }});
-    expectRetirementSubmit(flow);
-    expectTimelineWait(flow);
-    expectImageRelease(flow);
+    EXPECT_CALL(vulkan, vkAcquireNextImageKHR(_, _, _, _, _, _)).Times(0);
 
     auto presentation = createPresentation();
     ASSERT_TRUE(presentation);
@@ -714,6 +727,65 @@ TEST_F(PresentationTest, PresentAndRecreationFailuresReleaseThenRetryWithoutReti
     const auto retried = presentation->get()->render(panda::RenderView {});
     ASSERT_TRUE(retried.has_value());
     EXPECT_EQ(retried->status, panda::FrameResult::Status::Skipped);
+}
+
+TEST_F(PresentationTest, AppliesSupportedPresentationChangesAtFrameBoundaries)
+{
+    using Mode = panda::EngineOptions::PresentationMode;
+    expectQueueLookup();
+    expectReleaseEntryPoint();
+    expectFrameResources(3);
+    expectResourceDestruction(ResourceDestructionCounts {.semaphores = 6, .swapchains = 3});
+    expectExtentReads(3);
+    expectInitialGeneration(700);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    auto& windowPresentation = **presentation;
+
+    expectSupportedModes(true);
+    const auto supported = windowPresentation.getSupportedPresentationModes();
+    ASSERT_TRUE(supported);
+    EXPECT_THAT(*supported, testing::ElementsAre(Mode::Fifo, Mode::Mailbox));
+
+    auto flow = Sequence {};
+    expectModeReplacement(flow, 700, 800, Mode::Mailbox);
+    expectAcquiredImage(flow, vk::Result::eTimeout);
+    expectModeReplacement(flow, 800, 900, Mode::Fifo);
+    expectAcquiredImage(flow, vk::Result::eTimeout);
+
+    expectSupportedModes(true);
+    ASSERT_TRUE(windowPresentation.setPresentationMode(Mode::Mailbox));
+    EXPECT_EQ(windowPresentation.getRequestedPresentationMode(), Mode::Mailbox);
+    EXPECT_EQ(windowPresentation.getEffectivePresentationMode(), Mode::Fifo);
+    ASSERT_TRUE(windowPresentation.render(panda::RenderView {}));
+    EXPECT_EQ(windowPresentation.getEffectivePresentationMode(), Mode::Mailbox);
+
+    expectSupportedModes(true);
+    ASSERT_TRUE(windowPresentation.setPresentationMode(Mode::Fifo));
+    EXPECT_EQ(windowPresentation.getRequestedPresentationMode(), Mode::Fifo);
+    EXPECT_EQ(windowPresentation.getEffectivePresentationMode(), Mode::Mailbox);
+    ASSERT_TRUE(windowPresentation.render(panda::RenderView {}));
+    EXPECT_EQ(windowPresentation.getEffectivePresentationMode(), Mode::Fifo);
+}
+
+TEST_F(PresentationTest, RejectsUnsupportedPresentationModeWithoutReplacingSwapchain)
+{
+    using Mode = panda::EngineOptions::PresentationMode;
+    expectWindowFrame();
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+    auto& windowPresentation = **presentation;
+
+    expectSupportedModes(false);
+    const auto request = windowPresentation.setPresentationMode(Mode::Mailbox);
+    ASSERT_FALSE(request);
+    EXPECT_EQ(request.error().code, panda::ErrorCode::Unsupported);
+    EXPECT_EQ(windowPresentation.getRequestedPresentationMode(), Mode::Fifo);
+    EXPECT_EQ(windowPresentation.getEffectivePresentationMode(), Mode::Fifo);
+
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eTimeout);
+    ASSERT_TRUE(windowPresentation.render(panda::RenderView {}));
 }
 
 TEST_F(PresentationTest, TimelineLimitRejectsFrameBeforeAcquiringAnotherImage)

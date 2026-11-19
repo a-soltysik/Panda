@@ -13,8 +13,10 @@
 #include <panda/base/Error.hpp>
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
 #include <panda/submission/CompletionPoint.hpp>
+#include <vector>
 
 #include "SubmissionQueue.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
@@ -70,6 +72,7 @@ public:
     ~OffscreenRenderBackend();
 
     [[nodiscard]] auto initialize() -> std::expected<void, Error>;
+    [[nodiscard]] auto getSupportedSampleCounts() const -> Result<std::vector<SampleCount>>;
     [[nodiscard]] auto render(const RenderView& view,
                               const OffscreenTarget& target,
                               std::optional<std::size_t>& submittedPerformanceSlot)
@@ -101,8 +104,6 @@ private:
         std::uint64_t completion {0};
     };
 
-    [[nodiscard]] auto prepareRendererOutput(const ::panda::detail::OffscreenTargetResource& target,
-                                             const RenderView& view) -> std::expected<void, Error>;
     [[nodiscard]] auto recordFrame(std::size_t slotIndex,
                                    const std::shared_ptr<::panda::detail::OffscreenTargetResource>& target,
                                    const FrameRequest& request) -> std::expected<void, Error>;
@@ -128,8 +129,6 @@ private:
     ::panda::detail::PerformanceManagerImpl* _performance;
     std::uint32_t _maxLights;
     std::unique_ptr<FrameExecution> _execution;
-    std::optional<vk::Extent2D> _rendererExtent;
-    vk::Format _rendererFormat {vk::Format::eUndefined};
     std::optional<PendingReadback> _pendingReadback;
     std::size_t _nextSlot {0};
 };

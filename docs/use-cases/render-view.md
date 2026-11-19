@@ -70,6 +70,9 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
    without acquiring an image. See [UC Suspend presentation and recreate the
    swapchain](recreate-swapchain.md).
+   For mesh draws, `FrameExecution::prepareOutput()` creates the renderer or
+   prepares a change in extent, format or requested sample count. It waits for
+   both slots before replacing attachments and compatible pipelines.
 5. **Retain resources and acquire.** `WindowPresentation` asks `FrameExecution::prepareSlot()`
    to wait for the selected slot's prior GPU completion, then retain the view's mesh
    and selected material texture handles in that slot. It checks submission capacity,
@@ -78,12 +81,8 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
 6. **Record the view.** `WindowPresentation` begins the command buffer and transitions the
    acquired image to color-attachment layout. It passes `FrameExecution` a borrowed
    `FrameOutput` containing that image view, extent and color format. An empty mesh
-   list clears the output to the configured background. Otherwise, `FrameExecution`
-   creates or resizes the internal `MeshRenderer`.
-   On first creation, it builds `RenderAttachments` before `FrameBindings` and
-   `MeshPipelineCache`. On a resize, `RenderAttachments` prepares output-sized depth
-   and optional MSAA replacements; after preparation succeeds, the renderer updates
-   pipeline compatibility and publishes them. The renderer then updates frame data,
+   list clears the output to the configured background. Otherwise, the
+   initialized `MeshRenderer` updates frame data,
    per-draw material records, light and shadow records, dynamic shadow-view matrices,
    and texture descriptors through `FrameBindings`. `MeshRenderer` clears the depth
    atlas once and renders opaque/masked casters into each opted-in light's guarded
@@ -148,6 +147,24 @@ sequenceDiagram
     W ->> W: Reject material maps without a submitted upload
     W ->> P: Render validated view
     P ->> V: Check framebuffer and swapchain generation
+    opt View contains meshes
+        P ->> E: Step 4 - prepare output for the requested sample count
+        alt First mesh draw
+            E ->> R: Create renderer for the selected output
+            R ->> RA: Create depth, MSAA and shadow attachments
+            RA -->> R: Ready attachments and output description
+            R ->> B: Create frame bindings after shadow views exist
+            B -->> R: Pipeline layout
+            R ->> K: Create cache with output compatibility
+        else Output settings changed
+            E ->> Q: Wait for both execution slots
+            E ->> R: Resize or change MSAA
+            R ->> RA: Prepare output attachment replacements
+            RA -->> R: Pending replacements and output description
+            R ->> K: Set compatibility after preparation succeeds
+            R ->> RA: Publish replacements and reset replaced history
+        end
+    end
     P ->> E: Wait for frame slot and retain mesh and selected material texture handles
     P ->> V: Acquire image and wait for presentation reuse
     P ->> E: Begin command buffer
@@ -155,19 +172,6 @@ sequenceDiagram
     alt View has no meshes
         E ->> V: Clear FrameOutput with encoded background color
     else View contains meshes
-        E ->> R: Create/resize renderer
-        alt First mesh draw
-            R ->> RA: Create depth, MSAA and shadow attachments
-            RA -->> R: Ready attachments and output description
-            R ->> B: Create frame bindings after shadow views exist
-            B -->> R: Pipeline layout
-            R ->> K: Create cache with output compatibility
-        else Existing renderer resize or no-op
-            R ->> RA: Prepare output attachment replacements
-            RA -->> R: Pending replacements and output description
-            R ->> K: Set compatibility after preparation succeeds
-            R ->> RA: Publish replacements and reset replaced history
-        end
         R ->> B: Update frame data, material/light records and texture descriptors
         B ->> V: Write frame buffers and descriptor sets
         R ->> K: Prepare needed color and shadow variants
@@ -265,7 +269,8 @@ content; `WindowPresentation` alone owns the output-layout transitions and prese
 
 **Attachment publication.** `RenderAttachments` owns per-slot color, depth and shadow
 images with their committed layout history. A failed replacement leaves the renderer's
-current attachments and pipeline compatibility unchanged. Shadow images keep their
+current attachments and pipeline compatibility available. A submitted frame reports its
+effective sample count. Shadow images keep their
 fixed extent across window resize, so `FrameBindings` can keep using the same shadow views.
 
 **Completion meanings.** The timeline point covers submitted GPU work. The per-image
@@ -288,6 +293,7 @@ A frame error does not imply that already submitted work was rolled back.
 | Acquire reports out-of-date                                                                    | Return `RecreatePending` without a completion point; the next call attempts recreation.                                          |
 | Acquire or present is suboptimal, or present reports out-of-date                               | Return `RecreatePending`; keep the accepted submission's completion point.                                                       |
 | Invalid view/material data, foreign mesh/texture, incompatible layout, or invalid material map | Return `InvalidArgument` before acquiring an image.                                                                              |
+| Allocation fails while applying MSAA                                                           | Return the allocation error before acquiring an image. A subsequent compatible frame can reuse the prior configuration.         |
 | Capture is requested                                                                           | Use `WindowRenderer::renderWithCapture(view, target)`; capture may return `Unsupported` when the surface or formats cannot blit. |
 | Recording, submission or cleanup fails after acquire                                           | Return the relevant error; retire the acquired image. Failed retirement faults presentation.                                     |
 | Surface or device is lost                                                                      | Return the Vulkan error and fault presentation; Engine teardown still attempts its drain.                                        |

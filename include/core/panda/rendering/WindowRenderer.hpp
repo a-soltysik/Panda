@@ -6,10 +6,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <panda/base/Error.hpp>                 // IWYU pragma: export
-#include <panda/rendering/FrameResult.hpp>      // IWYU pragma: export
-#include <panda/rendering/RenderView.hpp>       // IWYU pragma: export
+#include <panda/EngineOptions.hpp>
+#include <panda/base/Error.hpp>             // IWYU pragma: export
+#include <panda/rendering/FrameResult.hpp>  // IWYU pragma: export
+#include <panda/rendering/RenderView.hpp>   // IWYU pragma: export
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/OffscreenTarget.hpp>  // IWYU pragma: export
+#include <vector>
 
 namespace panda
 {
@@ -50,6 +53,28 @@ public:
     WindowRenderer(WindowRenderer&&) = delete;
     auto operator=(WindowRenderer&&) -> WindowRenderer& = delete;
     ~WindowRenderer() = default;
+
+    /// @brief Queries the presentation modes Panda supports on the current surface.
+    /// @return Supported modes or a surface/backend error. May allocate.
+    [[nodiscard]] auto getSupportedPresentationModes() const -> Result<std::vector<EngineOptions::PresentationMode>>;
+
+    /// @brief Returns the last accepted request, initially from EngineOptions.
+    [[nodiscard]] auto getRequestedPresentationMode() const noexcept -> EngineOptions::PresentationMode;
+
+    /// @brief Returns the current swapchain's mode, or no value while there is no swapchain.
+    [[nodiscard]] auto getEffectivePresentationMode() const noexcept -> std::optional<EngineOptions::PresentationMode>;
+
+    /// @brief Requests a mode for the next render call with a nonzero framebuffer.
+    /// @param mode Presentation policy to validate against the current surface.
+    /// @return Success if queued, Unsupported if unavailable, or a validation/backend error.
+    /// A rejected request leaves the previous request intact. Applying a request may block
+    /// during swapchain recreation and may fail in the render call.
+    [[nodiscard]] auto setPresentationMode(EngineOptions::PresentationMode mode) const -> Result<void>;
+
+    /// @brief Queries mesh sample counts supported for the current swapchain's color format.
+    /// @return Supported counts or an error. Returns Unsupported before the first swapchain exists.
+    /// For a capture frame, use the offscreen renderer's query instead.
+    [[nodiscard]] auto getSupportedSampleCounts() const -> Result<std::vector<SampleCount>>;
 
     /// @brief Renders and presents one application-supplied view.
     /// @param view Transient render data whose resources are retained through GPU completion.

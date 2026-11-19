@@ -5,6 +5,7 @@
 #include <expected>
 #include <iterator>
 #include <panda/EngineOptions.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda_bench/Arguments.hpp>
 #include <string>
 #include <vector>
@@ -85,6 +86,8 @@ TEST(BenchmarkArguments, ReadsRuntimeSettings)
                                 "65",
                                 "--present-mode",
                                 "mailbox",
+                                "--samples",
+                                "2",
                                 "--warmup-seconds",
                                 "0",
                                 "--measure-seconds",
@@ -99,6 +102,7 @@ TEST(BenchmarkArguments, ReadsRuntimeSettings)
     EXPECT_EQ(options->lightCount, 1000U);
     EXPECT_EQ(options->shadowedLightCount, 65U);
     EXPECT_EQ(options->presentationMode, panda::EngineOptions::PresentationMode::Mailbox);
+    EXPECT_EQ(options->sampleCount, panda::SampleCount::Two);
     EXPECT_EQ(options->warmupDuration, std::chrono::seconds {0});
     EXPECT_EQ(options->measurementDuration, std::chrono::seconds {12});
     EXPECT_EQ(options->runCount, 3U);
@@ -123,9 +127,17 @@ TEST(BenchmarkArguments, GeneratesHelpForRegisteredOptions)
     EXPECT_NE(help.find("--lights"), std::string::npos);
     EXPECT_NE(help.find("--shadowed-lights"), std::string::npos);
     EXPECT_NE(help.find("--present-mode"), std::string::npos);
+    EXPECT_NE(help.find("--samples"), std::string::npos);
     EXPECT_NE(help.find("--warmup-seconds"), std::string::npos);
     EXPECT_NE(help.find("--measure-seconds"), std::string::npos);
     EXPECT_NE(help.find("--runs"), std::string::npos);
+}
+
+TEST(BenchmarkArguments, RejectsUnsupportedSampleCount)
+{
+    const auto options = parse({"panda-bench", "--samples", "3"});
+    ASSERT_FALSE(options);
+    EXPECT_EQ(options.error(), "Sample count must be 1, 2 or 4");
 }
 
 TEST(BenchmarkArguments, RejectsUnsupportedProfile)

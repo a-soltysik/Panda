@@ -369,7 +369,7 @@ protected:
 
     auto create(bool separateQueues = false,
                 panda::EngineOptions::PresentationMode presentationMode = panda::EngineOptions::PresentationMode::Fifo)
-        -> panda::Result<panda::core::vulkan::SwapchainGeneration>
+        -> panda::core::vulkan::SwapchainGenerationResult
     {
         return panda::core::vulkan::createSwapchainGeneration({
             .physicalDevice = *physicalDevice,
@@ -441,8 +441,9 @@ TEST_F(SwapchainCreationTest, RejectsUnsupportedRequestedModeBeforeCreatingSwapc
 
     const auto generation = create(false, Mode::Mailbox);
     ASSERT_FALSE(generation.has_value());
-    EXPECT_EQ(generation.error().code, panda::ErrorCode::Unsupported);
-    EXPECT_NE(generation.error().message.find("MAILBOX"), std::string::npos);
+    EXPECT_EQ(generation.error().cause.code, panda::ErrorCode::Unsupported);
+    EXPECT_NE(generation.error().cause.message.find("MAILBOX"), std::string::npos);
+    EXPECT_FALSE(generation.error().oldSwapchainRetired);
 }
 
 TEST_P(SwapchainCreationTest, FailedCreationDoesNotPublishPartialGenerationOrDestroyFailedOutputs)
@@ -450,13 +451,14 @@ TEST_P(SwapchainCreationTest, FailedCreationDoesNotPublishPartialGenerationOrDes
     expectCreation(GetParam());
     const auto generation = create();
     ASSERT_FALSE(generation.has_value());
+    EXPECT_EQ(generation.error().oldSwapchainRetired, GetParam() >= Failure::Swapchain);
     EXPECT_EQ(
-        generation.error().code,
+        generation.error().cause.code,
         GetParam() == Failure::Configuration ? panda::ErrorCode::Unsupported : panda::ErrorCode::ResourceExhausted);
     if (GetParam() != Failure::Configuration)
     {
-        ASSERT_TRUE(generation.error().native.has_value());
-        EXPECT_EQ(generation.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
+        ASSERT_TRUE(generation.error().cause.native.has_value());
+        EXPECT_EQ(generation.error().cause.native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
     }
 }
 
@@ -478,7 +480,7 @@ TEST_F(SwapchainCreationTest, LaterImageFailureReleasesCompletedImagesBeforeTheS
     expectCreation(Failure::Fence, false, true);
     const auto generation = create();
     ASSERT_FALSE(generation.has_value());
-    EXPECT_EQ(generation.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_EQ(generation.error().cause.code, panda::ErrorCode::ResourceExhausted);
 }
 
 TEST_F(SwapchainCreationTest, FailedFormatFillIgnoresUndefinedOutputCount)
@@ -490,7 +492,7 @@ TEST_F(SwapchainCreationTest, FailedFormatFillIgnoresUndefinedOutputCount)
             testing::DoAll(testing::SetArgPointee<2>(std::numeric_limits<std::uint32_t>::max()), Return(exhausted)));
     const auto generation = create();
     ASSERT_FALSE(generation.has_value());
-    EXPECT_EQ(generation.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_EQ(generation.error().cause.code, panda::ErrorCode::ResourceExhausted);
 }
 
 TEST_F(SwapchainCreationTest, IncompleteImageEnumerationRetriesBeforeCreatingImageOwners)

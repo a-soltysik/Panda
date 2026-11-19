@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 #include <panda/base/Error.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <utility>
 #include <vector>
 
@@ -101,9 +102,15 @@ protected:
                 constexpr auto multisampleCounts = static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_1_BIT) |
                                                    static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_2_BIT) |
                                                    static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_4_BIT);
-                properties->sampleCounts = format == VK_FORMAT_B8G8R8A8_UNORM
-                                               ? static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_1_BIT)
-                                               : multisampleCounts;
+                properties->sampleCounts = multisampleCounts;
+                if (format == VK_FORMAT_B8G8R8A8_UNORM)
+                {
+                    properties->sampleCounts = VK_SAMPLE_COUNT_1_BIT;
+                }
+                if (format == VK_FORMAT_B8G8R8A8_SRGB)
+                {
+                    properties->sampleCounts &= ~static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_4_BIT);
+                }
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
     }
@@ -117,8 +124,7 @@ protected:
                                    const panda::detail::TextureResourceCreateInfo& description,
                                    vk::SampleCountFlagBits) {
                 createdUsages.push_back(description.usage);
-                if (failColorAt128 && description.extent.width == 128 &&
-                    description.usage == vk::ImageUsageFlagBits::eColorAttachment)
+                if (failColorAllocation && description.usage == vk::ImageUsageFlagBits::eColorAttachment)
                 {
                     return panda::Result<void> {std::unexpected {
                         panda::makeError(panda::ErrorCode::ResourceExhausted, "color allocation failed")}};
@@ -188,7 +194,7 @@ protected:
     std::map<const TextureResource*, VkImageView> views;
     std::vector<VkImageMemoryBarrier2> barriers;
     std::uintptr_t nextHandle {10};
-    bool failColorAt128 {false};
+    bool failColorAllocation {false};
 };
 }
 
@@ -243,7 +249,7 @@ TEST_F(RenderAttachmentsTest, NoOpFormatAndExtentResizePreserveOnlyUnaffectedRes
     EXPECT_EQ((*attachments)->getShadowView(0), shadowView);
 }
 
-TEST_F(RenderAttachmentsTest, FailedSecondReplacementKeepsPublishedResourcesAndDescription)
+TEST_F(RenderAttachmentsTest, FailedMsaaReplacementKeepsPublishedResourcesAndAllowsRetry)
 {
     auto attachments = createAttachments();
     ASSERT_TRUE(attachments);
@@ -251,9 +257,11 @@ TEST_F(RenderAttachmentsTest, FailedSecondReplacementKeepsPublishedResourcesAndD
     const auto shadowView = (*attachments)->getShadowView(0);
     (*attachments)->markSubmitted(0);
     const auto initialCreateCount = createdUsages.size();
-    failColorAt128 = true;
+    failColorAllocation = true;
 
-    const auto resized = (*attachments)->prepareResize({.width = 128, .height = 64}, vk::Format::eR8G8B8A8Unorm);
+    const auto resized =
+        (*attachments)
+            ->prepareResize(initialDescription.extent, initialDescription.colorFormat, panda::SampleCount::Two);
 
     ASSERT_FALSE(resized);
     EXPECT_EQ(resized.error().code, panda::ErrorCode::ResourceExhausted);
@@ -265,12 +273,42 @@ TEST_F(RenderAttachmentsTest, FailedSecondReplacementKeepsPublishedResourcesAndD
     EXPECT_EQ(current.extent.height, initialDescription.extent.height);
     EXPECT_EQ(current.colorFormat, initialDescription.colorFormat);
     EXPECT_EQ(current.sampleCount, initialDescription.sampleCount);
+    EXPECT_EQ(current.requestedSampleCount, initialDescription.requestedSampleCount);
     (*attachments)->transitionDepth(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
     (*attachments)->transitionShadowForAttachment(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
     ASSERT_EQ(barriers.size(), 2U);
     EXPECT_EQ(barriers.at(0).oldLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
     EXPECT_EQ(barriers.at(1).oldLayout, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
     EXPECT_EQ((*attachments)->getShadowView(0), shadowView);
+
+    auto previous = (*attachments)->prepareResize(initialDescription.extent, initialDescription.colorFormat);
+    ASSERT_TRUE(previous);
+    EXPECT_TRUE(previous->colorAttachments.empty());
+    EXPECT_TRUE(previous->depthAttachments.empty());
+    (*attachments)->publishResize(std::move(*previous));
+    failColorAllocation = false;
+    auto retry =
+        (*attachments)
+            ->prepareResize(initialDescription.extent, initialDescription.colorFormat, panda::SampleCount::Two);
+    ASSERT_TRUE(retry);
+    (*attachments)->publishResize(std::move(*retry));
+    EXPECT_EQ((*attachments)->getOutputDescription().sampleCount, vk::SampleCountFlagBits::e2);
+}
+
+TEST_F(RenderAttachmentsTest, SelectsTheHighestSupportedCountAtOrBelowTheRequest)
+{
+    constexpr auto format = vk::Format::eB8G8R8A8Srgb;
+    const auto supported = RenderAttachments::getSupportedSampleCounts(physical, format);
+    ASSERT_TRUE(supported);
+    EXPECT_THAT(*supported, testing::UnorderedElementsAre(panda::SampleCount::One, panda::SampleCount::Two));
+
+    auto attachments = createAttachments({.width = 64, .height = 64}, format);
+    ASSERT_TRUE(attachments);
+    EXPECT_EQ((*attachments)->getOutputDescription().sampleCount, vk::SampleCountFlagBits::e2);
+    const auto off = (*attachments)->prepareResize({.width = 64, .height = 64}, format, panda::SampleCount::One);
+    ASSERT_TRUE(off);
+    EXPECT_EQ(off->description.sampleCount, vk::SampleCountFlagBits::e1);
+    EXPECT_TRUE(off->colorAttachments.empty());
 }
 
 TEST_F(RenderAttachmentsTest, RecordingDoesNotCommitLayoutHistoryUntilSubmission)

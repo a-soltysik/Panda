@@ -8,6 +8,8 @@
 #include <optional>
 #include <panda/base/Error.hpp>
 #include <panda/rendering/OffscreenRenderer.hpp>
+#include <panda/rendering/SampleCount.hpp>
+#include <vector>
 
 #include "vulkan/performance/PerformanceManagerImpl.hpp"
 #include "vulkan/presentation/OffscreenRenderBackend.hpp"
@@ -49,6 +51,11 @@ OffscreenRenderer::OffscreenRenderer(Dependencies dependencies) noexcept
       _performance {dependencies.performance},
       _maxLights {dependencies.maxLights}
 {
+}
+
+auto OffscreenRenderer::getSupportedSampleCounts() const -> Result<std::vector<SampleCount>>
+{
+    return _rendering.getSupportedSampleCounts();
 }
 
 auto OffscreenRenderer::render(const RenderView& view, const OffscreenTarget& target) const -> Result<FrameResult>

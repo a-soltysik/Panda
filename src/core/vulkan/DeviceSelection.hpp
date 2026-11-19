@@ -45,6 +45,9 @@ struct SelectedDevice
                                      EngineOptions::PresentationMode requested)
     -> std::expected<vk::PresentModeKHR, Error>;
 
+[[nodiscard]] auto queryPresentationModes(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface)
+    -> Result<std::vector<EngineOptions::PresentationMode>>;
+
 [[nodiscard]] auto selectDevice(vk::Instance instance,
                                 vk::SurfaceKHR surface,
                                 const InstanceExtensions& extensions,
