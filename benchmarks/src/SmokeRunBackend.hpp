@@ -5,6 +5,7 @@
 #include <expected>
 #include <glm/vec2.hpp>
 #include <optional>
+#include <panda/EngineOptions.hpp>
 #include <panda/rendering/PerformanceManager.hpp>
 #include <panda/vulkan/WindowSurface.hpp>
 #include <string>
@@ -27,6 +28,7 @@ struct SmokeRunEnvironment
     std::string gpuModel;
     std::optional<DriverReport> driver;
     std::optional<std::uint32_t> vulkanApiVersion;
+    panda::EngineOptions::PresentationMode presentationMode {panda::EngineOptions::PresentationMode::Fifo};
 };
 
 enum class FrameStatus : std::uint8_t

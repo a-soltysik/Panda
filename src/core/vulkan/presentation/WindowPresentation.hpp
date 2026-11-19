@@ -12,6 +12,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <panda/EngineOptions.hpp>
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
@@ -46,6 +47,7 @@ struct WindowPresentationCreateInfo
     api_detail::SubmissionQueue& submissions;
     resources::MemoryPool* pool {nullptr};
     api_detail::PerformanceManagerImpl* performance {nullptr};
+    EngineOptions::PresentationMode presentationMode {EngineOptions::PresentationMode::Fifo};
     std::uint32_t maxLights;
 };
 
@@ -168,6 +170,7 @@ private:
     std::uint32_t _queueFamily;
     std::uint32_t _presentQueueFamily;
     SwapchainMaintenance _maintenance;
+    EngineOptions::PresentationMode _presentationMode;
     api_detail::SubmissionQueue& _submissions;
     std::unique_ptr<presentation::FrameExecution> _execution;
     std::array<vk::raii::Semaphore, presentation::FrameExecution::slotCount> _acquireSemaphores {

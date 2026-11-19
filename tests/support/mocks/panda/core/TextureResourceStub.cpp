@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
+#include <cstdint>
 #include <expected>
 #include <memory>
 #include <panda/base/Error.hpp>
@@ -89,6 +90,7 @@ TextureResource::TextureResource(texture_resources::MemoryPool& pool,
     : _image {std::move(image)},
       _pool {pool},
       _extent {description.extent},
+      _arrayLayers {description.arrayLayers},
       _format {description.format},
       _usage {description.usage},
       _samples {samples}
@@ -128,6 +130,22 @@ auto TextureResource::getNative() const -> vk::Image
 auto TextureResource::getNativeView() const -> vk::ImageView
 {
     return test::ScopedMock<test::TextureResourceMock>::getActiveMock().getNativeView(*this);
+}
+
+auto TextureResource::getNativeArrayView() const -> vk::ImageView
+{
+    return getNativeView();
+}
+
+auto TextureResource::getLayerView(std::uint32_t layer) const -> vk::ImageView
+{
+    static_cast<void>(layer);
+    return getNativeView();
+}
+
+auto TextureResource::getArrayLayers() const noexcept -> std::uint32_t
+{
+    return _arrayLayers;
 }
 
 auto TextureResource::belongsTo(const texture_resources::MemoryPool& pool) const -> bool

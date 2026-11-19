@@ -23,6 +23,17 @@ struct EngineOptions
         Required
     };
 
+    /// Presentation policy used by windowed Engines. FIFO is universally supported.
+    enum class PresentationMode : std::uint8_t
+    {
+        /// Wait for vertical blanking and present frames in order without tearing.
+        Fifo,
+        /// Wait for vertical blanking and replace a queued frame with the newest one.
+        Mailbox,
+        /// Present without waiting for vertical blanking; tearing may occur.
+        Immediate
+    };
+
     /// Name passed to the Vulkan loader; copied during creation.
     std::string applicationName {"Panda"};
     /// Enable the installed Khronos validation layer and route its debug-utils diagnostics
@@ -34,6 +45,9 @@ struct EngineOptions
     /// Maximum lights in one RenderView; zero allows views without direct lighting.
     /// Positive limits must fit the selected device's storage-buffer limits.
     std::uint32_t maxLights {defaultMaxLights};
+    /// Requested window presentation mode. Unsupported modes fail Engine creation.
+    /// Ignored by headless Engines.
+    PresentationMode presentationMode {PresentationMode::Fifo};
     /// External Vulkan memory export support.
     ExternalBufferSupport externalBufferSupport {ExternalBufferSupport::Disabled};
 };

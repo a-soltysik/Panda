@@ -108,7 +108,6 @@ auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice,
 
 auto initializeDevice(EngineCreateInfo& resources, const WindowSurface* surface, const EngineOptions& options)
     -> Result<void>;
-auto selectPhysicalDevice(EngineCreateInfo& resources, std::uint32_t maxLights) -> Result<SelectedDevice>;
 void populateDeviceUuid(EngineCreateInfo& resources, SelectedDevice& selected);
 auto queryExternalSupport(EngineCreateInfo& resources, const EngineOptions& options)
     -> Result<std::optional<api_detail::ExternalSupport>>;
@@ -129,7 +128,7 @@ auto initializePerformance(EngineCreateInfo& resources,
 auto initializePresentation(EngineCreateInfo& resources,
                             const WindowSurface& surface,
                             const SelectedDevice& selected,
-                            std::uint32_t maxLights) -> Result<void>;
+                            const EngineOptions& options) -> Result<void>;
 void populateEngineDiagnostics(EngineCreateInfo& resources,
                                const SelectedDevice& selected,
                                const EngineOptions& options);
@@ -155,11 +154,13 @@ auto createResources(const WindowSurface* surface, const EngineOptions& options)
 
 namespace
 {
-auto selectPhysicalDevice(EngineCreateInfo& resources, std::uint32_t maxLights) -> Result<SelectedDevice>
+auto selectPhysicalDevice(EngineCreateInfo& resources,
+                          std::uint32_t maxLights,
+                          EngineOptions::PresentationMode presentationMode) -> Result<SelectedDevice>
 {
     const auto& instanceResources = resources.device->instance;
     const auto surface = instanceResources.surface ? **instanceResources.surface : vk::SurfaceKHR {};
-    auto selected = selectDevice(*instanceResources.instance, surface, instanceResources.extensions);
+    auto selected = selectDevice(*instanceResources.instance, surface, instanceResources.extensions, presentationMode);
     if (!selected)
     {
         return std::unexpected {std::move(selected.error())};
@@ -202,7 +203,7 @@ auto initializeLogicalDevice(EngineCreateInfo& resources,
 auto initializeDevice(EngineCreateInfo& resources, const WindowSurface* surface, const EngineOptions& options)
     -> Result<void>
 {
-    auto selected = selectPhysicalDevice(resources, options.maxLights);
+    auto selected = selectPhysicalDevice(resources, options.maxLights, options.presentationMode);
     if (!selected)
     {
         return std::unexpected {selected.error()};
@@ -249,8 +250,7 @@ auto initializeSelectedDevice(EngineCreateInfo& resources,
                                                         .maxLights = resources.maxLights});
     if (surface != nullptr)
     {
-        if (const auto initialized = initializePresentation(resources, *surface, selected, resources.maxLights);
-            !initialized)
+        if (const auto initialized = initializePresentation(resources, *surface, selected, options); !initialized)
         {
             return std::unexpected {initialized.error()};
         }
@@ -269,6 +269,8 @@ void populateEngineDiagnostics(EngineCreateInfo& resources,
         .validationEnabled = options.enableValidation,
         .performance = {.hasGpuTimestampQueries = selected.timestampValidBits != 0,
                         .isGpuTimestampSamplingEnabled = resources.performance != nullptr},
+        .presentationMode = resources.windowPresentation ? std::optional {options.presentationMode}
+          : std::nullopt,
         .externalBufferExportEnabled = resources.externalInterop != nullptr,
         .externalSemaphoreExportEnabled =
             resources.externalInterop != nullptr && resources.externalInterop->supportsSemaphoreExport()
@@ -335,7 +337,7 @@ auto initializePerformance(EngineCreateInfo& resources,
 auto initializePresentation(EngineCreateInfo& resources,
                             const WindowSurface& surface,
                             const SelectedDevice& selected,
-                            std::uint32_t maxLights) -> Result<void>
+                            const EngineOptions& options) -> Result<void>
 {
     const auto& instanceResources = resources.device->instance;
     const auto contextSurface = instanceResources.surface ? **instanceResources.surface : vk::SurfaceKHR {};
@@ -349,7 +351,8 @@ auto initializePresentation(EngineCreateInfo& resources,
                                                     .submissions = *resources.submissions,
                                                     .pool = resources.memoryPool.get(),
                                                     .performance = resources.performance.get(),
-                                                    .maxLights = maxLights});
+                                                    .presentationMode = options.presentationMode,
+                                                    .maxLights = resources.maxLights});
     if (!presentation)
     {
         return std::unexpected {presentation.error()};

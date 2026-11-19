@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <expected>
 #include <panda/DeviceInfo.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/vulkan/WindowSurface.hpp>
 #include <string>
 #include <vector>
@@ -39,7 +40,15 @@ struct SelectedDevice
 [[nodiscard]] auto instanceExtensions(const WindowSurface* surface, bool enableValidation = false)
     -> std::expected<InstanceExtensions, Error>;
 
-[[nodiscard]] auto selectDevice(vk::Instance instance, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
-    -> std::expected<SelectedDevice, Error>;
+[[nodiscard]] auto selectPresentMode(vk::PhysicalDevice physicalDevice,
+                                     vk::SurfaceKHR surface,
+                                     EngineOptions::PresentationMode requested)
+    -> std::expected<vk::PresentModeKHR, Error>;
+
+[[nodiscard]] auto selectDevice(vk::Instance instance,
+                                vk::SurfaceKHR surface,
+                                const InstanceExtensions& extensions,
+                                EngineOptions::PresentationMode presentationMode =
+                                    EngineOptions::PresentationMode::Fifo) -> std::expected<SelectedDevice, Error>;
 
 }

@@ -191,12 +191,26 @@ auto MeshRenderer::resize(vk::Extent2D extent, vk::Format colorFormat) -> std::e
 
 auto MeshRenderer::updateFrame(std::size_t frameIndex, const RenderView& view) -> std::expected<void, Error>
 {
-    if (const auto updated = _bindings->updateFrame(frameIndex, view, _attachments->getShadowView(frameIndex));
+    if (const auto updated = _bindings->updateFrame(frameIndex,
+                                                    view,
+                                                    _attachments->getShadowView(frameIndex),
+                                                    _attachments->getShadowLayerView(frameIndex, 0));
         !updated)
     {
         return updated;
     }
-    return pipelineCache().prepare(view);
+    const auto shadowLayerCount = _bindings->getShadowAtlasPlan(frameIndex).atlasLayerCount;
+    return _attachments->ensureShadowAtlasLayers(frameIndex, shadowLayerCount)
+        .and_then([&](bool atlasGrown) {
+            return atlasGrown ? _bindings->updateFrame(frameIndex,
+                                                       view,
+                                                       _attachments->getShadowView(frameIndex),
+                                                       _attachments->getShadowLayerView(frameIndex, 0))
+                              : std::expected<void, Error> {};
+        })
+        .and_then([&] {
+            return pipelineCache().prepare(view);
+        });
 }
 
 auto MeshRenderer::getSampleCount() const noexcept -> vk::SampleCountFlagBits
@@ -219,14 +233,29 @@ void MeshRenderer::record(vk::CommandBuffer command,
 void MeshRenderer::recordShadowPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view)
 {
     _attachments->transitionShadowForAttachment(command, frameIndex);
-    recordShadowAttachment(command, _attachments->getShadowView(frameIndex));
+    const auto& plan = _bindings->getShadowAtlasPlan(frameIndex);
+    for (auto layer = std::uint32_t {}; layer < plan.atlasLayerCount; ++layer)
+    {
+        recordShadowLayer(command, frameIndex, view, layer);
+    }
+    _attachments->transitionShadowForSampling(command, frameIndex);
+}
+
+void MeshRenderer::recordShadowLayer(vk::CommandBuffer command,
+                                     std::size_t frameIndex,
+                                     const RenderView& view,
+                                     std::uint32_t layer)
+{
+    recordShadowAttachment(command, _attachments->getShadowLayerView(frameIndex, layer));
     const auto& plan = _bindings->getShadowAtlasPlan(frameIndex);
     for (auto shadowViewIndex = std::size_t {}; shadowViewIndex < plan.views.size(); ++shadowViewIndex)
     {
-        recordShadowView(command, frameIndex, view, shadowViewIndex);
+        if (plan.views.at(shadowViewIndex).tile.layer == layer)
+        {
+            recordShadowView(command, frameIndex, view, shadowViewIndex);
+        }
     }
     command.endRendering();
-    _attachments->transitionShadowForSampling(command, frameIndex);
 }
 
 void MeshRenderer::recordShadowView(vk::CommandBuffer command,

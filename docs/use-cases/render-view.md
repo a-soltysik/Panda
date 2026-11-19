@@ -7,8 +7,8 @@ Panda renders and presents that view without requiring a scene or entity system.
 empty `RenderView::meshes` list is a valid view that presents only the background.
 This flow ends with a `FrameResult` or an `Error`.
 
-**The application** owns scene data, transforms and the lifetime of its `Engine`.
-**Panda** validates the view, records the built-in mesh rendering path, retains mesh
+**The application** owns scene data, transforms and the lifetime of its `Engine`. **Panda** validates the view, records
+the built-in mesh rendering path, retains mesh
 and selected texture handles through GPU use, and owns frame-slot and swapchain synchronization. A returned
 `CompletionPoint` identifies submitted GPU work; it does not mean the image has been displayed.
 
@@ -89,7 +89,8 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    atlas once and renders opaque/masked casters into each opted-in light's guarded
    tile with that tile's view matrix.
    `MeshPipelineCache` prepares missing color and shadow variants before recording;
-   draw recording then looks up those prepared pipelines without creating them. A base-color sample multiplies material and
+   draw recording then looks up those prepared pipelines without creating them. A base-color sample multiplies material
+   and
    draw tint and optional vertex color; a metallic-roughness sample scales Lit
    material values with its blue and green channels respectively. The emissive
    sample multiplies the linear emissive factor and is added before tone mapping
@@ -138,56 +139,56 @@ sequenceDiagram
     participant K as MeshPipelineCache
     participant Q as SubmissionQueue
     participant V as Vulkan
-    A->>A: Step 1 - build the view
-    A->>W: Step 2 - render(view)
-    Note over W,V: Steps 3 to 8 realize validation through presentation
-    W->>W: Validate camera, light, mesh layouts and texture requirements
-    W->>U: Collect completed upload packets
-    U-->>W: Collection result
-    W->>W: Reject material maps without a submitted upload
-    W->>P: Render validated view
-    P->>V: Check framebuffer and swapchain generation
-    P->>E: Wait for frame slot and retain mesh and selected material texture handles
-    P->>V: Acquire image and wait for presentation reuse
-    P->>E: Begin command buffer
-    P->>V: Transition output image to color attachment
+    A ->> A: Step 1 - build the view
+    A ->> W: Step 2 - render(view)
+    Note over W, V: Steps 3 to 8 realize validation through presentation
+    W ->> W: Validate camera, light, mesh layouts and texture requirements
+    W ->> U: Collect completed upload packets
+    U -->> W: Collection result
+    W ->> W: Reject material maps without a submitted upload
+    W ->> P: Render validated view
+    P ->> V: Check framebuffer and swapchain generation
+    P ->> E: Wait for frame slot and retain mesh and selected material texture handles
+    P ->> V: Acquire image and wait for presentation reuse
+    P ->> E: Begin command buffer
+    P ->> V: Transition output image to color attachment
     alt View has no meshes
-        E->>V: Clear FrameOutput with encoded background color
+        E ->> V: Clear FrameOutput with encoded background color
     else View contains meshes
-        E->>R: Create/resize renderer
+        E ->> R: Create/resize renderer
         alt First mesh draw
-            R->>RA: Create depth, MSAA and shadow attachments
-            RA-->>R: Ready attachments and output description
-            R->>B: Create frame bindings after shadow views exist
-            B-->>R: Pipeline layout
-            R->>K: Create cache with output compatibility
+            R ->> RA: Create depth, MSAA and shadow attachments
+            RA -->> R: Ready attachments and output description
+            R ->> B: Create frame bindings after shadow views exist
+            B -->> R: Pipeline layout
+            R ->> K: Create cache with output compatibility
         else Existing renderer resize or no-op
-            R->>RA: Prepare output attachment replacements
-            RA-->>R: Pending replacements and output description
-            R->>K: Set compatibility after preparation succeeds
-            R->>RA: Publish replacements and reset replaced history
+            R ->> RA: Prepare output attachment replacements
+            RA -->> R: Pending replacements and output description
+            R ->> K: Set compatibility after preparation succeeds
+            R ->> RA: Publish replacements and reset replaced history
         end
-        R->>B: Update frame data, material/light records and texture descriptors
-        B->>V: Write frame buffers and descriptor sets
-        R->>K: Prepare needed color and shadow variants
-        K->>V: Create missing pipeline variants
-        R->>K: Look up prepared pipelines during draw recording
-        R->>V: Clear atlas and record each configured light view into its guarded tile
-        R->>V: Apply the same Mask cutoff as the camera pass
-        R->>V: Record Opaque and Mask draws, then back-to-front Blend draws
-        R->>V: Sample material maps and per-light atlas views for Lit shading
-        R->>V: Add emission before tone mapping for Lit and Unlit shading
+        R ->> B: Update frame data, material/light records and texture descriptors
+        B ->> V: Write frame buffers and descriptor sets
+        R ->> K: Prepare needed color and shadow variants
+        K ->> V: Create missing pipeline variants
+        R ->> K: Look up prepared pipelines during draw recording
+        R ->> V: Clear atlas and record each configured light view into its guarded tile
+        R ->> V: Apply the same Mask cutoff as the camera pass
+        R ->> V: Record Opaque and Mask draws, then back-to-front Blend draws
+        R ->> V: Sample material maps and per-light atlas views for Lit shading
+        R ->> V: Add emission before tone mapping for Lit and Unlit shading
     end
-    P->>V: Transition output image to present layout
-    P->>E: End command buffer
-    P->>Q: Submit commands and signal timeline
-    Q-)V: Queue accepts frame work
-    Q-->>P: Completion value
-    P->>E: Commit frame completion and renderer/performance state
-    P->>V: Present image and signal its present fence
-    V-->>P: Present outcome
-    P-->>W: FrameResult or Error
-    W-->>A: Result<FrameResult>
+    P ->> V: Transition output image to present layout
+    P ->> E: End command buffer
+    P ->> Q: Submit commands and signal timeline
+    Q -) V: Queue accepts frame work
+    Q -->> P: Completion value
+    P ->> E: Commit frame completion and renderer/performance state
+    P ->> V: Present image and signal its present fence
+    V -->> P: Present outcome
+    P -->> W: FrameResult or Error
+    W -->> A: Result<FrameResult>
 ```
 
 ## Notes
@@ -234,9 +235,10 @@ orients back-facing normals consistently when rendering `Back` or `Both`. A
 constant ambient term contributes
 0.06 times base color to Lit materials. The shader applies the ACES fitted tone curve and
 outputs sRGB, using hardware conversion for sRGB swapchain formats or shader encoding
-for UNORM formats. A frame slot owns one 4096² shadow depth atlas. Each opted-in
-directional or spot light occupies one guarded tile; each point light occupies six
-cube-oriented tiles. Defaults are 2048 with 30 m orthographic coverage for directional,
+for UNORM formats. A frame slot owns one sampled 2D-array shadow depth image, with
+one or more 4096² layers used as atlas pages. It grows to fit the frame's shadow
+plan. Each opted-in directional or spot light occupies one guarded tile; each point
+light occupies six cube-oriented tiles. Defaults are 2048 with 30 m orthographic coverage for directional,
 1024 for spot, and 512 per point face. The shader applies 3x3 PCF and clamps taps to
 the selected tile; ambient light remains unshadowed. Directional shadows use a uniform
 texel density across their coverage, while point-light density changes with distance.
@@ -279,16 +281,16 @@ A frame error does not imply that already submitted work was rolled back.
 
 ## Variants and errors
 
-| Condition                                                        | Result and next action                                                                       |
-|------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
-| Framebuffer width or height is zero                              | Return `Suspended` without acquiring an image; process events and retry after restoration.   |
-| Acquire returns timeout or not-ready                             | Return `Skipped` without a completion point.                                                 |
-| Acquire reports out-of-date                                      | Return `RecreatePending` without a completion point; the next call attempts recreation.      |
-| Acquire or present is suboptimal, or present reports out-of-date | Return `RecreatePending`; keep the accepted submission's completion point.                   |
-| Invalid view/material data, foreign mesh/texture, incompatible layout, or invalid material map | Return `InvalidArgument` before acquiring an image. |
-| Capture is requested                                              | Use `WindowRenderer::renderWithCapture(view, target)`; capture may return `Unsupported` when the surface or formats cannot blit. |
-| Recording, submission or cleanup fails after acquire             | Return the relevant error; retire the acquired image. Failed retirement faults presentation. |
-| Surface or device is lost                                        | Return the Vulkan error and fault presentation; Engine teardown still attempts its drain.   |
+| Condition                                                                                      | Result and next action                                                                                                           |
+|------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| Framebuffer width or height is zero                                                            | Return `Suspended` without acquiring an image; process events and retry after restoration.                                       |
+| Acquire returns timeout or not-ready                                                           | Return `Skipped` without a completion point.                                                                                     |
+| Acquire reports out-of-date                                                                    | Return `RecreatePending` without a completion point; the next call attempts recreation.                                          |
+| Acquire or present is suboptimal, or present reports out-of-date                               | Return `RecreatePending`; keep the accepted submission's completion point.                                                       |
+| Invalid view/material data, foreign mesh/texture, incompatible layout, or invalid material map | Return `InvalidArgument` before acquiring an image.                                                                              |
+| Capture is requested                                                                           | Use `WindowRenderer::renderWithCapture(view, target)`; capture may return `Unsupported` when the surface or formats cannot blit. |
+| Recording, submission or cleanup fails after acquire                                           | Return the relevant error; retire the acquired image. Failed retirement faults presentation.                                     |
+| Surface or device is lost                                                                      | Return the Vulkan error and fault presentation; Engine teardown still attempts its drain.                                        |
 
 ## Related information
 

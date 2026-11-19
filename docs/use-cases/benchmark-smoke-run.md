@@ -5,10 +5,10 @@
 An application developer runs `panda-bench` to collect a short, repeatable sample
 of Panda's public frame timings and save the run details. The flow starts with
 command-line arguments and ends with a JSON report and process outcome. Only the
-`smoke` profile is implemented; it uploads one standard cube before warmup and
-measurement, then submits a fixed one-mesh view with an optional fixed light list
-through `WindowRenderer::render(view)`. It exercises the live mesh and lighting paths, but
-is not a representative scene benchmark or performance baseline.
+`smoke` profile is implemented; it uploads a floor, cube and sphere meshes before
+warmup and measurement, then submits a fixed ten-draw colored scene and light list
+through `WindowRenderer::render(view)`. It exercises the live mesh, lighting and
+shadow paths, but is not a representative scene benchmark or performance baseline.
 
 **The benchmark** validates settings, drives the timed phases and checks that the
 sample set is complete. **Panda** owns window/Engine creation and asynchronous
@@ -17,10 +17,17 @@ frame timing. Each requested run creates and tears down its own window and Engin
 ## Main flow
 
 1. **Parse the request.** `parseArguments()` accepts the smoke profile, output
-   directory, requested window size, light count, warmup and measurement durations,
-   and run count. Defaults are `smoke`, `results`, 1280 by 720 pixels, 65 lights,
-   1 second warmup, 3 seconds measurement and one run. `--lights` accepts 0 to 65;
-   positive counts create one directional light and the remaining point lights. It
+   directory, requested window size, total and shadowed light counts, presentation mode, warmup and
+   measurement durations, and run count. Defaults are `smoke`, `results`, 1280 by
+   720 pixels, 65 total and shadowed lights, FIFO presentation, 1 second warmup,
+   3 seconds measurement and one run. `--present-mode` accepts `fifo`, `mailbox` or
+   `immediate`; an unsupported mode fails during Engine creation. `--lights` accepts
+   0 to 1000 and `--shadowed-lights` accepts 0 to `--lights`, defaulting to
+   `min(--lights, 65)`. Positive light counts create one directional light and the
+   remaining point lights; the first requested number of lights cast shadows. The
+   directional map is 2048² and each
+   point-light face is 256². The frame slot's 4096² atlas pages grow as layers in a
+   sampled 2D-array image to fit all requested maps. It
    rejects other profiles, zero extents, warmup outside 0 to 3600 seconds,
    measurement outside 1 to 86400 seconds, and run counts outside 1 to 100 before
    creating output files.
@@ -29,14 +36,16 @@ frame timing. Each requested run creates and tears down its own window and Engin
    setup error stops before any run starts.
 3. **Initialize a run.** `SmokeRun` asks `VulkanSmokeRunBackend` to create a window
    at the requested size, then a `Engine` with validation disabled, frame
-   sampling enabled and `maxLights = max(defaultMaxLights, requested light count)`.
+   sampling enabled, the requested presentation mode and
+   `maxLights = max(defaultMaxLights, requested light count)`.
    `Engine::createWithSurface(surface, options)` returns Engine. The backend checks
    `Engine::getFeatures().performance` before borrowing the optional manager, then
-   captures the effective framebuffer extent, GPU, driver and Vulkan API information.
+   captures `EngineFeatures::presentationMode` as the effective mode together with
+   framebuffer extent, GPU, driver and Vulkan API information.
    For a nonzero extent, it creates
-   unit-cube geometry and a matching mesh, snapshots the
-   geometry through an `UploadBatch`, waits for upload completion and prepares one
-   fixed camera, mesh draw and optional fixed light list. A minimized initial
+   plane, cube and sphere geometry and matching meshes, snapshots each through an
+   `UploadBatch`, waits for upload completion and prepares one fixed camera, ten
+   colored draws and the requested fixed light list. A minimized initial
    framebuffer makes the run invalid.
 4. **Warm up.** For the requested duration, `SmokeRun` checks that the window stays
    open and its nonzero framebuffer extent stays unchanged, submits a frame, drains
@@ -56,9 +65,9 @@ frame timing. Each requested run creates and tears down its own window and Engin
 7. **Tear down and report.** `SmokeRun::execute()` tears down the backend after
    success or failure; the Vulkan backend releases the view's mesh handle, destroys
    the `Engine`, then destroys its borrowed window. `runBenchmark()` appends the run
-   result, stops further runs after a failure, writes the requested light count and
-   other settings to the JSON report when output setup succeeded, and prints the
-   summary and report/log paths when the report was written.
+   result, stops further runs after a failure, writes requested settings and each
+   run's effective presentation mode to the JSON report when output setup succeeded,
+   and prints the summary and report/log paths when the report was written.
 
 ```mermaid
 sequenceDiagram
@@ -72,7 +81,7 @@ sequenceDiagram
     participant U as UploadBatch
     participant P as PerformanceManager
     participant F as Output files
-    A ->> M: Step 1 - provide smoke settings and light count
+    A ->> M: Step 1 - provide smoke settings and presentation mode
     M ->> F: Step 2 - create output directory and open log
     loop Each requested run
         M ->> S: Step 3 - execute one run
@@ -82,34 +91,38 @@ sequenceDiagram
         C -->> B: Engine and selected device
         B ->> E: getFeatures().performance
         E -->> B: Timestamp support and sampling state
+        B ->> E: getFeatures().presentationMode
+        E -->> B: Effective presentation mode
         B ->> P: Borrow active PerformanceManager
         B ->> B: Capture extent and environment
         opt Initial framebuffer extent is nonzero
-            B ->> C: createMeshFromGeometry(cube geometry)
-            C -->> B: Mesh
-            B ->> C: createUploadBatch()
-            C -->> B: UploadBatch
-            B ->> U: write(mesh, cube geometry)
-            B ->> U: submit()
-            U -->> B: Upload completion point
-            B ->> C: wait(upload completion)
-            C -->> B: Upload completed
-            B ->> B: Prepare fixed camera and mesh view
+            loop Plane, cube and sphere geometry
+                B ->> C: createMeshFromGeometry(geometry)
+                C -->> B: Mesh
+                B ->> C: createUploadBatch()
+                C -->> B: UploadBatch
+                B ->> U: write(mesh, geometry)
+                B ->> U: submit()
+                U -->> B: Upload completion point
+                B ->> C: wait(upload completion)
+                C -->> B: Upload completed
+            end
+            B ->> B: Prepare fixed camera and ten colored draws
             opt Requested light count is positive
-                B ->> B: Add one directional and remaining point lights
+                B ->> B: Add directional and point lights, then mark the requested subset shadowed
             end
         end
         B -->> S: Step 3 - environment and prepared workload
         loop Until warmup duration ends
             S ->> B: Step 4 - verify window and submit frame
-            B ->> C: render(fixed cube view and light list)
+            B ->> C: render(fixed colored scene and light list)
             C -->> B: Presented frame and completion point
             S ->> P: Step 4 - drain and discard warmup samples
             S ->> W: Process events and recheck extent
         end
         loop Until measurement duration ends
             S ->> B: Step 5 - verify window and submit frame
-            B ->> C: render(fixed cube view and light list)
+            B ->> C: render(fixed colored scene and light list)
             C -->> B: Presented frame and completion point
             S ->> P: Step 5 - drain and retain measurement-range samples
             S ->> W: Process events and recheck extent
@@ -134,15 +147,17 @@ sequenceDiagram
 **Controlled workload.** Every attempted warmup or measurement frame must return
 `Presented`, and the framebuffer must remain at its initial nonzero extent. A
 detected resize, minimize, close request or other frame status invalidates the run
-rather than mixing different workloads. The smoke profile reuses one uploaded cube,
-fixed light list and fixed `RenderView`; it does not create geometry, lights or submit
+rather than mixing different workloads. The smoke profile reuses uploaded shared
+meshes, a fixed colored scene, a fixed light list and fixed `RenderView`; it does not
+create geometry, lights or submit
 uploads in the timed loop.
 See [UC Render and present an application view](render-view.md) for the frame outcomes.
 
-**Presentation pacing.** The current Engine uses FIFO presentation. CPU frame samples
-include acquisition and presentation waits, so they can track display refresh rather
-than active CPU rendering. GPU samples measure the timestamped rendering work and
-exclude presentation waits.
+**Presentation pacing.** FIFO waits for vertical blanking and queues frames;
+MAILBOX also waits for vertical blanking but replaces a pending frame with the
+newest request; IMMEDIATE does not wait and may tear. CPU frame samples include
+acquisition and presentation waits, so their duration depends on the selected mode.
+GPU samples measure timestamped rendering work and exclude presentation waits.
 
 **Measurement interval.** The benchmark drains samples throughout both phases so
 Panda's buffered samples stay bounded. It discards warmup samples and selects
@@ -155,10 +170,11 @@ The report's `measurementWallDurationNanoseconds` measures the phase loop, inclu
 frame submission, sample polling and event processing. It is not the sum of the
 per-frame `cpuFrameDuration` values.
 
-**Report contents.** `panda-bench-smoke.json` records schema version 5, smoke
-profile version 3 (`renderStaticCube` or `renderStaticCubeWithLights`), code revision,
-available environment details, requested light count, requested and effective extents,
-effective sample count, startup/warmup/measurement/wait/drain/teardown durations,
+**Report contents.** `panda-bench-smoke.json` records schema version 7, smoke
+profile version 5 (`renderStaticColoredScene`), code revision, available environment
+details, requested total and shadowed light counts, requested and effective extents,
+requested and effective presentation modes, effective sample count,
+startup/warmup/measurement/wait/drain/teardown durations,
 submitted-frame counts, paired per-frame samples, per-run CPU/GPU
 count/mean/p50/p95/p99/min/max statistics and the outcome. The console summary
 prints startup and teardown duration, sample count and CPU/GPU p50 and p95. Engine
@@ -182,7 +198,7 @@ an empty sample set has no statistics summary.
 | **Variant&nbsp;2** | Step 1: warmup is zero, or more than one run is requested                                                                                                  | Skip warmup, or execute runs sequentially with a fresh backend for each                                                          | A zero-warmup run may include first-use renderer setup in its first sample; each run retains its own sample set and report entry    |
 | **Error&nbsp;1**   | Step 1: arguments are malformed, out of range or select an unimplemented profile                                                                           | Print the parser error and return `EXIT_FAILURE`                                                                                 | No benchmark run or report is started; correct the options and retry                                                                |
 | **Error&nbsp;2**   | Step 2: output directory creation or log sink setup fails                                                                                                  | Report the setup error and return `EXIT_FAILURE`                                                                                 | No run starts and no JSON report is guaranteed; choose a writable output directory                                                  |
-| **Error&nbsp;3**   | Step 3: window/Engine, cube mesh or upload setup fails, or the selected queue lacks timestamp support                                                       | Stop initialization; use [failed-run teardown](#failed-run-teardown); preserve `unsupported` or `failed` as the run outcome      | The benchmark still attempts to write a report if output setup succeeded; use a supported display/device or resolve the setup error |
+| **Error&nbsp;3**   | Step 3: window/Engine, scene mesh or upload setup fails, or the selected queue lacks timestamp support                                                     | Stop initialization; use [failed-run teardown](#failed-run-teardown); preserve `unsupported` or `failed` as the run outcome      | The benchmark still attempts to write a report if output setup succeeded; use a supported display/device or resolve the setup error |
 | **Error&nbsp;4**   | Steps 3 through 5: the initial or later framebuffer is minimized, the window closes, its extent changes, or a frame is not presented                       | Mark the run `invalid` and stop its timed phases; use [failed-run teardown](#failed-run-teardown)                                | Inspect the reported reason and repeat under a stable display configuration                                                         |
 | **Error&nbsp;5**   | Steps 4 through 6: a window/backend operation or sample retrieval fails, the final frame wait times out, or sample count differs from measured submissions | Stop with the returned error outcome, or mark it `invalid` for a count mismatch; use [failed-run teardown](#failed-run-teardown) | A report is attempted; fix the reported backend/query problem before comparing results                                              |
 | **Error&nbsp;6**   | Step 7: report cannot be opened or fully written                                                                                                           | Print the report error and return `EXIT_FAILURE`                                                                                 | A complete JSON report is not guaranteed; use a writable destination and rerun                                                      |

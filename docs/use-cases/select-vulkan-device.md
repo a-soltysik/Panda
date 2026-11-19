@@ -33,7 +33,8 @@ falls back to the first compatible device in Vulkan enumeration order.
    Engine, setup resolves and enables `VK_KHR_surface`, the provider's platform
    surface extension, `VK_KHR_get_surface_capabilities2` and the available KHR or
    EXT surface-maintenance1 instance extension (s); at least one maintenance variant
-   is required before selection begins.
+   is required before selection begins. Windowed selection also receives the
+   requested presentation mode from `EngineOptions`.
 2. **Filter device capabilities.** Panda requires a device API version of at
    least 1.3 and queries support for timeline semaphores, dynamic rendering and
    synchronization2. A windowed candidate must also support
@@ -44,7 +45,8 @@ falls back to the first compatible device in Vulkan enumeration order.
    family. Windowed selection prefers one family that also supports presentation;
    if none does, it uses the first graphics/compute family and first present family
    as a pair. The windowed candidate must also expose at least one surface format
-   and present mode.
+   and the requested present mode. A candidate that lacks the requested mode is
+   skipped so another adapter can be considered.
 4. **Choose and report one candidate.** Among compatible candidates, Panda
    chooses the first discrete GPU if present, otherwise the first candidate. It
    returns driver/device details, private queue-family indices, timestamp
@@ -59,32 +61,32 @@ sequenceDiagram
     participant S as Device selection
     participant I as Vulkan instance
     participant D as Physical device
-    C->>X: Read instance, optional surface and InstanceExtensions
-    C->>S: Step 1 - Pass those values to selectDevice()
-    S->>I: Enumerate physical devices
-    I-->>S: Candidate devices
+    C ->> X: Read instance, optional surface and InstanceExtensions
+    C ->> S: Step 1 - Pass those values and requested mode to selectDevice()
+    S ->> I: Enumerate physical devices
+    I -->> S: Candidate devices
     loop Each physical device
-        S->>D: Step 2 - Query API version, extensions, features and properties
-        D-->>S: Capability and diagnostic properties
+        S ->> D: Step 2 - Query API version, extensions, features and properties
+        D -->> S: Capability and diagnostic properties
         alt Required capabilities are supported
-            S->>D: Step 3 - Find graphics/compute queue family
+            S ->> D: Step 3 - Find graphics/compute queue family
             opt Windowed Engine
-                S->>D: Check presentation support for queue families
-                S->>D: Query surface formats and present modes
+                S ->> D: Check presentation support for queue families
+                S ->> D: Query surface formats and requested present mode support
             end
-            D-->>S: Queue and surface support
+            D -->> S: Queue and surface support
             alt Candidate can run this Engine
-                S->>S: Keep compatible candidate
+                S ->> S: Keep compatible candidate
             else Candidate lacks required queue or surface support
-                S->>S: Skip candidate
+                S ->> S: Skip candidate
             end
         else Candidate lacks required API, extension or feature
-            S->>S: Skip candidate
+            S ->> S: Skip candidate
         end
     end
-    S->>S: Step 4 - Prefer first discrete candidate, otherwise first candidate
-    S-->>C: Selected physical device, queues and properties
-    C->>X: Store physical-device wrapper
+    S ->> S: Step 4 - Prefer first discrete candidate, otherwise first candidate
+    S -->> C: Selected physical device, queues and properties
+    C ->> X: Store physical-device wrapper
 ```
 
 ## Notes
@@ -94,6 +96,8 @@ physical device, the three core feature bits, and a graphics/compute queue famil
 Only the windowed path checks surface presentation, formats, present modes,
 `VK_KHR_swapchain` and swapchain maintenance1. The KHR maintenance variant is
 preferred when both KHR and EXT variants are available.
+The windowed path selects a device that supports the requested presentation mode;
+headless selection ignores that option.
 
 **Queue choice.** Panda prefers a single family for graphics, compute and
 presentation. If the surface requires a separate present family, the private
@@ -110,14 +114,14 @@ window/surface request rather than one adapter.
 
 ## Variants and errors
 
-|                    | Point and condition                                                                                   | Response                                                                    | Resulting state and next action                                                           |
-|--------------------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+|                    | Point and condition                                                                                   | Response                                                                    | Resulting state and next action                                                          |
+|--------------------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
 | **Error&nbsp;1**   | Step 1: physical-device enumeration fails                                                             | Propagate the instance-level Vulkan error                                   | No candidate is inspected; Engine creation fails with no logical device                  |
-| **Variant&nbsp;1** | Steps 2–3: device lacks a required capability, queue, extension or usable surface format/present mode | Skip that device without treating the capability mismatch as an API error   | Other devices remain eligible; if none qualify, continue to Error 4 or Error 5            |
+| **Variant&nbsp;1** | Steps 2–3: device lacks a required capability, queue, extension or usable surface format/present mode | Skip that device without treating the capability mismatch as an API error   | Other devices remain eligible; if none qualify, continue to Error 4 or Error 5           |
 | **Error&nbsp;2**   | Steps 2–3: device inspection returns `SurfaceLost` or `InvalidArgument`                               | Stop selection and propagate the error                                      | Engine creation fails; surface repair or correcting the request is required before retry |
 | **Error&nbsp;3**   | Steps 2–3: another adapter inspection error occurs, and a later device is usable                      | Log and skip the failing adapter; return the compatible device              | Engine creation may proceed with the later device                                        |
 | **Error&nbsp;4**   | Steps 2–3: no candidate qualifies, and at least one adapter inspection failed                         | Return the first recorded inspection error after all candidates are checked | Engine creation fails with that error; resolve the backend/device issue before retry     |
-| **Error&nbsp;5**   | Steps 2–3: no candidate qualifies and no inspection error occurred                                    | Return `Unsupported` with a headless- or windowed-capability message        | No logical device is created; use a compatible device/runtime or headless path            |
+| **Error&nbsp;5**   | Steps 2–3: no candidate qualifies and no inspection error occurred                                    | Return `Unsupported` with a headless- or windowed-capability message        | No logical device is created; use a compatible device/runtime or headless path           |
 
 `DeviceLost`, `Timeout`, `ResourceExhausted`, `BackendFailure` and other
 nonfatal-to-selection inspection errors follow the skip-and-remember path. If a

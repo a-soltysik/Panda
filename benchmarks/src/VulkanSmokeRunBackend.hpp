@@ -33,7 +33,7 @@ private:
     [[nodiscard]] auto createEngine(const Options& options) -> std::expected<void, Failure>;
     [[nodiscard]] auto checkPerformanceCapabilities() -> std::expected<void, Failure>;
     [[nodiscard]] auto captureEnvironment() -> std::expected<SmokeRunEnvironment, Failure>;
-    [[nodiscard]] auto createStaticCube(glm::uvec2 extent, std::uint32_t lightCount) -> std::expected<void, Failure>;
+    [[nodiscard]] auto createStaticScene(glm::uvec2 extent, const Options& options) -> std::expected<void, Failure>;
 
     std::optional<panda::tools::Window> _window;
     std::optional<panda::Engine> _engine;

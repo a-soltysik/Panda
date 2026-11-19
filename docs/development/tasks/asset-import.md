@@ -17,5 +17,7 @@ Specifications: [Import adapter](../../design/contracts/scene.md#import-adapter)
 ## Acceptance
 
 Representative fixture imports, strict warning failures, material/culling captures and CPU-data retention check.
+For glTF, preserve the sampler's filter and wrap modes. Generate mips from the
+base image when the imported minification filter uses mipmaps.
 
 Learning: Explain why one source image can need separate color/data texture interpretations.

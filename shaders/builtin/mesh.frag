@@ -14,7 +14,7 @@ layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) 
     uvec4 lightInfo;
 } frameData;
 
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SHADOW_MAP_BINDING) uniform sampler2D shadowMap;
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SHADOW_MAP_BINDING) uniform sampler2DArray shadowMap;
 layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_BASE_COLOR_BINDING) uniform sampler2D baseColorMap;
 layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING) uniform sampler2D
     metallicRoughnessMap;
@@ -153,7 +153,7 @@ float shadowVisibility(LightRecord light, vec3 normal)
     }
     const vec2 atlasUv = shadow.atlasScaleBias.zw +
         (shadowCoordinate.xy * 0.5 + 0.5) * shadow.atlasScaleBias.xy;
-    const ivec2 atlasSize = textureSize(shadowMap, 0);
+    const ivec2 atlasSize = textureSize(shadowMap, 0).xy;
     const ivec2 tileMinimum = ivec2(round(shadow.atlasScaleBias.zw * vec2(atlasSize)));
     const ivec2 tileSize = ivec2(round(shadow.atlasScaleBias.xy * vec2(atlasSize)));
     const ivec2 tileMaximum = tileMinimum + tileSize - 1;
@@ -164,7 +164,10 @@ float shadowVisibility(LightRecord light, vec3 normal)
         for (int x = -1; x <= 1; ++x)
         {
             const ivec2 texel = clamp(center + ivec2(x, y), tileMinimum, tileMaximum);
-            visible += shadowCoordinate.z - shadow.shadowParameters.x <= texelFetch(shadowMap, texel, 0).r ? 1.0 : 0.0;
+            visible += shadowCoordinate.z - shadow.shadowParameters.x <=
+                               texelFetch(shadowMap, ivec3(texel, int(shadow.shadowParameters.z)), 0).r
+                           ? 1.0
+                           : 0.0;
         }
     }
     return visible / 9.0;

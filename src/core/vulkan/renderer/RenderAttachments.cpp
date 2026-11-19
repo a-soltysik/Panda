@@ -124,7 +124,7 @@ auto RenderAttachments::initialize(vk::Extent2D extent, vk::Format colorFormat) 
 
 auto RenderAttachments::initializeShadowMaps() -> std::expected<void, Error>
 {
-    auto maps = createShadowMaps();
+    auto maps = createShadowMaps(1);
     if (!maps)
     {
         return std::unexpected {maps.error()};
@@ -184,7 +184,7 @@ auto RenderAttachments::createColorAttachments(vk::Extent2D extent, vk::Format f
     return attachments;
 }
 
-auto RenderAttachments::createShadowMaps()
+auto RenderAttachments::createShadowMaps(std::uint32_t layerCount)
     -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
 {
     auto maps = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
@@ -196,7 +196,9 @@ auto RenderAttachments::createShadowMaps()
             _pool,
             {.extent = shadowExtent,
              .format = _description.depthFormat,
-             .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled});
+             .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,
+             .arrayLayers = layerCount,
+             .createArrayView = true});
         if (!map)
         {
             return std::unexpected {map.error()};
@@ -261,7 +263,12 @@ auto RenderAttachments::getOutputDescription() const noexcept -> const OutputDes
 
 auto RenderAttachments::getShadowView(std::size_t frameIndex) const -> vk::ImageView
 {
-    return _frames.at(frameIndex).shadowMap->getNativeView();
+    return _frames.at(frameIndex).shadowMap->getNativeArrayView();
+}
+
+auto RenderAttachments::getShadowLayerView(std::size_t frameIndex, std::uint32_t layer) const -> vk::ImageView
+{
+    return _frames.at(frameIndex).shadowMap->getLayerView(layer);
 }
 
 auto RenderAttachments::getDepthView(std::size_t frameIndex) const -> vk::ImageView
@@ -298,6 +305,31 @@ auto RenderAttachments::prepareResize(vk::Extent2D extent, vk::Format colorForma
                                                 .depthFormat = _description.depthFormat,
                                                 .sampleCount = *sampleCount};
     return createResizeAttachments(description, extentChanged, formatChanged);
+}
+
+auto RenderAttachments::ensureShadowAtlasLayers(std::size_t frameIndex, std::uint32_t layerCount)
+    -> std::expected<bool, Error>
+{
+    auto& frame = _frames.at(frameIndex);
+    if (layerCount <= frame.shadowMap->getArrayLayers())
+    {
+        return false;
+    }
+    auto map = ::panda::detail::TextureResource::createNative(
+        _device,
+        _pool,
+        {.extent = shadowExtent,
+         .format = _description.depthFormat,
+         .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,
+         .arrayLayers = layerCount,
+         .createArrayView = true});
+    if (!map)
+    {
+        return std::unexpected {map.error()};
+    }
+    frame.shadowMap = std::move(*map);
+    frame.shadowInitialized = false;
+    return true;
 }
 
 auto RenderAttachments::createResizeAttachments(const OutputDescription& description,
@@ -409,7 +441,7 @@ void RenderAttachments::transitionDepth(vk::CommandBuffer command, std::size_t f
         .image = frame.depthAttachment->getNative(),
         .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eDepth,
                                                                                                            .levelCount = 1,
-                                                                                                           .layerCount = 1}
+                                                                                                           .layerCount = frame.shadowMap->getArrayLayers()}
     };
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }
@@ -453,7 +485,7 @@ void RenderAttachments::transitionShadowForSampling(vk::CommandBuffer command, s
         .image = frame.shadowMap->getNative(),
         .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eDepth,
                                                        .levelCount = 1,
-                                                       .layerCount = 1}
+                                                       .layerCount = frame.shadowMap->getArrayLayers()}
     };
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }

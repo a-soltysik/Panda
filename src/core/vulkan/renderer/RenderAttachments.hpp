@@ -6,6 +6,7 @@
 // clang-format on
 
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <memory>
 #include <panda/base/Error.hpp>
@@ -62,10 +63,13 @@ public:
 
     [[nodiscard]] auto getOutputDescription() const noexcept -> const OutputDescription&;
     [[nodiscard]] auto getShadowView(std::size_t frameIndex) const -> vk::ImageView;
+    [[nodiscard]] auto getShadowLayerView(std::size_t frameIndex, std::uint32_t layer) const -> vk::ImageView;
     [[nodiscard]] auto getDepthView(std::size_t frameIndex) const -> vk::ImageView;
     [[nodiscard]] auto getColorView(std::size_t frameIndex) const -> vk::ImageView;
     [[nodiscard]] auto prepareResize(vk::Extent2D extent, vk::Format colorFormat)
         -> std::expected<PendingResize, Error>;
+    [[nodiscard]] auto ensureShadowAtlasLayers(std::size_t frameIndex, std::uint32_t layerCount)
+        -> std::expected<bool, Error>;
     void publishResize(PendingResize resize) noexcept;
     void transitionColor(vk::CommandBuffer command, std::size_t frameIndex) const;
     void transitionDepth(vk::CommandBuffer command, std::size_t frameIndex) const;
@@ -95,7 +99,7 @@ private:
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
     [[nodiscard]] auto createColorAttachments(vk::Extent2D extent, vk::Format format, vk::SampleCountFlagBits samples)
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
-    [[nodiscard]] auto createShadowMaps()
+    [[nodiscard]] auto createShadowMaps(std::uint32_t layerCount)
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
     [[nodiscard]] auto createResizeAttachments(const OutputDescription& description,
                                                bool extentChanged,

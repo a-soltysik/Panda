@@ -203,9 +203,10 @@ integration example. CPU tests establish algebra/lifecycle, not visual GPU corre
 
 ## GPU clouds and simulation domains
 
-A particle cloud is one logical renderable with GPU data, an instance count, and a
-conservative bound. Its data layout need not contain a matrix for every instance;
-positions, radii, and colors can be sufficient for billboards.
+An application submits its particle visualization as a
+[procedural instanced draw](rendering.md#procedural-instanced-draws). It can use
+an ordinary scene node as the visualization's transform anchor. The application
+owns the draw, buffers, bounds and shader layouts.
 
 The domain and particles are distinct objects. Moving or rotating a physical domain
 does not automatically parent or teleport the particles. The application solver
@@ -281,7 +282,7 @@ are `schema:"panda.scene"`, `version:1`, `documentId`, `settings`, `materials`, 
 `objects`. The document ID and object IDs use the project-wide ID encoding, to be
 defined when serialization is implemented. Each object has an `id`, editable `name`,
 optional `parentId`, local TRS (`position:[x,y,z]`, `rotation:[x,y,z,w]`, `scale:[x,y,z]`),
-visibility and a component object with known typed camera/light/mesh/cloud entries.
+visibility and a component object with known typed camera/light/mesh entries.
 `settings` contains ambient, active camera ID, requested renderer quality and
 background. IDs are unique within the document; names may repeat. Emit stable key
 ordering and finite numeric values for reviewable diffs. Serialize only accepted
@@ -296,7 +297,7 @@ ID. An object's material reference is tagged as either `scene` plus that ID or
 `asset` plus an application logical ID; it cannot use both. The description includes
 its built-in or custom program reference, standard parameters, texture references,
 alpha/face modes and
-other Panda render state. Meshes and clouds reference these IDs, so save/load retains
+other Panda render state. Meshes reference these IDs, so save/load retains
 sharing and edits to the Studio material or an explicitly registered clone. Load
 creates each material once before attaching it to objects; duplicate IDs, broken
 references and invalid parameters reject the document. A registered clone receives
@@ -322,13 +323,10 @@ Runtime-created meshes/textures/programs need a caller-provided stable ID/resolv
 otherwise saving reports `NotSerializable` with the offending ObjectId.
 There is no hidden cooked database or binary scene snapshot.
 
-A cloud persists its logical object ID, transform, bounds, material, shadow flags
-and standard stream schema only. It saves no GPU buffer handles, count or particle
-bytes. Loading creates a non-drawing cloud placeholder with count zero. The
-application reconstructs its solver resources and supplies the cloud data for that
-ObjectId before simulation/rendering needs particles. A missing producer is visible
-as an unresolved cloud diagnostic; it does not trigger a GPU readback or fabricate
-particles. A separately saved domain cube is an ordinary mesh entity.
+The scene saves an application visualization's transform anchor as an ordinary
+node with a stable ObjectId. The application reconstructs its procedural draw
+and solver resources from its own configuration and reports missing producers.
+A separately saved domain cube is an ordinary mesh entity.
 
 Loading uses a context and application asset resolver. It validates the complete
 document, supported exact version, references,
@@ -349,7 +347,7 @@ old Entity handles. Document merge/cross-file ObjectId lookup is not first-versi
 
 Application configuration is an independent file and schema owned by the application.
 It stores simulation parameters, solver choice/seed/time step and references to
-`documentId` plus ObjectIds for its cloud and domain. Panda provides scene lookup,
+`documentId` plus ObjectIds for its visualization anchor and domain. Panda provides scene lookup,
 not a generic metadata blob or application serializer. The application
 loads Scene first, checks the config's documentId, validates its own parameters,
 then creates/publishes solver buffers. Scene and config are not atomically saved as a
@@ -414,8 +412,8 @@ Tools can be absent from a consumer build entirely.
 Evidence after implementation: JSON round-trip with stable IDs and shared/edited
 scene-owned materials; rejection of duplicate/broken material IDs and missing
 application resource resolvers; unknown-version, duplicate-ID, bad-path,
-missing-resource and failed-write cases; unresolved cloud
-reconstruction; two-file document-ID mismatch; static glTF/OBJ/FBX/STL/PLY fixtures
+missing-resource and failed-write cases; application visualization anchor lookup;
+two-file document-ID mismatch; static glTF/OBJ/FBX/STL/PLY fixtures
 with warnings and material captures; gizmo input-capture, failed keep-world edit and
 simulation reset rollback.
 

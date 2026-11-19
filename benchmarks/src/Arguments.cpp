@@ -1,11 +1,15 @@
+#include <algorithm>
 #include <argparse/argparse.hpp>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <expected>
+#include <limits>
+#include <panda/EngineOptions.hpp>
 #include <panda_bench/Arguments.hpp>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace panda_bench
@@ -15,15 +19,18 @@ namespace
 constexpr auto maximumWarmupDuration = std::chrono::hours {1};
 constexpr auto maximumMeasurementDuration = std::chrono::hours {24};
 constexpr auto maximumRunCount = std::int64_t {100};
+constexpr auto unspecifiedShadowedLightCount = std::numeric_limits<std::int64_t>::min();
 
 struct ParsingState
 {
     Options options;
     std::string outputDirectory {"results"};
-    std::int64_t lightCount {maximumSmokeLightCount};
+    std::int64_t lightCount {defaultSmokeLightCount};
+    std::int64_t shadowedLightCount {unspecifiedShadowedLightCount};
     std::int64_t warmupSeconds {1};
     std::int64_t measurementSeconds {3};
     std::int64_t runCount {1};
+    std::string presentationMode {"fifo"};
 };
 
 void addProfileOptions(argparse::ArgumentParser& parser, ParsingState& state)
@@ -40,12 +47,28 @@ void addProfileOptions(argparse::ArgumentParser& parser, ParsingState& state)
         .nargs(1)
         .required()
         .store_into(state.outputDirectory);
+    parser.add_argument("--present-mode")
+        .help("Window presentation mode: fifo, mailbox or immediate")
+        .default_value(std::string {"fifo"})
+        .nargs(1)
+        .required()
+        .store_into(state.presentationMode);
+}
+
+void addLightingOptions(argparse::ArgumentParser& parser, ParsingState& state)
+{
     parser.add_argument("--lights")
-        .help("Static lighting workload size (0 to 65; one directional and the rest point lights)")
-        .default_value(std::int64_t {maximumSmokeLightCount})
+        .help("Total lighting workload size (0 to 1000; one directional and the rest point lights)")
+        .default_value(std::int64_t {defaultSmokeLightCount})
         .nargs(1)
         .required()
         .store_into(state.lightCount);
+    parser.add_argument("--shadowed-lights")
+        .help("Number of lights that cast shadows (0 to --lights; defaults to min(--lights, 65))")
+        .default_value(unspecifiedShadowedLightCount)
+        .nargs(1)
+        .required()
+        .store_into(state.shadowedLightCount);
 }
 
 void addTimingOptions(argparse::ArgumentParser& parser, ParsingState& state)
@@ -90,6 +113,7 @@ void addOptions(argparse::ArgumentParser& parser, ParsingState& state)
 {
     parser.add_argument("-h", "--help").help("Print this help message").flag().store_into(state.options.showHelp);
     addProfileOptions(parser, state);
+    addLightingOptions(parser, state);
     addWindowOptions(parser, state);
     addTimingOptions(parser, state);
 }
@@ -133,16 +157,70 @@ auto validateLightCount(const ParsingState& state) -> std::expected<void, std::s
 {
     if (state.lightCount < 0 || std::cmp_greater(state.lightCount, maximumSmokeLightCount))
     {
-        return std::unexpected {"--lights must be between 0 and 65"};
+        return std::unexpected {"--lights must be between 0 and 1000"};
     }
     return {};
 }
 
-auto validateOptions(const ParsingState& state) -> std::expected<void, std::string>
+auto validateShadowedLightCount(ParsingState& state) -> std::expected<void, std::string>
+{
+    const auto shadowedLightCount = state.shadowedLightCount == unspecifiedShadowedLightCount
+                                        ? std::min(state.lightCount, std::int64_t {defaultSmokeShadowedLightCount})
+                                        : state.shadowedLightCount;
+    if (shadowedLightCount < 0 || std::cmp_greater(shadowedLightCount, state.lightCount))
+    {
+        return std::unexpected {"--shadowed-lights must be between 0 and --lights"};
+    }
+    state.options.shadowedLightCount = static_cast<std::uint32_t>(shadowedLightCount);
+    return {};
+}
+
+auto validateLighting(ParsingState& state) -> std::expected<void, std::string>
+{
+    if (const auto lights = validateLightCount(state); !lights)
+    {
+        return lights;
+    }
+    return validateShadowedLightCount(state);
+}
+
+auto parsePresentationMode(std::string_view mode) -> std::expected<panda::EngineOptions::PresentationMode, std::string>
+{
+    if (mode == "fifo")
+    {
+        return panda::EngineOptions::PresentationMode::Fifo;
+    }
+    if (mode == "mailbox")
+    {
+        return panda::EngineOptions::PresentationMode::Mailbox;
+    }
+    if (mode == "immediate")
+    {
+        return panda::EngineOptions::PresentationMode::Immediate;
+    }
+    return std::unexpected {"--present-mode must be fifo, mailbox or immediate"};
+}
+
+auto validateProfileAndPresentationMode(ParsingState& state) -> std::expected<void, std::string>
 {
     if (state.options.profile != "smoke")
     {
         return std::unexpected {"Only the smoke profile is implemented"};
+    }
+    const auto presentationMode = parsePresentationMode(state.presentationMode);
+    if (!presentationMode)
+    {
+        return std::unexpected {presentationMode.error()};
+    }
+    state.options.presentationMode = *presentationMode;
+    return {};
+}
+
+auto validateOptions(ParsingState& state) -> std::expected<void, std::string>
+{
+    if (const auto profile = validateProfileAndPresentationMode(state); !profile)
+    {
+        return profile;
     }
     if (const auto extent = validateWindowExtent(state.options); !extent)
     {
@@ -152,9 +230,9 @@ auto validateOptions(const ParsingState& state) -> std::expected<void, std::stri
     {
         return durations;
     }
-    if (const auto lights = validateLightCount(state); !lights)
+    if (const auto lighting = validateLighting(state); !lighting)
     {
-        return lights;
+        return lighting;
     }
     return validateRunCount(state);
 }

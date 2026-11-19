@@ -19,6 +19,7 @@ TEST(VulkanEngineSystem, SelectsAndOwnsRequiredDevice)
     const auto info = created->getDeviceInfo();
     EXPECT_FALSE(info.name.empty());
     EXPECT_GE(info.apiVersion, vk::ApiVersion13);
+    EXPECT_FALSE(created->getFeatures().presentationMode.has_value());
     auto moved = std::move(*created);
     EXPECT_FALSE(created->isValid());
     EXPECT_TRUE(moved.isValid());

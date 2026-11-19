@@ -11,12 +11,14 @@ The Engine owns its Vulkan device and services. For window creation, the
 application owns the `WindowSurface` and native window and keeps both alive until
 Engine destruction. Creation submits no frame or upload work. A window-enabled
 Engine can succeed while its framebuffer extent is zero; presentation then creates
-its first swapchain generation when a nonzero extent becomes available.
+its first swapchain generation when a nonzero extent becomes available. The requested presentation mode is still
+checked during creation, even at zero extent.
 
 `Engine::getFeatures()` reports the negotiated optional facilities on every live
 Engine. A window renderer exists only for window-enabled creation. A performance
 manager exists only when timestamp sampling was requested and the selected device
-supports it. Calling either unavailable service getter is a fatal contract error;
+supports it. The effective presentation mode is reported only for a window-enabled
+Engine. Calling an unavailable service getter is a fatal contract error;
 applications check `EngineFeatures` first.
 
 ## Preconditions
@@ -29,13 +31,15 @@ its callbacks.
 ## Main flow
 
 1. **Choose a creation function.** The application selects headless or
-   window-enabled creation and supplies `EngineOptions`.
+   window-enabled creation and supplies `EngineOptions`. A windowed Engine may
+   request FIFO, MAILBOX or IMMEDIATE presentation; FIFO is the default.
 2. **Create instance resources.** Panda verifies Vulkan 1.3 loader support,
    checks the validation layer when requested, resolves required instance
    extensions, and creates the instance. Window-enabled creation also creates a
    native `VkSurfaceKHR`; requested validation creates a debug messenger.
-3. **Select a device.** Panda selects a compatible physical device and its private
-   graphics/compute and optional present queue families. It copies device
+3. **Select a device.** Panda selects a compatible physical device that supports
+   the requested window presentation mode, when a surface is present, and its
+   private graphics/compute and optional present queue families. It copies device
    identity and driver diagnostics into `DeviceInfo`.
 4. **Resolve external-buffer support.** When requested, Panda checks platform
    external-memory support and optional timeline-semaphore export. Required
@@ -48,12 +52,13 @@ its callbacks.
    interop state. Timestamp sampling creates `PerformanceManagerImpl` only when
    requested and supported; unsupported or disabled sampling leaves it absent.
 6. **Initialize rendering.** Panda creates the lightweight offscreen backend.
-   Window-enabled creation also initializes presentation and window frame
-   resources. A zero framebuffer extent defers swapchain-generation creation.
+   Window-enabled creation initializes presentation and window frame resources.
+   Swapchain creation checks the requested mode again; a zero framebuffer extent
+   defers swapchain-generation creation.
 7. **Publish the Engine.** `Engine::Impl` takes the completed `EngineCreateInfo`,
    constructs common service facades, and constructs only the available optional
    facades. The Engine stores one stable `Impl` owner. `EngineFeatures` records
-   the resulting effective state.
+   the effective presentation mode and other available facilities.
 
 The headless and window-enabled paths share device and service initialization.
 The surface path adds required instance extensions, surface-compatible device
@@ -68,30 +73,30 @@ sequenceDiagram
     participant W as WindowSurface
     participant I as Engine::Impl
     participant F as EngineFeatures
-    A->>E: create(options) or createWithSurface(surface, options)
+    A ->> E: create(options) or createWithSurface(surface, options)
     opt Window-enabled creation
-        E->>W: Read extensions and create native surface
-        W-->>E: Surface and extension names
+        E ->> W: Read extensions and create native surface
+        W -->> E: Surface and extension names
     end
-    E->>C: Create EngineCreateInfo
-    C->>V: Create instance and select physical device/queues
-    C->>V: Create device, memory pool, submission timeline and uploads
+    E ->> C: Create EngineCreateInfo
+    C ->> V: Create instance and select physical device/queues
+    C ->> V: Create device, memory pool, submission timeline and uploads
     opt External-buffer export is available
-        C->>C: Create ExternalBufferInterop
+        C ->> C: Create ExternalBufferInterop
     end
     opt Timestamp sampling is requested and supported
-        C->>C: Create and initialize PerformanceManagerImpl
+        C ->> C: Create and initialize PerformanceManagerImpl
     end
-    C->>C: Create offscreen backend
+    C ->> C: Create offscreen backend
     opt Window-enabled creation
-        C->>W: Initialize presentation and window resources
+        C ->> W: Check requested mode and initialize presentation resources
     end
-    C-->>E: Complete EngineCreateInfo and feature state
-    E->>I: Consume construction resources
-    I->>F: Construct only available service facades
-    I-->>A: Result<Engine>
-    A->>I: getFeatures()
-    I-->>A: Effective optional-feature snapshot
+    C -->> E: Complete EngineCreateInfo and feature state
+    E ->> I: Consume construction resources
+    I ->> F: Construct only available service facades
+    I -->> A: Result<Engine>
+    A ->> I: getFeatures()
+    I -->> A: Effective optional-feature snapshot
 ```
 
 ## Ownership and readiness
@@ -112,16 +117,17 @@ a zero-sized swapchain. See [frame and window state](../design/contracts/resourc
 
 ## Variants and errors
 
-| Condition | Result and next action |
-|---|---|
-| Loader is below Vulkan 1.3, required features are missing, or no compatible device exists | Return `Unsupported`; choose a compatible runtime/device or adjust optional requests. |
-| Requested validation layer or debug-utils extension is unavailable | Return `Unsupported`; install validation support or disable validation. |
-| Surface extensions are malformed/unavailable, or the provider fails | Return `InvalidArgument`, `Unsupported`, or the provider's error; fix or recreate the surface provider. |
-| Required external-memory support is unavailable | Return `Unsupported`; choose a compatible device or make support optional/disabled. |
-| Optional external-memory support is unavailable | Continue without external-buffer export; `getFeatures()` reports it disabled. |
-| External memory works but timeline-semaphore export does not | Continue with memory export; `getFeatures()` reports semaphore export disabled and handoff remains unsupported. |
-| Timestamp sampling is requested but the selected queue has no timestamp support | Continue without `PerformanceManager`; `getFeatures().performance` reports unsupported queries and inactive sampling. |
-| Timeline, device, performance-query, or presentation initialization fails | Return the mapped error and release partial construction state; publish no Engine. |
+| Condition                                                                                 | Result and next action                                                                                                |
+|-------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| Loader is below Vulkan 1.3, required features are missing, or no compatible device exists | Return `Unsupported`; choose a compatible runtime/device or adjust optional requests.                                 |
+| Requested validation layer or debug-utils extension is unavailable                        | Return `Unsupported`; install validation support or disable validation.                                               |
+| Surface extensions are malformed/unavailable, or the provider fails                       | Return `InvalidArgument`, `Unsupported`, or the provider's error; fix or recreate the surface provider.               |
+| Required external-memory support is unavailable                                           | Return `Unsupported`; choose a compatible device or make support optional/disabled.                                   |
+| Window surface does not support the requested presentation mode                           | Return `Unsupported`; request a supported mode and retry.                                                             |
+| Optional external-memory support is unavailable                                           | Continue without external-buffer export; `getFeatures()` reports it disabled.                                         |
+| External memory works but timeline-semaphore export does not                              | Continue with memory export; `getFeatures()` reports semaphore export disabled and handoff remains unsupported.       |
+| Timestamp sampling is requested but the selected queue has no timestamp support           | Continue without `PerformanceManager`; `getFeatures().performance` reports unsupported queries and inactive sampling. |
+| Timeline, device, performance-query, or presentation initialization fails                 | Return the mapped error and release partial construction state; publish no Engine.                                    |
 
 ## Outcomes
 
@@ -140,4 +146,6 @@ On failure, the caller receives an `Error` and no partially usable Engine.
 - [Select a compatible Vulkan device](select-vulkan-device.md) explains capability and private queue-family selection.
 - [Create and import an external buffer](create-external-buffer.md) explains optional export facilities.
 - [Collect paired CPU and GPU frame timings](collect-frame-timings.md) explains performance sampling.
+- [Rendering contract](../design/contracts/rendering.md#rendering-path) defines presentation modes and their pacing
+  behavior.
 - [Resource ownership](../design/contracts/resources.md#ownership) defines Engine and resource lifetimes.

@@ -14,6 +14,7 @@
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
+#include "DeviceSelection.hpp"
 #include "VulkanError.hpp"
 #include "VulkanHpp.hpp"  // IWYU pragma: keep
 
@@ -119,8 +120,9 @@ auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,
 
 namespace
 {
-auto createSwapchain(const SwapchainGenerationRequest& request, const SurfaceConfig& config)
-    -> std::expected<vk::raii::SwapchainKHR, Error>
+auto createSwapchain(const SwapchainGenerationRequest& request,
+                     const SurfaceConfig& config,
+                     vk::PresentModeKHR presentMode) -> std::expected<vk::raii::SwapchainKHR, Error>
 {
     const auto familyIndices = std::array {request.queueFamily, request.presentQueueFamily};
     const auto separateFamilies = familyIndices.front() != familyIndices.back();
@@ -140,7 +142,7 @@ auto createSwapchain(const SwapchainGenerationRequest& request, const SurfaceCon
         .pQueueFamilyIndices = separateFamilies ? familyIndices.data() : nullptr,
         .preTransform = config.capabilities.currentTransform,
         .compositeAlpha = chooseCompositeAlpha(config.capabilities.supportedCompositeAlpha),
-        .presentMode = vk::PresentModeKHR::eFifo,
+        .presentMode = presentMode,
         .clipped = vk::True,
         .oldSwapchain = request.oldSwapchain};
     return checkedCreation(request.device.createSwapchainKHR(info));
@@ -216,7 +218,12 @@ auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std
     {
         return std::unexpected {config.error()};
     }
-    auto swapchain = createSwapchain(request, *config);
+    const auto presentMode = selectPresentMode(request.physicalDevice, request.surface, request.presentationMode);
+    if (!presentMode)
+    {
+        return std::unexpected {presentMode.error()};
+    }
+    auto swapchain = createSwapchain(request, *config, *presentMode);
     if (!swapchain)
     {
         return std::unexpected {std::move(swapchain.error())};

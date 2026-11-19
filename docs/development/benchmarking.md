@@ -15,33 +15,40 @@ must not require recompilation.
 The current smoke profile accepts:
 
 ```text
-panda-bench --profile smoke --output results --width 1280 --height 720 --lights 65 --warmup-seconds 1 --measure-seconds 3 --runs 1
+panda-bench --profile smoke --output results --width 1280 --height 720 --lights 65 --shadowed-lights 65 --warmup-seconds 1 --measure-seconds 3 --runs 1
 ```
 
-Smoke profile version 3 creates and uploads a standard unit cube once before warmup
-and measurement. Every frame renders the same static `RenderView` with one mesh draw.
-`--lights` defaults to 65 and accepts a total count from 0 to 65; zero disables lights,
-while a positive count
-creates one directional light and the remaining point lights on a fixed ring.
-Geometry generation, upload and light fixture generation are part of startup, not the
-per-frame workload. The JSON records the requested light count and uses
-`renderStaticCube` or `renderStaticCubeWithLights` as its workload name. Version 2
-rendered the cube without lights; version 1 rendered an empty view. Older profile
-results from version 1 are not comparable with version 3. Version 2's cube-only
-workload matches version 3 with `--lights 0` when the remaining settings match; runs
-with lights are distinct workloads. This remains a fixed-view smoke workload, not a
+Smoke profile version 5 creates and uploads a floor, cubes and spheres before warmup
+and measurement. Three generated meshes are shared across the ten draws; every frame
+renders the same static colored `RenderView`. `--lights` defaults to 65 and accepts
+a total count from 0 to 1000; zero disables lights. A positive count creates one
+directional light and the remaining point lights on a fixed ring.
+`--shadowed-lights` accepts 0 to the total light count and defaults to
+`min(--lights, 65)`. Shadowed lights are selected in fixture order, beginning with
+the directional light. The directional map is 2048²; each point-light face is 256².
+A frame slot stores the 4096² atlas pages as layers of one sampled 2D-array image,
+growing it to fit the requested workload instead of downgrading or dropping shadow
+maps; device limits can still reject an oversized request. Geometry generation,
+upload and light fixture generation are part of startup, not the per-frame workload.
+The JSON records both requested light counts and uses `renderStaticColoredScene` as
+its workload name. Version 4 rendered one cube and shadowed every enabled light, so
+its results are not comparable with version 5. Version 3 used unshadowed point lights
+and is not comparable with version 4 for positive light counts. Version 2's cube-only
+workload matches version 4 with `--lights 0` when the remaining settings match;
+version 1 rendered an empty view. This remains a fixed-view smoke workload, not a
 representative scene benchmark. With a zero-second warmup, the first measured frame
 may include first-use renderer or pipeline setup.
 
-For a positive light count, the Engine budget is `max(defaultMaxLights, count)`.
-Thus `--lights 65` checks the enlarged budget while remaining independent of a
-device's absolute maximum; unsupported storage-buffer limits fail during Engine
-creation. The benchmark prepares `RenderView` once before timing, so CPU frame samples
-measure Panda's Engine/render path and do not include Scene render-view preparation.
+For a positive light count, the Engine budget is `max(defaultMaxLights, count)`; the
+current default budget is 64. The benchmark prepares `RenderView` once before timing,
+so CPU frame samples measure Panda's Engine/render path and do not include Scene
+render-view preparation.
 
 `--width` and `--height` set the requested window extent in pixels. The defaults are
 1280 by 720; the report records both the requested and effective framebuffer extents.
-`--lights` controls the fixed lighting workload size, defaulting to 65.
+`--lights` controls total lights and `--shadowed-lights` independently controls how
+many cast shadows. For example, `--lights 1000 --shadowed-lights 65` measures a
+large light loop with the default-size shadow workload.
 Development and quality presets use Debug and are for functional smoke checks only.
 Use an optimized Release build for performance comparisons. Use RelWithDebInfo when
 profiling needs symbols, and treat those results as a separate build configuration.
@@ -238,8 +245,9 @@ require measurements, never design estimates.
 All cases render at 1920x1080, vertical FOV 60 degrees, near/far 0.05/1000 m,
 requested MSAA 4x and AF 8x, HDR/SDR formats from the renderer contract, tools off,
 validation off, pipeline warmup before sampling and no input-driven camera motion.
-The report records effective formats/quality, actual present mode and why any
-requested mode was downgraded. Keep a fixed window extent and no dynamic resolution.
+The report records the requested and effective present mode with effective
+formats/quality. Unsupported presentation requests fail instead of silently
+downgrading. Keep a fixed window extent and no dynamic resolution.
 VSync/present waits are separately timed and excluded from active CPU preparation;
 GPU timestamps cover submitted shadow, camera and tone-map passes. Compare runs only
 with equal effective settings and present mode. A missing optional timestamp feature
@@ -270,10 +278,11 @@ These values are fixed by the profile, not generated from driver timing. Test-on
 model version drift. A separate `minimal-v1` profile uses the Studio camera/light,
 one cube, and the 10 m Studio ground to track fixed overhead.
 
-`cloud-v1` uses one entity with exactly N=10,000, 100,000 or 1,000,000 slots and
-the accepted 16-byte center/radius stream. It omits the optional color stream, so
-the defined white default applies; a separate color-stream correctness case uses
-the accepted 16-byte linear white color records.
+`cloud-v1` uses one procedural batch with exactly N=10,000, 100,000 or 1,000,000
+slots and the application-owned
+[reference sphere shaders](../design/contracts/rendering.md#reference-sphere-impostor-shaders).
+It uses a 16-byte center/radius stream and the shaders' default white color.
+A separate correctness case binds 16-byte linear RGBA color records.
 A fixed xorshift32 seed `0x50414e44` fills centers uniformly in [-2,2]^3,
 radius 0.03 m and color white. Camera is (0,0,9), looking at origin; a separate
 stress variant fills centers in [-1,1]^3 with radius 0.10 m to expose overdraw.
