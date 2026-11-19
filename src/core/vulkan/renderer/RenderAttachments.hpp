@@ -10,6 +10,7 @@
 #include <expected>
 #include <memory>
 #include <panda/base/Error.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <vector>
 
 #include "renderer/ShadowAtlas.hpp"
@@ -30,6 +31,7 @@ struct OutputDescription
     vk::Format colorFormat {vk::Format::eUndefined};
     vk::Format depthFormat {vk::Format::eUndefined};
     vk::SampleCountFlagBits sampleCount {vk::SampleCountFlagBits::e1};
+    SampleCount requestedSampleCount {SampleCount::Four};
 };
 
 struct RenderAttachmentsCreateInfo
@@ -40,6 +42,7 @@ struct RenderAttachmentsCreateInfo
     vk::Extent2D extent;
     vk::Format colorFormat;
     std::size_t frameCount;
+    SampleCount requestedSampleCount {SampleCount::Four};
 };
 
 class RenderAttachments final
@@ -54,6 +57,8 @@ public:
 
     [[nodiscard]] static auto create(const RenderAttachmentsCreateInfo& info)
         -> std::expected<std::unique_ptr<RenderAttachments>, Error>;
+    [[nodiscard]] static auto getSupportedSampleCounts(vk::PhysicalDevice physicalDevice, vk::Format colorFormat)
+        -> Result<std::vector<SampleCount>>;
 
     RenderAttachments(const RenderAttachments&) = delete;
     auto operator=(const RenderAttachments&) -> RenderAttachments& = delete;
@@ -66,7 +71,9 @@ public:
     [[nodiscard]] auto getShadowLayerView(std::size_t frameIndex, std::uint32_t layer) const -> vk::ImageView;
     [[nodiscard]] auto getDepthView(std::size_t frameIndex) const -> vk::ImageView;
     [[nodiscard]] auto getColorView(std::size_t frameIndex) const -> vk::ImageView;
-    [[nodiscard]] auto prepareResize(vk::Extent2D extent, vk::Format colorFormat)
+    [[nodiscard]] auto prepareResize(vk::Extent2D extent,
+                                     vk::Format colorFormat,
+                                     SampleCount requestedSampleCount = SampleCount::Four)
         -> std::expected<PendingResize, Error>;
     [[nodiscard]] auto ensureShadowAtlasLayers(std::size_t frameIndex, std::uint32_t layerCount)
         -> std::expected<bool, Error>;
@@ -93,7 +100,7 @@ private:
                       resources::MemoryPool& pool,
                       std::size_t frameCount);
 
-    [[nodiscard]] auto initialize(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
+    [[nodiscard]] auto initialize(const RenderAttachmentsCreateInfo& info) -> std::expected<void, Error>;
     [[nodiscard]] auto initializeShadowMaps() -> std::expected<void, Error>;
     [[nodiscard]] auto createDepthAttachments(vk::Extent2D extent, vk::SampleCountFlagBits samples)
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
@@ -106,8 +113,6 @@ private:
                                                bool formatChanged) -> std::expected<PendingResize, Error>;
     void replaceDepthAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> replacements) noexcept;
     void replaceColorAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> replacements) noexcept;
-    [[nodiscard]] auto chooseDepthFormat() const -> std::expected<vk::Format, Error>;
-    [[nodiscard]] auto chooseSampleCount(vk::Format colorFormat) const -> std::expected<vk::SampleCountFlagBits, Error>;
 
     vk::PhysicalDevice _physicalDevice;
     const vk::raii::Device& _device;

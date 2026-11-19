@@ -9,6 +9,7 @@
 #include <glm/vec4.hpp>
 #include <numbers>
 #include <optional>
+#include <panda/rendering/SampleCount.hpp>  // IWYU pragma: export
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/Texture.hpp>
 #include <variant>
@@ -189,5 +190,8 @@ struct RenderView
     std::vector<Light> lights;
     /// Draws to render; an empty list presents only the configured background.
     std::vector<MeshDraw> meshes;
+    /// Requested MSAA for mesh draws. Panda uses the highest supported count at or below this request.
+    /// Changing the effective configuration may allocate and wait for prior submissions of this renderer.
+    SampleCount requestedSampleCount {SampleCount::Four};
 };
 }

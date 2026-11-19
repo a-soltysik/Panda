@@ -12,6 +12,7 @@
 #include <memory>
 #include <panda/base/Error.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/Texture.hpp>
 #include <vector>
@@ -70,6 +71,8 @@ public:
     auto operator=(FrameExecution&&) -> FrameExecution& = delete;
     ~FrameExecution();
 
+    [[nodiscard]] auto prepareOutput(vk::Extent2D extent, vk::Format colorFormat, const RenderView& view)
+        -> Result<void>;
     [[nodiscard]] auto prepareSlot(std::size_t index,
                                    const RenderView& view,
                                    std::shared_ptr<::panda::detail::OffscreenTargetResource> target = {})
@@ -84,7 +87,7 @@ public:
     void discardUnsubmittedInputs(std::size_t index);
     [[nodiscard]] auto drain() -> std::expected<void, Error>;
     [[nodiscard]] auto isGpuTimestampSamplingEnabled() const noexcept -> bool;
-    [[nodiscard]] auto getSampleCount() const noexcept -> vk::SampleCountFlagBits;
+    [[nodiscard]] auto getSampleCount(const RenderView& view) const noexcept -> SampleCount;
 
 private:
     struct ExecutionSlot
@@ -100,13 +103,14 @@ private:
     explicit FrameExecution(const FrameExecutionCreateInfo& info);
 
     [[nodiscard]] auto initialize() -> std::expected<void, Error>;
+    [[nodiscard]] auto initializeMeshRenderer(vk::Extent2D extent, vk::Format colorFormat, SampleCount requested)
+        -> Result<void>;
     [[nodiscard]] static auto retainViewResources(ExecutionSlot& slot,
                                                   const RenderView& view,
                                                   std::shared_ptr<::panda::detail::OffscreenTargetResource> target)
         -> std::expected<void, Error>;
     [[nodiscard]] auto recordViewContent(std::size_t index, const FrameOutput& output, const RenderView& view)
         -> std::expected<void, Error>;
-    [[nodiscard]] auto createOrResizeMeshRenderer(const FrameOutput& output) -> std::expected<void, Error>;
     [[nodiscard]] auto recordMeshDraws(ExecutionSlot& slot,
                                        std::size_t index,
                                        const FrameOutput& output,

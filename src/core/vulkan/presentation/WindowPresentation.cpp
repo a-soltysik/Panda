@@ -9,25 +9,28 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <panda/EngineOptions.hpp>
 #include <panda/base/Error.hpp>
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/vulkan/Error.hpp>
 #include <panda/vulkan/WindowSurface.hpp>
 #include <string>
 #include <utility>
+#include <vector>
 #include <vulkan/vulkan.hpp>
 
 #include "DeviceSelection.hpp"
-#include "FrameResultMapping.hpp"
 #include "SubmissionQueue.hpp"
 #include "VulkanError.hpp"
 #include "VulkanHpp.hpp"  // IWYU pragma: keep
 #include "presentation/FrameExecution.hpp"
 #include "presentation/OffscreenRenderBackend.hpp"
 #include "presentation/SwapchainGeneration.hpp"
+#include "renderer/RenderAttachments.hpp"
 
 namespace panda::core::vulkan
 {
@@ -109,7 +112,8 @@ WindowPresentation::WindowPresentation(const WindowPresentationCreateInfo& info)
       _queueFamily {info.queueFamily},
       _presentQueueFamily {info.presentQueueFamily},
       _maintenance {info.maintenance},
-      _presentationMode {info.presentationMode},
+      _requestedPresentationMode {info.presentationMode},
+      _lastPresentationMode {info.presentationMode},
       _submissions {info.submissions}
 {
 }
@@ -127,10 +131,44 @@ auto WindowPresentation::create(const WindowPresentationCreateInfo& info)
     return result;
 }
 
+auto WindowPresentation::getSupportedPresentationModes() const -> Result<std::vector<EngineOptions::PresentationMode>>
+{
+    return queryPresentationModes(_physicalDevice, _surface);
+}
+
+auto WindowPresentation::getRequestedPresentationMode() const noexcept -> EngineOptions::PresentationMode
+{
+    return _requestedPresentationMode;
+}
+
+auto WindowPresentation::getEffectivePresentationMode() const noexcept -> std::optional<EngineOptions::PresentationMode>
+{
+    return _generation ? std::optional {_lastPresentationMode} : std::nullopt;
+}
+
+auto WindowPresentation::setPresentationMode(EngineOptions::PresentationMode mode) -> Result<void>
+{
+    if (const auto selected = selectPresentMode(_physicalDevice, _surface, mode); !selected)
+    {
+        return std::unexpected {selected.error()};
+    }
+    _requestedPresentationMode = mode;
+    return {};
+}
+
+auto WindowPresentation::getSupportedSampleCounts() const -> Result<std::vector<SampleCount>>
+{
+    if (!_generation)
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Window has no active swapchain format")};
+    }
+    return renderer::RenderAttachments::getSupportedSampleCounts(_physicalDevice, _generation->format);
+}
+
 auto WindowPresentation::ensureWindowGeneration(glm::uvec2 requested) -> std::expected<void, Error>
 {
-    if (!_generation || _recreatePending || requested.x != _generation->extent.width ||
-        requested.y != _generation->extent.height)
+    if (!_generation || _recreatePending || _requestedPresentationMode != _lastPresentationMode ||
+        requested.x != _generation->extent.width || requested.y != _generation->extent.height)
     {
         return recreate(requested);
     }
@@ -173,17 +211,29 @@ auto WindowPresentation::recreate(glm::uvec2 requested) -> std::expected<void, E
                                                  .oldSwapchain = oldSwapchain,
                                                  .queueFamily = _queueFamily,
                                                  .presentQueueFamily = _presentQueueFamily,
-                                                 .presentationMode = _presentationMode});
+                                                 .presentationMode = _requestedPresentationMode});
     if (!generation)
     {
-        // vkCreateSwapchainKHR may retire oldSwapchain even when replacement fails.
-        _generation.reset();
-        _recreatePending = true;
-        return std::unexpected {std::move(generation.error())};
+        handleGenerationFailure(generation.error());
+        return std::unexpected {std::move(generation.error().cause)};
     }
     _generation = std::move(*generation);
+    _lastPresentationMode = _requestedPresentationMode;
     _recreatePending = false;
     return {};
+}
+
+void WindowPresentation::handleGenerationFailure(const SwapchainGenerationError& failure)
+{
+    if (failure.oldSwapchainRetired)
+    {
+        _generation.reset();
+        _recreatePending = true;
+    }
+    else if (failure.cause.code == ErrorCode::Unsupported)
+    {
+        _requestedPresentationMode = _lastPresentationMode;
+    }
 }
 
 auto WindowPresentation::render(const RenderView& view) -> std::expected<FrameResult, Error>
@@ -203,9 +253,12 @@ auto WindowPresentation::render(const RenderView& view, std::optional<std::size_
     }
     if (!*ready)
     {
-        return FrameResult {.status = FrameResult::Status::Suspended,
-                            .completion = {},
-                            .effectiveSampleCount = effectiveSampleCount()};
+        return FrameResult {.status = FrameResult::Status::Suspended, .completion = {}};
+    }
+    const auto& output = activeGeneration();
+    if (const auto prepared = _execution->prepareOutput(output.extent, output.format, view); !prepared)
+    {
+        return std::unexpected {prepared.error()};
     }
     const auto slotIndex = _nextSlot;
     if (const auto prepared = _execution->prepareSlot(slotIndex, view); !prepared)
@@ -225,9 +278,7 @@ auto WindowPresentation::renderWithCapture(const CaptureFrameRequest& request) -
     }
     if (!*ready)
     {
-        return FrameResult {.status = FrameResult::Status::Suspended,
-                            .completion = {},
-                            .effectiveSampleCount = effectiveSampleCount()};
+        return FrameResult {.status = FrameResult::Status::Suspended, .completion = {}};
     }
     if (!activeGeneration().supportsTransferDestination)
     {
@@ -283,7 +334,7 @@ auto WindowPresentation::submitAcquiredCaptureFrame(const AcquiredImage& acquire
     _execution->setLastCompletion(slotIndex, submissionValue);
     image.initialized = true;
     _nextSlot = (_nextSlot + 1) % _acquireSemaphores.size();
-    return presentFrame(image, acquired.index, submissionValue, acquired.suboptimal);
+    return presentFrame(acquired, submissionValue, rendered->effectiveSampleCount);
 }
 
 auto WindowPresentation::executeAcquiredFrame(std::size_t slotIndex,
@@ -328,22 +379,18 @@ auto WindowPresentation::submitAcquiredFrame(const AcquiredImage& acquired,
     {
         submittedPerformanceSlot = slotIndex;
     }
-    return presentFrame(image, acquired.index, *completion, acquired.suboptimal);
+    return presentFrame(acquired, *completion, _execution->getSampleCount(view));
 }
 
-auto WindowPresentation::nonReadyFrameResult(AcquiredImage::Status status) const -> std::optional<FrameResult>
+auto WindowPresentation::nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>
 {
     if (status == AcquiredImage::Status::Skipped)
     {
-        return FrameResult {.status = FrameResult::Status::Skipped,
-                            .completion = {},
-                            .effectiveSampleCount = effectiveSampleCount()};
+        return FrameResult {.status = FrameResult::Status::Skipped, .completion = {}};
     }
     if (status == AcquiredImage::Status::RecreatePending)
     {
-        return FrameResult {.status = FrameResult::Status::RecreatePending,
-                            .completion = {},
-                            .effectiveSampleCount = effectiveSampleCount()};
+        return FrameResult {.status = FrameResult::Status::RecreatePending, .completion = {}};
     }
     return std::nullopt;
 }
@@ -601,12 +648,11 @@ auto WindowPresentation::queuePresent(const SwapchainImage& image, std::uint32_t
     return _presentQueue.presentKHR(presentInfo);
 }
 
-auto WindowPresentation::presentFrame(SwapchainImage& image,
-                                      std::uint32_t index,
-                                      std::uint64_t completion,
-                                      bool acquireSuboptimal) -> std::expected<FrameResult, Error>
+auto WindowPresentation::presentFrame(const AcquiredImage& acquired, std::uint64_t completion, SampleCount sampleCount)
+    -> std::expected<FrameResult, Error>
 {
-    const auto presented = queuePresent(image, index);
+    auto& image = activeGeneration().images.at(acquired.index);
+    const auto presented = queuePresent(image, acquired.index);
     if (presented == vk::Result::eSuccess || presented == vk::Result::eSuboptimalKHR ||
         presented == vk::Result::eErrorOutOfDateKHR || presented == vk::Result::eErrorSurfaceLostKHR)
     {
@@ -616,23 +662,24 @@ auto WindowPresentation::presentFrame(SwapchainImage& image,
             _faulted = true;
             return std::unexpected {makeVulkanError(presented)};
         }
-        if (presented == vk::Result::eSuboptimalKHR || presented == vk::Result::eErrorOutOfDateKHR || acquireSuboptimal)
+        if (presented == vk::Result::eSuboptimalKHR || presented == vk::Result::eErrorOutOfDateKHR ||
+            acquired.suboptimal)
         {
             _recreatePending = true;
             return FrameResult {.status = FrameResult::Status::RecreatePending,
                                 .completion = _submissions.getPoint(completion),
-                                .effectiveSampleCount = effectiveSampleCount()};
+                                .effectiveSampleCount = sampleCount};
         }
         return FrameResult {.status = FrameResult::Status::Rendered,
                             .completion = _submissions.getPoint(completion),
-                            .effectiveSampleCount = effectiveSampleCount()};
+                            .effectiveSampleCount = sampleCount};
     }
     if (presented == vk::Result::eErrorDeviceLost)
     {
         _faulted = true;
         return std::unexpected {makeVulkanError(presented)};
     }
-    return recoverPresentFailure(index, presented, completion);
+    return recoverPresentFailure(acquired.index, presented, completion);
 }
 
 auto WindowPresentation::verifyReleaseFunction() const -> std::expected<void, Error>
@@ -789,11 +836,6 @@ auto WindowPresentation::activeGeneration() const -> const SwapchainGeneration&
         panic("A window frame requires a live swapchain generation");
     }
     return *_generation;
-}
-
-auto WindowPresentation::effectiveSampleCount() const noexcept -> SampleCount
-{
-    return mapSampleCount(_execution->getSampleCount());
 }
 
 }

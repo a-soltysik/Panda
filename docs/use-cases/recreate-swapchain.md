@@ -14,6 +14,10 @@ again; `Engine` borrows the `WindowSurface` for its lifetime under the
 `WindowSurface::getFramebufferExtent()` returns a `glm::uvec2` in framebuffer
 pixels, not logical window-content units; x is width and y is height. Panda
 samples it during the frame call rather than relying on a resize callback.
+The application can also query `WindowRenderer::getSupportedPresentationModes()`
+and call `setPresentationMode()`. A supported request is held until the next
+nonzero frame call. Read `getEffectivePresentationMode()` to inspect the current
+generation.
 
 ## Preconditions
 
@@ -30,8 +34,8 @@ samples it during the frame call rather than relying on a resize callback.
    borrowed `WindowSurface` for the current pixel extent.
 3. **Check the generation.** For a nonzero extent,
    `WindowPresentation::ensureWindowGeneration()` reuses the current generation when
-   its extent matches and recreation is not pending. Otherwise it starts a
-   replacement.
+   its extent and presentation mode match the requests and recreation is not
+   pending. Otherwise it starts a replacement.
 4. **Drain prior presentation use.** `WindowPresentation::recreate()` calls `drain()` so
    submitted frame work, acquired-image recovery and pending presentation fences
    are settled before generation resources are released. See the
@@ -61,8 +65,8 @@ sequenceDiagram
         P-->>C: Step 2 - Suspended, no image acquired
         C-->>A: Step 2 - Suspended result
     else Nonzero extent
-        P->>P: Step 3 - compare extent and recreation state
-        opt No generation, changed extent, or recreation pending
+        P->>P: Step 3 - compare extent, requested mode and recreation state
+        opt No generation, changed extent or mode, or recreation pending
             P->>P: Step 4 - drain prior frame and presentation use
             Note over P: Step 4 - UC Drain frame and presentation use
             P->>V: Step 5 - query surface support and create swapchain
@@ -82,7 +86,7 @@ sequenceDiagram
 **Suspension keeps the existing generation.** A zero framebuffer extent returns
 `FrameResult::Status::Suspended` without acquiring an image or consuming a frame slot. If a
 generation already exists, it remains owned while minimized. After restoration,
-Panda recreates it only if the extent changed or recreation was already pending;
+Panda recreates it if the extent or mode changed or recreation was already pending;
 an Engine created at zero extent has no generation, so its first nonzero frame
 call creates one.
 
@@ -97,12 +101,10 @@ only after the swapchain images and their views and synchronization objects are
 ready. Draining first makes it safe to release old generation resources once a
 replacement is published.
 
-**Replacement failure has no rollback guarantee.** When generation creation
-returns an error, `WindowPresentation` discards any old generation and leaves
-recreation pending. The Vulkan call may have retired the old swapchain even when
-replacement creation fails, so Panda cannot promise to resume using it. Any partially built
-replacement is released by its local RAII owners. A later nonzero frame call on a
-still-usable Engine retries without passing an old swapchain handle.
+**The Vulkan creation call is the retirement boundary.** A failed surface check
+leaves the current generation owned. If Vulkan was called with the old swapchain
+handle, `WindowPresentation` releases the retired generation and retries without
+it. Local RAII owners release any partially built replacement.
 
 ## Variants and errors
 
@@ -110,10 +112,10 @@ still-usable Engine retries without passing an old swapchain handle.
 |--------------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Variant&nbsp;1** | Step 2: framebuffer width or height is zero                                             | Return `FrameResult::Status::Suspended` without acquire or frame submission       | Keep processing window events; after restoration, call again and recreate if needed                                                                                |
 | **Variant&nbsp;2** | Step 3: the current generation matches and recreation is not pending                    | Reuse it and continue to the normal frame path                                    | No drain or replacement is needed                                                                                                                                  |
-| **Variant&nbsp;3** | Step 3: no generation exists, the extent changed, or a prior frame requested recreation | Drain and build a complete generation before acquiring an image                   | On success, the same call continues through the normal frame path                                                                                                  |
+| **Variant&nbsp;3** | Step 3: no generation exists, the extent or mode changed, or a prior frame requested recreation | Drain and build a complete generation before acquiring an image                   | On success, the same call continues through the normal frame path                                                                                                  |
 | **Error&nbsp;1**   | Step 2: framebuffer extent query fails                                                  | Return that error without replacing the generation                                | Resolve the window-surface failure before retrying                                                                                                                 |
 | **Error&nbsp;2**   | Step 4: drain times out or cannot confirm acquired-image/presentation retirement        | Return the drain error and do not create a replacement                            | Any existing generation remains owned; a later call can retry if presentation remains usable. See the [UC Drain frame and presentation use](drain-presentation.md) |
-| **Error&nbsp;3**   | Step 5: surface configuration or generation creation fails                              | Return the creation error, discard any old generation and keep recreation pending | A later nonzero call retries without an old swapchain; surface/device recovery is not promised                                                                     |
+| **Error&nbsp;3**   | Step 5: surface configuration or generation creation fails                              | Return the error and release the old generation if Vulkan retired it               | Retry with the old handle only if it remains live. If surface checks return `Unsupported`, restore the last effective mode request.                              |
 
 ### Error 3 - Failed generation replacement
 
@@ -125,15 +127,17 @@ sequenceDiagram
     participant P as WindowPresentation
     participant V as Vulkan
     participant A as Application
-    P->>V: Step 5 - attempt replacement using the old swapchain handle
-    V-->>P: Generation creation error
-    P->>P: Release partial replacement and discard any old generation
-    P->>P: Keep recreation pending
-    P-->>A: Return the creation error
-    A->>P: Later nonzero render(view)
-    P->>V: Retry generation creation without an old swapchain
-    V-->>P: Complete generation
-    P-->>A: Continue the normal frame path
+    alt Surface checks failed before swapchain creation
+        P->>P: Keep the old generation
+        P-->>A: Return the surface check error
+    else Vulkan retired the old swapchain
+        P->>P: Release partial replacement and old generation
+        P-->>A: Return the creation error
+        A->>P: Later nonzero render(view)
+        P->>V: Retry generation creation without an old swapchain
+        V-->>P: Complete generation
+        P-->>A: Continue the normal frame path
+    end
 ```
 
 ## Outcomes
@@ -146,9 +150,8 @@ continues into ordinary frame processing. The frame result and its completion
 meaning are described by the [UC Render and present an application view](render-view.md).
 
 **Error.** The returned error identifies the failed query, drain or generation
-creation. A drain failure leaves the current generation owned; a creation failure
-leaves no current generation and a pending retry. Neither result promises that
-already submitted work was undone.
+creation. The current generation is released after retirement. While recreation
+is pending without a generation, `getEffectivePresentationMode()` returns no value.
 
 ## Related information
 

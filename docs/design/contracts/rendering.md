@@ -23,8 +23,8 @@ and adds roughness-dependent reflections. Direct lights apply with or without an
 Windowed Engines request FIFO, MAILBOX or IMMEDIATE presentation through
 `EngineOptions::presentationMode`; FIFO is the default. Panda uses the requested
 mode exactly and returns `Unsupported` when the surface does not support it.
-`EngineFeatures::presentationMode` reports the effective mode for a windowed
-Engine and is absent for a headless Engine. Swapchain recreation checks support
+`WindowRenderer::getEffectivePresentationMode()` reports the active swapchain
+mode when a generation exists. Swapchain recreation checks support
 again before creating each generation. FIFO waits for vertical blanking,
 MAILBOX replaces a pending frame with the newest request at vertical blanking,
 and IMMEDIATE may tear because it does not wait. See the
@@ -120,8 +120,11 @@ below.
 
 ## Anti-aliasing and sampling
 
-- Support MSAA disabled, 2x, and 4x; request 4x by default and report the effective supported mode. Check the actual
-  color/depth formats and attachment usages.
+- Mesh rendering takes `RenderView::requestedSampleCount` for each frame, with 4x by default.
+  Choose the highest supported count at or below the request from 1x, 2x and 4x, using
+  the actual color/depth formats and attachment usages. The window and offscreen renderers
+  each expose a support query. The offscreen query also applies to capture frames.
+  `FrameResult::effectiveSampleCount` reports the submitted count. Clear-only frames use 1x.
 - Generate/use mip chains where appropriate and support trilinear sampling.
 - Request 8x anisotropy by default, capped by the device limit; expose off/2x/4x/8x/16x. Unsupported anisotropy does not
   make an otherwise capable device unusable.

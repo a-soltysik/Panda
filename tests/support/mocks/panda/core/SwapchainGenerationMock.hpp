@@ -1,5 +1,4 @@
 #pragma once
-#include <panda/base/Error.hpp>
 
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
@@ -7,8 +6,6 @@
 // clang-format on
 
 #include <gmock/gmock.h>
-
-#include <expected>
 
 #include "presentation/SwapchainGeneration.hpp"
 
@@ -19,7 +16,7 @@ class SwapchainGenerationMock
 public:
     // gMock cannot generate trailing-return declarations.
     // NOLINTBEGIN(modernize-use-trailing-return-type)
-    MOCK_METHOD((std::expected<panda::core::vulkan::SwapchainGeneration, Error>),
+    MOCK_METHOD((panda::core::vulkan::SwapchainGenerationResult),
                 createSwapchainGeneration,
                 (const panda::core::vulkan::SwapchainGenerationRequest&),
                 ());

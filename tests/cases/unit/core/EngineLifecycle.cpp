@@ -1539,8 +1539,9 @@ TEST_F(EngineLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParents
     });
     EXPECT_CALL(generations, createSwapchainGeneration(_))
         .WillOnce(testing::Action<decltype(panda::core::vulkan::createSwapchainGeneration)> {
-            [](const auto&...) -> panda::Result<panda::core::vulkan::SwapchainGeneration> {
-                return std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "generation failed")};
+            [](const auto&...) -> panda::core::vulkan::SwapchainGenerationResult {
+                return std::unexpected {panda::core::vulkan::SwapchainGenerationError {
+                    .cause = panda::makeError(panda::ErrorCode::ResourceExhausted, "generation failed")}};
             }});
     const auto context = panda::Engine::createWithSurface(window);
     ASSERT_FALSE(context.has_value());

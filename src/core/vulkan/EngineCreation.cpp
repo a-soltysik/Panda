@@ -269,8 +269,6 @@ void populateEngineDiagnostics(EngineCreateInfo& resources,
         .validationEnabled = options.enableValidation,
         .performance = {.hasGpuTimestampQueries = selected.timestampValidBits != 0,
                         .isGpuTimestampSamplingEnabled = resources.performance != nullptr},
-        .presentationMode = resources.windowPresentation ? std::optional {options.presentationMode}
-          : std::nullopt,
         .externalBufferExportEnabled = resources.externalInterop != nullptr,
         .externalSemaphoreExportEnabled =
             resources.externalInterop != nullptr && resources.externalInterop->supportsSemaphoreExport()

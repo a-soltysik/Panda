@@ -88,7 +88,7 @@ inline void expectTransitionToPresent(const VkDependencyInfo* dependency)
 }
 
 inline auto makeGeneration(const vk::raii::Device& device, std::uintptr_t handle)
-    -> std::expected<panda::core::vulkan::SwapchainGeneration, panda::Error>
+    -> panda::core::vulkan::SwapchainGenerationResult
 {
     auto images = std::vector<panda::core::vulkan::SwapchainImage> {};
     images.emplace_back(panda::core::vulkan::SwapchainImage {
@@ -282,9 +282,13 @@ protected:
             .InSequence(flow)
             .WillOnce(testing::Action<decltype(panda::core::vulkan::createSwapchainGeneration)> {
                 [oldHandle](const panda::core::vulkan::SwapchainGenerationRequest& request)
-                    -> std::expected<panda::core::vulkan::SwapchainGeneration, panda::Error> {
+                    -> panda::core::vulkan::SwapchainGenerationResult {
                     EXPECT_EQ(request.oldSwapchain, vk::SwapchainKHR {fakeHandle<VkSwapchainKHR>(oldHandle)});
-                    return std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "replacement failed")};
+                    return std::unexpected {
+                        panda::core::vulkan::SwapchainGenerationError {
+                                                                       .cause = panda::makeError(panda::ErrorCode::BackendFailure, "replacement failed"),
+                                                                       .oldSwapchainRetired = true}
+                    };
                 }});
     }
 

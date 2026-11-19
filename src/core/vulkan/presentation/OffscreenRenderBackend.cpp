@@ -17,6 +17,7 @@
 #include <optional>
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/Buffer.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
 #include <panda/submission/CompletionPoint.hpp>
@@ -24,8 +25,8 @@
 #include <utility>
 #include <vector>
 
-#include "FrameResultMapping.hpp"
 #include "presentation/FrameExecution.hpp"
+#include "renderer/RenderAttachments.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/OffscreenTargetResource.hpp"
 
@@ -301,21 +302,10 @@ auto OffscreenRenderBackend::initialize() -> std::expected<void, Error>
     return {};
 }
 
-auto OffscreenRenderBackend::prepareRendererOutput(const ::panda::detail::OffscreenTargetResource& target,
-                                                   const RenderView& view) -> std::expected<void, Error>
+auto OffscreenRenderBackend::getSupportedSampleCounts() const -> Result<std::vector<SampleCount>>
 {
-    if (view.meshes.empty())
-    {
-        return {};
-    }
-    const auto extent = target.getExtent();
-    const auto format = target.getFormat();
-    if (_rendererExtent && (_rendererExtent->width != extent.width || _rendererExtent->height != extent.height ||
-                            _rendererFormat != format))
-    {
-        return _execution->drain();
-    }
-    return {};
+    return renderer::RenderAttachments::getSupportedSampleCounts(_physicalDevice,
+                                                                 ::panda::detail::OffscreenTargetResource::colorFormat);
 }
 
 auto OffscreenRenderBackend::recordFrame(std::size_t slotIndex,
@@ -388,7 +378,9 @@ auto OffscreenRenderBackend::renderInternal(const FrameRequest& request) -> std:
     }
     const auto targetResource = ::panda::detail::OffscreenTargetResource::getResource(request.target);
     const auto slotIndex = _nextSlot;
-    if (const auto ready = prepareRendererOutput(*targetResource, request.view); !ready)
+    if (const auto ready =
+            _execution->prepareOutput(targetResource->getExtent(), targetResource->getFormat(), request.view);
+        !ready)
     {
         return std::unexpected {ready.error()};
     }
@@ -424,15 +416,10 @@ auto OffscreenRenderBackend::submitFrame(std::size_t slotIndex,
     {
         request.submittedPerformanceSlot = FrameExecution::slotCount + slotIndex;
     }
-    if (!request.view.meshes.empty())
-    {
-        _rendererExtent = target->getExtent();
-        _rendererFormat = target->getFormat();
-    }
     _nextSlot = (_nextSlot + 1) % FrameExecution::slotCount;
     return FrameResult {.status = FrameResult::Status::Rendered,
                         .completion = _submissions.getPoint(*submitted),
-                        .effectiveSampleCount = mapSampleCount(_execution->getSampleCount())};
+                        .effectiveSampleCount = _execution->getSampleCount(request.view)};
 }
 
 auto OffscreenRenderBackend::readPixels(const OffscreenTarget& target, CompletionPoint completion)

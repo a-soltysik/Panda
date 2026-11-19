@@ -94,6 +94,7 @@ panda_add_component(panda_core
         panda/vulkan/Error.hpp
         panda/rendering/WindowRenderer.hpp
         panda/rendering/RenderView.hpp
+        panda/rendering/SampleCount.hpp
     PRIVATE_HEADERS
         Math.hpp
         vulkan/EngineCreation.hpp

@@ -25,6 +25,7 @@
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/PerformanceManager.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/WindowRenderer.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
@@ -482,12 +483,18 @@ auto VulkanSmokeRunBackend::captureEnvironment() -> std::expected<SmokeRunEnviro
     {
         return std::unexpected {extent.error()};
     }
-    const auto deviceInfo = checkedEngine().getDeviceInfo();
-    const auto presentationMode = checkedEngine().getFeatures().presentationMode;
+    if (extent->x == 0 || extent->y == 0)
+    {
+        return std::unexpected {
+            Failure {.outcome = "invalid", .message = "The benchmark window is minimized"}
+        };
+    }
+    const auto presentationMode = checkedEngine().getWindowRenderer().getEffectivePresentationMode();
     if (!presentationMode)
     {
-        return std::unexpected {backendFailure("Windowed Engine did not report its presentation mode")};
+        return std::unexpected {backendFailure("Benchmark window has no active swapchain")};
     }
+    const auto deviceInfo = checkedEngine().getDeviceInfo();
     auto environment = SmokeRunEnvironment {.framebufferExtent = *extent,
                                             .gpuModel = deviceInfo.name,
                                             .driver = {},
@@ -504,11 +511,8 @@ auto VulkanSmokeRunBackend::captureEnvironment() -> std::expected<SmokeRunEnviro
 
 auto VulkanSmokeRunBackend::createStaticScene(glm::uvec2 extent, const Options& options) -> std::expected<void, Failure>
 {
-    if (extent.x == 0 || extent.y == 0)
-    {
-        return {};
-    }
     auto view = panda::RenderView {};
+    view.requestedSampleCount = options.sampleCount;
     if (const auto camera = configureSceneCamera(view, extent); !camera)
     {
         return std::unexpected {camera.error()};

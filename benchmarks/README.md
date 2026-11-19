@@ -53,6 +53,10 @@ Run from the repository root. Print the current options with:
 ./build-gcc-development-Linux/benchmarks/panda-bench --help
 ```
 
+Use `--samples 1`, `--samples 2` or `--samples 4` to request a mesh sample count.
+The default is 4. The report records the request and each run's effective sample
+count.
+
 For example, request FIFO presentation:
 
 ```powershell

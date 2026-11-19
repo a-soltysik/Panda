@@ -21,6 +21,7 @@
 #include <panda/base/Error.hpp>
 #include <panda/geometry/VertexLayout.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/Texture.hpp>
 #include <variant>
@@ -418,6 +419,11 @@ auto validateRenderViewTextures(const RenderView& view) -> Result<void>
 auto validateRenderView(const RenderView& view, std::uint32_t maxLights, const resources::MemoryPool& pool)
     -> Result<void>
 {
+    if (view.requestedSampleCount != SampleCount::One && view.requestedSampleCount != SampleCount::Two &&
+        view.requestedSampleCount != SampleCount::Four)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Unknown render sample count")};
+    }
     if (auto result = validateRenderViewLightCount(view, maxLights); !result)
     {
         return result;

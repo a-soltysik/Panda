@@ -14,6 +14,7 @@
 #include <limits>
 #include <optional>
 #include <panda/Engine.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/base/Error.hpp>
 #include <panda/diagnostics/Logger.hpp>
 #include <panda/geometry/Geometry.hpp>
@@ -21,6 +22,7 @@
 #include <panda/rendering/Camera.hpp>
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/rendering/WindowRenderer.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
@@ -30,6 +32,7 @@
 #include <panda/submission/UploadBatch.hpp>
 #include <panda/tools/gui/Window.hpp>
 #include <panda/vulkan/WindowSurface.hpp>
+#include <ranges>
 #include <span>
 #include <string>
 #include <utility>
@@ -646,6 +649,67 @@ auto makeCubeAndGroundView(glm::uvec2 extent, const SceneMeshes& meshes) -> pand
     return view;
 }
 
+void verifySampleCountSwitches(const std::vector<panda::SampleCount>& supported,
+                               panda::RenderView& view,
+                               const auto& render)
+{
+    using Count = panda::SampleCount;
+    ASSERT_NE(std::ranges::find(supported, Count::One), supported.end());
+    for (const auto requested : {Count::Four, Count::Four, Count::Two, Count::One, Count::Four})
+    {
+        view.requestedSampleCount = requested;
+        const auto expected = std::ranges::max(supported | std::views::filter([&](auto count) {
+                                                   return count <= requested;
+                                               }));
+        const auto frame = render(view);
+        ASSERT_TRUE(frame) << frame.error().message;
+        EXPECT_EQ(frame->status, panda::FrameResult::Status::Rendered);
+        EXPECT_TRUE(frame->completion.isValid());
+        EXPECT_EQ(frame->effectiveSampleCount, expected);
+    }
+}
+
+void verifyCaptureSampleCount(const panda::Engine& context,
+                              panda::RenderView& view,
+                              const panda::OffscreenTarget& target)
+{
+    view.requestedSampleCount = panda::SampleCount::One;
+    const auto captured = context.getWindowRenderer().renderWithCapture(view, target);
+    if (captured)
+    {
+        EXPECT_EQ(captured->effectiveSampleCount, panda::SampleCount::One);
+        verifyCompletion(context, captured->completion);
+    }
+    else
+    {
+        EXPECT_EQ(captured.error().code, panda::ErrorCode::Unsupported);
+    }
+}
+
+void verifyRuntimeMsaa(const panda::Engine& context)
+{
+    const auto& renderer = context.getWindowRenderer();
+    const auto& offscreenRenderer = context.getOffscreenRenderer();
+    const auto windowCounts = renderer.getSupportedSampleCounts();
+    const auto offscreenCounts = offscreenRenderer.getSupportedSampleCounts();
+    ASSERT_TRUE(windowCounts) << windowCounts.error().message;
+    ASSERT_TRUE(offscreenCounts) << offscreenCounts.error().message;
+    const auto meshes = createUploadedCubeGroundAndCompactTriangle(context);
+    ASSERT_TRUE(meshes) << meshes.error().message;
+    auto view = makeCubeAndGroundView(renderExtent, *meshes);
+    ASSERT_TRUE(view) << view.error().message;
+    const auto target = createTestTarget(context);
+    ASSERT_TRUE(target) << target.error().message;
+
+    verifySampleCountSwitches(*windowCounts, *view, [&](const panda::RenderView& input) {
+        return renderer.render(input);
+    });
+    verifySampleCountSwitches(*offscreenCounts, *view, [&](const panda::RenderView& input) {
+        return offscreenRenderer.render(input, *target);
+    });
+    verifyCaptureSampleCount(context, *view, *target);
+}
+
 }
 
 TEST(WindowRenderingSystem, CreatesValidatedSurfaceAndDevice)
@@ -721,6 +785,91 @@ TEST(WindowRenderingSystem, CreatesValidatedSurfaceAndDevice)
     ASSERT_TRUE(restored.has_value()) << restored.error().message;
     EXPECT_EQ(restored->status, panda::FrameResult::Status::Rendered);
     EXPECT_TRUE(restored->completion.isValid());
+}
+
+TEST(WindowRenderingSystem, ChangesPresentationModeWithSubmittedFrames)
+{
+    using Mode = panda::EngineOptions::PresentationMode;
+    auto records = panda::test::LogRecords {};
+    auto capture = panda::test::ProcessSinkRegistration {records};
+    {
+        auto window = panda::tools::Window::create(renderExtent, "Panda presentation mode smoke");
+        if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
+        {
+            GTEST_SKIP() << window.error().message;
+        }
+        ASSERT_TRUE(window) << window.error().message;
+        auto context = panda::Engine::createWithSurface(*window, {.enableValidation = true});
+        if (!context && context.error().code == panda::ErrorCode::Unsupported)
+        {
+            GTEST_SKIP() << context.error().message;
+        }
+        ASSERT_TRUE(context) << context.error().message;
+        const auto& renderer = context->getWindowRenderer();
+        const auto modes = renderer.getSupportedPresentationModes();
+        ASSERT_TRUE(modes) << modes.error().message;
+        const auto alternate = std::ranges::find_if(*modes, [](auto mode) {
+            return mode != Mode::Fifo;
+        });
+        if (alternate == modes->end())
+        {
+            GTEST_SKIP() << "The surface supports only FIFO";
+        }
+
+        const auto view = panda::RenderView {};
+        const auto initial = renderer.render(view);
+        ASSERT_TRUE(initial) << initial.error().message;
+        ASSERT_TRUE(initial->completion.isValid());
+        ASSERT_TRUE(renderer.setPresentationMode(*alternate));
+        EXPECT_EQ(renderer.getEffectivePresentationMode(), Mode::Fifo);
+        const auto target = createTestTarget(*context);
+        ASSERT_TRUE(target) << target.error().message;
+        const auto offscreen = context->getOffscreenRenderer().render(view, *target);
+        ASSERT_TRUE(offscreen) << offscreen.error().message;
+        EXPECT_EQ(offscreen->status, panda::FrameResult::Status::Rendered);
+        EXPECT_EQ(renderer.getEffectivePresentationMode(), Mode::Fifo);
+
+        const auto switched = renderer.render(view);
+        ASSERT_TRUE(switched) << switched.error().message;
+        ASSERT_TRUE(switched->completion.isValid());
+        EXPECT_EQ(renderer.getEffectivePresentationMode(), *alternate);
+        ASSERT_TRUE(renderer.setPresentationMode(Mode::Fifo));
+        const auto restored = renderer.render(view);
+        ASSERT_TRUE(restored) << restored.error().message;
+        EXPECT_EQ(renderer.getEffectivePresentationMode(), Mode::Fifo);
+        verifyCompletion(*context, restored->completion);
+    }
+    const auto validationError = std::ranges::find_if(records.entries, [](const auto& entry) {
+        return entry.level == panda::log::Level::Error;
+    });
+    EXPECT_EQ(validationError, records.entries.end())
+        << (validationError == records.entries.end() ? "" : validationError->message);
+}
+
+TEST(WindowRenderingSystem, ChangesMsaaForWindowAndOffscreenWithSubmittedFrames)
+{
+    auto records = panda::test::LogRecords {};
+    auto capture = panda::test::ProcessSinkRegistration {records};
+    {
+        auto window = panda::tools::Window::create(renderExtent, "Panda runtime MSAA smoke");
+        if (!window && panda::test::isGlfwPlatformUnavailable(window.error()))
+        {
+            GTEST_SKIP() << window.error().message;
+        }
+        ASSERT_TRUE(window) << window.error().message;
+        auto context = panda::Engine::createWithSurface(*window, {.enableValidation = true});
+        if (!context && context.error().code == panda::ErrorCode::Unsupported)
+        {
+            GTEST_SKIP() << context.error().message;
+        }
+        ASSERT_TRUE(context) << context.error().message;
+        verifyRuntimeMsaa(*context);
+    }
+    const auto validationError = std::ranges::find_if(records.entries, [](const auto& entry) {
+        return entry.level == panda::log::Level::Error;
+    });
+    EXPECT_EQ(validationError, records.entries.end())
+        << (validationError == records.entries.end() ? "" : validationError->message);
 }
 
 TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)

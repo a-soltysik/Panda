@@ -4,7 +4,6 @@
 /// Common Vulkan engine API and device capability diagnostics.
 
 #include <memory>
-#include <optional>
 #include <panda/DeviceInfo.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/base/Error.hpp>
@@ -33,8 +32,6 @@ struct EngineFeatures
     bool validationEnabled {false};
     /// GPU timestamp support and whether frame sampling is active.
     PerformanceCapabilities performance;
-    /// Effective window presentation mode; absent for headless Engines.
-    std::optional<EngineOptions::PresentationMode> presentationMode;
     /// Whether external buffer memory export was enabled.
     bool externalBufferExportEnabled {false};
     /// Whether external timeline semaphore export was enabled.

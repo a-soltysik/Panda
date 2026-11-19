@@ -6,8 +6,11 @@
 #include <cstddef>
 #include <expected>
 #include <optional>
+#include <panda/EngineOptions.hpp>
 #include <panda/base/Error.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/rendering/WindowRenderer.hpp>
+#include <vector>
 
 #include "vulkan/performance/PerformanceManagerImpl.hpp"
 #include "vulkan/presentation/OffscreenRenderBackend.hpp"
@@ -63,6 +66,31 @@ WindowRenderer::WindowRenderer(Dependencies dependencies) noexcept
       _performance {dependencies.performance},
       _maxLights {dependencies.maxLights}
 {
+}
+
+auto WindowRenderer::getSupportedPresentationModes() const -> Result<std::vector<EngineOptions::PresentationMode>>
+{
+    return _presentation.getSupportedPresentationModes();
+}
+
+auto WindowRenderer::getRequestedPresentationMode() const noexcept -> EngineOptions::PresentationMode
+{
+    return _presentation.getRequestedPresentationMode();
+}
+
+auto WindowRenderer::getEffectivePresentationMode() const noexcept -> std::optional<EngineOptions::PresentationMode>
+{
+    return _presentation.getEffectivePresentationMode();
+}
+
+auto WindowRenderer::setPresentationMode(EngineOptions::PresentationMode mode) const -> Result<void>
+{
+    return _presentation.setPresentationMode(mode);
+}
+
+auto WindowRenderer::getSupportedSampleCounts() const -> Result<std::vector<SampleCount>>
+{
+    return _presentation.getSupportedSampleCounts();
 }
 
 auto WindowRenderer::render(const RenderView& view) const -> Result<FrameResult>

@@ -15,8 +15,10 @@
 #include <panda/EngineOptions.hpp>
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
 #include <panda/vulkan/WindowSurface.hpp>
+#include <vector>
 
 #include "SubmissionQueue.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
@@ -71,6 +73,12 @@ public:
     auto operator=(WindowPresentation&&) -> WindowPresentation& = delete;
     ~WindowPresentation();
 
+    [[nodiscard]] auto getSupportedPresentationModes() const -> Result<std::vector<EngineOptions::PresentationMode>>;
+    [[nodiscard]] auto getRequestedPresentationMode() const noexcept -> EngineOptions::PresentationMode;
+    [[nodiscard]] auto getEffectivePresentationMode() const noexcept -> std::optional<EngineOptions::PresentationMode>;
+    [[nodiscard]] auto setPresentationMode(EngineOptions::PresentationMode mode) -> Result<void>;
+    [[nodiscard]] auto getSupportedSampleCounts() const -> Result<std::vector<SampleCount>>;
+
     [[nodiscard]] auto render(const RenderView& view) -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto render(const RenderView& view, std::optional<std::size_t>& submittedPerformanceSlot)
         -> std::expected<FrameResult, Error>;
@@ -114,16 +122,16 @@ private:
     [[nodiscard]] auto verifyReleaseFunction() const -> std::expected<void, Error>;
     [[nodiscard]] auto initializeAcquireSemaphore(vk::raii::Semaphore& semaphore) const -> std::expected<void, Error>;
     [[nodiscard]] auto recreate(glm::uvec2 requested) -> std::expected<void, Error>;
+    void handleGenerationFailure(const SwapchainGenerationError& failure);
     [[nodiscard]] auto recordFrame(std::size_t slotIndex, const SwapchainImage& image, const RenderView& view)
         -> std::expected<void, Error>;
     [[nodiscard]] auto waitCompletion(std::uint64_t value) const -> std::expected<void, Error>;
     [[nodiscard]] auto waitPresentation() -> std::expected<void, Error>;
     [[nodiscard]] auto activeGeneration() -> SwapchainGeneration&;
     [[nodiscard]] auto activeGeneration() const -> const SwapchainGeneration&;
-    [[nodiscard]] auto effectiveSampleCount() const noexcept -> SampleCount;
     [[nodiscard]] auto ensureWindowGeneration(glm::uvec2 requested) -> std::expected<void, Error>;
     [[nodiscard]] auto prepareWindowFrame() -> std::expected<bool, Error>;
-    [[nodiscard]] auto nonReadyFrameResult(AcquiredImage::Status status) const -> std::optional<FrameResult>;
+    [[nodiscard]] static auto nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>;
     [[nodiscard]] auto executeAcquiredFrame(std::size_t slotIndex,
                                             const RenderView& view,
                                             std::optional<std::size_t>& submittedPerformanceSlot)
@@ -150,10 +158,8 @@ private:
         -> std::expected<std::uint64_t, Error>;
     [[nodiscard]] auto handleSubmitFailure(FrameSelection selection, const Error& cause)
         -> std::expected<std::uint64_t, Error>;
-    [[nodiscard]] auto presentFrame(SwapchainImage& image,
-                                    std::uint32_t index,
-                                    std::uint64_t completion,
-                                    bool acquireSuboptimal) -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto presentFrame(const AcquiredImage& acquired, std::uint64_t completion, SampleCount sampleCount)
+        -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto queuePresent(const SwapchainImage& image, std::uint32_t index) -> vk::Result;
     [[nodiscard]] auto recoverPresentFailure(std::uint32_t index, vk::Result result, std::uint64_t completion)
         -> std::expected<FrameResult, Error>;
@@ -170,7 +176,8 @@ private:
     std::uint32_t _queueFamily;
     std::uint32_t _presentQueueFamily;
     SwapchainMaintenance _maintenance;
-    EngineOptions::PresentationMode _presentationMode;
+    EngineOptions::PresentationMode _requestedPresentationMode;
+    EngineOptions::PresentationMode _lastPresentationMode;
     api_detail::SubmissionQueue& _submissions;
     std::unique_ptr<presentation::FrameExecution> _execution;
     std::array<vk::raii::Semaphore, presentation::FrameExecution::slotCount> _acquireSemaphores {

@@ -209,21 +209,12 @@ auto populateImages(const vk::raii::Device& device, SwapchainGeneration& generat
     }
     return {};
 }
-}
 
-auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std::expected<SwapchainGeneration, Error>
+auto buildSwapchainGeneration(const SwapchainGenerationRequest& request,
+                              const SurfaceConfig& config,
+                              vk::PresentModeKHR presentMode) -> Result<SwapchainGeneration>
 {
-    const auto config = selectSurfaceConfig(request.physicalDevice, request.surface, request.requested);
-    if (!config)
-    {
-        return std::unexpected {config.error()};
-    }
-    const auto presentMode = selectPresentMode(request.physicalDevice, request.surface, request.presentationMode);
-    if (!presentMode)
-    {
-        return std::unexpected {presentMode.error()};
-    }
-    auto swapchain = createSwapchain(request, *config, *presentMode);
+    auto swapchain = createSwapchain(request, config, presentMode);
     if (!swapchain)
     {
         return std::unexpected {std::move(swapchain.error())};
@@ -231,15 +222,35 @@ auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std
     auto generation = SwapchainGeneration {
         .swapchain = std::move(*swapchain),
         .images = {},
-        .extent = config->extent,
-        .format = config->format.format,
+        .extent = config.extent,
+        .format = config.format.format,
         .supportsTransferDestination =
-            static_cast<bool>(config->capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst)};
+            static_cast<bool>(config.capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst)};
     if (const auto loaded = populateImages(request.device, generation); !loaded)
     {
         return std::unexpected {loaded.error()};
     }
     return generation;
+}
+}
+
+auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> SwapchainGenerationResult
+{
+    const auto config = selectSurfaceConfig(request.physicalDevice, request.surface, request.requested);
+    if (!config)
+    {
+        return std::unexpected {SwapchainGenerationError {.cause = config.error()}};
+    }
+    const auto presentMode = selectPresentMode(request.physicalDevice, request.surface, request.presentationMode);
+    if (!presentMode)
+    {
+        return std::unexpected {SwapchainGenerationError {.cause = presentMode.error()}};
+    }
+    // Passing an old swapchain to vkCreateSwapchainKHR retires it, including on failure.
+    return buildSwapchainGeneration(request, *config, *presentMode).transform_error([&](Error cause) {
+        return SwapchainGenerationError {.cause = std::move(cause),
+                                         .oldSwapchainRetired = static_cast<bool>(request.oldSwapchain)};
+    });
 }
 
 }

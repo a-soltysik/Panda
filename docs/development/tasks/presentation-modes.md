@@ -12,21 +12,14 @@ using different modes are not compared as the same workload.
 
 FIFO is the default. Panda uses the exact requested mode and returns `Unsupported`
 when the window surface does not support it; headless Engines ignore this option.
-`EngineFeatures::presentationMode` reports the effective mode for windowed Engines.
 
 Vulkan FIFO waits for vertical blanking and is the universally required mode.
 MAILBOX also presents on vertical blanking, but replaces a pending request with the
-newest frame. IMMEDIATE does not wait for vertical blanking and may tear. The API's
-default and behavior when a requested mode is unsupported are decisions for this task;
-the benchmark must report the effective mode and cannot silently label a fallback as
-the requested mode. See
-the [Vulkan present-mode reference](https://docs.vulkan.org/refpages/latest/refpages/source/VkPresentModeKHR.html)
-for exact mode semantics.
+newest frame. IMMEDIATE does not wait for vertical blanking and may tear.
+[Vulkan present-mode reference](https://docs.vulkan.org/refpages/latest/refpages/source/VkPresentModeKHR.html).
 
-`EngineOptions::presentationMode` defaults to FIFO and accepts FIFO, MAILBOX or
-IMMEDIATE for windowed Engines. Unsupported requests fail with `Unsupported`;
-headless Engines ignore the option. `EngineFeatures::presentationMode` reports the
-effective windowed mode. `panda-bench --present-mode` selects the same policy and
+`WindowRenderer::getEffectivePresentationMode()` reports the active swapchain
+mode. `panda-bench --present-mode` requests a policy through `EngineOptions` and
 the JSON report stores both requested and effective modes.
 
 Paths: `../../../include/core/panda/`, `src/core/vulkan/presentation/`, `benchmarks/`,

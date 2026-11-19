@@ -4,21 +4,11 @@
 /// Result of one rendering operation.
 
 #include <cstdint>
+#include <panda/rendering/SampleCount.hpp>  // IWYU pragma: export
 #include <panda/submission/CompletionPoint.hpp>
 
 namespace panda
 {
-/// @brief Effective color and depth sample count selected for rendering.
-enum class SampleCount : std::uint8_t
-{
-    /// One sample per pixel.
-    One = 1,
-    /// Two samples per pixel.
-    Two = 2,
-    /// Four samples per pixel.
-    Four = 4,
-};
-
 /// @brief Result of one rendering operation.
 struct FrameResult
 {
@@ -40,7 +30,8 @@ struct FrameResult
     /// Submitted work; valid when GPU work was committed, even if status is RecreatePending.
     /// Completion does not mean work or presentation has finished.
     CompletionPoint completion;
-    /// Selected color/depth sample count. A mesh view initializes the renderer and reports its choice.
+    /// Color/depth sample count used by this submission. Clear-only views use one sample.
+    /// Meaningful when completion is valid.
     SampleCount effectiveSampleCount {SampleCount::One};
 };
 }

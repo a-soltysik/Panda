@@ -436,6 +436,11 @@ completion. Cross-API work uses its external timeline semaphore and CUDA stream;
 it is not represented by Engine `CompletionPoint`s. The
 [compute handoff task](../../development/tasks/gpu-handoff.md) defines that ordering.
 
+When a mesh frame changes the output configuration, wait for both slots of its
+executor before replacing shared attachment and pipeline state. Prepare every
+replacement attachment before publication. An allocation error leaves the
+previous configuration available for a subsequent compatible frame.
+
 When GPU timestamp sampling is enabled, the Engine-owned public
 `PerformanceManager` collects a slot's ready timestamps before that slot's query
 pool is reset and makes the results available without an additional GPU wait. The
@@ -471,6 +476,12 @@ for its reuse/destruction, independently of queue completion. Prefer one graphic
 if distinct, use concurrent sharing for swapchain images only. Ordinary resources
 remain exclusive. Present fences protect resource recycling, not exact display time.
 
+Window presentation mode changes are validated against the selected surface when
+requested. A supported request is applied at the next nonzero frame boundary.
+The current generation supplies the effective mode. When there is no generation,
+there is no effective mode. An unavailable mode is rejected with `Unsupported`.
+Offscreen rendering has no presentation mode.
+
 | State/event                       | Required behavior                                                                                           |
 |-----------------------------------|-------------------------------------------------------------------------------------------------------------|
 | Ready                             | Accept updates, uploads, and frames                                                                         |
@@ -486,9 +497,9 @@ remain exclusive. Present fences protect resource recycling, not exact display t
 At recreation, drain the relevant `CompletionPoint`s and outstanding presentation fences;
 administrative waiting is allowed. Build replacement attachments and swapchain,
 then publish a complete usable generation. Calling `vkCreateSwapchainKHR` with an
-old swapchain can retire the old chain even when replacement fails: retain owned
-resources for cleanup, but stay RecreatePending/error rather than promising rollback
-to that chain. Do not apply the ordinary buffer replacement guarantee to WSI.
+old swapchain retires the old chain even when replacement fails. After such a
+failure, release its drained resources and retry with no old swapchain handle.
+A failure during surface checks keeps the existing generation owned.
 
 If a frame aborts after acquire but before its normal submission, consume the
 acquire semaphore in a cleanup submission when the device is healthy, wait for

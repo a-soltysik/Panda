@@ -6,11 +6,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <panda/base/Error.hpp>                  // IWYU pragma: export
-#include <panda/rendering/FrameResult.hpp>       // IWYU pragma: export
-#include <panda/rendering/RenderView.hpp>        // IWYU pragma: export
+#include <panda/base/Error.hpp>             // IWYU pragma: export
+#include <panda/rendering/FrameResult.hpp>  // IWYU pragma: export
+#include <panda/rendering/RenderView.hpp>   // IWYU pragma: export
+#include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/OffscreenTarget.hpp>   // IWYU pragma: export
 #include <panda/submission/CompletionPoint.hpp>  // IWYU pragma: export
+#include <vector>
 
 namespace panda
 {
@@ -49,6 +51,10 @@ public:
     OffscreenRenderer(OffscreenRenderer&&) = delete;
     auto operator=(OffscreenRenderer&&) -> OffscreenRenderer& = delete;
     ~OffscreenRenderer() = default;
+
+    /// @brief Queries mesh sample counts supported for offscreen rendering and window capture.
+    /// @return Supported counts for the RGBA8 sRGB target format, or an error.
+    [[nodiscard]] auto getSupportedSampleCounts() const -> Result<std::vector<SampleCount>>;
 
     /// @brief Renders one application-supplied view without presenting a frame.
     /// @param view Transient render data whose resources are retained through GPU completion.

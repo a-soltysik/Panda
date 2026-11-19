@@ -2,16 +2,13 @@
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 // clang-format on
 
-#include <expected>
-#include <panda/base/Error.hpp>
-
 #include "ScopedMock.hpp"
 #include "SwapchainGenerationMock.hpp"
 #include "presentation/SwapchainGeneration.hpp"
 
 namespace panda::core::vulkan
 {
-auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> std::expected<SwapchainGeneration, Error>
+auto createSwapchainGeneration(const SwapchainGenerationRequest& request) -> SwapchainGenerationResult
 {
     return test::ScopedMock<test::SwapchainGenerationMock>::getActiveMock().createSwapchainGeneration(request);
 }

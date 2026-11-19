@@ -42,7 +42,7 @@ auto OffscreenTargetResource::create(const vk::raii::Device& device,
         pool,
         {
             .extent = vk::Extent2D {.width = description.extent.x, .height = description.extent.y},
-            .format = vk::Format::eR8G8B8A8Srgb,
+            .format = colorFormat,
             .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc
     });
     if (!color)
