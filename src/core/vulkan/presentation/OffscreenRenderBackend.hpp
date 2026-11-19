@@ -14,6 +14,7 @@
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <vector>
@@ -39,6 +40,7 @@ struct OffscreenRenderBackendCreateInfo
     ::panda::detail::SubmissionQueue& submissions;
     resources::MemoryPool& pool;
     ::panda::detail::PerformanceManagerImpl* performance {nullptr};
+    std::shared_ptr<TextureFilteringPreset> textureFilteringPreset;
     std::uint32_t maxLights;
 };
 
@@ -127,6 +129,7 @@ private:
     ::panda::detail::SubmissionQueue& _submissions;
     resources::MemoryPool& _pool;
     ::panda::detail::PerformanceManagerImpl* _performance;
+    std::shared_ptr<TextureFilteringPreset> _textureFilteringPreset;
     std::uint32_t _maxLights;
     std::unique_ptr<FrameExecution> _execution;
     std::optional<PendingReadback> _pendingReadback;

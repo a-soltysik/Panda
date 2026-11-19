@@ -100,7 +100,8 @@ panda_add_test(panda_unit_upload_batch unit
 panda_add_test(panda_unit_upload_batch_impl unit
     VULKAN_INTERNAL
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"
-    SOURCES UploadBatchImpl.cpp
+                       "${PROJECT_SOURCE_DIR}/src/core/vulkan/upload"
+    SOURCES UploadBatchImpl.cpp TextureMipGeneration.cpp
     LIBRARIES Panda::Panda PandaTest::Support
     MOCKS PandaTest::VulkanMock PandaTest::MemoryPoolMock PandaTest::MemoryAllocationMock
           PandaTest::SubmissionQueueMock

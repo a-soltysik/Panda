@@ -7,7 +7,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/ext/vector_uint2.hpp>
 #include <memory>
 #include <optional>
 #include <panda/Engine.hpp>
@@ -18,8 +20,11 @@
 #include <panda/rendering/Camera.hpp>
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
+#include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/Texture.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
 #include <utility>
@@ -104,6 +109,85 @@ auto makeBlendView(const panda::Mesh& mesh, bool reverse) -> panda::Result<panda
     return view;
 }
 
+auto createTexturedQuad(const panda::Engine& context, glm::vec2 uvMin = {0.0F, 0.0F}, glm::vec2 uvMax = {64.0F, 64.0F})
+    -> panda::Result<panda::Mesh>
+{
+    auto geometry = panda::Geometry {
+        .vertices = {{.position = {-0.8F, -0.8F, 0.0F}, .normal = {0.0F, 0.0F, 1.0F}, .uv = uvMin},
+                     {.position = {0.8F, -0.8F, 0.0F}, .normal = {0.0F, 0.0F, 1.0F}, .uv = {uvMax.x, uvMin.y}},
+                     {.position = {0.8F, 0.8F, 0.0F}, .normal = {0.0F, 0.0F, 1.0F}, .uv = uvMax},
+                     {.position = {-0.8F, 0.8F, 0.0F}, .normal = {0.0F, 0.0F, 1.0F}, .uv = {uvMin.x, uvMax.y}}},
+        .indices = std::vector<std::uint16_t> {0, 1, 2, 0, 2, 3}
+    };
+    auto mesh = context.getResourceManager().createMeshFromGeometry(geometry);
+    if (!mesh)
+    {
+        return std::unexpected {mesh.error()};
+    }
+    auto batch = context.getSubmissionManager().createUploadBatch();
+    if (!batch)
+    {
+        return std::unexpected {batch.error()};
+    }
+    if (const auto written = batch->write(*mesh, geometry); !written)
+    {
+        return std::unexpected {written.error()};
+    }
+    const auto completion = batch->submit();
+    if (!completion)
+    {
+        return std::unexpected {completion.error()};
+    }
+    const auto waited = context.getSubmissionManager().wait(*completion, std::chrono::seconds {10});
+    if (!waited)
+    {
+        return std::unexpected {waited.error()};
+    }
+    if (*waited != panda::WaitStatus::Completed)
+    {
+        return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Textured quad upload timed out")};
+    }
+    return mesh;
+}
+
+auto makeTexturedView(const panda::Mesh& mesh, const panda::Texture& texture) -> panda::Result<panda::RenderView>
+{
+    const auto camera = panda::createPerspectiveCamera({
+        .position = {0.0F, 0.0F, 3.0F},
+        .target = {},
+        .up = {0.0F, 1.0F, 0.0F},
+        .verticalFieldOfViewRadians = 0.7853982F,
+        .aspectRatio = 1.0F,
+        .nearPlane = 0.1F,
+        .farPlane = 20.0F
+    });
+    if (!camera)
+    {
+        return std::unexpected {camera.error()};
+    }
+    auto draw = panda::MeshDraw {.mesh = mesh};
+    draw.material.model = panda::MaterialModel::Unlit;
+    draw.material.renderFace = panda::RenderFace::Both;
+    draw.material.baseColorTexture = texture;
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
+    view.requestedSampleCount = panda::SampleCount::One;
+    view.meshes.push_back(std::move(draw));
+    return view;
+}
+
+auto solidTextureBytes(glm::uvec2 extent, std::array<std::uint8_t, 4> color) -> std::vector<std::byte>
+{
+    auto bytes = std::vector<std::byte>(static_cast<std::size_t>(extent.x) * extent.y * 4U);
+    for (auto index = std::size_t {}; index < bytes.size(); index += 4U)
+    {
+        for (auto channel = std::size_t {}; channel < color.size(); ++channel)
+        {
+            bytes.at(index + channel) = static_cast<std::byte>(color.at(channel));
+        }
+    }
+    return bytes;
+}
+
 auto toneMap(float value) -> float
 {
     return std::clamp((value * ((2.51F * value) + 0.03F)) / ((value * ((2.43F * value) + 0.59F)) + 0.14F), 0.0F, 1.0F);
@@ -132,10 +216,15 @@ auto expectedCenterPixel() -> std::array<std::uint8_t, 4>
             255};
 }
 
+auto pixelAt(const panda::ImageReadback& image, std::uint32_t x, std::uint32_t y) -> std::array<std::uint8_t, 4>
+{
+    const auto offset = ((static_cast<std::size_t>(y) * image.extent.x) + x) * 4U;
+    return {image.rgba.at(offset), image.rgba.at(offset + 1), image.rgba.at(offset + 2), image.rgba.at(offset + 3)};
+}
+
 auto centerPixel(const panda::ImageReadback& image) -> std::array<std::uint8_t, 4>
 {
-    const auto offset = ((static_cast<std::size_t>(image.extent.y / 2) * image.extent.x) + (image.extent.x / 2)) * 4;
-    return {image.rgba.at(offset), image.rgba.at(offset + 1), image.rgba.at(offset + 2), image.rgba.at(offset + 3)};
+    return pixelAt(image, image.extent.x / 2, image.extent.y / 2);
 }
 
 class OffscreenRenderBackendSystem : public testing::Test
@@ -253,6 +342,197 @@ TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrd
         EXPECT_NEAR(second.at(channel), expected.at(channel), 8);
         EXPECT_NEAR(first.at(channel), second.at(channel), 2);
     }
+}
+
+TEST_F(OffscreenRenderBackendSystem, AppliesRepeatMirroredRepeatAndClampToOutOfRangeUvs)
+{
+    ASSERT_TRUE(activeEngine().setTextureFilteringPreset(panda::TextureFilteringPreset::Nearest));
+    const auto target = activeEngine().getResourceManager().createOffscreenTarget({
+        .extent = {32, 32}
+    });
+    if (!target && target.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << target.error().message;
+    }
+    ASSERT_TRUE(target) << target.error().message;
+    const auto mesh = createTexturedQuad(activeEngine(), {1.125F, 0.5F}, {2.125F, 0.5F});
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    const auto stripes = std::array {std::byte {0xff},
+                                     std::byte {0x00},
+                                     std::byte {0x00},
+                                     std::byte {0xff},
+                                     std::byte {0x00},
+                                     std::byte {0x00},
+                                     std::byte {0xff},
+                                     std::byte {0xff}};
+
+    for (const auto mode : std::array {panda::TextureAddressMode::Repeat,
+                                       panda::TextureAddressMode::MirroredRepeat,
+                                       panda::TextureAddressMode::ClampToEdge})
+    {
+        const auto texture = activeEngine().getResourceManager().createTexture({
+            .extent = {2, 1},
+            .format = panda::PixelFormat::Rgba8Srgb,
+            .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+            .addressMode = mode
+        });
+        if (!texture && texture.error().code == panda::ErrorCode::Unsupported)
+        {
+            GTEST_SKIP() << texture.error().message;
+        }
+        ASSERT_TRUE(texture) << texture.error().message;
+        auto upload = activeEngine().getSubmissionManager().createUploadBatch();
+        ASSERT_TRUE(upload) << upload.error().message;
+        ASSERT_TRUE(upload->write(*texture, stripes));
+        const auto uploaded = upload->submit();
+        ASSERT_TRUE(uploaded) << uploaded.error().message;
+        const auto view = makeTexturedView(*mesh, *texture);
+        ASSERT_TRUE(view) << view.error().message;
+        const auto frame = activeEngine().getOffscreenRenderer().render(*view, *target);
+        ASSERT_TRUE(frame) << frame.error().message;
+        const auto readback = activeEngine().getOffscreenRenderer().readPixels(*target, frame->completion);
+        ASSERT_TRUE(readback) << readback.error().message;
+
+        const auto left = pixelAt(*readback, 8, 16);
+        const auto right = pixelAt(*readback, 24, 16);
+        switch (mode)
+        {
+        case panda::TextureAddressMode::Repeat:
+            EXPECT_GT(left.at(0), left.at(2));
+            EXPECT_GT(right.at(0), right.at(2));
+            break;
+        case panda::TextureAddressMode::MirroredRepeat:
+            EXPECT_GT(left.at(2), left.at(0));
+            EXPECT_GT(right.at(0), right.at(2));
+            break;
+        case panda::TextureAddressMode::ClampToEdge:
+            EXPECT_GT(left.at(2), left.at(0));
+            EXPECT_GT(right.at(2), right.at(0));
+            break;
+        }
+    }
+}
+
+TEST_F(OffscreenRenderBackendSystem, SelectsSuppliedMipsAndSamplesGeneratedSrgbMipsWhenMinifying)
+{
+    const auto generatedTarget = activeEngine().getResourceManager().createOffscreenTarget({
+        .extent = {32, 32}
+    });
+    const auto suppliedTarget = activeEngine().getResourceManager().createOffscreenTarget({
+        .extent = {32, 32}
+    });
+    if ((!generatedTarget && generatedTarget.error().code == panda::ErrorCode::Unsupported) ||
+        (!suppliedTarget && suppliedTarget.error().code == panda::ErrorCode::Unsupported))
+    {
+        GTEST_SKIP() << "RGBA8 sRGB offscreen rendering is unavailable";
+    }
+    ASSERT_TRUE(generatedTarget) << generatedTarget.error().message;
+    ASSERT_TRUE(suppliedTarget) << suppliedTarget.error().message;
+    const auto mesh = createTexturedQuad(activeEngine());
+    if (!mesh && mesh.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << mesh.error().message;
+    }
+    ASSERT_TRUE(mesh) << mesh.error().message;
+
+    auto generated = activeEngine().getResourceManager().createTexture({
+        .extent = {2, 2},
+        .format = panda::PixelFormat::Rgba8Srgb,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::Generate
+    });
+    if (!generated && generated.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << generated.error().message;
+    }
+    ASSERT_TRUE(generated) << generated.error().message;
+    const auto checker = std::vector<std::byte> {std::byte {0},
+                                                 std::byte {0},
+                                                 std::byte {0},
+                                                 std::byte {255},
+                                                 std::byte {255},
+                                                 std::byte {255},
+                                                 std::byte {255},
+                                                 std::byte {255},
+                                                 std::byte {255},
+                                                 std::byte {255},
+                                                 std::byte {255},
+                                                 std::byte {255},
+                                                 std::byte {0},
+                                                 std::byte {0},
+                                                 std::byte {0},
+                                                 std::byte {255}};
+    auto generatedUpload = activeEngine().getSubmissionManager().createUploadBatch();
+    ASSERT_TRUE(generatedUpload) << generatedUpload.error().message;
+    ASSERT_TRUE(generatedUpload->write(*generated, checker));
+    const auto generatedUploadCompletion = generatedUpload->submit();
+    ASSERT_TRUE(generatedUploadCompletion) << generatedUploadCompletion.error().message;
+    auto generatedView = makeTexturedView(*mesh, *generated);
+    ASSERT_TRUE(generatedView) << generatedView.error().message;
+    const auto generatedFrame = activeEngine().getOffscreenRenderer().render(*generatedView, *generatedTarget);
+    ASSERT_TRUE(generatedFrame) << generatedFrame.error().message;
+    EXPECT_LE(generatedFrame->effectiveAnisotropy, 8.0F);
+    EXPECT_GE(generatedFrame->effectiveAnisotropy, 1.0F);
+
+    ASSERT_TRUE(activeEngine().setTextureFilteringPreset(panda::TextureFilteringPreset::Nearest));
+    auto supplied = activeEngine().getResourceManager().createTexture({
+        .extent = {4, 4},
+        .format = panda::PixelFormat::Rgba8Srgb,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::Supplied,
+        .addressMode = panda::TextureAddressMode::MirroredRepeat
+    });
+    if (!supplied && supplied.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << supplied.error().message;
+    }
+    ASSERT_TRUE(supplied) << supplied.error().message;
+    EXPECT_EQ(supplied->getMipLevels(), 3U);
+    const auto red = solidTextureBytes({4, 4}, {255, 0, 0, 255});
+    const auto green = solidTextureBytes({2, 2}, {0, 255, 0, 255});
+    const auto blue = solidTextureBytes({1, 1}, {0, 0, 255, 255});
+    auto suppliedUpload = activeEngine().getSubmissionManager().createUploadBatch();
+    ASSERT_TRUE(suppliedUpload) << suppliedUpload.error().message;
+    ASSERT_TRUE(suppliedUpload->write(*supplied, red));
+    ASSERT_TRUE(suppliedUpload->write(*supplied,
+                                      green,
+                                      {
+                                          .extent = {2, 2},
+                                          .mipLevel = 1
+    }));
+    ASSERT_TRUE(suppliedUpload->write(*supplied,
+                                      blue,
+                                      {
+                                          .extent = {1, 1},
+                                          .mipLevel = 2
+    }));
+    const auto suppliedUploadCompletion = suppliedUpload->submit();
+    ASSERT_TRUE(suppliedUploadCompletion) << suppliedUploadCompletion.error().message;
+    auto suppliedView = makeTexturedView(*mesh, *supplied);
+    ASSERT_TRUE(suppliedView) << suppliedView.error().message;
+    const auto suppliedFrame = activeEngine().getOffscreenRenderer().render(*suppliedView, *suppliedTarget);
+    ASSERT_TRUE(suppliedFrame) << suppliedFrame.error().message;
+    EXPECT_FLOAT_EQ(suppliedFrame->effectiveAnisotropy, 1.0F);
+
+    const auto generatedReadback =
+        activeEngine().getOffscreenRenderer().readPixels(*generatedTarget, generatedFrame->completion);
+    ASSERT_TRUE(generatedReadback) << generatedReadback.error().message;
+    const auto suppliedReadback =
+        activeEngine().getOffscreenRenderer().readPixels(*suppliedTarget, suppliedFrame->completion);
+    ASSERT_TRUE(suppliedReadback) << suppliedReadback.error().message;
+    const auto sampledMipLinear = std::pow(((188.0F / 255.0F) + 0.055F) / 1.055F, 2.4F);
+    const auto expectedGray = toByte(encodeSrgb(toneMap(sampledMipLinear)));
+    const auto generatedPixel = centerPixel(*generatedReadback);
+    EXPECT_NEAR(generatedPixel.at(0), expectedGray, 10);
+    EXPECT_NEAR(generatedPixel.at(1), expectedGray, 10);
+    EXPECT_NEAR(generatedPixel.at(2), expectedGray, 10);
+    EXPECT_EQ(generatedPixel.at(3), 255U);
+
+    const auto suppliedPixel = centerPixel(*suppliedReadback);
+    EXPECT_LE(suppliedPixel.at(0), 5U);
+    EXPECT_LE(suppliedPixel.at(1), 5U);
+    EXPECT_NEAR(suppliedPixel.at(2), toByte(encodeSrgb(toneMap(1.0F))), 10);
+    EXPECT_EQ(suppliedPixel.at(3), 255U);
 }
 
 TEST_F(OffscreenRenderBackendSystem, ValidatesTargetExtentOwnershipAndLifetime)

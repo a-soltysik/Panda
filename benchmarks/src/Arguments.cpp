@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <argparse/argparse.hpp>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +9,7 @@
 #include <limits>
 #include <panda/EngineOptions.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda_bench/Arguments.hpp>
 #include <string>
 #include <string_view>
@@ -21,6 +23,17 @@ constexpr auto maximumWarmupDuration = std::chrono::hours {1};
 constexpr auto maximumMeasurementDuration = std::chrono::hours {24};
 constexpr auto maximumRunCount = std::int64_t {100};
 constexpr auto unspecifiedShadowedLightCount = std::numeric_limits<std::int64_t>::min();
+constexpr auto textureFilteringPresets = std::array<std::pair<std::string_view, panda::TextureFilteringPreset>, 7> {
+    {
+     {"nearest", panda::TextureFilteringPreset::Nearest},
+     {"bilinear", panda::TextureFilteringPreset::Bilinear},
+     {"trilinear", panda::TextureFilteringPreset::Trilinear},
+     {"anisotropic-2x", panda::TextureFilteringPreset::Anisotropic2x},
+     {"anisotropic-4x", panda::TextureFilteringPreset::Anisotropic4x},
+     {"anisotropic-8x", panda::TextureFilteringPreset::Anisotropic8x},
+     {"anisotropic-16x", panda::TextureFilteringPreset::Anisotropic16x},
+     }
+};
 
 struct ParsingState
 {
@@ -33,7 +46,18 @@ struct ParsingState
     std::int64_t runCount {1};
     std::string presentationMode {"fifo"};
     std::int64_t sampleCount {static_cast<std::int64_t>(panda::SampleCount::Four)};
+    std::string textureFiltering {"anisotropic-8x"};
 };
+
+void addTextureFilteringOption(argparse::ArgumentParser& parser, ParsingState& state)
+{
+    parser.add_argument("--texture-filter")
+        .help("Texture filtering preset: nearest, bilinear, trilinear, anisotropic-2x/4x/8x/16x")
+        .default_value(std::string {"anisotropic-8x"})
+        .nargs(1)
+        .required()
+        .store_into(state.textureFiltering);
+}
 
 void addProfileOptions(argparse::ArgumentParser& parser, ParsingState& state)
 {
@@ -61,6 +85,7 @@ void addProfileOptions(argparse::ArgumentParser& parser, ParsingState& state)
         .nargs(1)
         .required()
         .store_into(state.sampleCount);
+    addTextureFilteringOption(parser, state);
 }
 
 void addLightingOptions(argparse::ArgumentParser& parser, ParsingState& state)
@@ -209,6 +234,18 @@ auto parsePresentationMode(std::string_view mode) -> std::expected<panda::Engine
     return std::unexpected {"--present-mode must be fifo, mailbox or immediate"};
 }
 
+auto parseTextureFilteringPreset(std::string_view preset) -> std::expected<panda::TextureFilteringPreset, std::string>
+{
+    for (const auto& [name, value] : textureFilteringPresets)
+    {
+        if (preset == name)
+        {
+            return value;
+        }
+    }
+    return std::unexpected {"--texture-filter must be nearest, bilinear, trilinear or anisotropic-2x/4x/8x/16x"};
+}
+
 auto validateProfileAndPresentationMode(ParsingState& state) -> std::expected<void, std::string>
 {
     if (state.options.profile != "smoke")
@@ -226,6 +263,12 @@ auto validateProfileAndPresentationMode(ParsingState& state) -> std::expected<vo
         return std::unexpected {"Sample count must be 1, 2 or 4"};
     }
     state.options.sampleCount = static_cast<panda::SampleCount>(state.sampleCount);
+    const auto textureFiltering = parseTextureFilteringPreset(state.textureFiltering);
+    if (!textureFiltering)
+    {
+        return std::unexpected {textureFiltering.error()};
+    }
+    state.options.textureFilteringPreset = *textureFiltering;
     return {};
 }
 

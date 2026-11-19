@@ -56,9 +56,20 @@ Base color is the product of texture color, material tint, instance tint, and op
 base-color texture, instance tint, or vertex color contributes white. If supplied, the first built-in base-color map
 must be an uploaded, sampled `R8G8B8A8Srgb` or `B8G8R8A8Srgb` texture from the same Engine, and its mesh must declare
 `TexCoord0`.
-Sampling uses linear filtering and repeat addressing. `TextureDesc` currently provides one mip level. sRGB texture
-formats decode color channels to linear values while alpha remains linear. The sampled alpha participates in Mask and
-Blend with material, draw, and vertex alpha.
+Built-in material maps use the Engine-wide `TextureFilteringPreset`: Nearest,
+Bilinear, Trilinear, or Anisotropic2x/4x/8x/16x. Anisotropic presets use
+trilinear filtering and are capped at the device limit; unsupported anisotropy
+falls back to trilinear. The default is Anisotropic8x. `TextureDesc::mipPolicy`
+chooses single-level, supplied, or CPU-generated mip data, while
+`TextureDesc::addressMode` applies repeat, mirrored repeat, or clamp-to-edge to
+both UV axes. Filtering is not configured per texture in this API. sRGB texture
+formats decode color channels to linear values while alpha remains linear. The
+sampled alpha participates in Mask and Blend with material, draw, and vertex
+alpha.
+Applications choose the initial preset with `EngineOptions::textureFilteringPreset`
+and can change it later with `Engine::setTextureFilteringPreset()`; changes apply
+to later window and offscreen frames. `Engine::getTextureFilteringPreset()` reports
+the current request.
 
 The optional Lit metallic-roughness map must be an uploaded, sampled `R8G8B8A8Unorm` or `B8G8R8A8Unorm` texture from
 the same Engine, and its mesh must declare `TexCoord0`. Its blue channel multiplies the material metallic value and its
@@ -125,10 +136,10 @@ below.
   the actual color/depth formats and attachment usages. The window and offscreen renderers
   each expose a support query. The offscreen query also applies to capture frames.
   `FrameResult::effectiveSampleCount` reports the submitted count. Clear-only frames use 1x.
-- Generate/use mip chains where appropriate and support trilinear sampling.
-- Request 8x anisotropy by default, capped by the device limit; expose off/2x/4x/8x/16x. Unsupported anisotropy does not
-  make an otherwise capable device unusable.
-- Numeric/data textures and pixel-art use cases can override filtering and mip policy.
+- Generate/use mip chains where appropriate and support nearest, bilinear,
+  trilinear, and anisotropic 2x/4x/8x/16x Engine-wide filtering presets.
+- Request 8x anisotropy by default and cap it at the device limit. Unsupported
+  anisotropy falls back to trilinear without making an otherwise capable device unusable.
 - MSAA addresses geometry-edge coverage, not all texture, specular, or temporal aliasing. Procedurally masked billboard
   edges need a separate quality check.
 - TAA, motion-vector history, and advanced temporal reconstruction are not required.
@@ -467,9 +478,9 @@ depth-only masked variant samples the base-color alpha with the same cutoff as
 the camera pass. Blend casts no shadow by default.
 
 Select MSAA 4x, then 2x, then off based on both actual HDR/depth format
-capabilities; report the effective mode. Use trilinear mips and request 8x AF up
-to the device limit; if anisotropy is unavailable use trilinear without it.
-Record requested and effective values. Shadow and color format fallback is
+capabilities; report the effective mode. Texture filtering uses the global
+`TextureFilteringPreset`, with the requested preset and effective anisotropy
+reported. Shadow and color format fallback is
 capability driven, not a performance auto-tuner. The sphere edge remains a
 documented masked silhouette.
 

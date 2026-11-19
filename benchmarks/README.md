@@ -12,6 +12,9 @@ pages, a 2048² directional map and 256² maps for each point-light face. Shadow
 pages grow to fit the requested workload, subject to device limits. See the
 [benchmark specification](../docs/development/benchmarking.md) for measurement
 boundaries and planned workloads.
+
+`--texture-filter` selects the Engine-wide nearest, bilinear, trilinear or
+anisotropic 2x/4x/8x/16x preset; it defaults to `anisotropic-8x`.
 The [UC benchmark smoke run](../docs/use-cases/benchmark-smoke-run.md) traces how
 the executable validates settings, collects samples and writes its report.
 

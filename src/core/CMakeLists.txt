@@ -48,6 +48,7 @@ panda_add_component(panda_core
         vulkan/upload/UploadBatchImpl.cpp
         vulkan/upload/UploadManager.cpp
         vulkan/upload/UploadCommand.cpp
+        vulkan/upload/TextureMipGeneration.cpp
         vulkan/presentation/SwapchainGeneration.cpp
         vulkan/VulkanError.cpp
         vulkan/resources/memory/RangeAllocator.cpp
@@ -74,6 +75,7 @@ panda_add_component(panda_core
         panda/math/Projection.hpp
         panda/math/Transform.hpp
         panda/rendering/FrameResult.hpp
+        panda/rendering/TextureFilteringPreset.hpp
         panda/interop/ExternalBuffer.hpp
         panda/interop/ExternalBufferManager.hpp
         panda/interop/ExternalMemoryHandle.hpp
@@ -119,6 +121,7 @@ panda_add_component(panda_core
         vulkan/upload/UploadCommand.hpp
         vulkan/upload/UploadManager.hpp
         vulkan/upload/UploadOperation.hpp
+        vulkan/upload/TextureMipGeneration.hpp
         vulkan/VulkanError.hpp
         vulkan/VulkanHpp.hpp
         vulkan/resources/BufferResource.hpp

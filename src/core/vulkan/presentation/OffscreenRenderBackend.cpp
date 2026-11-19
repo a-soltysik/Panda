@@ -274,6 +274,7 @@ OffscreenRenderBackend::OffscreenRenderBackend(const OffscreenRenderBackendCreat
       _submissions {info.submissions},
       _pool {info.pool},
       _performance {info.performance},
+      _textureFilteringPreset {info.textureFilteringPreset},
       _maxLights {info.maxLights}
 {
 }
@@ -292,6 +293,7 @@ auto OffscreenRenderBackend::initialize() -> std::expected<void, Error>
                                              .submissions = _submissions,
                                              .pool = &_pool,
                                              .performance = _performance,
+                                             .textureFilteringPreset = _textureFilteringPreset,
                                              .maxLights = _maxLights,
                                              .performanceSlotBase = FrameExecution::slotCount});
     if (!execution)
@@ -419,7 +421,8 @@ auto OffscreenRenderBackend::submitFrame(std::size_t slotIndex,
     _nextSlot = (_nextSlot + 1) % FrameExecution::slotCount;
     return FrameResult {.status = FrameResult::Status::Rendered,
                         .completion = _submissions.getPoint(*submitted),
-                        .effectiveSampleCount = _execution->getSampleCount(request.view)};
+                        .effectiveSampleCount = _execution->getSampleCount(request.view),
+                        .effectiveAnisotropy = _execution->getEffectiveAnisotropy(request.view)};
 }
 
 auto OffscreenRenderBackend::readPixels(const OffscreenTarget& target, CompletionPoint completion)

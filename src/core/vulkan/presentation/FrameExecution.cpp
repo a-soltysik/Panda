@@ -106,6 +106,7 @@ FrameExecution::FrameExecution(const FrameExecutionCreateInfo& info)
       _submissions {info.submissions},
       _pool {info.pool},
       _performance {info.performance},
+      _textureFilteringPreset {info.textureFilteringPreset},
       _maxLights {info.maxLights},
       _performanceSlotBase {info.performanceSlotBase}
 {
@@ -274,6 +275,7 @@ auto FrameExecution::initializeMeshRenderer(vk::Extent2D extent, vk::Format colo
                                            .colorFormat = colorFormat,
                                            .frameCount = _slots.size(),
                                            .maxLights = _maxLights,
+                                           .textureFilteringPreset = _textureFilteringPreset,
                                            .requestedSampleCount = requested})
         .transform([this](std::unique_ptr<renderer::MeshRenderer> meshRenderer) {
             _renderer = std::move(meshRenderer);
@@ -360,5 +362,12 @@ auto FrameExecution::isGpuTimestampSamplingEnabled() const noexcept -> bool
 auto FrameExecution::getSampleCount(const RenderView& view) const noexcept -> SampleCount
 {
     return view.meshes.empty() ? SampleCount::One : mapSampleCount(_renderer->getSampleCount());
+}
+
+auto FrameExecution::getEffectiveAnisotropy(const RenderView& view) const noexcept -> float
+{
+    return view.meshes.empty() || !_textureFilteringPreset
+               ? 1.0F
+               : _renderer->getEffectiveAnisotropy(*_textureFilteringPreset);
 }
 }

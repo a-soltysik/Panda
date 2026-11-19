@@ -61,7 +61,7 @@ void transitionToTransfer(vk::CommandBuffer command, const TextureResource& text
         .image = texture.getNative(),
         .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eColor,
                                                        .baseMipLevel = 0,
-                                                       .levelCount = 1,
+                                                       .levelCount = texture.getMipLevels(),
                                                        .baseArrayLayer = 0,
                                                        .layerCount = 1}
     };
@@ -82,7 +82,7 @@ void transitionToSampled(vk::CommandBuffer command, const TextureResource& textu
         .image = texture.getNative(),
         .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eColor,
                                                        .baseMipLevel = 0,
-                                                       .levelCount = 1,
+                                                       .levelCount = texture.getMipLevels(),
                                                        .baseArrayLayer = 0,
                                                        .layerCount = 1}
     };
@@ -109,7 +109,7 @@ void recordCopy(vk::CommandBuffer command, const TextureUpload& texture)
         .bufferRowLength = texture.bufferRowLength,
         .bufferImageHeight = 0,
         .imageSubresource = vk::ImageSubresourceLayers {.aspectMask = vk::ImageAspectFlagBits::eColor,
-                                                        .mipLevel = 0,
+                                                        .mipLevel = texture.region.mipLevel,
                                                         .baseArrayLayer = 0,
                                                         .layerCount = 1},
         .imageOffset = vk::Offset3D {.x = texture.region.offset.x, .y = texture.region.offset.y, .z = 0},

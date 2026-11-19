@@ -114,7 +114,8 @@ WindowPresentation::WindowPresentation(const WindowPresentationCreateInfo& info)
       _maintenance {info.maintenance},
       _requestedPresentationMode {info.presentationMode},
       _lastPresentationMode {info.presentationMode},
-      _submissions {info.submissions}
+      _submissions {info.submissions},
+      _textureFilteringPreset {info.textureFilteringPreset}
 {
 }
 
@@ -334,7 +335,7 @@ auto WindowPresentation::submitAcquiredCaptureFrame(const AcquiredImage& acquire
     _execution->setLastCompletion(slotIndex, submissionValue);
     image.initialized = true;
     _nextSlot = (_nextSlot + 1) % _acquireSemaphores.size();
-    return presentFrame(acquired, submissionValue, rendered->effectiveSampleCount);
+    return presentFrame(acquired, submissionValue, rendered->effectiveSampleCount, rendered->effectiveAnisotropy);
 }
 
 auto WindowPresentation::executeAcquiredFrame(std::size_t slotIndex,
@@ -379,7 +380,10 @@ auto WindowPresentation::submitAcquiredFrame(const AcquiredImage& acquired,
     {
         submittedPerformanceSlot = slotIndex;
     }
-    return presentFrame(acquired, *completion, _execution->getSampleCount(view));
+    return presentFrame(acquired,
+                        *completion,
+                        _execution->getSampleCount(view),
+                        _execution->getEffectiveAnisotropy(view));
 }
 
 auto WindowPresentation::nonReadyFrameResult(AcquiredImage::Status status) -> std::optional<FrameResult>
@@ -648,31 +652,19 @@ auto WindowPresentation::queuePresent(const SwapchainImage& image, std::uint32_t
     return _presentQueue.presentKHR(presentInfo);
 }
 
-auto WindowPresentation::presentFrame(const AcquiredImage& acquired, std::uint64_t completion, SampleCount sampleCount)
-    -> std::expected<FrameResult, Error>
+auto WindowPresentation::presentFrame(const AcquiredImage& acquired,
+                                      std::uint64_t completion,
+                                      SampleCount sampleCount,
+                                      float effectiveAnisotropy) -> std::expected<FrameResult, Error>
 {
-    auto& image = activeGeneration().images.at(acquired.index);
-    const auto presented = queuePresent(image, acquired.index);
+    const auto presented = queuePresent(activeGeneration().images.at(acquired.index), acquired.index);
     if (presented == vk::Result::eSuccess || presented == vk::Result::eSuboptimalKHR ||
         presented == vk::Result::eErrorOutOfDateKHR || presented == vk::Result::eErrorSurfaceLostKHR)
     {
-        image.presentPending = true;
-        if (presented == vk::Result::eErrorSurfaceLostKHR)
-        {
-            _faulted = true;
-            return std::unexpected {makeVulkanError(presented)};
-        }
-        if (presented == vk::Result::eSuboptimalKHR || presented == vk::Result::eErrorOutOfDateKHR ||
-            acquired.suboptimal)
-        {
-            _recreatePending = true;
-            return FrameResult {.status = FrameResult::Status::RecreatePending,
-                                .completion = _submissions.getPoint(completion),
-                                .effectiveSampleCount = sampleCount};
-        }
-        return FrameResult {.status = FrameResult::Status::Rendered,
-                            .completion = _submissions.getPoint(completion),
-                            .effectiveSampleCount = sampleCount};
+        const auto frameResult = FrameResult {.completion = _submissions.getPoint(completion),
+                                              .effectiveSampleCount = sampleCount,
+                                              .effectiveAnisotropy = effectiveAnisotropy};
+        return finishSuccessfulPresent(acquired, presented, frameResult);
     }
     if (presented == vk::Result::eErrorDeviceLost)
     {
@@ -680,6 +672,27 @@ auto WindowPresentation::presentFrame(const AcquiredImage& acquired, std::uint64
         return std::unexpected {makeVulkanError(presented)};
     }
     return recoverPresentFailure(acquired.index, presented, completion);
+}
+
+auto WindowPresentation::finishSuccessfulPresent(const AcquiredImage& acquired,
+                                                 vk::Result result,
+                                                 FrameResult frameResult) -> std::expected<FrameResult, Error>
+{
+    auto& image = activeGeneration().images.at(acquired.index);
+    image.presentPending = true;
+    if (result == vk::Result::eErrorSurfaceLostKHR)
+    {
+        _faulted = true;
+        return std::unexpected {makeVulkanError(result)};
+    }
+    if (result == vk::Result::eSuboptimalKHR || result == vk::Result::eErrorOutOfDateKHR || acquired.suboptimal)
+    {
+        _recreatePending = true;
+        frameResult.status = FrameResult::Status::RecreatePending;
+        return frameResult;
+    }
+    frameResult.status = FrameResult::Status::Rendered;
+    return frameResult;
 }
 
 auto WindowPresentation::verifyReleaseFunction() const -> std::expected<void, Error>
@@ -731,6 +744,7 @@ auto WindowPresentation::initializeFrameResources(const WindowPresentationCreate
                                                            .submissions = _submissions,
                                                            .pool = info.pool,
                                                            .performance = info.performance,
+                                                           .textureFilteringPreset = info.textureFilteringPreset,
                                                            .maxLights = info.maxLights});
     if (!execution)
     {

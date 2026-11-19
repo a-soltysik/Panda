@@ -91,3 +91,81 @@ TEST(TextureSystem, UploadsTextureRegionsAndReleasesSharedImageOwnersWithoutVali
     });
     EXPECT_EQ(error, records.entries.end()) << (error == records.entries.end() ? "" : error->message);
 }
+
+TEST(TextureSystem, UploadsCompleteSuppliedAndGeneratedMipChains)
+{
+    auto context = panda::Engine::create({.applicationName = "Panda mip chain upload", .enableValidation = true});
+    if (!context && context.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << context.error().message;
+    }
+    ASSERT_TRUE(context) << context.error().message;
+
+    auto supplied = context->getResourceManager().createTexture({
+        .extent = {4, 4},
+        .format = panda::PixelFormat::Rgba8Srgb,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::Supplied
+    });
+    ASSERT_TRUE(supplied) << supplied.error().message;
+    ASSERT_EQ(supplied->getMipLevels(), 3U);
+    auto suppliedBatch = context->getSubmissionManager().createUploadBatch();
+    ASSERT_TRUE(suppliedBatch) << suppliedBatch.error().message;
+    const auto base = std::vector<std::byte>(std::size_t {4} * 4U * 4U, std::byte {0x11});
+    const auto middle = std::vector<std::byte>(std::size_t {2} * 2U * 4U, std::byte {0x22});
+    const auto smallest = std::vector<std::byte>(4U, std::byte {0x33});
+    ASSERT_TRUE(suppliedBatch->write(*supplied, base));
+    const auto incomplete = suppliedBatch->submit();
+    ASSERT_FALSE(incomplete);
+    EXPECT_EQ(incomplete.error().code, panda::ErrorCode::InvalidArgument);
+    ASSERT_TRUE(suppliedBatch->write(*supplied,
+                                     middle,
+                                     {
+                                         .extent = {2, 2},
+                                         .mipLevel = 1
+    }));
+    ASSERT_TRUE(suppliedBatch->write(*supplied,
+                                     smallest,
+                                     {
+                                         .extent = {1, 1},
+                                         .mipLevel = 2
+    }));
+    const auto suppliedCompletion = suppliedBatch->submit();
+    ASSERT_TRUE(suppliedCompletion) << suppliedCompletion.error().message;
+    const auto suppliedWait = context->getSubmissionManager().wait(*suppliedCompletion, std::chrono::seconds {10});
+    ASSERT_TRUE(suppliedWait) << suppliedWait.error().message;
+    ASSERT_EQ(*suppliedWait, panda::WaitStatus::Completed);
+
+    auto generated = context->getResourceManager().createTexture({
+        .extent = {2, 2},
+        .format = panda::PixelFormat::Rgba8Srgb,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::Generate
+    });
+    ASSERT_TRUE(generated) << generated.error().message;
+    ASSERT_EQ(generated->getMipLevels(), 2U);
+    auto generatedBatch = context->getSubmissionManager().createUploadBatch();
+    ASSERT_TRUE(generatedBatch) << generatedBatch.error().message;
+    const auto generatedBase = std::vector<std::byte> {std::byte {0},
+                                                       std::byte {0},
+                                                       std::byte {0},
+                                                       std::byte {255},
+                                                       std::byte {255},
+                                                       std::byte {255},
+                                                       std::byte {255},
+                                                       std::byte {255},
+                                                       std::byte {255},
+                                                       std::byte {255},
+                                                       std::byte {255},
+                                                       std::byte {255},
+                                                       std::byte {0},
+                                                       std::byte {0},
+                                                       std::byte {0},
+                                                       std::byte {255}};
+    ASSERT_TRUE(generatedBatch->write(*generated, generatedBase));
+    const auto generatedCompletion = generatedBatch->submit();
+    ASSERT_TRUE(generatedCompletion) << generatedCompletion.error().message;
+    const auto generatedWait = context->getSubmissionManager().wait(*generatedCompletion, std::chrono::seconds {10});
+    ASSERT_TRUE(generatedWait) << generatedWait.error().message;
+    EXPECT_EQ(*generatedWait, panda::WaitStatus::Completed);
+}

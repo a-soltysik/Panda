@@ -194,6 +194,7 @@ protected:
                                                                 .presentQueueFamily = 0,
                                                                 .maintenance = maintenance,
                                                                 .submissions = submissions,
+                                                                .textureFilteringPreset = nullptr,
                                                                 .maxLights = panda::EngineOptions::defaultMaxLights});
     }
 

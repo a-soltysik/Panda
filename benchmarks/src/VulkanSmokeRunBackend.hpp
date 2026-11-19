@@ -19,6 +19,7 @@ public:
     [[nodiscard]] auto shouldClose() const -> bool override;
     [[nodiscard]] auto getFramebufferExtent() const -> std::expected<glm::uvec2, Failure> override;
     [[nodiscard]] auto effectiveSampleCount() const noexcept -> std::uint32_t override;
+    [[nodiscard]] auto effectiveAnisotropy() const noexcept -> float override;
     [[nodiscard]] auto submitFrame() -> std::expected<FrameStatus, Failure> override;
     [[nodiscard]] auto takeAvailableSamples()
         -> std::expected<std::vector<panda::FramePerformanceSample>, Failure> override;
@@ -40,5 +41,6 @@ private:
     panda::RenderView _view;
     panda::CompletionPoint _lastCompletion;
     std::uint32_t _effectiveSampleCount {1};
+    float _effectiveAnisotropy {1.0F};
 };
 }

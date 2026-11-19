@@ -19,6 +19,7 @@ struct TextureResourceCreateInfo
     vk::Extent2D extent;
     vk::Format format;
     vk::ImageUsageFlags usage;
+    std::uint32_t mipLevels {1};
     std::uint32_t arrayLayers {1};
     bool createArrayView {false};
 };
@@ -49,6 +50,22 @@ public:
     [[nodiscard]] auto getUsage() const -> vk::ImageUsageFlags;
     [[nodiscard]] auto getPublicFormat() const -> PixelFormat;
     [[nodiscard]] auto getPublicUsage() const -> TextureUsage;
+
+    [[nodiscard]] auto getMipLevels() const noexcept -> std::uint32_t
+    {
+        return _mipLevels;
+    }
+
+    [[nodiscard]] auto getMipPolicy() const noexcept -> TextureMipPolicy
+    {
+        return _mipPolicy;
+    }
+
+    [[nodiscard]] auto getAddressMode() const noexcept -> TextureAddressMode
+    {
+        return _addressMode;
+    }
+
     [[nodiscard]] auto getNative() const -> vk::Image;
     [[nodiscard]] auto getNativeView() const -> vk::ImageView;
     [[nodiscard]] auto getNativeArrayView() const -> vk::ImageView;
@@ -87,8 +104,11 @@ private:
     vk::Format _format;
     vk::ImageUsageFlags _usage;
     vk::SampleCountFlagBits _samples;
+    std::uint32_t _mipLevels {1};
     PixelFormat _publicFormat {PixelFormat::Undefined};
     TextureUsage _publicUsage {TextureUsage::None};
+    TextureMipPolicy _mipPolicy {TextureMipPolicy::SingleLevel};
+    TextureAddressMode _addressMode {TextureAddressMode::Repeat};
     std::optional<texture_upload::UploadBatchId> _uploadBatchId;
     bool _uploaded {false};
 };

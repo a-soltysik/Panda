@@ -11,6 +11,7 @@
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <panda/EngineOptions.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda_bench/Report.hpp>
 #include <panda_bench/Statistics.hpp>
 #include <string>
@@ -21,8 +22,8 @@ namespace panda_bench
 namespace
 {
 using Json = nlohmann::json;
-constexpr auto benchmarkReportSchemaVersion = 7U;
-constexpr auto smokeProfileVersion = 5U;
+constexpr auto benchmarkReportSchemaVersion = 9U;
+constexpr auto smokeProfileVersion = 7U;
 
 auto presentationModeName(panda::EngineOptions::PresentationMode mode) -> std::string
 {
@@ -34,6 +35,28 @@ auto presentationModeName(panda::EngineOptions::PresentationMode mode) -> std::s
         return "mailbox";
     case panda::EngineOptions::PresentationMode::Immediate:
         return "immediate";
+    }
+    return "unknown";
+}
+
+auto textureFilteringPresetName(panda::TextureFilteringPreset preset) -> std::string
+{
+    switch (preset)
+    {
+    case panda::TextureFilteringPreset::Nearest:
+        return "nearest";
+    case panda::TextureFilteringPreset::Bilinear:
+        return "bilinear";
+    case panda::TextureFilteringPreset::Trilinear:
+        return "trilinear";
+    case panda::TextureFilteringPreset::Anisotropic2x:
+        return "anisotropic-2x";
+    case panda::TextureFilteringPreset::Anisotropic4x:
+        return "anisotropic-4x";
+    case panda::TextureFilteringPreset::Anisotropic8x:
+        return "anisotropic-8x";
+    case panda::TextureFilteringPreset::Anisotropic16x:
+        return "anisotropic-16x";
     }
     return "unknown";
 }
@@ -71,6 +94,7 @@ auto runJson(const RunReport& run) -> Json
         {"runIndex",                           run.runIndex                                                             },
         {"effectiveFramebufferExtent",         Json {{"width", run.framebufferWidth}, {"height", run.framebufferHeight}}},
         {"effectiveSampleCount",               run.effectiveSampleCount                                                 },
+        {"effectiveAnisotropy",                run.effectiveAnisotropy                                                  },
         {"effectivePresentationMode",
          run.effectivePresentationMode ? Json(presentationModeName(*run.effectivePresentationMode)) : Json {}           },
         {"startupDurationNanoseconds",         run.startupDuration.count()                                              },
@@ -91,19 +115,20 @@ auto settingsJson(const Report& report) -> Json
 {
     return Json {
         {"requestedWindowExtent",
-         Json {{"width", report.requestedWindowWidth}, {"height", report.requestedWindowHeight}}   },
-        {"requestedLightCount",             report.requestedLightCount                             },
-        {"requestedShadowedLightCount",     report.requestedShadowedLightCount                     },
-        {"requestedPresentationMode",       presentationModeName(report.requestedPresentationMode) },
-        {"requestedSampleCount",            static_cast<std::uint32_t>(report.requestedSampleCount)},
-        {"validationEnabled",               false                                                  },
-        {"externalProfilerEnabled",         false                                                  },
-        {"framePerformanceSamplingEnabled", true                                                   },
+         Json {{"width", report.requestedWindowWidth}, {"height", report.requestedWindowHeight}}              },
+        {"requestedLightCount",             report.requestedLightCount                                        },
+        {"requestedShadowedLightCount",     report.requestedShadowedLightCount                                },
+        {"requestedPresentationMode",       presentationModeName(report.requestedPresentationMode)            },
+        {"requestedSampleCount",            static_cast<std::uint32_t>(report.requestedSampleCount)           },
+        {"requestedTextureFilteringPreset", textureFilteringPresetName(report.requestedTextureFilteringPreset)},
+        {"validationEnabled",               false                                                             },
+        {"externalProfilerEnabled",         false                                                             },
+        {"framePerformanceSamplingEnabled", true                                                              },
         {"requestedWarmupNanoseconds",
-         std::chrono::duration_cast<std::chrono::nanoseconds>(report.requestedWarmup).count()      },
+         std::chrono::duration_cast<std::chrono::nanoseconds>(report.requestedWarmup).count()                 },
         {"requestedMeasurementNanoseconds",
-         std::chrono::duration_cast<std::chrono::nanoseconds>(report.requestedMeasurement).count() },
-        {"requestedRuns",                   report.requestedRuns                                   }
+         std::chrono::duration_cast<std::chrono::nanoseconds>(report.requestedMeasurement).count()            },
+        {"requestedRuns",                   report.requestedRuns                                              }
     };
 }
 

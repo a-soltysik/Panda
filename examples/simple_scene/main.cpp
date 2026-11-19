@@ -21,6 +21,7 @@
 #include <panda/math/Transform.hpp>
 #include <panda/rendering/Camera.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/PixelFormat.hpp>
 #include <panda/resources/Texture.hpp>
@@ -318,7 +319,9 @@ auto main() -> int
                                           "Create the window");
         const auto context = panda::expect(
             panda::Engine::createWithSurface(window,
-                                             {.applicationName = "Panda simple scene", .enableValidation = true}),
+                                             {.applicationName = "Panda simple scene",
+                                              .enableValidation = true,
+                                              .textureFilteringPreset = panda::TextureFilteringPreset::Trilinear}),
             "Create the Vulkan context");
         const auto meshes = createSceneMeshes(context);
         run(window, context, meshes);

@@ -6,6 +6,7 @@
 #include <iterator>
 #include <panda/EngineOptions.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda_bench/Arguments.hpp>
 #include <string>
 #include <vector>
@@ -36,6 +37,7 @@ TEST(BenchmarkArguments, SuppliesTheSmokeDefaults)
     EXPECT_EQ(options->lightCount, panda_bench::defaultSmokeLightCount);
     EXPECT_EQ(options->shadowedLightCount, panda_bench::defaultSmokeShadowedLightCount);
     EXPECT_EQ(options->presentationMode, panda::EngineOptions::PresentationMode::Fifo);
+    EXPECT_EQ(options->textureFilteringPreset, panda::TextureFilteringPreset::Anisotropic8x);
     EXPECT_EQ(options->warmupDuration, std::chrono::seconds {1});
     EXPECT_EQ(options->measurementDuration, std::chrono::seconds {3});
     EXPECT_EQ(options->runCount, 1U);
@@ -88,6 +90,8 @@ TEST(BenchmarkArguments, ReadsRuntimeSettings)
                                 "mailbox",
                                 "--samples",
                                 "2",
+                                "--texture-filter",
+                                "anisotropic-4x",
                                 "--warmup-seconds",
                                 "0",
                                 "--measure-seconds",
@@ -103,6 +107,7 @@ TEST(BenchmarkArguments, ReadsRuntimeSettings)
     EXPECT_EQ(options->shadowedLightCount, 65U);
     EXPECT_EQ(options->presentationMode, panda::EngineOptions::PresentationMode::Mailbox);
     EXPECT_EQ(options->sampleCount, panda::SampleCount::Two);
+    EXPECT_EQ(options->textureFilteringPreset, panda::TextureFilteringPreset::Anisotropic4x);
     EXPECT_EQ(options->warmupDuration, std::chrono::seconds {0});
     EXPECT_EQ(options->measurementDuration, std::chrono::seconds {12});
     EXPECT_EQ(options->runCount, 3U);
@@ -128,6 +133,7 @@ TEST(BenchmarkArguments, GeneratesHelpForRegisteredOptions)
     EXPECT_NE(help.find("--shadowed-lights"), std::string::npos);
     EXPECT_NE(help.find("--present-mode"), std::string::npos);
     EXPECT_NE(help.find("--samples"), std::string::npos);
+    EXPECT_NE(help.find("--texture-filter"), std::string::npos);
     EXPECT_NE(help.find("--warmup-seconds"), std::string::npos);
     EXPECT_NE(help.find("--measure-seconds"), std::string::npos);
     EXPECT_NE(help.find("--runs"), std::string::npos);
@@ -138,6 +144,13 @@ TEST(BenchmarkArguments, RejectsUnsupportedSampleCount)
     const auto options = parse({"panda-bench", "--samples", "3"});
     ASSERT_FALSE(options);
     EXPECT_EQ(options.error(), "Sample count must be 1, 2 or 4");
+}
+
+TEST(BenchmarkArguments, RejectsUnknownTextureFilteringPreset)
+{
+    const auto options = parse({"panda-bench", "--texture-filter", "anisotropic-3x"});
+    ASSERT_FALSE(options);
+    EXPECT_EQ(options.error(), "--texture-filter must be nearest, bilinear, trilinear or anisotropic-2x/4x/8x/16x");
 }
 
 TEST(BenchmarkArguments, RejectsUnsupportedProfile)
@@ -157,6 +170,7 @@ TEST(BenchmarkArguments, RejectsMissingAndUnknownValues)
     EXPECT_FALSE(parse({"panda-bench", "--lights"}));
     EXPECT_FALSE(parse({"panda-bench", "--shadowed-lights"}));
     EXPECT_FALSE(parse({"panda-bench", "--present-mode"}));
+    EXPECT_FALSE(parse({"panda-bench", "--texture-filter"}));
     EXPECT_FALSE(parse({"panda-bench", "--warmup-seconds"}));
     EXPECT_FALSE(parse({"panda-bench", "--measure-seconds"}));
     EXPECT_FALSE(parse({"panda-bench", "--runs"}));

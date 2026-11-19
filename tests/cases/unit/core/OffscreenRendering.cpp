@@ -57,6 +57,7 @@ protected:
                 .submissions = *_submissions,
                 .pool = *_pool,
                 .performance = nullptr,
+                .textureFilteringPreset = nullptr,
                 .maxLights = 0});
     }
 

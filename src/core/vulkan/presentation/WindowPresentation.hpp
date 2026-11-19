@@ -16,6 +16,7 @@
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
 #include <panda/vulkan/WindowSurface.hpp>
 #include <vector>
@@ -49,6 +50,7 @@ struct WindowPresentationCreateInfo
     api_detail::SubmissionQueue& submissions;
     resources::MemoryPool* pool {nullptr};
     api_detail::PerformanceManagerImpl* performance {nullptr};
+    std::shared_ptr<TextureFilteringPreset> textureFilteringPreset;
     EngineOptions::PresentationMode presentationMode {EngineOptions::PresentationMode::Fifo};
     std::uint32_t maxLights;
 };
@@ -158,8 +160,13 @@ private:
         -> std::expected<std::uint64_t, Error>;
     [[nodiscard]] auto handleSubmitFailure(FrameSelection selection, const Error& cause)
         -> std::expected<std::uint64_t, Error>;
-    [[nodiscard]] auto presentFrame(const AcquiredImage& acquired, std::uint64_t completion, SampleCount sampleCount)
-        -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto presentFrame(const AcquiredImage& acquired,
+                                    std::uint64_t completion,
+                                    SampleCount sampleCount,
+                                    float effectiveAnisotropy) -> std::expected<FrameResult, Error>;
+    [[nodiscard]] auto finishSuccessfulPresent(const AcquiredImage& acquired,
+                                               vk::Result result,
+                                               FrameResult frameResult) -> std::expected<FrameResult, Error>;
     [[nodiscard]] auto queuePresent(const SwapchainImage& image, std::uint32_t index) -> vk::Result;
     [[nodiscard]] auto recoverPresentFailure(std::uint32_t index, vk::Result result, std::uint64_t completion)
         -> std::expected<FrameResult, Error>;
@@ -179,6 +186,7 @@ private:
     EngineOptions::PresentationMode _requestedPresentationMode;
     EngineOptions::PresentationMode _lastPresentationMode;
     api_detail::SubmissionQueue& _submissions;
+    std::shared_ptr<TextureFilteringPreset> _textureFilteringPreset;
     std::unique_ptr<presentation::FrameExecution> _execution;
     std::array<vk::raii::Semaphore, presentation::FrameExecution::slotCount> _acquireSemaphores {
         vk::raii::Semaphore {nullptr}, vk::raii::Semaphore {nullptr}};

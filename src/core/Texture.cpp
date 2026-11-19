@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <glm/ext/vector_uint2.hpp>
 #include <memory>
 #include <panda/resources/PixelFormat.hpp>
@@ -43,6 +44,11 @@ auto Texture::getFormat() const noexcept -> PixelFormat
 auto Texture::getUsage() const noexcept -> TextureUsage
 {
     return _resource ? _resource->getPublicUsage() : TextureUsage::None;
+}
+
+auto Texture::getMipLevels() const noexcept -> std::uint32_t
+{
+    return _resource ? _resource->getMipLevels() : 0U;
 }
 
 void Texture::reset() noexcept

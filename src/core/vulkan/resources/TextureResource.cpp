@@ -7,6 +7,8 @@
 
 #include "TextureResource.hpp"
 
+#include <algorithm>
+#include <bit>
 #include <cstdint>
 #include <expected>
 #include <memory>
@@ -30,10 +32,22 @@ using core::vulkan::upload::UploadBatchId;
 
 namespace
 {
+auto fullMipLevelCount(vk::Extent2D extent) -> std::uint32_t
+{
+    return static_cast<std::uint32_t>(std::bit_width(std::max(extent.width, extent.height)));
+}
+
+auto isValidAddressMode(TextureAddressMode mode) -> bool
+{
+    return mode == TextureAddressMode::Repeat || mode == TextureAddressMode::MirroredRepeat ||
+           mode == TextureAddressMode::ClampToEdge;
+}
+
 auto validateDescription(const TextureResourceCreateInfo& description) -> Result<void>
 {
     if (description.extent.width == 0 || description.extent.height == 0 || description.arrayLayers == 0 ||
-        description.format == vk::Format::eUndefined || !description.usage)
+        description.format == vk::Format::eUndefined || !description.usage || description.mipLevels == 0 ||
+        description.mipLevels > fullMipLevelCount(description.extent))
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Invalid texture extent, layers, format or usage")};
@@ -88,6 +102,34 @@ auto validateTextureRequest(const vk::raii::PhysicalDevice& physicalDevice,
     return validateFormatAndExtent(physicalDevice, description);
 }
 
+auto makeTextureCreateInfo(const TextureDesc& description) -> Result<TextureResourceCreateInfo>
+{
+    if (description.extent.x == 0 || description.extent.y == 0 ||
+        (description.mipPolicy != TextureMipPolicy::SingleLevel &&
+         description.mipPolicy != TextureMipPolicy::Supplied && description.mipPolicy != TextureMipPolicy::Generate) ||
+        !isValidAddressMode(description.addressMode))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Invalid texture extent, mip policy or address mode")};
+    }
+    const auto format = mapPixelFormat(description.format);
+    if (!format)
+    {
+        return std::unexpected {format.error()};
+    }
+    const auto usage = mapTextureUsage(description.usage);
+    if (!usage)
+    {
+        return std::unexpected {usage.error()};
+    }
+    const auto extent = vk::Extent2D {.width = description.extent.x, .height = description.extent.y};
+    return TextureResourceCreateInfo {
+        .extent = extent,
+        .format = *format,
+        .usage = *usage,
+        .mipLevels = description.mipPolicy == TextureMipPolicy::SingleLevel ? 1U : fullMipLevelCount(extent)};
+}
+
 auto validateSampleCount(vk::ImageUsageFlags usage, vk::SampleCountFlagBits samples) -> Result<void>
 {
     const auto value = static_cast<std::uint32_t>(samples);
@@ -113,7 +155,7 @@ auto createNativeImage(const vk::raii::Device& device,
         .imageType = vk::ImageType::e2D,
         .format = description.format,
         .extent = vk::Extent3D {.width = description.extent.width, .height = description.extent.height, .depth = 1},
-        .mipLevels = 1,
+        .mipLevels = description.mipLevels,
         .arrayLayers = description.arrayLayers,
         .samples = samples,
         .tiling = vk::ImageTiling::eOptimal,
@@ -149,6 +191,7 @@ auto imageAspect(vk::Format format) -> vk::ImageAspectFlags
 struct NativeImageViewDescription
 {
     vk::ImageViewType type {vk::ImageViewType::e2D};
+    std::uint32_t levelCount {1};
     std::uint32_t baseArrayLayer {0};
     std::uint32_t layerCount {1};
 };
@@ -168,7 +211,7 @@ auto createNativeView(const vk::raii::Device& device,
                        .a = vk::ComponentSwizzle::eIdentity},
         .subresourceRange = {.aspectMask = imageAspect(format),
                        .baseMipLevel = 0,
-                       .levelCount = 1,
+                       .levelCount = description.levelCount,
                        .baseArrayLayer = description.baseArrayLayer,
                        .layerCount = description.layerCount}
     };
@@ -219,26 +262,18 @@ auto TextureResource::create(const vk::raii::Device& device,
                              const TextureDesc& description,
                              vk::SampleCountFlagBits samples) -> Result<std::shared_ptr<TextureResource>>
 {
-    const auto format = mapPixelFormat(description.format);
-    if (!format)
+    const auto nativeDescription = makeTextureCreateInfo(description);
+    if (!nativeDescription)
     {
-        return std::unexpected {format.error()};
+        return std::unexpected {nativeDescription.error()};
     }
-    const auto usage = mapTextureUsage(description.usage);
-    if (!usage)
-    {
-        return std::unexpected {usage.error()};
-    }
-    const auto nativeDescription = TextureResourceCreateInfo {
-        .extent = vk::Extent2D {.width = description.extent.x, .height = description.extent.y},
-        .format = *format,
-        .usage = *usage
-    };
-    auto resource = createNative(device, pool, nativeDescription, samples);
+    auto resource = createNative(device, pool, *nativeDescription, samples);
     if (resource)
     {
         (*resource)->_publicFormat = description.format;
         (*resource)->_publicUsage = description.usage;
+        (*resource)->_mipPolicy = description.mipPolicy;
+        (*resource)->_addressMode = description.addressMode;
     }
     return resource;
 }
@@ -278,14 +313,15 @@ TextureResource::TextureResource(MemoryPool& pool,
       _arrayLayers {description.arrayLayers},
       _format {description.format},
       _usage {description.usage},
-      _samples {samples}
+      _samples {samples},
+      _mipLevels {description.mipLevels}
 {
 }
 
 auto TextureResource::createViews(const vk::raii::Device& device, const TextureResourceCreateInfo& description)
     -> Result<void>
 {
-    auto view = createNativeView(device, *_image, description.format);
+    auto view = createNativeView(device, *_image, description.format, {.levelCount = description.mipLevels});
     if (!view)
     {
         return std::unexpected {std::move(view.error())};
@@ -304,7 +340,9 @@ auto TextureResource::createArrayViews(const vk::raii::Device& device, const Tex
     auto arrayView = createNativeView(device,
                                       *_image,
                                       description.format,
-                                      {.type = vk::ImageViewType::e2DArray, .layerCount = description.arrayLayers});
+                                      {.type = vk::ImageViewType::e2DArray,
+                                       .levelCount = description.mipLevels,
+                                       .layerCount = description.arrayLayers});
     if (!arrayView)
     {
         return std::unexpected {std::move(arrayView.error())};
@@ -313,7 +351,10 @@ auto TextureResource::createArrayViews(const vk::raii::Device& device, const Tex
     _layerViews.reserve(description.arrayLayers - 1U);
     for (auto layer = std::uint32_t {1}; layer < description.arrayLayers; ++layer)
     {
-        auto layerView = createNativeView(device, *_image, description.format, {.baseArrayLayer = layer});
+        auto layerView = createNativeView(device,
+                                          *_image,
+                                          description.format,
+                                          {.levelCount = description.mipLevels, .baseArrayLayer = layer});
         if (!layerView)
         {
             return std::unexpected {std::move(layerView.error())};

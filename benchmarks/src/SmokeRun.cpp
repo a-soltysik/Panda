@@ -97,6 +97,7 @@ auto SmokeRun::executeRun() -> std::expected<void, Failure>
     }
     auto phases = executePhases();
     _run.effectiveSampleCount = _backend.effectiveSampleCount();
+    _run.effectiveAnisotropy = _backend.effectiveAnisotropy();
     return phases;
 }
 

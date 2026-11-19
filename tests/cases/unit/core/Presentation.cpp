@@ -333,6 +333,7 @@ protected:
                                                                 .maintenance = maintenance,
                                                                 .submissions = submissionQueue,
                                                                 .performance = _performance.get(),
+                                                                .textureFilteringPreset = nullptr,
                                                                 .maxLights = panda::EngineOptions::defaultMaxLights});
     }
 
@@ -357,6 +358,7 @@ protected:
              .queueFamily = 0,
              .submissions = submissionQueue,
              .performance = _performance.get(),
+             .textureFilteringPreset = nullptr,
              .maxLights = panda::EngineOptions::defaultMaxLights});
     }
 

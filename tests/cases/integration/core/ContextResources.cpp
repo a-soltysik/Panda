@@ -23,6 +23,7 @@
 #include <panda/geometry/Geometry.hpp>
 #include <panda/rendering/PerformanceManager.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Buffer.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
@@ -110,6 +111,7 @@ void verifyDeviceFeatures(const VkDeviceCreateInfo& info, bool windowed)
 {
     ASSERT_NE(info.pNext, nullptr);
     const auto* const features = static_cast<const VkPhysicalDeviceFeatures2*>(info.pNext);
+    EXPECT_EQ(features->features.samplerAnisotropy, vk::True);
     ASSERT_NE(features->pNext, nullptr);
     const auto* const vulkan12 = static_cast<const VkPhysicalDeviceVulkan12Features*>(features->pNext);
     ASSERT_NE(vulkan12->pNext, nullptr);
@@ -140,7 +142,7 @@ void verifyImageDimensions(const VkImageCreateInfo& info, const panda::detail::T
     EXPECT_EQ(info.extent.width, description.extent.width);
     EXPECT_EQ(info.extent.height, description.extent.height);
     EXPECT_EQ(info.extent.depth, 1U);
-    EXPECT_EQ(info.mipLevels, 1U);
+    EXPECT_EQ(info.mipLevels, description.mipLevels);
     EXPECT_EQ(info.arrayLayers, 1U);
     EXPECT_EQ(info.samples, VK_SAMPLE_COUNT_1_BIT);
 }
@@ -335,6 +337,13 @@ protected:
         {
             expectMemoryPool();
         }
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceFeatures2(physical, testing::Truly([](const VkPhysicalDeviceFeatures2* info) {
+                                                     return info->pNext == nullptr;
+                                                 })))
+            .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
+                features->features.samplerAnisotropy = vk::True;
+            });
         EXPECT_CALL(
             vulkan,
             vkGetPhysicalDeviceProperties2(physical, testing::Truly([](const VkPhysicalDeviceProperties2* output) {
@@ -731,15 +740,16 @@ protected:
     {
         EXPECT_CALL(vulkan, vkCreateImageView(device, NotNull(), nullptr, NotNull()))
             .InSequence(imageBindingOrder)
-            .WillOnce([image, view, format = description.format](VkDevice,
-                                                                 const VkImageViewCreateInfo* info,
-                                                                 const VkAllocationCallbacks*,
-                                                                 VkImageView* output) {
+            .WillOnce([image, view, format = description.format, mipLevels = description.mipLevels](
+                          VkDevice,
+                          const VkImageViewCreateInfo* info,
+                          const VkAllocationCallbacks*,
+                          VkImageView* output) {
                 EXPECT_EQ(info->image, image);
                 EXPECT_EQ(info->viewType, VK_IMAGE_VIEW_TYPE_2D);
                 EXPECT_EQ(info->format, static_cast<VkFormat>(format));
                 EXPECT_EQ(info->subresourceRange.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
-                EXPECT_EQ(info->subresourceRange.levelCount, 1U);
+                EXPECT_EQ(info->subresourceRange.levelCount, mipLevels);
                 EXPECT_EQ(info->subresourceRange.layerCount, 1U);
                 *output = view;
                 return success;
@@ -751,7 +761,11 @@ protected:
         const auto nativeDescription = panda::detail::TextureResourceCreateInfo {
             .extent = {.width = description.extent.x, .height = description.extent.y},
             .format = panda::expect(panda::detail::mapPixelFormat(description.format), "Map texture format"),
-            .usage = panda::expect(panda::detail::mapTextureUsage(description.usage), "Map texture usage")
+            .usage = panda::expect(panda::detail::mapTextureUsage(description.usage), "Map texture usage"),
+            .mipLevels =
+                description.mipPolicy == panda::TextureMipPolicy::SingleLevel
+                    ? 1U
+                    : static_cast<std::uint32_t>(std::bit_width(std::max(description.extent.x, description.extent.y)))
         };
         expectTextureViewCreation(image, view, nativeDescription);
     }
@@ -848,6 +862,15 @@ TEST_F(ContextResourcesIntegration, CreatesMovesAndDestroysHeadlessDeviceInDepen
     expectParentsDestroyed(true, false);
     auto context = panda::Engine::create({.enableFramePerformanceSampling = true});
     ASSERT_TRUE(context.has_value());
+    EXPECT_EQ(context->getTextureFilteringPreset(), panda::TextureFilteringPreset::Anisotropic8x);
+    ASSERT_TRUE(context->setTextureFilteringPreset(panda::TextureFilteringPreset::Bilinear));
+    EXPECT_EQ(context->getTextureFilteringPreset(), panda::TextureFilteringPreset::Bilinear);
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    const auto invalidPreset =
+        context->setTextureFilteringPreset(static_cast<panda::TextureFilteringPreset>(std::uint8_t {255}));
+    ASSERT_FALSE(invalidPreset);
+    EXPECT_EQ(invalidPreset.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(context->getTextureFilteringPreset(), panda::TextureFilteringPreset::Bilinear);
     const auto* resourceManager = &context->getResourceManager();
     const auto* submissionManager = &context->getSubmissionManager();
     const auto* offscreenRenderer = &context->getOffscreenRenderer();
@@ -863,6 +886,26 @@ TEST_F(ContextResourcesIntegration, CreatesMovesAndDestroysHeadlessDeviceInDepen
     EXPECT_EQ(moved.getDeviceInfo().name, "Unit GPU");
     EXPECT_EQ(moved.getDeviceInfo().driverName, "Integration Vulkan driver");
     EXPECT_EQ(moved.getDeviceInfo().driverInfo, "Integration test driver 1.0");
+}
+
+TEST_F(ContextResourcesIntegration, UsesTextureFilteringPresetFromEngineOptions)
+{
+    expectHeadless(vk::Result::eSuccess, 64);
+    expectParentsDestroyed(true, false);
+    const auto context = panda::Engine::create(
+        {.enableFramePerformanceSampling = true, .textureFilteringPreset = panda::TextureFilteringPreset::Trilinear});
+    ASSERT_TRUE(context);
+    EXPECT_EQ(context->getTextureFilteringPreset(), panda::TextureFilteringPreset::Trilinear);
+}
+
+TEST_F(ContextResourcesIntegration, RejectsInvalidInitialTextureFilteringPreset)
+{
+    const auto created = panda::Engine::create(
+        {.textureFilteringPreset =
+             // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) -- Exercise validation of an invalid preset.
+         static_cast<panda::TextureFilteringPreset>(std::uint8_t {255})});
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST_F(ContextResourcesIntegration, EmptyBufferAndInvalidDescriptionsNeverCreateNativeResources)

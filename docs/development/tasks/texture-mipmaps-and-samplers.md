@@ -6,14 +6,12 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 Upload supplied mip chains for sampled 2D textures and support generating the
 chain from a base level when requested. Keep single-level textures usable.
-Built-in material maps support nearest and linear filtering, nearest and
-linear mip selection, and repeat, mirrored repeat and clamp-to-edge addressing.
-Use trilinear filtering by default on mipmapped material textures.
-
-Expose runtime anisotropy off, 2x, 4x, 8x and 16x for trilinear material
-samplers. Request 8x by default, cap it at the device limit, and use trilinear
-without anisotropy when unavailable. Preserve explicit nearest and single-level
-sampling policies.
+Built-in material maps use one Engine-wide filtering preset: nearest, bilinear,
+trilinear, or anisotropic 2x, 4x, 8x or 16x. Anisotropic presets use
+trilinear sampling; request 8x by default, cap it at the device limit, and use
+trilinear when anisotropy is unavailable. Keep per-texture min/mag/mipmap filter
+combinations out of the public API. `TextureDesc` keeps mip policy and one
+address mode applied to both UV axes.
 
 Specifications: [Anti-aliasing and sampling](../../design/contracts/rendering.md#anti-aliasing-and-sampling),
 [import adapter](../../design/contracts/scene.md#import-adapter).
@@ -25,9 +23,31 @@ Specifications: [Anti-aliasing and sampling](../../design/contracts/rendering.md
   texels and check that minification selects the expected mip.
 - Verify minification filtering and wrap modes with a textured surface
   receding into the distance. Retain texture and sampler resources through
-  completion when settings change.
+  completion when the Engine preset changes between frames.
 - Report effective anisotropy to the application and benchmark. Test caps and
   the fallback when anisotropy is unavailable.
 
-Learning: Compare mipmapped trilinear filtering with anisotropy on a surface
-viewed at a grazing angle.
+## Current implementation
+
+The public API exposes one Engine-wide `TextureFilteringPreset`, configured in
+`EngineOptions` and changeable at runtime; textures keep mip policy and one UV
+address mode. Supplied and CPU-generated chains are implemented, with minified
+offscreen rendering selecting and sampling the expected mip levels. The
+offscreen example generates a large stripe texture and writes a visual comparison
+for four filtering presets.
+
+Learning: Run the [offscreen rendering example](../../../examples/offscreen_rendering/README.md)
+and compare mipmapped trilinear filtering with anisotropy on its receding stripe
+surface. It writes a 2-by-2 PNG with Nearest, Bilinear, Trilinear and Anisotropic 8x
+panels, keeping the sample count fixed across them.
+
+## Verification
+
+- `ctest --preset msvc-fast --output-on-failure`: 680 tests, 0 failures, 5 skips.
+- WSL `gcc-fast` build and full CTest via `build-wsl.ps1 -Preset gcc-fast
+  -RunTests -IncludeSystemTests`: 680 tests, 0 failures, 8 hardware/environment skips.
+- `check_docs.py`: 89 Markdown files checked. `docs-checks`: 42 diagrams valid
+  across 93 files.
+- The offscreen example generated the comparison on an NVIDIA GeForce RTX 4070 Ti;
+  it reported 4x MSAA and 8x effective anisotropy for the anisotropic panel.
+- The maintainer accepted the task after reviewing the generated visual comparison.

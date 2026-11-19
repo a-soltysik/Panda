@@ -19,9 +19,11 @@
 #include <memory>
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Buffer.hpp>
 #include <panda/resources/Texture.hpp>
 #include <panda/vulkan/Error.hpp>
+#include <source_location>
 #include <span>
 #include <utility>
 #include <variant>
@@ -35,7 +37,6 @@
 #include "renderer/ShadowAtlas.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/TextureResource.hpp"
-#include "resources/memory/MemoryPool.hpp"
 
 namespace panda::core::vulkan::renderer
 {
@@ -45,6 +46,26 @@ namespace
 {
 constexpr auto textureDescriptorsPerDraw = static_cast<std::uint32_t>(materialTextureSlots.size());
 constexpr auto ambientIntensity = 0.06F;
+
+auto createVulkanSampler(const vk::raii::Device& device,
+                         const vk::SamplerCreateInfo& createInfo,
+                         std::source_location source = std::source_location::current())
+    -> std::expected<vk::raii::Sampler, Error>
+{
+    const auto created = static_cast<vk::Device>(device).createSampler(createInfo);
+    if (created.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {::panda::makeVulkanError(created.result, source)};
+    }
+    return std::expected<vk::raii::Sampler, Error> {std::in_place, device, created.value};
+}
+
+auto shadowViewStride(std::uint64_t alignment) -> std::uint64_t
+{
+    const auto matrixSize = sizeof(glm::mat4);
+    const auto effectiveAlignment = std::max(alignment, std::uint64_t {1});
+    return matrixSize + ((effectiveAlignment - (matrixSize % effectiveAlignment)) % effectiveAlignment);
+}
 
 constexpr auto makeTextureBinding(std::uint32_t binding) -> vk::DescriptorSetLayoutBinding
 {
@@ -111,6 +132,44 @@ auto makeImageWrite(vk::DescriptorSet set, std::uint32_t binding, const vk::Desc
             .descriptorCount = 1,
             .descriptorType = vk::DescriptorType::eCombinedImageSampler,
             .pImageInfo = &info};
+}
+
+struct TextureFilterSettings
+{
+    vk::Filter texelFilter;
+    vk::SamplerMipmapMode mipmapMode;
+};
+
+auto mapTextureFilter(TextureFilteringPreset preset) -> TextureFilterSettings
+{
+    switch (preset)
+    {
+    case TextureFilteringPreset::Nearest:
+        return {.texelFilter = vk::Filter::eNearest, .mipmapMode = vk::SamplerMipmapMode::eNearest};
+    case TextureFilteringPreset::Bilinear:
+        return {.texelFilter = vk::Filter::eLinear, .mipmapMode = vk::SamplerMipmapMode::eNearest};
+    case TextureFilteringPreset::Trilinear:
+    case TextureFilteringPreset::Anisotropic2x:
+    case TextureFilteringPreset::Anisotropic4x:
+    case TextureFilteringPreset::Anisotropic8x:
+    case TextureFilteringPreset::Anisotropic16x:
+        return {.texelFilter = vk::Filter::eLinear, .mipmapMode = vk::SamplerMipmapMode::eLinear};
+    }
+    return {.texelFilter = vk::Filter::eLinear, .mipmapMode = vk::SamplerMipmapMode::eLinear};
+}
+
+auto mapAddressMode(TextureAddressMode mode) -> vk::SamplerAddressMode
+{
+    switch (mode)
+    {
+    case TextureAddressMode::Repeat:
+        return vk::SamplerAddressMode::eRepeat;
+    case TextureAddressMode::MirroredRepeat:
+        return vk::SamplerAddressMode::eMirroredRepeat;
+    case TextureAddressMode::ClampToEdge:
+        return vk::SamplerAddressMode::eClampToEdge;
+    }
+    return vk::SamplerAddressMode::eRepeat;
 }
 
 auto makeBufferInfo(vk::Buffer buffer, vk::DeviceSize range) -> vk::DescriptorBufferInfo
@@ -295,20 +354,23 @@ auto createTextureDescriptorResources(const vk::raii::Device& device,
 }
 }
 
-FrameBindings::FrameBindings(vk::PhysicalDevice physicalDevice,
-                             const vk::raii::Device& device,
-                             resources::MemoryPool& pool,
-                             std::size_t frameCount)
-    : _device {device},
-      _pool {pool},
-      _maxStorageBufferRange {physicalDevice.getProperties().limits.maxStorageBufferRange},
-      _shadowViewStride {([](std::uint64_t alignment) {
-          const auto matrixSize = sizeof(glm::mat4);
-          const auto effectiveAlignment = std::max(alignment, std::uint64_t {1});
-          return matrixSize + ((effectiveAlignment - (matrixSize % effectiveAlignment)) % effectiveAlignment);
-      })(physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment)},
-      _frames(frameCount)
+FrameBindings::FrameBindings(const FrameBindingsCreateInfo& info)
+    : _device {info.device},
+      _pool {info.pool},
+      _maxStorageBufferRange {info.physicalDevice.getProperties().limits.maxStorageBufferRange},
+      _shadowViewStride {shadowViewStride(info.physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment)},
+      _textureFilteringPreset {info.textureFilteringPreset},
+      _frames(info.frameCount)
 {
+    initializeSamplerCapabilities(info.physicalDevice);
+}
+
+void FrameBindings::initializeSamplerCapabilities(vk::PhysicalDevice physicalDevice)
+{
+    auto features = vk::PhysicalDeviceFeatures2 {};
+    physicalDevice.getFeatures2(&features);
+    _samplerAnisotropySupported = features.features.samplerAnisotropy == vk::True;
+    _maxSamplerAnisotropy = std::max(1.0F, physicalDevice.getProperties().limits.maxSamplerAnisotropy);
 }
 
 FrameBindings::~FrameBindings() = default;
@@ -343,9 +405,7 @@ auto FrameBindings::create(const FrameBindingsCreateInfo& info) -> std::expected
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid frame binding count")};
     }
-    auto bindings = std::unique_ptr<FrameBindings> {
-        new FrameBindings {info.physicalDevice, info.device, info.pool, info.frameCount}
-    };
+    auto bindings = std::unique_ptr<FrameBindings> {new FrameBindings {info}};
     if (const auto initialized = bindings->initialize(info.maxLights); !initialized)
     {
         return std::unexpected {initialized.error()};
@@ -554,43 +614,100 @@ auto FrameBindings::initializeSamplers() -> std::expected<void, Error>
 
 auto FrameBindings::initializeShadowSampler() -> std::expected<void, Error>
 {
-    auto sampler = static_cast<vk::Device>(_device).createSampler(
-        vk::SamplerCreateInfo {.magFilter = vk::Filter::eNearest,
-                               .minFilter = vk::Filter::eNearest,
-                               .mipmapMode = vk::SamplerMipmapMode::eNearest,
-                               .addressModeU = vk::SamplerAddressMode::eClampToEdge,
-                               .addressModeV = vk::SamplerAddressMode::eClampToEdge,
-                               .addressModeW = vk::SamplerAddressMode::eClampToEdge,
-                               .maxAnisotropy = 1.0F,
-                               .minLod = 0.0F,
-                               .maxLod = 0.0F,
-                               .borderColor = vk::BorderColor::eFloatOpaqueWhite});
-    if (sampler.result != vk::Result::eSuccess)
+    auto sampler = createVulkanSampler(_device,
+                                       vk::SamplerCreateInfo {.magFilter = vk::Filter::eNearest,
+                                                              .minFilter = vk::Filter::eNearest,
+                                                              .mipmapMode = vk::SamplerMipmapMode::eNearest,
+                                                              .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+                                                              .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+                                                              .addressModeW = vk::SamplerAddressMode::eClampToEdge,
+                                                              .maxAnisotropy = 1.0F,
+                                                              .minLod = 0.0F,
+                                                              .maxLod = 0.0F,
+                                                              .borderColor = vk::BorderColor::eFloatOpaqueWhite});
+    if (!sampler)
     {
-        return std::unexpected {::panda::makeVulkanError(sampler.result)};
+        return std::unexpected {sampler.error()};
     }
-    _shadowSampler = vk::raii::Sampler {_device, sampler.value};
+    _shadowSampler = std::move(*sampler);
     return {};
 }
 
 auto FrameBindings::initializeTextureSampler() -> std::expected<void, Error>
 {
-    auto sampler = static_cast<vk::Device>(_device).createSampler(
-        vk::SamplerCreateInfo {.magFilter = vk::Filter::eLinear,
-                               .minFilter = vk::Filter::eLinear,
-                               .mipmapMode = vk::SamplerMipmapMode::eNearest,
-                               .addressModeU = vk::SamplerAddressMode::eRepeat,
-                               .addressModeV = vk::SamplerAddressMode::eRepeat,
-                               .addressModeW = vk::SamplerAddressMode::eRepeat,
-                               .maxAnisotropy = 1.0F,
-                               .minLod = 0.0F,
-                               .maxLod = 0.0F});
-    if (sampler.result != vk::Result::eSuccess)
+    auto sampler = createVulkanSampler(_device,
+                                       vk::SamplerCreateInfo {.magFilter = vk::Filter::eLinear,
+                                                              .minFilter = vk::Filter::eLinear,
+                                                              .mipmapMode = vk::SamplerMipmapMode::eNearest,
+                                                              .addressModeU = vk::SamplerAddressMode::eRepeat,
+                                                              .addressModeV = vk::SamplerAddressMode::eRepeat,
+                                                              .addressModeW = vk::SamplerAddressMode::eRepeat,
+                                                              .maxAnisotropy = 1.0F,
+                                                              .minLod = 0.0F,
+                                                              .maxLod = 0.0F});
+    if (!sampler)
     {
-        return std::unexpected {::panda::makeVulkanError(sampler.result)};
+        return std::unexpected {sampler.error()};
     }
-    _textureSampler = vk::raii::Sampler {_device, sampler.value};
+    _textureSampler = std::move(*sampler);
     return {};
+}
+
+auto FrameBindings::createTextureSampler(TextureAddressMode addressMode,
+                                         std::uint32_t mipLevels,
+                                         TextureFilteringPreset preset,
+                                         float anisotropy) const -> std::expected<vk::raii::Sampler, Error>
+{
+    const auto filtering = mapTextureFilter(preset);
+    return createVulkanSampler(_device,
+                               vk::SamplerCreateInfo {.magFilter = filtering.texelFilter,
+                                                      .minFilter = filtering.texelFilter,
+                                                      .mipmapMode = filtering.mipmapMode,
+                                                      .addressModeU = mapAddressMode(addressMode),
+                                                      .addressModeV = mapAddressMode(addressMode),
+                                                      .addressModeW = vk::SamplerAddressMode::eRepeat,
+                                                      .anisotropyEnable = anisotropy > 1.0F ? vk::True : vk::False,
+                                                      .maxAnisotropy = anisotropy,
+                                                      .minLod = 0.0F,
+                                                      .maxLod = static_cast<float>(mipLevels - 1U)});
+}
+
+auto FrameBindings::getTextureSampler(FrameResources& frame, const Texture& texture)
+    -> std::expected<vk::Sampler, Error>
+{
+    if (!texture.isValid())
+    {
+        return *_textureSampler;
+    }
+    const auto& resource = *::panda::detail::TextureResource::getResource(texture);
+    const auto preset = requestedTextureFilteringPreset();
+    const auto mipLevels = resource.getMipLevels();
+    const auto anisotropy = mipLevels > 1 ? getEffectiveAnisotropy(preset) : 1.0F;
+    const auto key = TextureSamplerKey {.addressMode = resource.getAddressMode(),
+                                        .preset = preset,
+                                        .mipLevels = mipLevels,
+                                        .anisotropy = anisotropy};
+    return getOrCreateTextureSampler(frame, key);
+}
+
+auto FrameBindings::getOrCreateTextureSampler(FrameResources& frame, const TextureSamplerKey& key)
+    -> std::expected<vk::Sampler, Error>
+{
+    auto cached = std::ranges::find_if(frame.textureSamplers, [&](const TextureSampler& sampler) {
+        return sampler.key == key;
+    });
+    if (cached != frame.textureSamplers.end())
+    {
+        cached->used = true;
+        return *cached->sampler;
+    }
+    auto created = createTextureSampler(key.addressMode, key.mipLevels, key.preset, key.anisotropy);
+    if (!created)
+    {
+        return std::unexpected {created.error()};
+    }
+    frame.textureSamplers.push_back(TextureSampler {.key = key, .sampler = std::move(*created), .used = true});
+    return *frame.textureSamplers.back().sampler;
 }
 
 auto FrameBindings::writeFrameUniform(FrameResources& frame, const RenderView& view, std::uint32_t lightCount)
@@ -802,31 +919,59 @@ void FrameBindings::updateFrameDescriptorSet(const FrameResources& frame, vk::Im
     _device.updateDescriptorSets(writes, {});
 }
 
-void FrameBindings::writeTextureDescriptors(const FrameResources& frame,
+auto FrameBindings::writeTextureDescriptors(FrameResources& frame,
                                             const RenderView& view,
-                                            vk::ImageView textureFallbackView)
+                                            vk::ImageView textureFallbackView) -> std::expected<void, Error>
 {
     auto imageInfos = std::vector<vk::DescriptorImageInfo>(view.meshes.size() * textureDescriptorsPerDraw);
     auto writes = std::vector<vk::WriteDescriptorSet> {};
+    for (auto& sampler : frame.textureSamplers)
+    {
+        sampler.used = false;
+    }
     writes.reserve(view.meshes.size() * textureDescriptorsPerDraw);
+    auto batch = TextureDescriptorWriteBatch {.frame = frame,
+                                              .fallbackView = textureFallbackView,
+                                              .imageInfos = imageInfos,
+                                              .writes = writes};
     for (auto index = std::size_t {}; index < view.meshes.size(); ++index)
     {
-        const auto& material = view.meshes.at(index).material;
-        const auto descriptorSet = *frame.textureDescriptorSets.at(index);
-        for (auto slotIndex = std::size_t {}; slotIndex < materialTextureSlots.size(); ++slotIndex)
+        const auto appended = appendTextureDescriptorWrites(batch, index, view.meshes.at(index));
+        if (!appended)
         {
-            const auto& slot = materialTextureSlots.at(slotIndex);
-            const auto imageInfoIndex = (index * textureDescriptorsPerDraw) + slotIndex;
-            imageInfos.at(imageInfoIndex) =
-                makeTextureDescriptorInfo(material.*(slot.texture), *_textureSampler, textureFallbackView);
-            writes.push_back({.dstSet = descriptorSet,
-                              .dstBinding = slot.binding,
-                              .descriptorCount = 1,
-                              .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                              .pImageInfo = &imageInfos.at(imageInfoIndex)});
+            return std::unexpected {appended.error()};
         }
     }
     _device.updateDescriptorSets(writes, {});
+    std::erase_if(frame.textureSamplers, [](const TextureSampler& sampler) {
+        return !sampler.used;
+    });
+    return {};
+}
+
+auto FrameBindings::appendTextureDescriptorWrites(TextureDescriptorWriteBatch& batch,
+                                                  std::size_t drawIndex,
+                                                  const MeshDraw& draw) -> std::expected<void, Error>
+{
+    const auto descriptorSet = *batch.frame.textureDescriptorSets.at(drawIndex);
+    for (auto slotIndex = std::size_t {}; slotIndex < materialTextureSlots.size(); ++slotIndex)
+    {
+        const auto& slot = materialTextureSlots.at(slotIndex);
+        const auto imageInfoIndex = (drawIndex * textureDescriptorsPerDraw) + slotIndex;
+        const auto& texture = draw.material.*(slot.texture);
+        const auto sampler = getTextureSampler(batch.frame, texture);
+        if (!sampler)
+        {
+            return std::unexpected {sampler.error()};
+        }
+        batch.imageInfos[imageInfoIndex] = makeTextureDescriptorInfo(texture, *sampler, batch.fallbackView);
+        batch.writes.push_back({.dstSet = descriptorSet,
+                                .dstBinding = slot.binding,
+                                .descriptorCount = 1,
+                                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                                .pImageInfo = &batch.imageInfos[imageInfoIndex]});
+    }
+    return {};
 }
 
 auto FrameBindings::getPipelineLayout() const noexcept -> vk::PipelineLayout
@@ -854,6 +999,40 @@ auto FrameBindings::getShadowViewOffset(std::size_t frameIndex, std::uint32_t sh
     const auto& shadowViews = _frames.at(frameIndex).shadowPlan.views;
     ::panda::expect(shadowViewIndex < shadowViews.size(), "Shadow view index is out of range");
     return static_cast<std::uint32_t>(shadowViewIndex * _shadowViewStride);
+}
+
+auto FrameBindings::getEffectiveAnisotropy(TextureFilteringPreset preset) const noexcept -> float
+{
+    auto requested = 1.0F;
+    switch (preset)
+    {
+    case TextureFilteringPreset::Anisotropic2x:
+        requested = 2.0F;
+        break;
+    case TextureFilteringPreset::Anisotropic4x:
+        requested = 4.0F;
+        break;
+    case TextureFilteringPreset::Anisotropic8x:
+        requested = 8.0F;
+        break;
+    case TextureFilteringPreset::Anisotropic16x:
+        requested = 16.0F;
+        break;
+    case TextureFilteringPreset::Nearest:
+    case TextureFilteringPreset::Bilinear:
+    case TextureFilteringPreset::Trilinear:
+        return 1.0F;
+    }
+    if (!_samplerAnisotropySupported)
+    {
+        return 1.0F;
+    }
+    return std::min(requested, _maxSamplerAnisotropy);
+}
+
+auto FrameBindings::requestedTextureFilteringPreset() const noexcept -> TextureFilteringPreset
+{
+    return _textureFilteringPreset ? *_textureFilteringPreset : TextureFilteringPreset::Anisotropic8x;
 }
 
 auto FrameBindings::updateFrameBuffers(FrameResources& frame, const RenderView& view, const ShadowAtlasPlan& plan)
@@ -926,7 +1105,6 @@ auto FrameBindings::updateFrameDescriptors(FrameResources& frame,
         return updated;
     }
     updateFrameDescriptorSet(frame, shadowArrayView);
-    writeTextureDescriptors(frame, view, textureFallbackView);
-    return {};
+    return writeTextureDescriptors(frame, view, textureFallbackView);
 }
 }

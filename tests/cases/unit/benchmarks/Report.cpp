@@ -5,6 +5,7 @@
 #include <nlohmann/json_fwd.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda_bench/Report.hpp>
 #include <utility>
 
@@ -25,6 +26,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     report.requestedShadowedLightCount = 65;
     report.requestedPresentationMode = panda::EngineOptions::PresentationMode::Mailbox;
     report.requestedSampleCount = panda::SampleCount::Four;
+    report.requestedTextureFilteringPreset = panda::TextureFilteringPreset::Anisotropic8x;
     report.requestedWarmup = std::chrono::seconds {2};
     report.requestedMeasurement = std::chrono::seconds {4};
     report.requestedRuns = 1;
@@ -33,6 +35,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     run.framebufferWidth = 1920;
     run.framebufferHeight = 1080;
     run.effectiveSampleCount = 4;
+    run.effectiveAnisotropy = 6.0F;
     run.effectivePresentationMode = panda::EngineOptions::PresentationMode::Mailbox;
     run.startupDuration = std::chrono::nanoseconds {10};
     run.completionWaitDuration = std::chrono::nanoseconds {20};
@@ -51,9 +54,9 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
 
     const auto json = nlohmann::json::parse(panda_bench::serialize(report));
 
-    EXPECT_EQ(json.at("schemaVersion"), 7);
+    EXPECT_EQ(json.at("schemaVersion"), 9);
     EXPECT_EQ(json.at("profile").at("name"), "smoke");
-    EXPECT_EQ(json.at("profile").at("version"), 5);
+    EXPECT_EQ(json.at("profile").at("version"), 7);
     EXPECT_EQ(json.at("workload"), "renderStaticColoredScene");
     EXPECT_EQ(json.at("code").at("revision"), "123456789abc");
     EXPECT_FALSE(json.at("code").contains("dirtyAtConfigure"));
@@ -68,10 +71,12 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     EXPECT_EQ(json.at("settings").at("requestedShadowedLightCount"), 65);
     EXPECT_EQ(json.at("settings").at("requestedPresentationMode"), "mailbox");
     EXPECT_EQ(json.at("settings").at("requestedSampleCount"), 4);
+    EXPECT_EQ(json.at("settings").at("requestedTextureFilteringPreset"), "anisotropic-8x");
     EXPECT_EQ(json.at("settings").at("requestedMeasurementNanoseconds"), 4'000'000'000LL);
     EXPECT_EQ(json.at("runs").size(), 1U);
     EXPECT_EQ(json.at("runs").at(0).at("effectiveFramebufferExtent").at("width"), 1920);
     EXPECT_EQ(json.at("runs").at(0).at("effectiveSampleCount"), 4);
+    EXPECT_FLOAT_EQ(json.at("runs").at(0).at("effectiveAnisotropy").get<float>(), 6.0F);
     EXPECT_EQ(json.at("runs").at(0).at("effectivePresentationMode"), "mailbox");
     EXPECT_EQ(json.at("runs").at(0).at("completionWaitDurationNanoseconds"), 20);
     EXPECT_EQ(json.at("runs").at(0).at("sampleDrainDurationNanoseconds"), 30);

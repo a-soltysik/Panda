@@ -4,6 +4,7 @@
 /// Vulkan engine creation options.
 
 #include <cstdint>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <string>
 
 namespace panda
@@ -50,5 +51,7 @@ struct EngineOptions
     PresentationMode presentationMode {PresentationMode::Fifo};
     /// External Vulkan memory export support.
     ExternalBufferSupport externalBufferSupport {ExternalBufferSupport::Disabled};
+    /// Initial Engine-wide filtering preset for built-in material textures.
+    TextureFilteringPreset textureFilteringPreset {TextureFilteringPreset::Anisotropic8x};
 };
 }

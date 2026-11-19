@@ -10,6 +10,7 @@
 #include <panda/interop/ExternalBufferManager.hpp>
 #include <panda/rendering/OffscreenRenderer.hpp>
 #include <panda/rendering/PerformanceManager.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/rendering/WindowRenderer.hpp>
 #include <panda/resources/ResourceManager.hpp>
 #include <panda/submission/SubmissionManager.hpp>
@@ -79,6 +80,13 @@ public:
     /// @brief Copies the optional-feature snapshot negotiated during creation.
     /// @return Effective availability for this Engine. Moved-from use is a fatal contract error.
     [[nodiscard]] auto getFeatures() const -> EngineFeatures;
+
+    /// @brief Returns the Engine-wide texture filtering preset used for subsequent frames.
+    [[nodiscard]] auto getTextureFilteringPreset() const -> TextureFilteringPreset;
+
+    /// @brief Sets the Engine-wide built-in texture filtering preset for subsequent frames.
+    /// @return Success, or InvalidArgument for a value outside TextureFilteringPreset.
+    [[nodiscard]] auto setTextureFilteringPreset(TextureFilteringPreset preset) const -> Result<void>;
 
     /// @brief Borrows this Engine's resource creation operations.
     /// @return A manager that must not outlive Engine. Its address remains stable across moves.

@@ -13,6 +13,7 @@
 #include <panda/base/Error.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/Texture.hpp>
 #include <vector>
@@ -52,6 +53,7 @@ struct FrameExecutionCreateInfo
     ::panda::detail::SubmissionQueue& submissions;
     resources::MemoryPool* pool {nullptr};
     ::panda::detail::PerformanceManagerImpl* performance {nullptr};
+    std::shared_ptr<TextureFilteringPreset> textureFilteringPreset;
     std::uint32_t maxLights;
     /// First query slot in the shared PerformanceManager array; separate executors need disjoint ranges.
     std::size_t performanceSlotBase {0};
@@ -88,6 +90,7 @@ public:
     [[nodiscard]] auto drain() -> std::expected<void, Error>;
     [[nodiscard]] auto isGpuTimestampSamplingEnabled() const noexcept -> bool;
     [[nodiscard]] auto getSampleCount(const RenderView& view) const noexcept -> SampleCount;
+    [[nodiscard]] auto getEffectiveAnisotropy(const RenderView& view) const noexcept -> float;
 
 private:
     struct ExecutionSlot
@@ -123,6 +126,7 @@ private:
     ::panda::detail::SubmissionQueue& _submissions;
     resources::MemoryPool* _pool;
     ::panda::detail::PerformanceManagerImpl* _performance;
+    std::shared_ptr<TextureFilteringPreset> _textureFilteringPreset;
     std::uint32_t _maxLights;
     std::size_t _performanceSlotBase;
     std::unique_ptr<renderer::MeshRenderer> _renderer;

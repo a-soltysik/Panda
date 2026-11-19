@@ -176,6 +176,7 @@ void verifyDeviceFeatures(const VkDeviceCreateInfo& info, bool windowed)
 {
     ASSERT_NE(info.pNext, nullptr);
     const auto* const features = static_cast<const VkPhysicalDeviceFeatures2*>(info.pNext);
+    EXPECT_EQ(features->features.samplerAnisotropy, vk::True);
     ASSERT_NE(features->pNext, nullptr);
     const auto* const vulkan12 = static_cast<const VkPhysicalDeviceVulkan12Features*>(features->pNext);
     ASSERT_NE(vulkan12->pNext, nullptr);
@@ -502,6 +503,13 @@ protected:
                 expectSubmissionQueue(timelineResult);
             }
         }
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceFeatures2(physical, testing::Truly([](const VkPhysicalDeviceFeatures2* info) {
+                                                     return info->pNext == nullptr;
+                                                 })))
+            .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
+                features->features.samplerAnisotropy = vk::True;
+            });
         EXPECT_CALL(
             vulkan,
             vkGetPhysicalDeviceProperties2(physical, testing::Truly([](const VkPhysicalDeviceProperties2* info) {
