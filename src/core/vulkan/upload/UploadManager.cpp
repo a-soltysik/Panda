@@ -15,6 +15,7 @@
 #include <numeric>
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/resources/Buffer.hpp>
+#include <panda/resources/Texture.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
 #include <panda/vulkan/Error.hpp>
@@ -166,6 +167,50 @@ auto validateTextureCopy(vk::Format format,
     }
     return layout;
 }
+
+auto getMipExtent(vk::Extent2D extent, std::uint32_t mipLevel) -> vk::Extent2D
+{
+    return {.width = std::max(1U, extent.width >> mipLevel), .height = std::max(1U, extent.height >> mipLevel)};
+}
+
+auto validateTextureDestination(const std::shared_ptr<TextureResource>& destination,
+                                const MemoryPool& pool,
+                                std::size_t size) -> Result<void>
+{
+    if (!destination || !destination->belongsTo(pool) || size == 0)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Texture upload needs nonempty data and a texture from this Engine")};
+    }
+    if (!(destination->getUsage() & vk::ImageUsageFlagBits::eTransferDst) ||
+        !(destination->getUsage() & vk::ImageUsageFlagBits::eSampled))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Texture upload requires transfer-destination and sampled usage")};
+    }
+    return {};
+}
+
+auto validateTextureMipRegion(const TextureResource& destination, const TextureUploadRegion& region)
+    -> Result<vk::Extent2D>
+{
+    if (region.mipLevel >= destination.getMipLevels())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture mip level is out of range")};
+    }
+    const auto mipExtent = getMipExtent(destination.getExtent(), region.mipLevel);
+    const auto fullLevel =
+        region.offset == glm::ivec2 {} && region.extent == glm::uvec2 {mipExtent.width, mipExtent.height};
+    const auto mipPolicy = destination.getMipPolicy();
+    if ((mipPolicy == TextureMipPolicy::SingleLevel && region.mipLevel != 0) ||
+        (mipPolicy != TextureMipPolicy::SingleLevel && !fullLevel) ||
+        (mipPolicy == TextureMipPolicy::Generate && region.mipLevel != 0))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Mipmapped texture writes must cover one full level")};
+    }
+    return mipExtent;
+}
 }
 
 UploadManager::UploadManager(const vk::raii::Device& device,
@@ -281,18 +326,17 @@ auto UploadManager::validateTextureWrite(const std::shared_ptr<TextureResource>&
                                          const TextureUploadRegion& region,
                                          std::size_t size) const -> Result<TextureUploadLayout>
 {
-    if (!destination || !destination->belongsTo(_pool) || size == 0)
+    const auto validDestination = validateTextureDestination(destination, _pool, size);
+    if (!validDestination)
     {
-        return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Texture upload needs nonempty data and a texture from this Engine")};
+        return std::unexpected {validDestination.error()};
     }
-    if (!(destination->getUsage() & vk::ImageUsageFlagBits::eTransferDst) ||
-        !(destination->getUsage() & vk::ImageUsageFlagBits::eSampled))
+    const auto mipExtent = validateTextureMipRegion(*destination, region);
+    if (!mipExtent)
     {
-        return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Texture upload requires transfer-destination and sampled usage")};
+        return std::unexpected {mipExtent.error()};
     }
-    auto layout = validateTextureCopy(destination->getFormat(), destination->getExtent(), region, size);
+    auto layout = validateTextureCopy(destination->getFormat(), *mipExtent, region, size);
     if (!layout)
     {
         return std::unexpected {layout.error()};

@@ -24,12 +24,31 @@ enum class TextureUsage : std::uint8_t
     Sampled = 1U << 1U,
 };
 
+/// @brief How a texture's mip chain is supplied during upload.
+enum class TextureMipPolicy : std::uint8_t
+{
+    /// Allocate only the base level.
+    SingleLevel,
+    /// Allocate and upload every level in the full chain.
+    Supplied,
+    /// Generate the full chain on the CPU from the uploaded base level.
+    Generate,
+};
+
+/// @brief Addressing at one edge of a sampled 2D texture.
+enum class TextureAddressMode : std::uint8_t
+{
+    Repeat,
+    MirroredRepeat,
+    ClampToEdge,
+};
+
 namespace detail
 {
 class TextureResource;
 }
 
-/// @brief Creation parameters for one optimal-tiled, single-mip, single-layer 2D image.
+/// @brief Creation parameters for one optimal-tiled, single-layer 2D image.
 struct TextureDesc
 {
     /// Nonzero extent in texels; x is width and y is height.
@@ -38,6 +57,10 @@ struct TextureDesc
     PixelFormat format {PixelFormat::Undefined};
     /// Combination of supported texture operations; must include Sampled for its default view.
     TextureUsage usage {TextureUsage::None};
+    /// Single level by default; supplied and generated policies allocate the full mip chain.
+    TextureMipPolicy mipPolicy {TextureMipPolicy::SingleLevel};
+    /// How UV coordinates outside [0,1] are handled on both axes.
+    TextureAddressMode addressMode {TextureAddressMode::Repeat};
 };
 
 /// @brief Copyable resource owner. Engine outlives every copy.
@@ -66,6 +89,8 @@ public:
     [[nodiscard]] auto getFormat() const noexcept -> PixelFormat;
     /// @brief Returns the creation usage, or None for an empty handle.
     [[nodiscard]] auto getUsage() const noexcept -> TextureUsage;
+    /// @brief Returns the allocated mip-level count, or zero for an empty handle.
+    [[nodiscard]] auto getMipLevels() const noexcept -> std::uint32_t;
     /// @brief Releases this owner and leaves the handle empty; does not wait for GPU work.
     void reset() noexcept;
 

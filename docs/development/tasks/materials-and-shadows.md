@@ -23,7 +23,8 @@ behavior. Each slice needs its relevant visual or ABI evidence.
 `MeshDesc` declares per-mesh stride and standard semantic attributes; the renderer
 selects Lit or Unlit pipelines and accepts compact Position/Color meshes. Lit draws
 require Position and Normal. An optional, uploaded same-Engine RGBA8 sRGB base-color
-map requires sampled usage and `TexCoord0`; filtering is linear with repeat addressing.
+map requires sampled usage and `TexCoord0`; filtering uses the Engine-wide
+`TextureFilteringPreset`, and repeat addressing is the per-texture default.
 Its color multiplies material and draw tint and optional vertex color, and its alpha
 is used by Blend and by the matching Mask camera/shadow cutoff. Per-frame slots retain
 all material maps through GPU completion. The Lit metallic-roughness map requires

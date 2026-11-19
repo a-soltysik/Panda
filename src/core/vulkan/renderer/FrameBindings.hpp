@@ -11,6 +11,9 @@
 #include <memory>
 #include <panda/base/Error.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
+#include <panda/resources/Texture.hpp>
+#include <span>
 #include <vector>
 
 #include "renderer/ShaderData.hpp"
@@ -31,6 +34,7 @@ struct FrameBindingsCreateInfo
     resources::MemoryPool& pool;
     std::size_t frameCount;
     std::uint32_t maxLights;
+    std::shared_ptr<TextureFilteringPreset> textureFilteringPreset;
 };
 
 class FrameBindings final
@@ -56,6 +60,7 @@ public:
     [[nodiscard]] auto getShadowAtlasPlan(std::size_t frameIndex) const noexcept -> const ShadowAtlasPlan&;
     [[nodiscard]] auto getShadowViewOffset(std::size_t frameIndex, std::uint32_t shadowViewIndex) const
         -> std::uint32_t;
+    [[nodiscard]] auto getEffectiveAnisotropy(TextureFilteringPreset preset) const noexcept -> float;
     [[nodiscard]] auto updateFrame(std::size_t frameIndex, const RenderView& view, vk::ImageView shadowView)
         -> std::expected<void, Error>;
     [[nodiscard]] auto updateFrame(std::size_t frameIndex,
@@ -64,6 +69,22 @@ public:
                                    vk::ImageView textureFallbackView) -> std::expected<void, Error>;
 
 private:
+    struct TextureSamplerKey
+    {
+        TextureAddressMode addressMode;
+        TextureFilteringPreset preset;
+        std::uint32_t mipLevels;
+        float anisotropy;
+        friend auto operator==(const TextureSamplerKey&, const TextureSamplerKey&) -> bool = default;
+    };
+
+    struct TextureSampler
+    {
+        TextureSamplerKey key;
+        vk::raii::Sampler sampler {nullptr};
+        bool used {false};
+    };
+
     struct FrameResources
     {
         std::shared_ptr<::panda::detail::BufferResource> uniformBuffer;
@@ -79,12 +100,18 @@ private:
         vk::raii::DescriptorSet descriptorSet {nullptr};
         vk::raii::DescriptorPool textureDescriptorPool {nullptr};
         std::vector<vk::raii::DescriptorSet> textureDescriptorSets;
+        std::vector<TextureSampler> textureSamplers;
     };
 
-    FrameBindings(vk::PhysicalDevice physicalDevice,
-                  const vk::raii::Device& device,
-                  resources::MemoryPool& pool,
-                  std::size_t frameCount);
+    struct TextureDescriptorWriteBatch
+    {
+        FrameResources& frame;
+        vk::ImageView fallbackView;
+        std::span<vk::DescriptorImageInfo> imageInfos;
+        std::vector<vk::WriteDescriptorSet>& writes;
+    };
+
+    explicit FrameBindings(const FrameBindingsCreateInfo& info);
 
     [[nodiscard]] auto initialize(std::uint32_t maxLights) -> std::expected<void, Error>;
     [[nodiscard]] auto initializeDescriptorState() -> std::expected<void, Error>;
@@ -101,6 +128,16 @@ private:
     [[nodiscard]] auto initializeSamplers() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeShadowSampler() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeTextureSampler() -> std::expected<void, Error>;
+    [[nodiscard]] auto createTextureSampler(TextureAddressMode addressMode,
+                                            std::uint32_t mipLevels,
+                                            TextureFilteringPreset preset,
+                                            float anisotropy) const -> std::expected<vk::raii::Sampler, Error>;
+    void initializeSamplerCapabilities(vk::PhysicalDevice physicalDevice);
+    [[nodiscard]] auto getTextureSampler(FrameResources& frame, const Texture& texture)
+        -> std::expected<vk::Sampler, Error>;
+    [[nodiscard]] auto getOrCreateTextureSampler(FrameResources& frame, const TextureSamplerKey& key)
+        -> std::expected<vk::Sampler, Error>;
+    [[nodiscard]] auto requestedTextureFilteringPreset() const noexcept -> TextureFilteringPreset;
     [[nodiscard]] auto updateFrameBuffers(FrameResources& frame, const RenderView& view, const ShadowAtlasPlan& plan)
         -> std::expected<void, Error>;
     [[nodiscard]] auto updateFrameDescriptors(FrameResources& frame,
@@ -126,15 +163,21 @@ private:
     [[nodiscard]] auto writeShadowRecords(FrameResources& frame, const ShadowAtlasPlan& plan) const
         -> std::expected<void, Error>;
     void updateFrameDescriptorSet(const FrameResources& frame, vk::ImageView shadowView);
-    void writeTextureDescriptors(const FrameResources& frame,
-                                 const RenderView& view,
-                                 vk::ImageView textureFallbackView);
+    [[nodiscard]] auto appendTextureDescriptorWrites(TextureDescriptorWriteBatch& batch,
+                                                     std::size_t drawIndex,
+                                                     const MeshDraw& draw) -> std::expected<void, Error>;
+    [[nodiscard]] auto writeTextureDescriptors(FrameResources& frame,
+                                               const RenderView& view,
+                                               vk::ImageView textureFallbackView) -> std::expected<void, Error>;
 
     const vk::raii::Device& _device;
     resources::MemoryPool& _pool;
     std::uint64_t _maxStorageBufferRange {0};
     std::uint64_t _shadowViewStride {0};
     std::uint32_t _maxLights {};
+    std::shared_ptr<TextureFilteringPreset> _textureFilteringPreset;
+    bool _samplerAnisotropySupported {false};
+    float _maxSamplerAnisotropy {1.0F};
     vk::raii::DescriptorSetLayout _descriptorSetLayout {nullptr};
     vk::raii::DescriptorSetLayout _textureDescriptorSetLayout {nullptr};
     vk::raii::PipelineLayout _pipelineLayout {nullptr};

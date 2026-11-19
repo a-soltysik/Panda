@@ -318,6 +318,119 @@ TEST_F(UploadManagerTest, RejectsTextureSourceThatDoesNotContainEveryPaddedRow)
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
+TEST_F(UploadManagerTest, RejectsEmptyForeignTexturesAndEmptyTextureData)
+{
+    EXPECT_CALL(submission, construct(_, 0));
+    auto submissions = SubmissionQueue {device, 0};
+    auto uploads = UploadManager {device, *pool, submissions, 0};
+    const auto region = panda::TextureUploadRegion {
+        .extent = {1, 1}
+    };
+
+    const auto empty = uploads.validateTextureWrite({}, region, 4);
+    ASSERT_FALSE(empty);
+    EXPECT_EQ(empty.error().code, panda::ErrorCode::InvalidArgument);
+
+    EXPECT_CALL(textureMock, create(_, Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
+    auto created =
+        TextureResource::create(device,
+                                *pool,
+                                panda::TextureDesc {
+                                    .extent = {8, 8},
+                                    .format = panda::PixelFormat::Rgba8Unorm,
+                                    .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled
+    });
+    ASSERT_TRUE(created);
+    auto destination = std::move(*created);
+
+    EXPECT_CALL(textureMock, belongsTo(Ref(*destination), Ref(*pool))).WillOnce(Return(false)).WillOnce(Return(true));
+    const auto foreign = uploads.validateTextureWrite(destination, region, 4);
+    const auto emptyData = uploads.validateTextureWrite(destination, region, 0);
+
+    ASSERT_FALSE(foreign);
+    ASSERT_FALSE(emptyData);
+    EXPECT_EQ(foreign.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(emptyData.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(UploadManagerTest, RejectsTextureDestinationsWithoutBothRequiredUsageFlags)
+{
+    EXPECT_CALL(submission, construct(_, 0));
+    auto submissions = SubmissionQueue {device, 0};
+    auto uploads = UploadManager {device, *pool, submissions, 0};
+    const auto description = panda::TextureDesc {
+        .extent = {8, 8},
+        .format = panda::PixelFormat::Rgba8Unorm,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled
+    };
+    EXPECT_CALL(textureMock, create(_, Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
+    auto created = TextureResource::create(device, *pool, description);
+    ASSERT_TRUE(created);
+    auto destination = std::move(*created);
+    const auto region = panda::TextureUploadRegion {
+        .extent = {1, 1}
+    };
+    EXPECT_CALL(textureMock, belongsTo(Ref(*destination), Ref(*pool))).Times(2).WillRepeatedly(Return(true));
+    EXPECT_CALL(textureMock, getUsage(Ref(*destination)))
+        .Times(3)
+        .WillOnce(Return(vk::ImageUsageFlagBits::eSampled))
+        .WillRepeatedly(Return(vk::ImageUsageFlagBits::eTransferDst));
+
+    const auto missingTransfer = uploads.validateTextureWrite(destination, region, 4);
+    const auto missingSampling = uploads.validateTextureWrite(destination, region, 4);
+
+    ASSERT_FALSE(missingTransfer);
+    ASSERT_FALSE(missingSampling);
+    EXPECT_EQ(missingTransfer.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(missingSampling.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(UploadManagerTest, RejectsMipmappedRegionsOutsideTheirAllowedLevels)
+{
+    EXPECT_CALL(submission, construct(_, 0));
+    auto submissions = SubmissionQueue {device, 0};
+    auto uploads = UploadManager {device, *pool, submissions, 0};
+    auto description = panda::TextureDesc {
+        .extent = {8, 8},
+        .format = panda::PixelFormat::Rgba8Unorm,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::Generate
+    };
+    EXPECT_CALL(textureMock, create(_, Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
+    auto created = TextureResource::create(device, *pool, description);
+    ASSERT_TRUE(created);
+    auto destination = std::move(*created);
+    const auto outOfRange = panda::TextureUploadRegion {
+        .extent = {1, 1},
+        .mipLevel = 4
+    };
+    const auto partialBase = panda::TextureUploadRegion {
+        .extent = {4, 4}
+    };
+    const auto generatedLevel = panda::TextureUploadRegion {
+        .extent = {4, 4},
+        .mipLevel = 1
+    };
+    EXPECT_CALL(textureMock, belongsTo(Ref(*destination), Ref(*pool))).Times(3).WillRepeatedly(Return(true));
+    EXPECT_CALL(textureMock, getUsage(Ref(*destination)))
+        .Times(6)
+        .WillRepeatedly(Return(vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled));
+    EXPECT_CALL(textureMock, getExtent(Ref(*destination)))
+        .Times(2)
+        .WillRepeatedly(Return(vk::Extent2D {.width = 8, .height = 8}));
+
+    const auto invalidMip = uploads.validateTextureWrite(destination, outOfRange, 4);
+    const auto partialMip = uploads.validateTextureWrite(destination, partialBase, 4);
+    const auto nonBaseGeneratedMip = uploads.validateTextureWrite(destination, generatedLevel, 4);
+
+    ASSERT_FALSE(invalidMip);
+    ASSERT_FALSE(partialMip);
+    ASSERT_FALSE(nonBaseGeneratedMip);
+    EXPECT_EQ(invalidMip.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(partialMip.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(nonBaseGeneratedMip.error().code, panda::ErrorCode::InvalidArgument);
+}
+
 TEST_F(UploadManagerTest, PreservesCommandCreationFailureBeforeQueueSubmission)
 {
     EXPECT_CALL(submission, construct(_, 0));

@@ -95,7 +95,11 @@ auto makeDevice(const vk::raii::PhysicalDevice& physicalDevice,
                                                         .synchronization2 = vk::True,
                                                         .dynamicRendering = vk::True};
     auto vulkan12 = vk::PhysicalDeviceVulkan12Features {.pNext = &vulkan13, .timelineSemaphore = vk::True};
-    const auto features = vk::PhysicalDeviceFeatures2 {.pNext = &vulkan12};
+    auto supportedFeatures = vk::PhysicalDeviceFeatures2 {};
+    (*physicalDevice).getFeatures2(&supportedFeatures);
+    const auto enabledFeatures =
+        vk::PhysicalDeviceFeatures {.samplerAnisotropy = supportedFeatures.features.samplerAnisotropy};
+    const auto features = vk::PhysicalDeviceFeatures2 {.pNext = &vulkan12, .features = enabledFeatures};
     const auto deviceExtensions = makeDeviceExtensions(selected, windowed, extraExtensions);
     const auto deviceInfo =
         vk::DeviceCreateInfo {.pNext = &features,
@@ -139,6 +143,7 @@ auto createResources(const WindowSurface* surface, const EngineOptions& options)
     auto resources = EngineCreateInfo {};
     resources.device = std::make_unique<DeviceContext>();
     resources.maxLights = options.maxLights;
+    *resources.textureFilteringPreset = options.textureFilteringPreset;
     auto instanceResources = instance::createResources(resources.device->loader, surface, options);
     if (!instanceResources)
     {
@@ -247,6 +252,7 @@ auto initializeSelectedDevice(EngineCreateInfo& resources,
                                                         .submissions = *resources.submissions,
                                                         .pool = *resources.memoryPool,
                                                         .performance = resources.performance.get(),
+                                                        .textureFilteringPreset = resources.textureFilteringPreset,
                                                         .maxLights = resources.maxLights});
     if (surface != nullptr)
     {
@@ -349,6 +355,7 @@ auto initializePresentation(EngineCreateInfo& resources,
                                                     .submissions = *resources.submissions,
                                                     .pool = resources.memoryPool.get(),
                                                     .performance = resources.performance.get(),
+                                                    .textureFilteringPreset = resources.textureFilteringPreset,
                                                     .presentationMode = options.presentationMode,
                                                     .maxLights = resources.maxLights});
     if (!presentation)

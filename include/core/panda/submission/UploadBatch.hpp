@@ -24,13 +24,15 @@ namespace detail
 class UploadBatchImpl;
 }
 
-/// @brief Destination rectangle and source row layout for a texture upload.
+/// @brief Destination mip level, rectangle and source row layout for a texture upload.
 struct TextureUploadRegion
 {
     /// Destination offset in texels (x is horizontal, y is vertical); must be nonnegative and block-aligned.
     glm::ivec2 offset {};
     /// Nonempty extent in texels (x is width, y is height); compressed extents may end at an image edge.
     glm::uvec2 extent {};
+    /// Destination mip level; supplied mip chains require one full-level write for every level.
+    std::uint32_t mipLevel {0};
     /// Byte stride between source block rows; zero means tightly packed rows.
     std::uint64_t rowPitchBytes {0};
 };
@@ -76,19 +78,21 @@ public:
     /// Indices must refer to supplied vertices; validation examines each index once.
     /// @return Success or a validation/allocation/cache error; failure queues no part of this mesh write.
     [[nodiscard]] auto write(const Mesh& destination, const Geometry& geometry) -> Result<void>;
-    /// @brief Snapshots a full-texture upload into owned staging.
+    /// @brief Snapshots a full base-level upload into owned staging.
     /// @param destination Texture from the same Engine with transfer-destination and sampled usage.
     /// @param bytes Source texels or compressed blocks, with rows separated by rowPitchBytes.
     /// @param rowPitchBytes Source byte stride between block rows; zero means tightly packed.
     /// @return Success or a validation/allocation/cache error. Failed writes leave earlier writes intact.
-    /// A texture can be uploaded only once; multiple region writes to that texture are allowed in this batch.
+    /// Generate policy uploads derive the full chain from this base level. Supplied policy uploads this as level zero;
+    /// add the remaining full levels with the region overload before submitting. A texture can be uploaded only once.
     [[nodiscard]] auto write(const Texture& destination,
                              std::span<const std::byte> bytes,
                              std::uint64_t rowPitchBytes = 0) -> Result<void>;
-    /// @brief Snapshots one texture region into owned staging.
+    /// @brief Snapshots one texture region or full mip level into owned staging.
     /// @param destination Texture from the same Engine with transfer-destination and sampled usage.
     /// @param bytes Source begins at the first copied texel or block; each block row uses rowPitchBytes.
-    /// @param region Destination rectangle and source row stride in bytes.
+    /// @param region Destination rectangle, mip level and source row stride in bytes. Supplied chains require one
+    /// complete level per write; submission fails until every level is present.
     /// @return Success or a validation/allocation/cache error. Failed writes leave earlier writes intact.
     /// Multiple calls for one texture must use the same batch; regions are copied in insertion order.
     [[nodiscard]] auto write(const Texture& destination,

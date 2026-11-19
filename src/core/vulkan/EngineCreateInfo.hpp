@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <panda/Engine.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 
 #include "DeviceContext.hpp"
 #include "SubmissionQueue.hpp"
@@ -25,6 +26,8 @@ struct EngineCreateInfo
     std::unique_ptr<detail::PerformanceManagerImpl> performance;
     std::unique_ptr<presentation::OffscreenRenderBackend> offscreenRenderBackend;
     std::unique_ptr<WindowPresentation> windowPresentation;
+    std::shared_ptr<TextureFilteringPreset> textureFilteringPreset {
+        std::make_shared<TextureFilteringPreset>(TextureFilteringPreset::Anisotropic8x)};
     std::uint32_t maxLights {};
     EngineFeatures features;
 };

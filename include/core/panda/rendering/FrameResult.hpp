@@ -33,5 +33,8 @@ struct FrameResult
     /// Color/depth sample count used by this submission. Clear-only views use one sample.
     /// Meaningful when completion is valid.
     SampleCount effectiveSampleCount {SampleCount::One};
+    /// Effective anisotropy limit for trilinear mipmapped material samplers, or 1 when unavailable/disabled.
+    /// Meaningful when completion is valid.
+    float effectiveAnisotropy {1.0F};
 };
 }

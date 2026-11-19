@@ -49,6 +49,16 @@ public:
     [[nodiscard]] auto submit() -> Result<CompletionPoint>;
 
 private:
+    struct TextureMipWriteRequest
+    {
+        std::shared_ptr<TextureResource> destination;
+        std::span<const std::byte> bytes;
+        TextureUploadRegion region;
+        std::uint32_t rowLength;
+        std::uint64_t bufferOffsetAlignment;
+        bool reserved;
+    };
+
     [[nodiscard]] auto stage(std::span<const std::byte> bytes, std::uint64_t alignment)
         -> Result<batch_upload::StagingSlice>;
     [[nodiscard]] auto stageInCurrentPage(std::span<const std::byte> bytes, std::uint64_t alignment)
@@ -61,6 +71,17 @@ private:
                                          std::span<const std::byte> indexBytes)
         -> Result<std::vector<batch_upload::UploadOperation>>;
     [[nodiscard]] auto hasTexture(const std::shared_ptr<TextureResource>& texture) const -> bool;
+    [[nodiscard]] auto hasTextureMip(const std::shared_ptr<TextureResource>& texture, std::uint32_t mipLevel) const
+        -> bool;
+    [[nodiscard]] auto appendGeneratedTextureMips(const TextureMipWriteRequest& request) -> Result<void>;
+    [[nodiscard]] auto createGeneratedMipUploads(const TextureMipWriteRequest& request,
+                                                 const std::vector<std::vector<std::byte>>& mipChain)
+        -> Result<std::vector<batch_upload::UploadOperation>>;
+    [[nodiscard]] auto appendTextureMip(const TextureMipWriteRequest& request) -> Result<void>;
+    [[nodiscard]] auto isFirstSuppliedMipUpload(std::size_t index, const batch_upload::TextureUpload& upload) const
+        -> bool;
+    [[nodiscard]] auto hasCompleteSuppliedMipChain(const std::shared_ptr<TextureResource>& texture) const -> bool;
+    [[nodiscard]] auto validateSuppliedMipChains() const -> Result<void>;
 
     batch_upload::UploadManager& _manager;
     batch_upload::UploadBatchId _id;

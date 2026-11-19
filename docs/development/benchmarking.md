@@ -15,10 +15,10 @@ must not require recompilation.
 The current smoke profile accepts:
 
 ```text
-panda-bench --profile smoke --output results --width 1280 --height 720 --lights 65 --shadowed-lights 65 --warmup-seconds 1 --measure-seconds 3 --runs 1
+panda-bench --profile smoke --output results --width 1280 --height 720 --lights 65 --shadowed-lights 65 --texture-filter anisotropic-8x --warmup-seconds 1 --measure-seconds 3 --runs 1
 ```
 
-Smoke profile version 5 creates and uploads a floor, cubes and spheres before warmup
+The smoke profile creates and uploads a floor, cubes and spheres before warmup
 and measurement. Three generated meshes are shared across the ten draws; every frame
 renders the same static colored `RenderView`. `--lights` defaults to 65 and accepts
 a total count from 0 to 1000; zero disables lights. A positive count creates one
@@ -31,13 +31,9 @@ growing it to fit the requested workload instead of downgrading or dropping shad
 maps; device limits can still reject an oversized request. Geometry generation,
 upload and light fixture generation are part of startup, not the per-frame workload.
 The JSON records both requested light counts and uses `renderStaticColoredScene` as
-its workload name. Version 4 rendered one cube and shadowed every enabled light, so
-its results are not comparable with version 5. Version 3 used unshadowed point lights
-and is not comparable with version 4 for positive light counts. Version 2's cube-only
-workload matches version 4 with `--lights 0` when the remaining settings match;
-version 1 rendered an empty view. This remains a fixed-view smoke workload, not a
-representative scene benchmark. With a zero-second warmup, the first measured frame
-may include first-use renderer or pipeline setup.
+its workload name. This remains a fixed-view smoke workload, not a representative
+scene benchmark. With a zero-second warmup, the first measured frame may include
+first-use renderer or pipeline setup.
 
 For a positive light count, the Engine budget is `max(defaultMaxLights, count)`; the
 current default budget is 64. The benchmark prepares `RenderView` once before timing,
@@ -46,6 +42,12 @@ render-view preparation.
 
 `--width` and `--height` set the requested window extent in pixels. The defaults are
 1280 by 720; the report records both the requested and effective framebuffer extents.
+`--texture-filter` selects the Engine-wide nearest, bilinear, trilinear, or
+anisotropic 2x/4x/8x/16x preset; it defaults to `anisotropic-8x`. The report
+records the requested preset and effective anisotropy. The smoke scene has no
+sampled material maps, so it records device negotiation but does not measure
+texture filtering cost.
+
 `--lights` controls total lights and `--shadowed-lights` independently controls how
 many cast shadows. For example, `--lights 1000 --shadowed-lights 65` measures a
 large light loop with the default-size shadow workload.

@@ -13,6 +13,7 @@
 #include <panda/base/Error.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <vector>
 
 #include "renderer/FrameBindings.hpp"
@@ -39,6 +40,7 @@ struct MeshRendererCreateInfo
     vk::Format colorFormat;
     std::size_t frameCount;
     std::uint32_t maxLights;
+    std::shared_ptr<TextureFilteringPreset> textureFilteringPreset;
     SampleCount requestedSampleCount {SampleCount::Four};
 };
 
@@ -60,6 +62,7 @@ public:
     [[nodiscard]] auto getOutputDescription() const noexcept -> const OutputDescription&;
     [[nodiscard]] auto updateFrame(std::size_t frameIndex, const RenderView& view) -> std::expected<void, Error>;
     [[nodiscard]] auto getSampleCount() const noexcept -> vk::SampleCountFlagBits;
+    [[nodiscard]] auto getEffectiveAnisotropy(TextureFilteringPreset preset) const noexcept -> float;
     void record(vk::CommandBuffer command, vk::ImageView colorView, std::size_t frameIndex, const RenderView& view);
     void markSubmitted(std::size_t frameIndex) noexcept;
 
@@ -119,6 +122,7 @@ private:
     resources::MemoryPool& _pool;
     std::size_t _frameCount;
     std::uint32_t _maxLights;
+    std::shared_ptr<TextureFilteringPreset> _textureFilteringPreset;
     std::unique_ptr<RenderAttachments> _attachments;
     std::unique_ptr<FrameBindings> _bindings;
     std::optional<MeshPipelineCache> _pipelineCache;

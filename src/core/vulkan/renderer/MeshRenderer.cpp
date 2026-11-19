@@ -23,6 +23,7 @@
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <utility>
 #include <vector>
@@ -84,7 +85,8 @@ MeshRenderer::MeshRenderer(const MeshRendererCreateInfo& info)
       _device {info.device},
       _pool {info.pool},
       _frameCount {info.frameCount},
-      _maxLights {info.maxLights}
+      _maxLights {info.maxLights},
+      _textureFilteringPreset {info.textureFilteringPreset}
 {
 }
 
@@ -162,7 +164,8 @@ auto MeshRenderer::initializeBindingsAndPipeline() -> std::expected<void, Error>
                                            .device = _device,
                                            .pool = _pool,
                                            .frameCount = _frameCount,
-                                           .maxLights = _maxLights});
+                                           .maxLights = _maxLights,
+                                           .textureFilteringPreset = _textureFilteringPreset});
     if (!bindings)
     {
         return std::unexpected {bindings.error()};
@@ -219,6 +222,11 @@ auto MeshRenderer::updateFrame(std::size_t frameIndex, const RenderView& view) -
 auto MeshRenderer::getSampleCount() const noexcept -> vk::SampleCountFlagBits
 {
     return getOutputDescription().sampleCount;
+}
+
+auto MeshRenderer::getEffectiveAnisotropy(TextureFilteringPreset preset) const noexcept -> float
+{
+    return _bindings->getEffectiveAnisotropy(preset);
 }
 
 auto MeshRenderer::getOutputDescription() const noexcept -> const OutputDescription&

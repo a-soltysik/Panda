@@ -356,6 +356,11 @@ auto VulkanSmokeRunBackend::effectiveSampleCount() const noexcept -> std::uint32
     return _effectiveSampleCount;
 }
 
+auto VulkanSmokeRunBackend::effectiveAnisotropy() const noexcept -> float
+{
+    return _effectiveAnisotropy;
+}
+
 auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
 {
     const auto& renderer = checkedEngine().getWindowRenderer();
@@ -373,6 +378,7 @@ auto VulkanSmokeRunBackend::submitFrame() -> std::expected<FrameStatus, Failure>
         _lastCompletion = frame->completion;
     }
     _effectiveSampleCount = static_cast<std::uint32_t>(frame->effectiveSampleCount);
+    _effectiveAnisotropy = frame->effectiveAnisotropy;
     return statusFromPanda(frame->status);
 }
 
@@ -417,6 +423,7 @@ void VulkanSmokeRunBackend::teardown()
     _window.reset();
     _lastCompletion = {};
     _effectiveSampleCount = 1;
+    _effectiveAnisotropy = 1.0F;
 }
 
 auto VulkanSmokeRunBackend::checkedWindow() const -> const panda::tools::Window&
@@ -511,6 +518,10 @@ auto VulkanSmokeRunBackend::captureEnvironment() -> std::expected<SmokeRunEnviro
 
 auto VulkanSmokeRunBackend::createStaticScene(glm::uvec2 extent, const Options& options) -> std::expected<void, Failure>
 {
+    if (const auto filtering = checkedEngine().setTextureFilteringPreset(options.textureFilteringPreset); !filtering)
+    {
+        return std::unexpected {failFromPanda(filtering.error())};
+    }
     auto view = panda::RenderView {};
     view.requestedSampleCount = options.sampleCount;
     if (const auto camera = configureSceneCamera(view, extent); !camera)

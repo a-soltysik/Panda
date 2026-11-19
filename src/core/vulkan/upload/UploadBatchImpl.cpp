@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <panda/base/Error.hpp>
+#include <panda/resources/Texture.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
 #include <span>
@@ -23,6 +24,7 @@
 #include "resources/BufferResource.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
+#include "upload/TextureMipGeneration.hpp"
 #include "upload/UploadBatchId.hpp"
 #include "upload/UploadManager.hpp"
 #include "upload/UploadOperation.hpp"
@@ -354,23 +356,97 @@ auto UploadBatchImpl::write(const std::shared_ptr<TextureResource>& destination,
     {
         return std::unexpected {layout.error()};
     }
-    const auto reserved = reserveTexture(destination, _id, hasTexture(destination));
+    const auto alreadyInBatch = hasTexture(destination);
+    const auto mipPolicy = destination->getMipPolicy();
+    if ((mipPolicy == TextureMipPolicy::Generate && alreadyInBatch) ||
+        (mipPolicy == TextureMipPolicy::Supplied && hasTextureMip(destination, region.mipLevel)))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture mip level was already written")};
+    }
+    const auto reserved = reserveTexture(destination, _id, alreadyInBatch);
     if (!reserved)
     {
         return std::unexpected {reserved.error()};
     }
-    auto staging = stage(bytes, layout->bufferOffsetAlignment);
+    const auto request = TextureMipWriteRequest {.destination = destination,
+                                                 .bytes = bytes,
+                                                 .region = region,
+                                                 .rowLength = layout->rowLength,
+                                                 .bufferOffsetAlignment = layout->bufferOffsetAlignment,
+                                                 .reserved = *reserved};
+    if (mipPolicy == TextureMipPolicy::Generate)
+    {
+        return appendGeneratedTextureMips(request);
+    }
+    return appendTextureMip(request);
+}
+
+auto UploadBatchImpl::appendGeneratedTextureMips(const TextureMipWriteRequest& request) -> Result<void>
+{
+    const auto extent = request.destination->getExtent();
+    const auto mipChain = batch_upload::generateTextureMipChain({.format = request.destination->getPublicFormat(),
+                                                                 .width = extent.width,
+                                                                 .height = extent.height,
+                                                                 .baseLevel = request.bytes,
+                                                                 .rowPitchBytes = request.region.rowPitchBytes});
+    if (!mipChain)
+    {
+        cancelReservation(request.destination, _id, request.reserved);
+        return std::unexpected {mipChain.error()};
+    }
+    auto uploads = createGeneratedMipUploads(request, *mipChain);
+    if (!uploads)
+    {
+        cancelReservation(request.destination, _id, request.reserved);
+        return std::unexpected {uploads.error()};
+    }
+    _writes.reserve(_writes.size() + uploads->size());
+    std::ranges::move(*uploads, std::back_inserter(_writes));
+    return {};
+}
+
+auto UploadBatchImpl::createGeneratedMipUploads(const TextureMipWriteRequest& request,
+                                                const std::vector<std::vector<std::byte>>& mipChain)
+    -> Result<std::vector<UploadOperation>>
+{
+    const auto extent = request.destination->getExtent();
+    auto uploads = std::vector<UploadOperation> {};
+    uploads.reserve(mipChain.size());
+    for (auto mipLevel = std::uint32_t {}; mipLevel < mipChain.size(); ++mipLevel)
+    {
+        const auto mipRegion = TextureUploadRegion {
+            .extent = {std::max(1U, extent.width >> mipLevel), std::max(1U, extent.height >> mipLevel)},
+            .mipLevel = mipLevel
+        };
+        const auto staging = stage(mipChain.at(mipLevel), request.bufferOffsetAlignment);
+        if (!staging)
+        {
+            return std::unexpected {staging.error()};
+        }
+        uploads.emplace_back(TextureUpload {.staging = staging->buffer,
+                                            .stagingOffset = staging->offset,
+                                            .destination = request.destination,
+                                            .region = mipRegion,
+                                            .bufferRowLength = 0,
+                                            .firstForTexture = request.reserved && mipLevel == 0});
+    }
+    return uploads;
+}
+
+auto UploadBatchImpl::appendTextureMip(const TextureMipWriteRequest& request) -> Result<void>
+{
+    auto staging = stage(request.bytes, request.bufferOffsetAlignment);
     if (!staging)
     {
-        cancelReservation(destination, _id, *reserved);
+        cancelReservation(request.destination, _id, request.reserved);
         return std::unexpected {staging.error()};
     }
     _writes.emplace_back(TextureUpload {.staging = std::move(staging->buffer),
                                         .stagingOffset = staging->offset,
-                                        .destination = destination,
-                                        .region = region,
-                                        .bufferRowLength = layout->rowLength,
-                                        .firstForTexture = *reserved});
+                                        .destination = request.destination,
+                                        .region = request.region,
+                                        .bufferRowLength = request.rowLength,
+                                        .firstForTexture = request.reserved});
     return {};
 }
 
@@ -385,8 +461,65 @@ auto UploadBatchImpl::hasTexture(const std::shared_ptr<TextureResource>& texture
     });
 }
 
+auto UploadBatchImpl::hasTextureMip(const std::shared_ptr<TextureResource>& texture, std::uint32_t mipLevel) const
+    -> bool
+{
+    return std::ranges::any_of(_writes, [&](const UploadOperation& operation) {
+        const auto* upload = std::get_if<TextureUpload>(&operation);
+        return upload != nullptr && upload->destination == texture && upload->region.mipLevel == mipLevel;
+    });
+}
+
+auto UploadBatchImpl::isFirstSuppliedMipUpload(std::size_t index, const TextureUpload& upload) const -> bool
+{
+    return std::ranges::none_of(std::span {_writes}.first(index), [&](const UploadOperation& operation) {
+        const auto* previous = std::get_if<TextureUpload>(&operation);
+        return previous != nullptr && previous->destination == upload.destination;
+    });
+}
+
+auto UploadBatchImpl::hasCompleteSuppliedMipChain(const std::shared_ptr<TextureResource>& texture) const -> bool
+{
+    auto writtenLevels = std::uint32_t {};
+    for (const auto& operation : _writes)
+    {
+        const auto* upload = std::get_if<TextureUpload>(&operation);
+        if (upload != nullptr && upload->destination == texture)
+        {
+            writtenLevels |= std::uint32_t {1} << upload->region.mipLevel;
+        }
+    }
+    const auto mipLevels = texture->getMipLevels();
+    const auto expectedLevels =
+        mipLevels == 32U ? std::numeric_limits<std::uint32_t>::max() : (std::uint32_t {1} << mipLevels) - 1U;
+    return writtenLevels == expectedLevels;
+}
+
+auto UploadBatchImpl::validateSuppliedMipChains() const -> Result<void>
+{
+    for (auto index = std::size_t {}; index < _writes.size(); ++index)
+    {
+        const auto* first = std::get_if<TextureUpload>(&_writes.at(index));
+        if (first == nullptr || first->destination->getMipPolicy() != TextureMipPolicy::Supplied ||
+            !isFirstSuppliedMipUpload(index, *first))
+        {
+            continue;
+        }
+        if (!hasCompleteSuppliedMipChain(first->destination))
+        {
+            return std::unexpected {
+                makeError(ErrorCode::InvalidArgument, "Supplied texture mip chain must upload every level")};
+        }
+    }
+    return {};
+}
+
 auto UploadBatchImpl::submit() -> Result<CompletionPoint>
 {
+    if (const auto valid = validateSuppliedMipChains(); !valid)
+    {
+        return std::unexpected {valid.error()};
+    }
     auto point = _manager.submit(_writes, _stagingPages);
     if (point)
     {

@@ -58,6 +58,11 @@ public:
         return 1;
     }
 
+    [[nodiscard]] virtual auto effectiveAnisotropy() const noexcept -> float
+    {
+        return 1.0F;
+    }
+
     [[nodiscard]] virtual auto submitFrame() -> std::expected<FrameStatus, Failure> = 0;
     [[nodiscard]] virtual auto takeAvailableSamples()
         -> std::expected<std::vector<panda::FramePerformanceSample>, Failure> = 0;

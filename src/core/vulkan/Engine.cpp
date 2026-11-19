@@ -15,6 +15,7 @@
 #include <panda/interop/ExternalBufferManager.hpp>
 #include <panda/rendering/OffscreenRenderer.hpp>
 #include <panda/rendering/PerformanceManager.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/rendering/WindowRenderer.hpp>
 #include <panda/resources/ResourceManager.hpp>
 #include <panda/submission/SubmissionManager.hpp>
@@ -36,6 +37,22 @@ namespace vulkan = core::vulkan;
 
 namespace
 {
+auto isValidTextureFilteringPreset(TextureFilteringPreset preset) -> bool
+{
+    switch (preset)
+    {
+    case TextureFilteringPreset::Nearest:
+    case TextureFilteringPreset::Bilinear:
+    case TextureFilteringPreset::Trilinear:
+    case TextureFilteringPreset::Anisotropic2x:
+    case TextureFilteringPreset::Anisotropic4x:
+    case TextureFilteringPreset::Anisotropic8x:
+    case TextureFilteringPreset::Anisotropic16x:
+        return true;
+    }
+    return false;
+}
+
 template <typename T>
 auto borrowIfPresent(const std::unique_ptr<T>& owner) noexcept -> std::optional<std::reference_wrapper<T>>
 {
@@ -64,6 +81,8 @@ public:
     [[nodiscard]] auto getWindowRenderer() const noexcept -> const WindowRenderer&;
     [[nodiscard]] auto getDeviceInfo() const -> const DeviceInfo&;
     [[nodiscard]] auto getFeatures() const noexcept -> EngineFeatures;
+    [[nodiscard]] auto getTextureFilteringPreset() const noexcept -> TextureFilteringPreset;
+    [[nodiscard]] auto setTextureFilteringPreset(TextureFilteringPreset preset) -> Result<void>;
     [[nodiscard]] auto getPerformanceManager() noexcept -> PerformanceManager&;
     [[nodiscard]] auto getExternalBufferManager() noexcept -> ExternalBufferManager&;
     void drain();
@@ -75,6 +94,7 @@ private:
     std::unique_ptr<vulkan::upload::UploadManager> _uploads;
     std::unique_ptr<detail::ExternalBufferInterop> _externalInterop;
     std::unique_ptr<detail::PerformanceManagerImpl> _performance;
+    std::shared_ptr<TextureFilteringPreset> _textureFilteringPreset;
     std::unique_ptr<vulkan::presentation::OffscreenRenderBackend> _backend;
     std::unique_ptr<vulkan::WindowPresentation> _presentation;
     EngineFeatures _features;
@@ -95,6 +115,7 @@ Engine::Impl::Impl(vulkan::EngineCreateInfo resources)
       _uploads {std::move(resources.uploads)},
       _externalInterop {std::move(resources.externalInterop)},
       _performance {std::move(resources.performance)},
+      _textureFilteringPreset {std::move(resources.textureFilteringPreset)},
       _backend {std::move(resources.offscreenRenderBackend)},
       _presentation {std::move(resources.windowPresentation)},
       _features {resources.features},
@@ -158,6 +179,21 @@ auto Engine::Impl::getFeatures() const noexcept -> EngineFeatures
     return _features;
 }
 
+auto Engine::Impl::getTextureFilteringPreset() const noexcept -> TextureFilteringPreset
+{
+    return *_textureFilteringPreset;
+}
+
+auto Engine::Impl::setTextureFilteringPreset(TextureFilteringPreset preset) -> Result<void>
+{
+    if (!isValidTextureFilteringPreset(preset))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid texture filtering preset")};
+    }
+    *_textureFilteringPreset = preset;
+    return {};
+}
+
 auto Engine::Impl::getPerformanceManager() noexcept -> PerformanceManager&
 {
     return expect(_performanceManager, "Performance sampling is not enabled for this Engine");
@@ -213,6 +249,16 @@ auto Engine::getFeatures() const -> EngineFeatures
     return expect(_implementation, "Cannot use a moved-from Engine").getFeatures();
 }
 
+auto Engine::getTextureFilteringPreset() const -> TextureFilteringPreset
+{
+    return expect(_implementation, "Cannot use a moved-from Engine").getTextureFilteringPreset();
+}
+
+auto Engine::setTextureFilteringPreset(TextureFilteringPreset preset) const -> Result<void>
+{
+    return expect(_implementation, "Cannot use a moved-from Engine").setTextureFilteringPreset(preset);
+}
+
 auto Engine::getResourceManager() const -> const ResourceManager&
 {
     return expect(_implementation, "Cannot use a moved-from Engine").getResourceManager();
@@ -255,6 +301,10 @@ auto Engine::createWithSurface(const WindowSurface& surface, const EngineOptions
 
 auto Engine::createInternal(const WindowSurface* surface, const EngineOptions& options) -> Result<Engine>
 {
+    if (!isValidTextureFilteringPreset(options.textureFilteringPreset))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid texture filtering preset")};
+    }
     auto resources = core::vulkan::engine::createResources(surface, options);
     if (!resources)
     {

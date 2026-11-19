@@ -24,6 +24,7 @@
 #include <panda/submission/UploadBatch.hpp>
 #include <span>
 #include <utility>
+#include <vector>
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
@@ -140,9 +141,8 @@ protected:
         return created ? std::move(*created) : nullptr;
     }
 
-    auto makeTexture() -> std::shared_ptr<TextureResource>
+    auto makeTexture(const panda::TextureDesc& description = textureDescription()) -> std::shared_ptr<TextureResource>
     {
-        const auto description = textureDescription();
         // GMock's WillOnce wrapper triggers a false-positive leak report in clang-analyzer.
         EXPECT_CALL(textures, create(Ref(device), Ref(*pool), _))
             .Times(1)
@@ -442,6 +442,57 @@ TEST_F(UploadBatchImplTest, CancelsTextureReservationWhenStagingFails)
     EXPECT_CALL(managerMock, collect(Ref(*manager)))
         .WillOnce(Return(panda::Result<void> {
             std::unexpected {panda::makeError(panda::ErrorCode::DeviceLost, "Controlled collection failure")}}));
+    EXPECT_CALL(textures, cancelUpload(Ref(*texture), _));
+
+    const auto result = batch->write(texture, bytes, region);
+
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, panda::ErrorCode::DeviceLost);
+}
+
+TEST_F(UploadBatchImplTest, CancelsGeneratedTextureReservationWhenMipGenerationFails)
+{
+    auto description = textureDescription();
+    description.mipPolicy = panda::TextureMipPolicy::Generate;
+    auto texture = makeTexture(description);
+    auto batch = makeBatch();
+    const auto bytes = std::array {std::byte {1}, std::byte {2}, std::byte {3}};
+    const auto region = panda::TextureUploadRegion {
+        .extent = {16, 16}
+    };
+    EXPECT_CALL(managerMock, validateTextureWrite(Ref(*manager), texture, _, bytes.size()))
+        .WillOnce(
+            Return(panda::core::vulkan::upload::TextureUploadLayout {.rowLength = 0, .bufferOffsetAlignment = 4}));
+    EXPECT_CALL(textures, reserveUpload(Ref(*texture), _)).WillOnce(Return(panda::Result<void> {}));
+    EXPECT_CALL(textures, getExtent(Ref(*texture))).WillOnce(Return(vk::Extent2D {.width = 16, .height = 16}));
+    EXPECT_CALL(textures, cancelUpload(Ref(*texture), _));
+
+    const auto result = batch->write(texture, bytes, region);
+
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(UploadBatchImplTest, CancelsGeneratedTextureReservationWhenMipStagingFails)
+{
+    auto description = textureDescription();
+    description.mipPolicy = panda::TextureMipPolicy::Generate;
+    auto texture = makeTexture(description);
+    auto batch = makeBatch();
+    const auto bytes = std::vector<std::byte>(std::size_t {1024}, std::byte {0xff});
+    const auto region = panda::TextureUploadRegion {
+        .extent = {16, 16}
+    };
+    EXPECT_CALL(managerMock, validateTextureWrite(Ref(*manager), texture, _, bytes.size()))
+        .WillOnce(
+            Return(panda::core::vulkan::upload::TextureUploadLayout {.rowLength = 0, .bufferOffsetAlignment = 4}));
+    EXPECT_CALL(textures, reserveUpload(Ref(*texture), _)).WillOnce(Return(panda::Result<void> {}));
+    EXPECT_CALL(textures, getExtent(Ref(*texture)))
+        .Times(2)
+        .WillRepeatedly(Return(vk::Extent2D {.width = 16, .height = 16}));
+    EXPECT_CALL(managerMock, collect(Ref(*manager)))
+        .WillOnce(Return(panda::Result<void> {
+            std::unexpected {panda::makeError(panda::ErrorCode::DeviceLost, "Generated mip staging failed")}}));
     EXPECT_CALL(textures, cancelUpload(Ref(*texture), _));
 
     const auto result = batch->write(texture, bytes, region);

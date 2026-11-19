@@ -22,6 +22,7 @@
 #include <panda/EngineOptions.hpp>
 #include <panda/base/Error.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Buffer.hpp>
 #include <span>
 #include <tuple>
@@ -81,7 +82,7 @@ protected:
 
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
             .Times(AnyNumber())
-            .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
+            .WillRepeatedly([this](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
                 properties->limits.maxPushConstantsSize = 4096;
                 properties->limits.maxStorageBufferRange = 4096;
                 properties->limits.maxDescriptorSetStorageBuffers = 4;
@@ -89,6 +90,12 @@ protected:
                 properties->limits.minUniformBufferOffsetAlignment = 256;
                 properties->limits.framebufferColorSampleCounts = allSampleCounts;
                 properties->limits.framebufferDepthSampleCounts = allSampleCounts;
+                properties->limits.maxSamplerAnisotropy = maxSamplerAnisotropy;
+            });
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceFeatures2(_, NotNull()))
+            .Times(AnyNumber())
+            .WillRepeatedly([this](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
+                features->features.samplerAnisotropy = samplerAnisotropy;
             });
         installDescriptorDefaults();
         EXPECT_CALL(buffers, createNative(_, Ref(*pool), _))
@@ -110,8 +117,12 @@ protected:
     auto createBindings(std::uint32_t maxLights = panda::EngineOptions::defaultMaxLights)
         -> std::expected<std::unique_ptr<FrameBindings>, panda::Error>
     {
-        return FrameBindings::create(
-            {.physicalDevice = physical, .device = device, .pool = *pool, .frameCount = 1, .maxLights = maxLights});
+        return FrameBindings::create({.physicalDevice = physical,
+                                      .device = device,
+                                      .pool = *pool,
+                                      .frameCount = 1,
+                                      .maxLights = maxLights,
+                                      .textureFilteringPreset = nullptr});
     }
 
     auto meshRendererInfo() const -> panda::core::vulkan::renderer::MeshRendererCreateInfo
@@ -123,7 +134,8 @@ protected:
             .extent = {.width = 64, .height = 64},
             .colorFormat = vk::Format::eR8G8B8A8Unorm,
             .frameCount = 1,
-            .maxLights = panda::EngineOptions::defaultMaxLights
+            .maxLights = panda::EngineOptions::defaultMaxLights,
+            .textureFilteringPreset = nullptr
         };
     }
 
@@ -253,6 +265,8 @@ protected:
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::uintptr_t nextHandle {10};
+    VkBool32 samplerAnisotropy {VK_FALSE};
+    float maxSamplerAnisotropy {6.0F};
 };
 }
 
@@ -340,6 +354,22 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
     EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.y, 0.4F);
     EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.z, 0.8F);
     EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.w, 3.0F);
+}
+
+TEST_F(FrameBindingsTest, CapsAnisotropyAndFallsBackWhenTheFeatureIsUnavailable)
+{
+    auto unsupported = createBindings();
+    ASSERT_TRUE(unsupported);
+    EXPECT_FLOAT_EQ((*unsupported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Anisotropic8x), 1.0F);
+
+    samplerAnisotropy = VK_TRUE;
+    auto supported = createBindings();
+    ASSERT_TRUE(supported);
+    EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Trilinear), 1.0F);
+    EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Anisotropic2x), 2.0F);
+    EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Anisotropic4x), 4.0F);
+    EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Anisotropic8x), 6.0F);
+    EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Anisotropic16x), 6.0F);
 }
 
 TEST_F(FrameBindingsTest, MaterialBufferGrowthFailureCanBeRetried)
@@ -577,14 +607,19 @@ TEST_F(FrameBindingsTest, RejectsInsufficientStorageLimitAndInvalidFrameCounts)
     ASSERT_FALSE(unsupported);
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 
-    const auto empty = FrameBindings::create(
-        {.physicalDevice = physical, .device = device, .pool = *pool, .frameCount = 0, .maxLights = 0});
+    const auto empty = FrameBindings::create({.physicalDevice = physical,
+                                              .device = device,
+                                              .pool = *pool,
+                                              .frameCount = 0,
+                                              .maxLights = 0,
+                                              .textureFilteringPreset = nullptr});
     const auto oversized =
         FrameBindings::create({.physicalDevice = physical,
                                .device = device,
                                .pool = *pool,
                                .frameCount = static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 1,
-                               .maxLights = 0});
+                               .maxLights = 0,
+                               .textureFilteringPreset = nullptr});
     EXPECT_FALSE(empty);
     EXPECT_FALSE(oversized);
     EXPECT_EQ(empty.error().code, panda::ErrorCode::InvalidArgument);

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <panda/EngineOptions.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <string>
 
 namespace panda_bench
@@ -27,6 +28,7 @@ struct Options
     std::uint32_t shadowedLightCount {defaultSmokeShadowedLightCount};
     panda::EngineOptions::PresentationMode presentationMode {panda::EngineOptions::PresentationMode::Fifo};
     panda::SampleCount sampleCount {panda::SampleCount::Four};
+    panda::TextureFilteringPreset textureFilteringPreset {panda::TextureFilteringPreset::Anisotropic8x};
     std::chrono::seconds warmupDuration {1};
     std::chrono::seconds measurementDuration {3};
     std::size_t runCount {1};

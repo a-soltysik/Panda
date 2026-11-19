@@ -8,6 +8,7 @@
 #include <panda/EngineOptions.hpp>
 #include <panda/rendering/PerformanceManager.hpp>
 #include <panda/rendering/SampleCount.hpp>
+#include <panda/rendering/TextureFilteringPreset.hpp>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,7 @@ struct RunReport
     std::uint32_t framebufferWidth {0};
     std::uint32_t framebufferHeight {0};
     std::uint32_t effectiveSampleCount {1};
+    float effectiveAnisotropy {1.0F};
     std::optional<panda::EngineOptions::PresentationMode> effectivePresentationMode;
     std::chrono::nanoseconds startupDuration {};
     std::chrono::nanoseconds warmupDuration {};
@@ -54,6 +56,7 @@ struct Report
     std::uint32_t requestedShadowedLightCount {0};
     panda::EngineOptions::PresentationMode requestedPresentationMode {panda::EngineOptions::PresentationMode::Fifo};
     panda::SampleCount requestedSampleCount {panda::SampleCount::Four};
+    panda::TextureFilteringPreset requestedTextureFilteringPreset {panda::TextureFilteringPreset::Anisotropic8x};
     std::chrono::seconds requestedWarmup {0};
     std::chrono::seconds requestedMeasurement {0};
     std::uint64_t requestedRuns {0};
