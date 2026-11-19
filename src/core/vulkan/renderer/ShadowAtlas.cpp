@@ -71,7 +71,8 @@ void occupyTile(AtlasOccupancy& occupied, AtlasPosition position, std::uint32_t 
     }
 }
 
-auto findAtlasTile(AtlasOccupancy& occupied, std::uint32_t resolution) -> std::optional<ShadowAtlasTile>
+auto findAtlasTile(AtlasOccupancy& occupied, std::uint32_t resolution, std::uint32_t layer)
+    -> std::optional<ShadowAtlasTile>
 {
     const auto cellWidth = occupiedCells(resolution);
     const auto candidateWidth = atlasCellsPerSide - cellWidth + 1U;
@@ -84,7 +85,8 @@ auto findAtlasTile(AtlasOccupancy& occupied, std::uint32_t resolution) -> std::o
             occupyTile(occupied, position, cellWidth);
             return ShadowAtlasTile {.x = (position.left * shadowAtlasCellSize) + shadowAtlasGuard,
                                     .y = (position.top * shadowAtlasCellSize) + shadowAtlasGuard,
-                                    .resolution = resolution};
+                                    .resolution = resolution,
+                                    .layer = layer};
         }
     }
     return std::nullopt;
@@ -211,15 +213,39 @@ auto assignAtlasTiles(ShadowAtlasPlan& plan) -> std::expected<void, Error>
     for (auto index = std::size_t {}; index < plan.views.size(); ++index)
     {
         plan.views.at(index).tile = tiles->at(index);
+        plan.atlasLayerCount = std::max(plan.atlasLayerCount, tiles->at(index).layer + 1U);
     }
     return {};
+}
+
+auto allocateAtlasTile(std::vector<AtlasOccupancy>& occupied, std::uint32_t resolution)
+    -> std::expected<ShadowAtlasTile, Error>
+{
+    for (auto layer = std::size_t {}; layer < occupied.size(); ++layer)
+    {
+        if (auto tile = findAtlasTile(occupied.at(layer), resolution, static_cast<std::uint32_t>(layer)))
+        {
+            return *tile;
+        }
+    }
+    if (occupied.size() >= maxShadowAtlasLayers)
+    {
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Shadow maps exceed atlas array capacity")};
+    }
+    occupied.emplace_back();
+    const auto layer = static_cast<std::uint32_t>(occupied.size() - 1U);
+    if (auto tile = findAtlasTile(occupied.back(), resolution, layer))
+    {
+        return *tile;
+    }
+    return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Shadow map does not fit an atlas page")};
 }
 }
 
 auto allocateShadowAtlas(std::span<const std::uint32_t> resolutions)
     -> std::expected<std::vector<ShadowAtlasTile>, Error>
 {
-    auto occupied = AtlasOccupancy {};
+    auto occupied = std::vector {AtlasOccupancy {}};
     auto tiles = std::vector<ShadowAtlasTile> {};
     tiles.reserve(resolutions.size());
     for (const auto resolution : resolutions)
@@ -228,10 +254,10 @@ auto allocateShadowAtlas(std::span<const std::uint32_t> resolutions)
         {
             return std::unexpected {makeError(ErrorCode::InvalidArgument, "Unsupported shadow map resolution")};
         }
-        const auto tile = findAtlasTile(occupied, resolution);
+        const auto tile = allocateAtlasTile(occupied, resolution);
         if (!tile)
         {
-            return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Shadow maps exceed atlas capacity")};
+            return std::unexpected {tile.error()};
         }
         tiles.push_back(*tile);
     }

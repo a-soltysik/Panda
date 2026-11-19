@@ -109,6 +109,7 @@ WindowPresentation::WindowPresentation(const WindowPresentationCreateInfo& info)
       _queueFamily {info.queueFamily},
       _presentQueueFamily {info.presentQueueFamily},
       _maintenance {info.maintenance},
+      _presentationMode {info.presentationMode},
       _submissions {info.submissions}
 {
 }
@@ -171,7 +172,8 @@ auto WindowPresentation::recreate(glm::uvec2 requested) -> std::expected<void, E
                                                  .requested = requested,
                                                  .oldSwapchain = oldSwapchain,
                                                  .queueFamily = _queueFamily,
-                                                 .presentQueueFamily = _presentQueueFamily});
+                                                 .presentQueueFamily = _presentQueueFamily,
+                                                 .presentationMode = _presentationMode});
     if (!generation)
     {
         // vkCreateSwapchainKHR may retire oldSwapchain even when replacement fails.

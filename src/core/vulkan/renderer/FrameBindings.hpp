@@ -58,6 +58,10 @@ public:
         -> std::uint32_t;
     [[nodiscard]] auto updateFrame(std::size_t frameIndex, const RenderView& view, vk::ImageView shadowView)
         -> std::expected<void, Error>;
+    [[nodiscard]] auto updateFrame(std::size_t frameIndex,
+                                   const RenderView& view,
+                                   vk::ImageView shadowArrayView,
+                                   vk::ImageView textureFallbackView) -> std::expected<void, Error>;
 
 private:
     struct FrameResources
@@ -99,8 +103,10 @@ private:
     [[nodiscard]] auto initializeTextureSampler() -> std::expected<void, Error>;
     [[nodiscard]] auto updateFrameBuffers(FrameResources& frame, const RenderView& view, const ShadowAtlasPlan& plan)
         -> std::expected<void, Error>;
-    [[nodiscard]] auto updateFrameDescriptors(FrameResources& frame, const RenderView& view, vk::ImageView shadowView)
-        -> std::expected<void, Error>;
+    [[nodiscard]] auto updateFrameDescriptors(FrameResources& frame,
+                                              const RenderView& view,
+                                              vk::ImageView shadowArrayView,
+                                              vk::ImageView textureFallbackView) -> std::expected<void, Error>;
     [[nodiscard]] static auto writeFrameUniform(FrameResources& frame, const RenderView& view, std::uint32_t lightCount)
         -> std::expected<void, Error>;
     [[nodiscard]] auto ensureMaterialBuffer(FrameResources& frame, std::size_t drawCount) -> std::expected<void, Error>;
@@ -120,7 +126,9 @@ private:
     [[nodiscard]] auto writeShadowRecords(FrameResources& frame, const ShadowAtlasPlan& plan) const
         -> std::expected<void, Error>;
     void updateFrameDescriptorSet(const FrameResources& frame, vk::ImageView shadowView);
-    void writeTextureDescriptors(const FrameResources& frame, const RenderView& view, vk::ImageView shadowView);
+    void writeTextureDescriptors(const FrameResources& frame,
+                                 const RenderView& view,
+                                 vk::ImageView textureFallbackView);
 
     const vk::raii::Device& _device;
     resources::MemoryPool& _pool;

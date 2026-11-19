@@ -229,8 +229,8 @@ auto makeShadowRecord(const ShadowAtlasView& view) -> ShadowRecord
         .atlasScaleBias = glm::vec4 {resolution / static_cast<float>(shadowAtlasExtent),
                                      resolution / static_cast<float>(shadowAtlasExtent),
                                      static_cast<float>(view.tile.x) / static_cast<float>(shadowAtlasExtent),
-                                     static_cast<float>(view.tile.y) / static_cast<float>(shadowAtlasExtent)          },
-        .shadowParameters = glm::vec4 {view.depthBias,                                     view.normalOffset, 0.0F, 0.0F}
+                                     static_cast<float>(view.tile.y) / static_cast<float>(shadowAtlasExtent)                                         },
+        .shadowParameters = glm::vec4 {view.depthBias,                                     view.normalOffset, static_cast<float>(view.tile.layer), 0.0F}
     };
 }
 
@@ -804,7 +804,7 @@ void FrameBindings::updateFrameDescriptorSet(const FrameResources& frame, vk::Im
 
 void FrameBindings::writeTextureDescriptors(const FrameResources& frame,
                                             const RenderView& view,
-                                            vk::ImageView shadowView)
+                                            vk::ImageView textureFallbackView)
 {
     auto imageInfos = std::vector<vk::DescriptorImageInfo>(view.meshes.size() * textureDescriptorsPerDraw);
     auto writes = std::vector<vk::WriteDescriptorSet> {};
@@ -818,7 +818,7 @@ void FrameBindings::writeTextureDescriptors(const FrameResources& frame,
             const auto& slot = materialTextureSlots.at(slotIndex);
             const auto imageInfoIndex = (index * textureDescriptorsPerDraw) + slotIndex;
             imageInfos.at(imageInfoIndex) =
-                makeTextureDescriptorInfo(material.*(slot.texture), *_textureSampler, shadowView);
+                makeTextureDescriptorInfo(material.*(slot.texture), *_textureSampler, textureFallbackView);
             writes.push_back({.dstSet = descriptorSet,
                               .dstBinding = slot.binding,
                               .descriptorCount = 1,
@@ -884,6 +884,14 @@ auto FrameBindings::updateFrameBuffers(FrameResources& frame, const RenderView& 
 auto FrameBindings::updateFrame(std::size_t frameIndex, const RenderView& view, vk::ImageView shadowView)
     -> std::expected<void, Error>
 {
+    return updateFrame(frameIndex, view, shadowView, shadowView);
+}
+
+auto FrameBindings::updateFrame(std::size_t frameIndex,
+                                const RenderView& view,
+                                vk::ImageView shadowArrayView,
+                                vk::ImageView textureFallbackView) -> std::expected<void, Error>
+{
     auto& frame = _frames.at(frameIndex);
     const auto requestedLightCount = view.lights.size();
     if (requestedLightCount > _maxLights)
@@ -900,7 +908,7 @@ auto FrameBindings::updateFrame(std::size_t frameIndex, const RenderView& view, 
     {
         return updated;
     }
-    if (const auto updated = updateFrameDescriptors(frame, view, shadowView); !updated)
+    if (const auto updated = updateFrameDescriptors(frame, view, shadowArrayView, textureFallbackView); !updated)
     {
         return updated;
     }
@@ -908,15 +916,17 @@ auto FrameBindings::updateFrame(std::size_t frameIndex, const RenderView& view, 
     return {};
 }
 
-auto FrameBindings::updateFrameDescriptors(FrameResources& frame, const RenderView& view, vk::ImageView shadowView)
-    -> std::expected<void, Error>
+auto FrameBindings::updateFrameDescriptors(FrameResources& frame,
+                                           const RenderView& view,
+                                           vk::ImageView shadowArrayView,
+                                           vk::ImageView textureFallbackView) -> std::expected<void, Error>
 {
     if (const auto updated = ensureTextureDescriptorSets(frame, view.meshes.size()); !updated)
     {
         return updated;
     }
-    updateFrameDescriptorSet(frame, shadowView);
-    writeTextureDescriptors(frame, view, shadowView);
+    updateFrameDescriptorSet(frame, shadowArrayView);
+    writeTextureDescriptors(frame, view, textureFallbackView);
     return {};
 }
 }

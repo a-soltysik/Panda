@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <panda/base/Error.hpp>
 #include <panda/resources/Texture.hpp>
+#include <vector>
 
 #include "VulkanHpp.hpp"
 #include "resources/memory/MemoryAllocation.hpp"
@@ -17,6 +19,8 @@ struct TextureResourceCreateInfo
     vk::Extent2D extent;
     vk::Format format;
     vk::ImageUsageFlags usage;
+    std::uint32_t arrayLayers {1};
+    bool createArrayView {false};
 };
 
 namespace texture_resources = ::panda::core::vulkan::resources;
@@ -47,6 +51,9 @@ public:
     [[nodiscard]] auto getPublicUsage() const -> TextureUsage;
     [[nodiscard]] auto getNative() const -> vk::Image;
     [[nodiscard]] auto getNativeView() const -> vk::ImageView;
+    [[nodiscard]] auto getNativeArrayView() const -> vk::ImageView;
+    [[nodiscard]] auto getLayerView(std::uint32_t layer) const -> vk::ImageView;
+    [[nodiscard]] auto getArrayLayers() const noexcept -> std::uint32_t;
     [[nodiscard]] auto belongsTo(const texture_resources::MemoryPool& pool) const -> bool;
     [[nodiscard]] auto isUploaded() const -> bool;
     [[nodiscard]] auto reserveUpload(texture_upload::UploadBatchId batchId) -> Result<void>;
@@ -64,12 +71,19 @@ private:
                     const TextureResourceCreateInfo& description,
                     vk::SampleCountFlagBits samples);
     [[nodiscard]] auto bind(const vk::raii::Device& device) -> Result<void>;
+    [[nodiscard]] auto createViews(const vk::raii::Device& device, const TextureResourceCreateInfo& description)
+        -> Result<void>;
+    [[nodiscard]] auto createArrayViews(const vk::raii::Device& device, const TextureResourceCreateInfo& description)
+        -> Result<void>;
 
     texture_resources::MemoryAllocation _allocation;
     vk::raii::Image _image;
     vk::raii::ImageView _view {nullptr};
+    vk::raii::ImageView _arrayView {nullptr};
+    std::vector<vk::raii::ImageView> _layerViews;
     texture_resources::MemoryPool& _pool;
     vk::Extent2D _extent;
+    std::uint32_t _arrayLayers;
     vk::Format _format;
     vk::ImageUsageFlags _usage;
     vk::SampleCountFlagBits _samples;

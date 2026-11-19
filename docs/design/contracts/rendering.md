@@ -1,6 +1,6 @@
 # Rendering and shader contract
 
-Accepted specification for rendering, materials, shader interfaces and GPU billboards. The behavior and layouts define
+Accepted specification for rendering, materials, shader interfaces and procedural draws. The behavior and layouts define
 requirements; implementation follows [the plan](../../development/PLAN.md).
 
 ## Rendering path
@@ -15,8 +15,21 @@ shader array. Any practical budget or device limit is explicit and validated.
 
 The intended path uses HDR intermediate lighting, tone mapping, and SDR output. Depth follows the
 accepted [camera contract](scene.md#transforms-and-camera-conventions). The exact formats, tone-mapping operator and
-presentation/color-space handling are specified in the first-version renderer contract below. Full environment
-lighting/IBL is not an implicit first-version requirement.
+presentation/color-space handling are specified in the first-version renderer contract below.
+For v1, built-in Lit materials support opt-in [image-based lighting](../../development/tasks/environment-lighting.md)
+from an application-supplied environment. It replaces the simple ambient term with diffuse environment lighting
+and adds roughness-dependent reflections. Direct lights apply with or without an environment.
+
+Windowed Engines request FIFO, MAILBOX or IMMEDIATE presentation through
+`EngineOptions::presentationMode`; FIFO is the default. Panda uses the requested
+mode exactly and returns `Unsupported` when the surface does not support it.
+`EngineFeatures::presentationMode` reports the effective mode for a windowed
+Engine and is absent for a headless Engine. Swapchain recreation checks support
+again before creating each generation. FIFO waits for vertical blanking,
+MAILBOX replaces a pending frame with the newest request at vertical blanking,
+and IMMEDIATE may tear because it does not wait. See the
+[Vulkan present-mode reference](https://docs.vulkan.org/refpages/latest/refpages/source/VkPresentModeKHR.html)
+for the normative behavior.
 
 ## Offscreen output
 
@@ -151,7 +164,7 @@ The standard draw interface separates renderer-owned data from application shade
 bindings and packing when implementing each interface; group resources by use and update frequency where useful.
 Independent Vulkan compute programs are not forced into a material descriptor layout.
 
-## Shader integration and billboard scope
+## Shader integration
 
 ### Programs, materials, and application resources
 
@@ -250,86 +263,40 @@ meaning cannot be inferred from equal byte sizes; the application remains
 responsible for semantic compatibility. No implicit migration of old parameter
 bytes is allowed.
 
-### GPU cloud representation
+### Procedural instanced draws
 
-Accept a billboard cloud description directly from the application; an optional
-scene may also manage it. Updates validate and atomically replace the binding
-description for future frames without reinitializing the application solver. A
-cloud is one instanced batch per applicable pass, split only if a documented
-device/range limit requires it.
+A procedural draw specifies the custom program, bound resources, vertex and
+instance counts, and a conservative bound for culling. The application supplies
+the vertex generation, storage-buffer layouts and any per-instance parameters.
+It can bind same-Engine buffers produced by Vulkan or an external compute backend
+through the existing resource and handoff contracts. No mesh binding is required.
 
-The description contains a required position/radius Buffer slice, optional color
-slice, uint32 instance count, Material, optional ShaderResources override,
-conservative local AABB, and cast/receive-shadow flags. Empty count is legal and
-emits no draw. Capacity follows from slice sizes and stride; reject a count
-exceeding either supplied slice. No CPU count-sized scan or particle upload is
-part of scene preparation.
+Submit one instanced draw per visible batch in each applicable camera or shadow
+pass. A zero count emits no draw. Count and binding changes take effect at frame
+boundaries after validation; submitted frames retain the previous resources until
+completion. Validate the reflected interface, buffer ownership, slice range and
+alignment. The application must keep its count within the capacity of shader-indexed
+streams. The renderer performs no per-instance CPU scan, format conversion or readback.
+The initial count is CPU-supplied; indirect counts are outside v1.
 
-Standard data layout, std430 arrays with no header:
+### Reference sphere impostor shaders
 
-| Buffer          | GLSL element | Stride   | Meaning                                            |
-|-----------------|--------------|----------|----------------------------------------------------|
-| Position/radius | `vec4`       | 16 bytes | xyz center in cloud-local meters; w radius         |
-| Optional color  | `vec4`       | 16 bytes | linear RGBA tint; missing stream contributes white |
+The application example and the cloud benchmark use an opaque sphere impostor
+with six procedurally generated vertices per instance. Their shared fixture uses
+std430 arrays of 16-byte float records: center XYZ and radius, plus optional linear
+RGBA in a separate array. Missing color is white. The application validates counts
+against the streams, supplies finite centers and nonnegative finite radii, and
+uses zero radius to disable a slot. The demo supports translation, rotation and
+positive uniform scale for the visualization, independently of the simulation domain.
 
-Offsets obey Vulkan storage-buffer alignment and ranges cover the declared
-count. Use a small C++20-compatible plain float-field record with asserted
-offsets/size for CUDA producers; do not require engine/GLM headers or assume
-CUDA `float3` packing. A producer writes directly to the shared allocation or
-uses its own GPU conversion kernel when its private layout differs. Panda does
-not translate solver layouts or read particles back. Custom GLSL may instead
-consume application resource layouts.
-
-Finite centers/colors and nonnegative finite radii are producer invariants, not
-CPU validation promises. Radius zero disables a slot; negative/NaN data is
-invalid. The initial draw count is CPU-known; GPU compaction/indirect-count
-convenience is deferred, not silently implemented with a readback. Changing
-CPU-known count is O (1).
-
-Cloud transforms allow translation, rotation and positive uniform world scale
-only; scale multiplies radii. Reject reflection, nonuniform scale or shear for
-the built-in sphere path rather than turning spheres into undocumented
-ellipsoids. World-space simulation data uses an identity cloud transform. The
-physical domain remains an independent entity, not the cloud's parent by
-default.
-
-### Sphere billboards, not a fluid surface
-
-The retained particle vertex shader generates six vertices per instance. Its
-fragment shader already performs ray/sphere intersection for lighting, but never
-writes the sphere's depth: rasterized quad depth remains. This is source
-inspection, not a measured runtime defect. See the archived
-[vertex](../../../legacy/drip-engine/src/gfx/shader/vs/Particles.vert) and
-[fragment](../../../legacy/drip-engine/src/gfx/shader/fs/Particles.frag)
-shaders.
-
-Use a lit sphere-impostor baseline: conservative procedural quad, ray/sphere
-hit, surface normal and hit position for lighting/shadow lookup, and projected
-hit depth for the depth buffer. Discard ray misses. Camera and shadow passes
-must use the same sphere geometry, including all six point-light views. Do not
-give particles spherical lighting but flat-quad occlusion. Opaque color is the
-default; this is not transparent water, surface reconstruction, refraction or a
-metaball renderer.
-
-Conservative screen bounds must cover off-axis perspective spheres, orthographic
-views and near-plane intersections; the old center-plane radius quad is not a
-proof of coverage. Do not force early fragment tests that bypass the required
-shader depth. The first-version renderer contract below specifies
-near/inside-sphere behavior and the conservative projection algorithm. Writing
-shader depth may cost early-depth efficiency; profile it instead of claiming
-free correctness.
-
-Baseline silhouettes use ray-hit discard at the normal fragment shading
-frequency. MSAA does not promise perfectly sample-shaded analytic sphere edges.
-Per-sample intersection and transparent sorting are not implicit requirements.
-Include enlarged silhouette/intersection captures in acceptance and report this
-quality limitation.
-
-Required evidence for this slice: a custom GLSL material without an engine edit;
-application UBO and compute-written SSBO reads; wrong-layout/foreign-context
-rejection; transactional camera+shadow reload; missing-shadow-variant error;
-constant CPU object and draw counts as particle count increases; sphere depth
-against a mesh reference; world-scale/domain-independence tests.
+The camera and explicit shadow shaders use conservative quads and ray/sphere
+intersections. Discard misses and write the projected hit depth. Use the hit
+position and normal for lighting and shadow lookup. The sphere surface determines
+occlusion in all views, including all six point-light faces. Avoid forcing early
+fragment tests that bypass shader depth. Measure its depth cost and include
+enlarged silhouette captures. The baseline uses normal fragment shading frequency;
+MSAA does not guarantee sample-shaded analytic edges. See
+[reference projection](#reference-sphere-projection-and-tests).
 
 ## First-version renderer contract
 
@@ -341,7 +308,7 @@ public API names and signatures are selected during implementation.
 The primary renderer accepts application-supplied `RenderView` data without a
 scene, tools or ECS dependency. An optional scene prepares the same draw data
 and uses the same renderer. `RenderView` is a transient value containing one
-camera, lights, and mesh/cloud draw descriptions with owning resource handles
+camera, lights, and mesh/procedural draw descriptions with owning resource handles
 and copied transforms. The renderer copies/retains everything needed for
 submission before returning. It owns no ECS entity and does not serialize a
 view. Both routes use the [frame](resources.md#frame-and-window-state) protocol
@@ -374,7 +341,8 @@ Point and spot direct illumination uses inverse-square distance attenuation with
 a finite-range fade: `max(1 - (distance / range)^4, 0) / distance^2`. Spot
 illumination also multiplies by the squared, clamped interpolation between the
 cosines of its inner and outer cone angles. This follows the recommended
-attenuation model in [KHR_lights_punctual](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_lights_punctual/README.md).
+attenuation model
+in [KHR_lights_punctual](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_lights_punctual/README.md).
 Scene point lights use the entity's world position; directional and spot lights
 also use its local -Z direction transformed by the world rotation. Light range
 and cone shape do not scale with the entity.
@@ -427,9 +395,10 @@ host/shader record layout synchronized.
 
 ### Materials, faces, and output
 
-Built-in lit uses direct-light GGX/Smith/Schlick metallic/roughness BRDF with
-dielectric F0=0.04, Lambert diffuse, a simple ambient term and material maps;
-unlit uses base color and emission. Base color multiplies texture, material tint,
+Built-in Lit uses a direct-light GGX/Smith/Schlick metallic/roughness BRDF with
+dielectric F0=0.04, Lambert diffuse and material maps. It uses the supplied
+environment for indirect lighting, or the simple ambient term when no
+environment is supplied. Unlit uses base color and emission. Base color multiplies texture, material tint,
 instance tint and vertex color (white when absent). The linear emissive factor
 multiplies an optional sRGB emissive texture; its alpha is ignored. Emission is
 added before tone mapping in both Lit and Unlit shading, but does not affect other
@@ -466,16 +435,19 @@ anisotropy.
 
 ### Shadows, quality, and pipelines
 
-Use one sampled 2D depth atlas per frame slot. A shadowed directional/spot light
-uses one tile; point lights use six cube-oriented views in six tiles and
-reconstruct the selected face in shader. This implements the accepted six-view
-point-shadow behavior without requiring descriptor-array indexing or cube-array
-support. The default atlas is 4096 square, packed deterministically in 256-pixel
-cells with a four-texel guard per tile; requested face resolutions are
+Use one sampled 2D-array depth image per frame slot; each 4096-square array layer
+is an atlas page, and the image grows to the layer count required by the active
+shadow plan. A shadowed directional/spot light uses one tile; point lights use six
+cube-oriented views in six tiles and reconstruct the selected face in shader.
+This implements the accepted six-view point-shadow behavior without requiring
+descriptor-array indexing or cube-array support. Tiles store their layer index,
+and each page is rendered through a 2D attachment view while the shader samples
+the matching array layer. Pages are packed deterministically in 256-pixel cells
+with a four-texel guard per tile; requested face resolutions are
 256/512/1024/2048. Defaults: Studio directional 2048 with 30 m orthographic
 width and near/far 0.1/80 m; direction normalized (-0.4,-1,-0.3), linear white
 color and intensity 3; spot 1024; point faces 512. Invalid requests, unsupported
-image dimensions or insufficient atlas area return a clear error before
+image dimensions or device array-layer limits return a clear error before
 publishing settings. No silent resolution reduction or shadow-light dropping. A
 one-pixel sampler footprint stays inside a guarded tile; clamps prevent PCF
 leakage across neighbors. Use 3x3 PCF; initial depth bias 0.0005 and normal
@@ -509,7 +481,7 @@ replacement. Warmup covers known scene program and state combinations; first use
 outside warmup is reported. Cache correctness never substitutes for the actual
 key or shader-interface validation.
 
-### Sphere projection edge cases and tests
+### Reference sphere projection and tests
 
 In the GPU vertex stage, project the eight corners and near-plane-clipped edges
 of each sphere's conservative view-space AABB, clamp the resulting screen rect
@@ -520,8 +492,7 @@ pass's near/far clip range; misses discard. This applies to
 orthographic/perspective camera and directional/spot/point shadow views. A
 radius-zero slot discards. Verify the bound against a tessellated sphere across
 off-axis, near-clipped and inside cases; do not rely on the old center-plane
-square. The GPU can reduce conservative bounds later without changing the public
-cloud representation.
+square. The example's projection runs entirely on the GPU.
 
 Acceptance requires reflected offset/stride tests, CPU projection/decomposition
 tests, a GPU first cube with shadow, each light type, 65 lights with an enlarged

@@ -86,6 +86,10 @@ private:
     [[nodiscard]] auto initializeAttachments(vk::Extent2D extent, vk::Format colorFormat) -> std::expected<void, Error>;
     [[nodiscard]] auto initializeBindingsAndPipeline() -> std::expected<void, Error>;
     void recordShadowPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
+    void recordShadowLayer(vk::CommandBuffer command,
+                           std::size_t frameIndex,
+                           const RenderView& view,
+                           std::uint32_t layer);
     void recordShadowView(vk::CommandBuffer command,
                           std::size_t frameIndex,
                           const RenderView& view,

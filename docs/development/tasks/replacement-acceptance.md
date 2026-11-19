@@ -19,8 +19,11 @@ before requesting replacement acceptance.
 
 ## Acceptance
 
-Three-run baseline reports, visual/interop/physics evidence, ordinary+unity builds
-and a full external application combining graphics, assets, scene tools and compute.
-Record skips and environment.
+- Collect three-run baseline reports, visual, interop and physics evidence,
+  and ordinary and unity build results. Record skips and environment.
+- Verify the complete import, edit, navigate, save and reopen workflow in
+  the [Scene Composer example](scene-composer-example.md).
+- Verify the external application combining graphics, assets, scene tools
+  and compute.
 
 Learning: Reproduce one baseline and explain one measured bottleneck.

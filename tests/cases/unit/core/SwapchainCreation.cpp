@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <panda/EngineOptions.hpp>
 #include <panda/base/Error.hpp>
 #include <span>
 #include <string>
@@ -31,12 +32,32 @@ using testing::_;
 using testing::NotNull;
 using testing::Return;
 
+auto toVulkanPresentMode(vk::PresentModeKHR mode) noexcept -> VkPresentModeKHR
+{
+    return static_cast<VkPresentModeKHR>(mode);
+}
+
+auto requestedVulkanPresentMode(panda::EngineOptions::PresentationMode mode) noexcept -> vk::PresentModeKHR
+{
+    switch (mode)
+    {
+    case panda::EngineOptions::PresentationMode::Fifo:
+        return vk::PresentModeKHR::eFifo;
+    case panda::EngineOptions::PresentationMode::Mailbox:
+        return vk::PresentModeKHR::eMailbox;
+    case panda::EngineOptions::PresentationMode::Immediate:
+        return vk::PresentModeKHR::eImmediate;
+    }
+    return vk::PresentModeKHR::eFifo;
+}
+
 enum class Failure : std::uint8_t
 {
     None,
     Capabilities,
     Formats,
     Configuration,
+    PresentModes,
     Swapchain,
     Images,
     View,
@@ -59,6 +80,8 @@ auto failureName(const testing::TestParamInfo<Failure>& info) -> std::string
         return "Formats";
     case Failure::Configuration:
         return "Configuration";
+    case Failure::PresentModes:
+        return "PresentModes";
     case Failure::Swapchain:
         return "Swapchain";
     case Failure::Images:
@@ -128,13 +151,35 @@ protected:
                 });
     }
 
-    void verifySwapchainIdentity(const VkSwapchainCreateInfoKHR& info)
+    void expectPresentModes(Failure failure, bool fifoOnly = false)
+    {
+        const auto modes =
+            std::array {vk::PresentModeKHR::eFifo, vk::PresentModeKHR::eMailbox, vk::PresentModeKHR::eImmediate};
+        const auto modeCount = fifoOnly ? 1U : static_cast<std::uint32_t>(modes.size());
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceSurfacePresentModesKHR(fakeHandle<VkPhysicalDevice>(2), surface, NotNull(), _))
+            .Times(2)
+            .WillRepeatedly([failure, modes, modeCount](VkPhysicalDevice,
+                                                        VkSurfaceKHR,
+                                                        std::uint32_t* count,
+                                                        VkPresentModeKHR* output) noexcept {
+                *count = modeCount;
+                if (output != nullptr)
+                {
+                    std::ranges::transform(std::span {modes}.first(modeCount), output, toVulkanPresentMode);
+                    return failure == Failure::PresentModes ? exhausted : success;
+                }
+                return success;
+            });
+    }
+
+    void verifySwapchainIdentity(const VkSwapchainCreateInfoKHR& info, vk::PresentModeKHR presentMode)
     {
         EXPECT_EQ(info.surface, surface);
         EXPECT_EQ(info.oldSwapchain, oldSwapchain);
         EXPECT_EQ(info.minImageCount, 2U);
         EXPECT_EQ(info.imageExtent.width, 640U);
-        EXPECT_EQ(info.presentMode, static_cast<VkPresentModeKHR>(vk::PresentModeKHR::eFifo));
+        EXPECT_EQ(info.presentMode, static_cast<VkPresentModeKHR>(presentMode));
     }
 
     static void verifySwapchainSharing(const VkSwapchainCreateInfoKHR& info, bool separateQueues)
@@ -153,20 +198,20 @@ protected:
         }
     }
 
-    void verifySwapchainInfo(const VkSwapchainCreateInfoKHR& info, bool separateQueues)
+    void verifySwapchainInfo(const VkSwapchainCreateInfoKHR& info, bool separateQueues, vk::PresentModeKHR presentMode)
     {
-        verifySwapchainIdentity(info);
+        verifySwapchainIdentity(info, presentMode);
         verifySwapchainSharing(info, separateQueues);
     }
 
-    void expectSwapchain(Failure failure, bool separateQueues)
+    void expectSwapchain(Failure failure, bool separateQueues, vk::PresentModeKHR presentMode)
     {
         EXPECT_CALL(vulkan, vkCreateSwapchainKHR(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
-            .WillOnce([this, failure, separateQueues](VkDevice,
-                                                      const VkSwapchainCreateInfoKHR* info,
-                                                      const VkAllocationCallbacks*,
-                                                      VkSwapchainKHR* output) {
-                verifySwapchainInfo(*info, separateQueues);
+            .WillOnce([this, failure, separateQueues, presentMode](VkDevice,
+                                                                   const VkSwapchainCreateInfoKHR* info,
+                                                                   const VkAllocationCallbacks*,
+                                                                   VkSwapchainKHR* output) {
+                verifySwapchainInfo(*info, separateQueues, presentMode);
                 *output = chain;
                 return failure == Failure::Swapchain ? exhausted : success;
             });
@@ -265,7 +310,11 @@ protected:
         }
     }
 
-    void expectCreation(Failure failure, bool separateQueues = false, bool completedFirstImage = false)
+    void expectCreation(
+        Failure failure,
+        bool separateQueues = false,
+        bool completedFirstImage = false,
+        panda::EngineOptions::PresentationMode presentationMode = panda::EngineOptions::PresentationMode::Fifo)
     {
         expectCapabilities(failure);
         if (failure == Failure::Capabilities)
@@ -277,7 +326,13 @@ protected:
         {
             return;
         }
-        expectSwapchain(failure, separateQueues);
+        expectPresentModes(failure);
+        if (failure == Failure::PresentModes)
+        {
+            return;
+        }
+        const auto vulkanMode = requestedVulkanPresentMode(presentationMode);
+        expectSwapchain(failure, separateQueues, vulkanMode);
         if (failure == Failure::Swapchain)
         {
             return;
@@ -312,7 +367,9 @@ protected:
         expectImage(completedFirstImage ? 1U : 0U, failure);
     }
 
-    auto create(bool separateQueues = false) -> panda::Result<panda::core::vulkan::SwapchainGeneration>
+    auto create(bool separateQueues = false,
+                panda::EngineOptions::PresentationMode presentationMode = panda::EngineOptions::PresentationMode::Fifo)
+        -> panda::Result<panda::core::vulkan::SwapchainGeneration>
     {
         return panda::core::vulkan::createSwapchainGeneration({
             .physicalDevice = *physicalDevice,
@@ -321,7 +378,8 @@ protected:
             .requested = {320, 240},
             .oldSwapchain = vk::SwapchainKHR {oldSwapchain},
             .queueFamily = 2,
-            .presentQueueFamily = separateQueues ? 3U : 2U
+            .presentQueueFamily = separateQueues ? 3U : 2U,
+            .presentationMode = presentationMode
         });
     }
 
@@ -357,6 +415,36 @@ TEST_F(SwapchainCreationTest, UsesConcurrentSharingForSeparateQueueFamilies)
     ASSERT_TRUE(generation.has_value());
 }
 
+TEST_F(SwapchainCreationTest, UsesRequestedMailboxMode)
+{
+    using Mode = panda::EngineOptions::PresentationMode;
+    expectCreation(Failure::None, false, false, Mode::Mailbox);
+    const auto generation = create(false, Mode::Mailbox);
+    ASSERT_TRUE(generation.has_value());
+}
+
+TEST_F(SwapchainCreationTest, UsesRequestedImmediateMode)
+{
+    using Mode = panda::EngineOptions::PresentationMode;
+    expectCreation(Failure::None, false, false, Mode::Immediate);
+    const auto generation = create(false, Mode::Immediate);
+    ASSERT_TRUE(generation.has_value());
+}
+
+TEST_F(SwapchainCreationTest, RejectsUnsupportedRequestedModeBeforeCreatingSwapchain)
+{
+    using Mode = panda::EngineOptions::PresentationMode;
+    expectCapabilities(Failure::None);
+    expectFormats(Failure::None);
+    expectPresentModes(Failure::None, true);
+    EXPECT_CALL(vulkan, vkCreateSwapchainKHR(_, _, _, _)).Times(0);
+
+    const auto generation = create(false, Mode::Mailbox);
+    ASSERT_FALSE(generation.has_value());
+    EXPECT_EQ(generation.error().code, panda::ErrorCode::Unsupported);
+    EXPECT_NE(generation.error().message.find("MAILBOX"), std::string::npos);
+}
+
 TEST_P(SwapchainCreationTest, FailedCreationDoesNotPublishPartialGenerationOrDestroyFailedOutputs)
 {
     expectCreation(GetParam());
@@ -377,6 +465,7 @@ INSTANTIATE_TEST_SUITE_P(CreationStages,
                          testing::Values(Failure::Capabilities,
                                          Failure::Formats,
                                          Failure::Configuration,
+                                         Failure::PresentModes,
                                          Failure::Swapchain,
                                          Failure::Images,
                                          Failure::View,
@@ -408,7 +497,8 @@ TEST_F(SwapchainCreationTest, IncompleteImageEnumerationRetriesBeforeCreatingIma
 {
     expectCapabilities(Failure::None);
     expectFormats(Failure::None);
-    expectSwapchain(Failure::None, false);
+    expectPresentModes(Failure::None);
+    expectSwapchain(Failure::None, false, vk::PresentModeKHR::eFifo);
     EXPECT_CALL(vulkan, vkGetSwapchainImagesKHR(fakeHandle<VkDevice>(3), chain, NotNull(), testing::IsNull()))
         .WillOnce(testing::DoAll(testing::SetArgPointee<2>(1U), Return(success)))
         .WillOnce(testing::DoAll(testing::SetArgPointee<2>(2U), Return(success)));

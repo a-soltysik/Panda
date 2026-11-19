@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <expected>
 #include <panda/DeviceInfo.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda/base/Error.hpp>
 #include <panda/diagnostics/Logger.hpp>
 #include <span>
@@ -36,6 +37,11 @@ auto makeExtension(std::string_view name) -> VkExtensionProperties
     auto extension = VkExtensionProperties {};
     std::ranges::copy(name, std::span {extension.extensionName}.begin());
     return extension;
+}
+
+auto toVulkanPresentMode(vk::PresentModeKHR mode) noexcept -> VkPresentModeKHR
+{
+    return static_cast<VkPresentModeKHR>(mode);
 }
 
 struct DeviceScenario
@@ -217,25 +223,31 @@ void expectUsableSurfaceFormats(panda::test::VulkanMock& vulkan, const DeviceSce
         });
 }
 
-void expectUsablePresentModes(panda::test::VulkanMock& vulkan, const DeviceScenario& scenario)
+void expectUsablePresentModes(panda::test::VulkanMock& vulkan,
+                              const DeviceScenario& scenario,
+                              bool supportMailbox = false)
 {
+    const auto supported = std::array {vk::PresentModeKHR::eFifo, vk::PresentModeKHR::eMailbox};
     EXPECT_CALL(vulkan,
                 vkGetPhysicalDeviceSurfacePresentModesKHR(scenario.usableDevice, scenario.surface, NotNull(), _))
-        .WillRepeatedly([](VkPhysicalDevice, VkSurfaceKHR, std::uint32_t* count, VkPresentModeKHR* modes) {
-            *count = 1;
-            if (modes != nullptr)
-            {
-                *modes = static_cast<VkPresentModeKHR>(vk::PresentModeKHR::eFifo);
-            }
-            return static_cast<VkResult>(vk::Result::eSuccess);
-        });
+        .WillRepeatedly(
+            [supportMailbox,
+             supported](VkPhysicalDevice, VkSurfaceKHR, std::uint32_t* count, VkPresentModeKHR* modes) noexcept {
+                *count = supportMailbox ? 2U : 1U;
+                if (modes != nullptr)
+                {
+                    std::ranges::transform(std::span {supported}.first(*count), modes, toVulkanPresentMode);
+                }
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
 }
 
 void expectTwoDeviceScenario(panda::test::VulkanMock& vulkan,
                              const DeviceScenario& scenario,
                              vk::Result surfaceSupportResult = vk::Result::eSuccess,
                              bool separateQueueFamilies = false,
-                             TimestampScenario timestamps = {})
+                             TimestampScenario timestamps = {},
+                             bool supportMailbox = false)
 {
     expectPhysicalDevices(vulkan, scenario);
     expectDeviceProperties(vulkan, scenario, timestamps.periodNanoseconds);
@@ -247,7 +259,7 @@ void expectTwoDeviceScenario(panda::test::VulkanMock& vulkan,
     if (surfaceSupportResult == vk::Result::eSuccess)
     {
         expectUsableSurfaceFormats(vulkan, scenario);
-        expectUsablePresentModes(vulkan, scenario);
+        expectUsablePresentModes(vulkan, scenario, supportMailbox);
     }
 }
 
@@ -384,6 +396,22 @@ TEST(DeviceSelection, SelectsSeparateGraphicsAndPresentQueueFamilies)
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(selected->queueFamily, 0U);
     EXPECT_EQ(selected->presentQueueFamily, 1U);
+}
+
+TEST(DeviceSelection, SelectsADeviceThatSupportsTheRequestedPresentationMode)
+{
+    auto vulkan = panda::test::ScopedMock<panda::test::VulkanMock> {};
+    const auto scenario = makeDeviceScenario();
+    expectTwoDeviceScenario(vulkan, scenario, vk::Result::eSuccess, false, {}, true);
+
+    const auto selected = panda::core::vulkan::selectDevice(
+        vk::Instance {scenario.instance},
+        scenario.surface,
+        panda::core::vulkan::InstanceExtensions {.names = {}, .hasKhrMaintenance = true, .hasExtMaintenance = false},
+        panda::EngineOptions::PresentationMode::Mailbox);
+
+    ASSERT_TRUE(selected);
+    EXPECT_EQ(selected->physicalDevice, vk::PhysicalDevice {scenario.usableDevice});
 }
 
 TEST(DeviceSelection, PreservesTimestampPropertiesFromTheSelectedGraphicsQueue)

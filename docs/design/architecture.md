@@ -42,8 +42,9 @@ without tools.
   Neither the renderer nor scene API requires an application ECS. Storage and
   any future ECS integration are implementation decisions, not current API
   promises.
-- A GPU cloud is one renderable with buffers and a conservative bound. Particle
-  count must not create proportional CPU entities, updates or draw calls.
+- An application can visualize a GPU cloud with one procedural instanced draw
+  per applicable pass. Particle count does not create proportional CPU
+  entities, updates or draw calls.
 - Engine-bound resource handles retain GPU inputs until completion. Ownership
   and synchronization are separate obligations; see
   [resources](contracts/resources.md).
@@ -88,7 +89,7 @@ asynchronous dependency scheduler is promised.
 
 [Scene](contracts/scene.md) owns entities, transforms, persistence, import and
 tools. [Rendering](contracts/rendering.md) owns materials, lighting, shader ABI
-and sphere billboards. [Physics](contracts/physics.md) is deliberately limited
+and procedural draws. [Physics](contracts/physics.md) is deliberately limited
 CPU prototyping. [Quality](../development/quality.md) applies to all
 implementation work.
 

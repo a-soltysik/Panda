@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <panda/EngineOptions.hpp>
 #include <panda/vulkan/WindowSurface.hpp>
 #include <span>
 #include <vector>
@@ -51,6 +52,7 @@ struct SwapchainGenerationRequest
     vk::SwapchainKHR oldSwapchain;
     std::uint32_t queueFamily;
     std::uint32_t presentQueueFamily;
+    panda::EngineOptions::PresentationMode presentationMode;
 };
 
 [[nodiscard]] auto chooseSurfaceConfig(vk::SurfaceCapabilitiesKHR capabilities,

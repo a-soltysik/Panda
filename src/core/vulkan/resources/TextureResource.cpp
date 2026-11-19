@@ -15,16 +15,15 @@
 #include <panda/resources/Texture.hpp>
 #include <panda/vulkan/Error.hpp>
 #include <utility>
+#include <vector>
 
 #include "ResourceMappings.hpp"
-#include "VulkanError.hpp"
 #include "resources/memory/MemoryAllocation.hpp"
 #include "resources/memory/MemoryPool.hpp"
 #include "upload/UploadBatchId.hpp"
 
 namespace panda::detail
 {
-using core::vulkan::detail::checkedCreation;
 using core::vulkan::resources::MemoryPool;
 using core::vulkan::resources::MemoryRequest;
 using core::vulkan::upload::UploadBatchId;
@@ -33,10 +32,11 @@ namespace
 {
 auto validateDescription(const TextureResourceCreateInfo& description) -> Result<void>
 {
-    if (description.extent.width == 0 || description.extent.height == 0 ||
+    if (description.extent.width == 0 || description.extent.height == 0 || description.arrayLayers == 0 ||
         description.format == vk::Format::eUndefined || !description.usage)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid texture extent, format or usage")};
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Invalid texture extent, layers, format or usage")};
     }
     constexpr auto viewCapable =
         vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eColorAttachment |
@@ -68,6 +68,12 @@ auto validateFormatAndExtent(const vk::raii::PhysicalDevice& physicalDevice,
         description.extent.height > support.value.maxExtent.height)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture extent exceeds device limits")};
+    }
+    if (description.arrayLayers > 1 &&
+        (description.arrayLayers > support.value.maxArrayLayers ||
+         description.arrayLayers > physicalDevice.getProperties().limits.maxImageArrayLayers))
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Texture array layer count exceeds device limits")};
     }
     return {};
 }
@@ -108,7 +114,7 @@ auto createNativeImage(const vk::raii::Device& device,
         .format = description.format,
         .extent = vk::Extent3D {.width = description.extent.width, .height = description.extent.height, .depth = 1},
         .mipLevels = 1,
-        .arrayLayers = 1,
+        .arrayLayers = description.arrayLayers,
         .samples = samples,
         .tiling = vk::ImageTiling::eOptimal,
         .usage = description.usage,
@@ -140,11 +146,21 @@ auto imageAspect(vk::Format format) -> vk::ImageAspectFlags
     return vk::ImageAspectFlagBits::eColor;
 }
 
-auto createNativeView(const vk::raii::Device& device, vk::Image image, vk::Format format) -> Result<vk::raii::ImageView>
+struct NativeImageViewDescription
+{
+    vk::ImageViewType type {vk::ImageViewType::e2D};
+    std::uint32_t baseArrayLayer {0};
+    std::uint32_t layerCount {1};
+};
+
+auto createNativeView(const vk::raii::Device& device,
+                      vk::Image image,
+                      vk::Format format,
+                      NativeImageViewDescription description = {}) -> Result<vk::raii::ImageView>
 {
     const auto info = vk::ImageViewCreateInfo {
         .image = image,
-        .viewType = vk::ImageViewType::e2D,
+        .viewType = description.type,
         .format = format,
         .components = {.r = vk::ComponentSwizzle::eIdentity,
                        .g = vk::ComponentSwizzle::eIdentity,
@@ -153,10 +169,16 @@ auto createNativeView(const vk::raii::Device& device, vk::Image image, vk::Forma
         .subresourceRange = {.aspectMask = imageAspect(format),
                        .baseMipLevel = 0,
                        .levelCount = 1,
-                       .baseArrayLayer = 0,
-                       .layerCount = 1}
+                       .baseArrayLayer = description.baseArrayLayer,
+                       .layerCount = description.layerCount}
     };
-    return checkedCreation(device.createImageView(info));
+    auto imageView = vk::ImageView {};
+    const auto result = (*device).createImageView(&info, nullptr, &imageView, *device.getDispatcher());
+    if (result != vk::Result::eSuccess)
+    {
+        return std::unexpected {makeVulkanError(result)};
+    }
+    return Result<vk::raii::ImageView> {std::in_place, device, imageView};
 }
 }
 
@@ -239,12 +261,10 @@ auto TextureResource::createNative(const vk::raii::Device& device,
     {
         return std::unexpected {std::move(resource.error())};
     }
-    auto view = createNativeView(device, *(*resource)->_image, description.format);
-    if (!view)
+    if (const auto views = (*resource)->createViews(device, description); !views)
     {
-        return std::unexpected {std::move(view.error())};
+        return std::unexpected {views.error()};
     }
-    (*resource)->_view = std::move(*view);
     return std::move(*resource);
 }
 
@@ -255,10 +275,52 @@ TextureResource::TextureResource(MemoryPool& pool,
     : _image {std::move(image)},
       _pool {pool},
       _extent {description.extent},
+      _arrayLayers {description.arrayLayers},
       _format {description.format},
       _usage {description.usage},
       _samples {samples}
 {
+}
+
+auto TextureResource::createViews(const vk::raii::Device& device, const TextureResourceCreateInfo& description)
+    -> Result<void>
+{
+    auto view = createNativeView(device, *_image, description.format);
+    if (!view)
+    {
+        return std::unexpected {std::move(view.error())};
+    }
+    _view = std::move(*view);
+    if (description.createArrayView || description.arrayLayers > 1)
+    {
+        return createArrayViews(device, description);
+    }
+    return {};
+}
+
+auto TextureResource::createArrayViews(const vk::raii::Device& device, const TextureResourceCreateInfo& description)
+    -> Result<void>
+{
+    auto arrayView = createNativeView(device,
+                                      *_image,
+                                      description.format,
+                                      {.type = vk::ImageViewType::e2DArray, .layerCount = description.arrayLayers});
+    if (!arrayView)
+    {
+        return std::unexpected {std::move(arrayView.error())};
+    }
+    _arrayView = std::move(*arrayView);
+    _layerViews.reserve(description.arrayLayers - 1U);
+    for (auto layer = std::uint32_t {1}; layer < description.arrayLayers; ++layer)
+    {
+        auto layerView = createNativeView(device, *_image, description.format, {.baseArrayLayer = layer});
+        if (!layerView)
+        {
+            return std::unexpected {std::move(layerView.error())};
+        }
+        _layerViews.push_back(std::move(*layerView));
+    }
+    return {};
 }
 
 auto TextureResource::bind(const vk::raii::Device& device) -> Result<void>
@@ -322,6 +384,25 @@ auto TextureResource::getNative() const -> vk::Image
 auto TextureResource::getNativeView() const -> vk::ImageView
 {
     return *_view;
+}
+
+auto TextureResource::getNativeArrayView() const -> vk::ImageView
+{
+    return *_arrayView;
+}
+
+auto TextureResource::getLayerView(std::uint32_t layer) const -> vk::ImageView
+{
+    if (layer == 0)
+    {
+        return *_view;
+    }
+    return *_layerViews.at(layer - 1U);
+}
+
+auto TextureResource::getArrayLayers() const noexcept -> std::uint32_t
+{
+    return _arrayLayers;
 }
 
 auto TextureResource::belongsTo(const MemoryPool& pool) const -> bool

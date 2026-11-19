@@ -3,6 +3,7 @@
 #include <chrono>
 #include <nlohmann/json.hpp>  // IWYU pragma: keep
 #include <nlohmann/json_fwd.hpp>
+#include <panda/EngineOptions.hpp>
 #include <panda_bench/Report.hpp>
 #include <utility>
 
@@ -19,7 +20,9 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     report.vulkanApiVersion = 0x00403000;
     report.requestedWindowWidth = 1920;
     report.requestedWindowHeight = 1080;
-    report.requestedLightCount = 65;
+    report.requestedLightCount = 200;
+    report.requestedShadowedLightCount = 65;
+    report.requestedPresentationMode = panda::EngineOptions::PresentationMode::Mailbox;
     report.requestedWarmup = std::chrono::seconds {2};
     report.requestedMeasurement = std::chrono::seconds {4};
     report.requestedRuns = 1;
@@ -28,6 +31,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     run.framebufferWidth = 1920;
     run.framebufferHeight = 1080;
     run.effectiveSampleCount = 4;
+    run.effectivePresentationMode = panda::EngineOptions::PresentationMode::Mailbox;
     run.startupDuration = std::chrono::nanoseconds {10};
     run.completionWaitDuration = std::chrono::nanoseconds {20};
     run.sampleDrainDuration = std::chrono::nanoseconds {30};
@@ -45,10 +49,10 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
 
     const auto json = nlohmann::json::parse(panda_bench::serialize(report));
 
-    EXPECT_EQ(json.at("schemaVersion"), 5);
+    EXPECT_EQ(json.at("schemaVersion"), 7);
     EXPECT_EQ(json.at("profile").at("name"), "smoke");
-    EXPECT_EQ(json.at("profile").at("version"), 3);
-    EXPECT_EQ(json.at("workload"), "renderStaticCubeWithLights");
+    EXPECT_EQ(json.at("profile").at("version"), 5);
+    EXPECT_EQ(json.at("workload"), "renderStaticColoredScene");
     EXPECT_EQ(json.at("code").at("revision"), "123456789abc");
     EXPECT_FALSE(json.at("code").contains("dirtyAtConfigure"));
     EXPECT_EQ(json.at("environment").at("cpuModel"), "Test CPU");
@@ -58,11 +62,14 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     EXPECT_EQ(json.at("environment").at("driver").at("version"), 123);
     EXPECT_EQ(json.at("settings").at("requestedWindowExtent").at("width"), 1920);
     EXPECT_EQ(json.at("settings").at("requestedWindowExtent").at("height"), 1080);
-    EXPECT_EQ(json.at("settings").at("requestedLightCount"), 65);
+    EXPECT_EQ(json.at("settings").at("requestedLightCount"), 200);
+    EXPECT_EQ(json.at("settings").at("requestedShadowedLightCount"), 65);
+    EXPECT_EQ(json.at("settings").at("requestedPresentationMode"), "mailbox");
     EXPECT_EQ(json.at("settings").at("requestedMeasurementNanoseconds"), 4'000'000'000LL);
     EXPECT_EQ(json.at("runs").size(), 1U);
     EXPECT_EQ(json.at("runs").at(0).at("effectiveFramebufferExtent").at("width"), 1920);
     EXPECT_EQ(json.at("runs").at(0).at("effectiveSampleCount"), 4);
+    EXPECT_EQ(json.at("runs").at(0).at("effectivePresentationMode"), "mailbox");
     EXPECT_EQ(json.at("runs").at(0).at("completionWaitDurationNanoseconds"), 20);
     EXPECT_EQ(json.at("runs").at(0).at("sampleDrainDurationNanoseconds"), 30);
     EXPECT_EQ(json.at("runs").at(0).at("cpuFrameDurationStatistics").at("p50Nanoseconds"), 150);
@@ -80,8 +87,11 @@ TEST(BenchmarkReport, OmitsEnvironmentValuesThatWereNotCollected)
     const auto json = nlohmann::json::parse(panda_bench::serialize(panda_bench::Report {}));
     const auto& environment = json.at("environment");
 
-    EXPECT_EQ(json.at("workload"), "renderStaticCube");
+    EXPECT_EQ(json.at("workload"), "renderStaticColoredScene");
     EXPECT_EQ(json.at("settings").at("requestedLightCount"), 0);
+    EXPECT_EQ(json.at("settings").at("requestedShadowedLightCount"), 0);
+    EXPECT_EQ(json.at("settings").at("requestedPresentationMode"), "fifo");
+    EXPECT_TRUE(json.at("runs").empty());
     EXPECT_FALSE(environment.contains("cpuModel"));
     EXPECT_FALSE(environment.contains("gpuModel"));
     EXPECT_FALSE(environment.contains("driver"));

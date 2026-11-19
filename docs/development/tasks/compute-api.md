@@ -21,13 +21,15 @@ Paths: `include/core/panda/`, `include/cuda/panda/cuda/`, `src/cuda/`,
 `examples/`, tests and directly affected documentation.
 Specifications: [Compute and external buffers](../../design/contracts/compute.md),
 [resource lifetime](../../design/contracts/resources.md#frame-contexts-and-retirement),
-[GPU clouds](../../design/contracts/rendering.md#gpu-cloud-representation).
+[procedural instanced draws](../../design/contracts/rendering.md#procedural-instanced-draws).
 
 ## Acceptance
 
 Demonstrate an application choosing zero, one or several simulation steps before a
 rendered frame; the selected steps are submitted as one batch, handed off to Vulkan
-and retained through their final use. Test the graphics-only path, CUDA absence,
+and retained through their final use. Extend the custom-shader example to have
+CUDA write its instance buffer and Vulkan consume that same buffer directly in
+camera and shadow draws. Test the graphics-only path, CUDA absence,
 submission errors and safe shutdown on Windows/Linux. Verify there is no implicit
 CPU bounce or recurring engine scheduler.
 

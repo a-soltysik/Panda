@@ -5,6 +5,7 @@
 #include <expected>
 #include <filesystem>
 #include <optional>
+#include <panda/EngineOptions.hpp>
 #include <panda/rendering/PerformanceManager.hpp>
 #include <string>
 #include <vector>
@@ -17,6 +18,7 @@ struct RunReport
     std::uint32_t framebufferWidth {0};
     std::uint32_t framebufferHeight {0};
     std::uint32_t effectiveSampleCount {1};
+    std::optional<panda::EngineOptions::PresentationMode> effectivePresentationMode;
     std::chrono::nanoseconds startupDuration {};
     std::chrono::nanoseconds warmupDuration {};
     std::chrono::nanoseconds measurementWallDuration {};
@@ -48,6 +50,8 @@ struct Report
     std::uint32_t requestedWindowWidth {0};
     std::uint32_t requestedWindowHeight {0};
     std::uint32_t requestedLightCount {0};
+    std::uint32_t requestedShadowedLightCount {0};
+    panda::EngineOptions::PresentationMode requestedPresentationMode {panda::EngineOptions::PresentationMode::Fifo};
     std::chrono::seconds requestedWarmup {0};
     std::chrono::seconds requestedMeasurement {0};
     std::uint64_t requestedRuns {0};

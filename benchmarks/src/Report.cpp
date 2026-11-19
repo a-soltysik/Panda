@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>  // IWYU pragma: keep
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
+#include <panda/EngineOptions.hpp>
 #include <panda_bench/Report.hpp>
 #include <panda_bench/Statistics.hpp>
 #include <string>
@@ -19,6 +20,22 @@ namespace panda_bench
 namespace
 {
 using Json = nlohmann::json;
+constexpr auto benchmarkReportSchemaVersion = 7U;
+constexpr auto smokeProfileVersion = 5U;
+
+auto presentationModeName(panda::EngineOptions::PresentationMode mode) -> std::string
+{
+    switch (mode)
+    {
+    case panda::EngineOptions::PresentationMode::Fifo:
+        return "fifo";
+    case panda::EngineOptions::PresentationMode::Mailbox:
+        return "mailbox";
+    case panda::EngineOptions::PresentationMode::Immediate:
+        return "immediate";
+    }
+    return "unknown";
+}
 
 auto statisticsJson(const std::optional<SampleStatistics>& statistics) -> Json
 {
@@ -53,6 +70,8 @@ auto runJson(const RunReport& run) -> Json
         {"runIndex",                           run.runIndex                                                             },
         {"effectiveFramebufferExtent",         Json {{"width", run.framebufferWidth}, {"height", run.framebufferHeight}}},
         {"effectiveSampleCount",               run.effectiveSampleCount                                                 },
+        {"effectivePresentationMode",
+         run.effectivePresentationMode ? Json(presentationModeName(*run.effectivePresentationMode)) : Json {}           },
         {"startupDurationNanoseconds",         run.startupDuration.count()                                              },
         {"warmupDurationNanoseconds",          run.warmupDuration.count()                                               },
         {"measurementWallDurationNanoseconds", run.measurementWallDuration.count()                                      },
@@ -73,6 +92,8 @@ auto settingsJson(const Report& report) -> Json
         {"requestedWindowExtent",
          Json {{"width", report.requestedWindowWidth}, {"height", report.requestedWindowHeight}}  },
         {"requestedLightCount",             report.requestedLightCount                            },
+        {"requestedShadowedLightCount",     report.requestedShadowedLightCount                    },
+        {"requestedPresentationMode",       presentationModeName(report.requestedPresentationMode)},
         {"validationEnabled",               false                                                 },
         {"externalProfilerEnabled",         false                                                 },
         {"framePerformanceSamplingEnabled", true                                                  },
@@ -121,14 +142,14 @@ auto serialize(const Report& report) -> std::string
     auto runs = Json::array();
     std::ranges::transform(report.runs, std::back_inserter(runs), runJson);
     return Json {
-               {"schemaVersion", 5                                                                                  },
-               {"profile",       Json {{"name", "smoke"}, {"version", 3}}                                           },
-               {"workload",      report.requestedLightCount == 0 ? "renderStaticCube" : "renderStaticCubeWithLights"},
-               {"code",          Json {{"revision", report.revision}}                                               },
-               {"environment",   environmentJson(report)                                                            },
-               {"settings",      settingsJson(report)                                                               },
-               {"runs",          std::move(runs)                                                                    },
-               {"outcome",       Json {{"status", report.outcome}, {"message", report.outcomeMessage}}              }
+               {"schemaVersion", benchmarkReportSchemaVersion                                         },
+               {"profile",       Json {{"name", "smoke"}, {"version", smokeProfileVersion}}           },
+               {"workload",      "renderStaticColoredScene"                                           },
+               {"code",          Json {{"revision", report.revision}}                                 },
+               {"environment",   environmentJson(report)                                              },
+               {"settings",      settingsJson(report)                                                 },
+               {"runs",          std::move(runs)                                                      },
+               {"outcome",       Json {{"status", report.outcome}, {"message", report.outcomeMessage}}}
     }
                .dump(2) +
            "\n";

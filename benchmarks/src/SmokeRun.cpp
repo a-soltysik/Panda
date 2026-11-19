@@ -131,6 +131,7 @@ auto SmokeRun::initialize() -> std::expected<void, Failure>
     _initialExtent = extent;
     _run.framebufferWidth = extent.x;
     _run.framebufferHeight = extent.y;
+    _run.effectivePresentationMode = environment->presentationMode;
     _report.gpuModel = environment->gpuModel;
     _report.driver = environment->driver;
     _report.vulkanApiVersion = environment->vulkanApiVersion;

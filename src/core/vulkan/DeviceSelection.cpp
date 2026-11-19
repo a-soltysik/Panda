@@ -12,6 +12,7 @@
 #include <expected>
 #include <iterator>
 #include <optional>
+#include <panda/EngineOptions.hpp>
 #include <panda/diagnostics/Logger.hpp>
 #include <panda/vulkan/Error.hpp>
 #include <panda/vulkan/WindowSurface.hpp>
@@ -201,6 +202,50 @@ auto instanceExtensions(const WindowSurface* surface, bool enableValidation) -> 
 
 namespace
 {
+auto requestedPresentMode(EngineOptions::PresentationMode requested)
+    -> std::expected<std::pair<vk::PresentModeKHR, std::string_view>, Error>
+{
+    switch (requested)
+    {
+    case EngineOptions::PresentationMode::Fifo:
+        return std::pair {vk::PresentModeKHR::eFifo, "FIFO"};
+    case EngineOptions::PresentationMode::Mailbox:
+        return std::pair {vk::PresentModeKHR::eMailbox, "MAILBOX"};
+    case EngineOptions::PresentationMode::Immediate:
+        return std::pair {vk::PresentModeKHR::eImmediate, "IMMEDIATE"};
+    default:
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Unknown presentation mode")};
+    }
+}
+}
+
+auto selectPresentMode(vk::PhysicalDevice physicalDevice,
+                       vk::SurfaceKHR surface,
+                       EngineOptions::PresentationMode requested) -> std::expected<vk::PresentModeKHR, Error>
+{
+    const auto requestedMode = requestedPresentMode(requested);
+    if (!requestedMode)
+    {
+        return std::unexpected {requestedMode.error()};
+    }
+    const auto modes = enumerateVulkan<vk::PresentModeKHR>([&](std::uint32_t* count, vk::PresentModeKHR* output) {
+        return physicalDevice.getSurfacePresentModesKHR(surface, count, output);
+    });
+    if (!modes)
+    {
+        return std::unexpected {modes.error()};
+    }
+    if (std::ranges::find(*modes, requestedMode->first) == modes->end())
+    {
+        return std::unexpected {makeError(
+            ErrorCode::Unsupported,
+            std::string {"Surface does not support requested "} + std::string {requestedMode->second} + " mode")};
+    }
+    return requestedMode->first;
+}
+
+namespace
+{
 auto chooseMaintenance(const std::vector<vk::ExtensionProperties>& listed, const InstanceExtensions& extensions)
     -> std::optional<SwapchainMaintenance>
 {
@@ -365,7 +410,9 @@ auto selectQueues(vk::PhysicalDevice physicalDevice,
     return selectWindowQueues(physicalDevice, surface, families);
 }
 
-auto supportsSurfaceFormats(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface) -> std::expected<bool, Error>
+auto supportsSurfaceFormats(vk::PhysicalDevice physicalDevice,
+                            vk::SurfaceKHR surface,
+                            EngineOptions::PresentationMode presentationMode) -> std::expected<bool, Error>
 {
     if (!surface)
     {
@@ -378,14 +425,12 @@ auto supportsSurfaceFormats(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR su
     {
         return std::unexpected {formats.error()};
     }
-    const auto modes = enumerateVulkan<vk::PresentModeKHR>([&](std::uint32_t* count, vk::PresentModeKHR* output) {
-        return physicalDevice.getSurfacePresentModesKHR(surface, count, output);
-    });
-    if (!modes)
+    const auto mode = selectPresentMode(physicalDevice, surface, presentationMode);
+    if (!mode)
     {
-        return std::unexpected {modes.error()};
+        return std::unexpected {mode.error()};
     }
-    return !(formats->empty()) && !(modes->empty());
+    return !formats->empty();
 }
 
 struct DeviceProfile
@@ -424,7 +469,8 @@ auto inspectDeviceProfile(vk::PhysicalDevice physicalDevice,
 
 auto inspectPresentation(vk::PhysicalDevice physicalDevice,
                          vk::SurfaceKHR surface,
-                         const std::vector<vk::QueueFamilyProperties>& queueFamilies)
+                         const std::vector<vk::QueueFamilyProperties>& queueFamilies,
+                         EngineOptions::PresentationMode presentationMode)
     -> std::expected<std::optional<QueueSelection>, Error>
 {
     const auto queues = selectQueues(physicalDevice, surface, queueFamilies);
@@ -436,7 +482,7 @@ auto inspectPresentation(vk::PhysicalDevice physicalDevice,
     {
         return std::nullopt;
     }
-    const auto formats = supportsSurfaceFormats(physicalDevice, surface);
+    const auto formats = supportsSurfaceFormats(physicalDevice, surface, presentationMode);
     if (!formats)
     {
         return std::unexpected {formats.error()};
@@ -469,7 +515,10 @@ auto makeSelectedDevice(vk::PhysicalDevice physicalDevice,
     };
 }
 
-auto inspectDevice(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
+auto inspectDevice(vk::PhysicalDevice physicalDevice,
+                   vk::SurfaceKHR surface,
+                   const InstanceExtensions& extensions,
+                   EngineOptions::PresentationMode presentationMode)
     -> std::expected<std::optional<SelectedDevice>, Error>
 {
     auto profile = inspectDeviceProfile(physicalDevice, surface, extensions);
@@ -482,7 +531,7 @@ auto inspectDevice(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, co
         return std::nullopt;
     }
     const auto queueFamilies = physicalDevice.getQueueFamilyProperties();
-    auto presentation = inspectPresentation(physicalDevice, surface, queueFamilies);
+    auto presentation = inspectPresentation(physicalDevice, surface, queueFamilies, presentationMode);
     if (!presentation)
     {
         return std::unexpected {presentation.error()};
@@ -533,6 +582,7 @@ auto handleInspectionFailure(vk::PhysicalDevice physicalDevice, Error error, std
 struct DeviceInspectionState
 {
     vk::SurfaceKHR surface;
+    EngineOptions::PresentationMode presentationMode;
     std::vector<SelectedDevice> candidates;
     std::optional<Error> firstError;
 };
@@ -541,7 +591,7 @@ auto appendDeviceCandidate(vk::PhysicalDevice physicalDevice,
                            const InstanceExtensions& extensions,
                            DeviceInspectionState& state) -> std::expected<void, Error>
 {
-    auto inspected = inspectDevice(physicalDevice, state.surface, extensions);
+    auto inspected = inspectDevice(physicalDevice, state.surface, extensions, state.presentationMode);
     if (!inspected)
     {
         return handleInspectionFailure(physicalDevice, std::move(inspected.error()), state.firstError);
@@ -555,9 +605,14 @@ auto appendDeviceCandidate(vk::PhysicalDevice physicalDevice,
 
 auto inspectDevices(const std::vector<vk::PhysicalDevice>& devices,
                     vk::SurfaceKHR surface,
-                    const InstanceExtensions& extensions) -> std::expected<std::vector<SelectedDevice>, Error>
+                    const InstanceExtensions& extensions,
+                    EngineOptions::PresentationMode presentationMode)
+    -> std::expected<std::vector<SelectedDevice>, Error>
 {
-    auto state = DeviceInspectionState {.surface = surface, .candidates = {}, .firstError = std::nullopt};
+    auto state = DeviceInspectionState {.surface = surface,
+                                        .presentationMode = presentationMode,
+                                        .candidates = {},
+                                        .firstError = std::nullopt};
     for (const auto physicalDevice : devices)
     {
         auto appended = appendDeviceCandidate(physicalDevice, extensions, state);
@@ -575,8 +630,10 @@ auto inspectDevices(const std::vector<vk::PhysicalDevice>& devices,
 
 }
 
-auto selectDevice(vk::Instance instance, vk::SurfaceKHR surface, const InstanceExtensions& extensions)
-    -> std::expected<SelectedDevice, Error>
+auto selectDevice(vk::Instance instance,
+                  vk::SurfaceKHR surface,
+                  const InstanceExtensions& extensions,
+                  EngineOptions::PresentationMode presentationMode) -> std::expected<SelectedDevice, Error>
 {
     const auto listed = enumerateVulkan<vk::PhysicalDevice>([&](std::uint32_t* count, vk::PhysicalDevice* output) {
         return instance.enumeratePhysicalDevices(count, output);
@@ -585,7 +642,7 @@ auto selectDevice(vk::Instance instance, vk::SurfaceKHR surface, const InstanceE
     {
         return std::unexpected {listed.error()};
     }
-    auto candidates = inspectDevices(*listed, surface, extensions);
+    auto candidates = inspectDevices(*listed, surface, extensions, presentationMode);
     if (!candidates)
     {
         return std::unexpected {std::move(candidates.error())};

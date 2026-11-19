@@ -4,8 +4,8 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Implement strict version-one JSON load/save, stable IDs, scene-owned material sharing, app asset resolver, cloud
-placeholder and atomic replacement.
+Implement strict version-one JSON load/save, stable IDs, scene-owned material
+sharing, application asset resolution and atomic replacement.
 
 Non-goal: No solver configuration, arbitrary ECS serialization or GPU checkpoint.
 
@@ -20,6 +20,9 @@ or writing files; verify failure atomicity at both boundaries.
 
 ## Acceptance
 
-Round-trip edited shared material, IDs/cloud, missing resolver, invalid version/cycle/path and failed-write rollback.
+Round-trip edited shared materials and stable IDs. Test missing resolvers,
+invalid versions, cycles and paths, and failed-write rollback. Verify that an
+ordinary visualization anchor survives load and can be resolved by the application.
 
-Learning: Reload a cloud/domain setup and identify what the application must reconstruct.
+Learning: Reload a simulation domain and its visualization anchor and identify
+what the application reconstructs.
