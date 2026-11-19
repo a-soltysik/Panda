@@ -44,6 +44,16 @@ using testing::Return;
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
 constexpr auto exhausted = static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory);
 
+struct ExpectedArrayView
+{
+    VkImage image;
+    VkImageView view;
+    VkImageViewType type;
+    std::uint32_t baseLayer;
+    std::uint32_t layerCount;
+    VkResult result {success};
+};
+
 auto description(panda::PixelFormat format = panda::PixelFormat::Rgba8Unorm) -> panda::TextureDesc
 {
     return {
@@ -61,6 +71,16 @@ auto unsupportedPixelFormat() -> panda::PixelFormat
 auto unsupportedTextureUsage() -> panda::TextureUsage
 {
     return std::bit_cast<panda::TextureUsage>(std::uint8_t {0x80});
+}
+
+auto unsupportedMipPolicy() -> panda::TextureMipPolicy
+{
+    return std::bit_cast<panda::TextureMipPolicy>(std::uint8_t {0xff});
+}
+
+auto unsupportedAddressMode() -> panda::TextureAddressMode
+{
+    return std::bit_cast<panda::TextureAddressMode>(std::uint8_t {0xff});
 }
 
 class TextureResourceTest : public testing::Test
@@ -84,6 +104,11 @@ protected:
                 ASSERT_NE(maintenance, nullptr);
                 maintenance->maxMemoryAllocationSize = 4096;
             });
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* output) {
+                output->limits.maxImageArrayLayers = 2;
+            });
         EXPECT_CALL(
             vulkan,
             vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, NotNull()))
@@ -97,6 +122,7 @@ protected:
                                VkImageFormatProperties* output) {
                 *output = VkImageFormatProperties {};
                 output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                output->maxArrayLayers = 2;
                 return success;
             });
         EXPECT_CALL(poolMock, destroy(_));
@@ -192,6 +218,26 @@ protected:
             });
     }
 
+    void expectArrayView(testing::Sequence& creation, const ExpectedArrayView& expected)
+    {
+        EXPECT_CALL(vulkan, vkCreateImageView(deviceHandle, NotNull(), nullptr, NotNull()))
+            .InSequence(creation)
+            .WillOnce([expected](VkDevice,
+                                 const VkImageViewCreateInfo* info,
+                                 const VkAllocationCallbacks*,
+                                 VkImageView* output) {
+                EXPECT_EQ(info->image, expected.image);
+                EXPECT_EQ(info->viewType, expected.type);
+                EXPECT_EQ(info->subresourceRange.baseArrayLayer, expected.baseLayer);
+                EXPECT_EQ(info->subresourceRange.layerCount, expected.layerCount);
+                if (expected.result == success)
+                {
+                    *output = expected.view;
+                }
+                return expected.result;
+            });
+    }
+
     void expectBoundImage(VkImage image,
                           const panda::detail::TextureResourceCreateInfo& desc,
                           vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1)
@@ -260,6 +306,11 @@ TEST(ResourceMappings, MapsOnlyPublicTextureFormatsAndUsages)
     EXPECT_EQ(panda::detail::mapTextureUsage(unsupportedTextureUsage()).error().code, panda::ErrorCode::Unsupported);
 }
 
+TEST(Texture, EmptyHandleReportsZeroMipLevels)
+{
+    EXPECT_EQ(panda::Texture {}.getMipLevels(), 0U);
+}
+
 TEST_F(TextureResourceTest, RejectsInvalidDescriptionsBeforeCreatingNativeObjects)
 {
     EXPECT_CALL(vulkan,
@@ -320,6 +371,26 @@ TEST_F(TextureResourceTest, RejectsUnknownPublicCatalogValuesBeforeCreatingNativ
     ASSERT_FALSE(unknownUsage);
     EXPECT_EQ(unknownFormat.error().code, panda::ErrorCode::Unsupported);
     EXPECT_EQ(unknownUsage.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(TextureResourceTest, RejectsInvalidMipPolicyAndAddressModeBeforeCreatingNativeObjects)
+{
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
+        .Times(0);
+    EXPECT_CALL(vulkan, vkCreateImage(_, _, _, _)).Times(0);
+    auto invalidPolicy = description();
+    invalidPolicy.mipPolicy = unsupportedMipPolicy();
+    auto invalidAddressMode = description();
+    invalidAddressMode.addressMode = unsupportedAddressMode();
+
+    const auto policy = TextureResource::create(device, *pool, invalidPolicy);
+    const auto addressMode = TextureResource::create(device, *pool, invalidAddressMode);
+
+    ASSERT_FALSE(policy);
+    EXPECT_EQ(policy.error().code, panda::ErrorCode::InvalidArgument);
+    ASSERT_FALSE(addressMode);
+    EXPECT_EQ(addressMode.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST_F(TextureResourceTest, RejectsUnsupportedFormatUsageAndExtentBeforeCreatingImage)
@@ -494,4 +565,81 @@ TEST_F(TextureResourceTest, OwnsItsViewImageAndAllocationAndTracksBatchReservati
         (*created)->commitUpload(otherBatch);
         EXPECT_FALSE((*created)->reserveUpload(firstBatch));
     }
+}
+
+TEST_F(TextureResourceTest, CreatesArrayAndPerLayerViewsForArrayImages)
+{
+    auto* const image = fakeHandle<VkImage>(20);
+    auto* const imageView = fakeHandle<VkImageView>(21);
+    auto* const arrayView = fakeHandle<VkImageView>(22);
+    auto* const layerView = fakeHandle<VkImageView>(23);
+    const auto desc = panda::detail::TextureResourceCreateInfo {
+        .extent = {.width = 32, .height = 16},
+        .format = vk::Format::eR8G8B8A8Unorm,
+        .usage = vk::ImageUsageFlagBits::eColorAttachment,
+        .arrayLayers = 2
+    };
+    expectBoundImage(image, desc);
+    auto creation = testing::Sequence {};
+    expectArrayView(
+        creation,
+        {.image = image, .view = imageView, .type = VK_IMAGE_VIEW_TYPE_2D, .baseLayer = 0, .layerCount = 1});
+    expectArrayView(
+        creation,
+        {.image = image, .view = arrayView, .type = VK_IMAGE_VIEW_TYPE_2D_ARRAY, .baseLayer = 0, .layerCount = 2});
+    expectArrayView(
+        creation,
+        {.image = image, .view = layerView, .type = VK_IMAGE_VIEW_TYPE_2D, .baseLayer = 1, .layerCount = 1});
+    auto cleanup = testing::Sequence {};
+    EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, layerView, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, arrayView, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, imageView, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(poolMock, release(Ref(*pool), 9)).InSequence(cleanup);
+
+    {
+        auto created = TextureResource::createNative(device, *pool, desc);
+        ASSERT_TRUE(created);
+        EXPECT_EQ((*created)->getNativeView(), vk::ImageView {imageView});
+        EXPECT_EQ((*created)->getNativeArrayView(), vk::ImageView {arrayView});
+        EXPECT_EQ((*created)->getLayerView(1), vk::ImageView {layerView});
+    }
+}
+
+TEST_F(TextureResourceTest, CleansUpArrayViewsWhenLayerViewCreationFails)
+{
+    auto* const image = fakeHandle<VkImage>(20);
+    auto* const imageView = fakeHandle<VkImageView>(21);
+    auto* const arrayView = fakeHandle<VkImageView>(22);
+    const auto desc = panda::detail::TextureResourceCreateInfo {
+        .extent = {.width = 32, .height = 16},
+        .format = vk::Format::eR8G8B8A8Unorm,
+        .usage = vk::ImageUsageFlagBits::eColorAttachment,
+        .arrayLayers = 2
+    };
+    expectBoundImage(image, desc);
+    auto creation = testing::Sequence {};
+    expectArrayView(
+        creation,
+        {.image = image, .view = imageView, .type = VK_IMAGE_VIEW_TYPE_2D, .baseLayer = 0, .layerCount = 1});
+    expectArrayView(
+        creation,
+        {.image = image, .view = arrayView, .type = VK_IMAGE_VIEW_TYPE_2D_ARRAY, .baseLayer = 0, .layerCount = 2});
+    expectArrayView(creation,
+                    {.image = image,
+                     .view = nullptr,
+                     .type = VK_IMAGE_VIEW_TYPE_2D,
+                     .baseLayer = 1,
+                     .layerCount = 1,
+                     .result = exhausted});
+    auto cleanup = testing::Sequence {};
+    EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, arrayView, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(vulkan, vkDestroyImageView(deviceHandle, imageView, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(vulkan, vkDestroyImage(deviceHandle, image, nullptr)).InSequence(cleanup);
+    EXPECT_CALL(poolMock, release(Ref(*pool), 9)).InSequence(cleanup);
+
+    const auto created = TextureResource::createNative(device, *pool, desc);
+
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::ResourceExhausted);
 }

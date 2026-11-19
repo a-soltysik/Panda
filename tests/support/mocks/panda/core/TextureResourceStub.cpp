@@ -101,7 +101,8 @@ TextureResource::TextureResource(texture_resources::MemoryPool& pool,
       _arrayLayers {description.arrayLayers},
       _format {description.format},
       _usage {description.usage},
-      _samples {samples}
+      _samples {samples},
+      _mipLevels {description.mipLevels}
 {
 }
 

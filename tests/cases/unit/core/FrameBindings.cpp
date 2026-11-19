@@ -367,6 +367,8 @@ TEST_F(FrameBindingsTest, CapsAnisotropyAndFallsBackWhenTheFeatureIsUnavailable)
     ASSERT_TRUE(supported);
     EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Trilinear), 1.0F);
     EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Anisotropic2x), 2.0F);
+    EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Anisotropic4x), 4.0F);
+    EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Anisotropic8x), 6.0F);
     EXPECT_FLOAT_EQ((*supported)->getEffectiveAnisotropy(panda::TextureFilteringPreset::Anisotropic16x), 6.0F);
 }
 

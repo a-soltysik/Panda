@@ -222,6 +222,32 @@ auto pixelAt(const panda::ImageReadback& image, std::uint32_t x, std::uint32_t y
     return {image.rgba.at(offset), image.rgba.at(offset + 1), image.rgba.at(offset + 2), image.rgba.at(offset + 3)};
 }
 
+auto renderEveryFilteringPreset(const panda::Engine& engine,
+                                const panda::RenderView& view,
+                                const panda::OffscreenTarget& target) -> panda::Result<void>
+{
+    for (const auto preset : std::array {panda::TextureFilteringPreset::Nearest,
+                                         panda::TextureFilteringPreset::Bilinear,
+                                         panda::TextureFilteringPreset::Trilinear,
+                                         panda::TextureFilteringPreset::Anisotropic2x,
+                                         panda::TextureFilteringPreset::Anisotropic4x,
+                                         panda::TextureFilteringPreset::Anisotropic8x,
+                                         panda::TextureFilteringPreset::Anisotropic16x})
+    {
+        if (const auto selected = engine.setTextureFilteringPreset(preset); !selected)
+        {
+            return std::unexpected {selected.error()};
+        }
+        const auto frame = engine.getOffscreenRenderer().render(view, target);
+        if (!frame)
+        {
+            return std::unexpected {frame.error()};
+        }
+        EXPECT_GE(frame->effectiveAnisotropy, 1.0F);
+    }
+    return {};
+}
+
 auto centerPixel(const panda::ImageReadback& image) -> std::array<std::uint8_t, 4>
 {
     return pixelAt(image, image.extent.x / 2, image.extent.y / 2);
@@ -469,6 +495,10 @@ TEST_F(OffscreenRenderBackendSystem, SelectsSuppliedMipsAndSamplesGeneratedSrgbM
     ASSERT_TRUE(generatedUploadCompletion) << generatedUploadCompletion.error().message;
     auto generatedView = makeTexturedView(*mesh, *generated);
     ASSERT_TRUE(generatedView) << generatedView.error().message;
+    generatedView->meshes.push_back(generatedView->meshes.front());
+    const auto filteredPresets = renderEveryFilteringPreset(activeEngine(), *generatedView, *generatedTarget);
+    ASSERT_TRUE(filteredPresets) << filteredPresets.error().message;
+    ASSERT_TRUE(activeEngine().setTextureFilteringPreset(panda::TextureFilteringPreset::Anisotropic8x));
     const auto generatedFrame = activeEngine().getOffscreenRenderer().render(*generatedView, *generatedTarget);
     ASSERT_TRUE(generatedFrame) << generatedFrame.error().message;
     EXPECT_LE(generatedFrame->effectiveAnisotropy, 8.0F);

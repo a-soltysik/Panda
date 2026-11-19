@@ -43,11 +43,15 @@ panels, keeping the sample count fixed across them.
 
 ## Verification
 
-- `ctest --preset msvc-fast --output-on-failure`: 680 tests, 0 failures, 5 skips.
-- WSL `gcc-fast` build and full CTest via `build-wsl.ps1 -Preset gcc-fast
-  -RunTests -IncludeSystemTests`: 680 tests, 0 failures, 8 hardware/environment skips.
-- `check_docs.py`: 89 Markdown files checked. `docs-checks`: 42 diagrams valid
-  across 93 files.
+- Windows `msvc-fast` build and full CTest: 693 tests, 0 failures, 5 skips.
+- WSL `gcc-fast` build and full CTest: 693 tests, 0 failures, 8
+  hardware/environment skips. The CI-equivalent `gcc-coverage-all` run under Xvfb
+  and lavapipe passed 674 tests with 4 environment skips; the source coverage
+  report records 95.1% line and 84.2% branch coverage.
+- Windows and WSL quality builds, public-header checks, format checks and Clang
+  CUDA host/device analysis passed. `check_docs.py` checked 89 Markdown files;
+  `docs-checks` validated 42 diagrams across 93 files; Linux API documentation
+  generated successfully.
 - The offscreen example generated the comparison on an NVIDIA GeForce RTX 4070 Ti;
   it reported 4x MSAA and 8x effective anisotropy for the anisotropic panel.
 - The maintainer accepted the task after reviewing the generated visual comparison.

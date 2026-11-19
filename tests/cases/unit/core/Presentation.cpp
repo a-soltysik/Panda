@@ -425,6 +425,18 @@ TEST_F(PresentationTest, FrameExecutionRecordsPlainFrameOutputWithoutWindowServi
     EXPECT_TRUE(frameExecution.endCommands(0));
 }
 
+TEST_F(PresentationTest, FrameExecutionReportsUnitAnisotropyWithoutAFilteringPreset)
+{
+    expectNativeFrameResources(0);
+    expectNativeResourceDestruction({});
+    auto execution = createFrameExecution();
+    ASSERT_TRUE(execution);
+    auto view = panda::RenderView {};
+    view.meshes.emplace_back();
+
+    EXPECT_FLOAT_EQ((*execution)->getEffectiveAnisotropy(view), 1.0F);
+}
+
 TEST_F(PresentationTest, FrameExecutionPropagatesCommandBufferAllocationFailure)
 {
     EXPECT_CALL(vulkan, vkCreateCommandPool(_, NotNull(), _, NotNull()))
@@ -1021,6 +1033,26 @@ TEST_F(PresentationTest, SuboptimalPresentReturnsTheCommittedCompletionPoint)
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->status, panda::FrameResult::Status::RecreatePending);
     EXPECT_TRUE(presentation->get()->drain());
+}
+
+TEST_F(PresentationTest, SurfaceLostPresentFaultsTheWindowPresentation)
+{
+    expectWindowFrame();
+    auto flow = Sequence {};
+    expectAcquiredImage(flow, vk::Result::eSuccess);
+    expectCommandRecording(flow);
+    expectFrameSubmit(flow);
+    expectPresentFailure(flow, vk::Result::eErrorSurfaceLostKHR);
+    expectCompletionPoint(flow);
+    auto presentation = createPresentation();
+    ASSERT_TRUE(presentation);
+
+    const auto failed = presentation->get()->render(panda::RenderView {});
+
+    ASSERT_FALSE(failed);
+    ASSERT_TRUE(failed.error().native.has_value());
+    EXPECT_EQ(failed.error().native->code, static_cast<VkResult>(vk::Result::eErrorSurfaceLostKHR));
+    EXPECT_FALSE(presentation->get()->render(panda::RenderView {}));
 }
 
 TEST_F(PresentationTest, RecordsGpuTimestampsAroundFrameRenderingAndPublishesSubmittedSample)
