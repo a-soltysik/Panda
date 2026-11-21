@@ -21,6 +21,7 @@ struct TextureResourceCreateInfo
     vk::ImageUsageFlags usage;
     std::uint32_t mipLevels {1};
     std::uint32_t arrayLayers {1};
+    bool cubeCompatible {false};
     bool createArrayView {false};
 };
 
@@ -49,6 +50,7 @@ public:
     [[nodiscard]] auto getFormat() const -> vk::Format;
     [[nodiscard]] auto getUsage() const -> vk::ImageUsageFlags;
     [[nodiscard]] auto getPublicFormat() const -> PixelFormat;
+    [[nodiscard]] auto getPublicType() const -> TextureType;
     [[nodiscard]] auto getPublicUsage() const -> TextureUsage;
 
     [[nodiscard]] auto getMipLevels() const noexcept -> std::uint32_t
@@ -59,6 +61,11 @@ public:
     [[nodiscard]] auto getMipPolicy() const noexcept -> TextureMipPolicy
     {
         return _mipPolicy;
+    }
+
+    [[nodiscard]] auto getSpecularEnvironmentSamplesPerTexel() const noexcept -> std::uint32_t
+    {
+        return _specularEnvironmentSamplesPerTexel;
     }
 
     [[nodiscard]] auto getAddressMode() const noexcept -> TextureAddressMode
@@ -106,8 +113,10 @@ private:
     vk::SampleCountFlagBits _samples;
     std::uint32_t _mipLevels {1};
     PixelFormat _publicFormat {PixelFormat::Undefined};
+    TextureType _publicType {TextureType::Texture2D};
     TextureUsage _publicUsage {TextureUsage::None};
     TextureMipPolicy _mipPolicy {TextureMipPolicy::SingleLevel};
+    std::uint32_t _specularEnvironmentSamplesPerTexel {defaultSpecularEnvironmentSamplesPerTexel};
     TextureAddressMode _addressMode {TextureAddressMode::Repeat};
     std::optional<texture_upload::UploadBatchId> _uploadBatchId;
     bool _uploaded {false};

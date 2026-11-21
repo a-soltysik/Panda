@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file
-/// Supported public texture formats.
+/// Supported public texture upload formats.
 
 #include <cstdint>
 
@@ -20,5 +20,7 @@ enum class PixelFormat : std::uint8_t
     Bgra8Unorm,
     /// Four-channel, 8-bit BGRA sRGB color.
     Bgra8Srgb,
+    /// Four-channel, 16-bit floating-point linear color.
+    Rgba16Float,
 };
 }

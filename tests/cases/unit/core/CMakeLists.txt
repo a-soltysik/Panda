@@ -97,6 +97,11 @@ panda_add_test(panda_unit_upload_batch unit
     SOURCES UploadBatch.cpp
     LIBRARIES Panda::Panda)
 
+panda_add_test(panda_unit_environment_map unit
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core"
+    SOURCES EnvironmentMap.cpp
+    LIBRARIES Panda::Panda)
+
 panda_add_test(panda_unit_upload_batch_impl unit
     VULKAN_INTERNAL
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"

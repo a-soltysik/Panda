@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <expected>
 #include <map>
+#include <optional>
 #include <panda/base/Error.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <span>
@@ -34,6 +35,7 @@ public:
         RenderFace renderFace {RenderFace::Front};
         AlphaMode alphaMode {AlphaMode::Opaque};
         bool mirrored {false};
+        bool hasEnvironment {false};
         friend auto operator<=>(const MeshPipelineKey&, const MeshPipelineKey&) = default;
     };
 
@@ -60,23 +62,28 @@ public:
 
     MeshPipelineCache(const vk::raii::Device& device, vk::PipelineLayout pipelineLayout);
 
-    [[nodiscard]] static auto makeMeshPipelineKey(const MeshDraw& draw) -> MeshPipelineKey;
+    [[nodiscard]] static auto makeMeshPipelineKey(const MeshDraw& draw, bool hasEnvironment = false) -> MeshPipelineKey;
     [[nodiscard]] static auto makeShadowPipelineKey(const MeshDraw& draw) -> ShadowPipelineKey;
     void setOutputCompatibility(OutputCompatibility compatibility);
     [[nodiscard]] auto prepare(const RenderView& view) -> std::expected<void, Error>;
     [[nodiscard]] auto prepare(const MeshPipelineKey& key) -> std::expected<void, Error>;
     [[nodiscard]] auto prepare(const ShadowPipelineKey& key) -> std::expected<void, Error>;
-    [[nodiscard]] auto getPipeline(const MeshDraw& draw) const -> vk::Pipeline;
+    [[nodiscard]] auto getPipeline(const MeshDraw& draw, bool hasEnvironment = false) const -> vk::Pipeline;
     [[nodiscard]] auto getShadowPipeline(const MeshDraw& draw) const -> vk::Pipeline;
+    [[nodiscard]] auto getSkyboxPipeline() const -> vk::Pipeline;
 
 private:
+    [[nodiscard]] auto prepareSkybox() -> std::expected<void, Error>;
+    [[nodiscard]] auto createSkyboxPipeline() const -> std::expected<vk::raii::Pipeline, Error>;
+    [[nodiscard]] auto createSkyboxPipelineWithModules(vk::ShaderModule vertex, vk::ShaderModule fragment) const
+        -> std::expected<vk::raii::Pipeline, Error>;
     [[nodiscard]] auto createPipeline(const MeshPipelineKey& key) const -> std::expected<vk::raii::Pipeline, Error>;
     [[nodiscard]] auto createMeshPipeline(const MeshPipelineKey& key,
                                           vk::ShaderModule vertex,
                                           vk::ShaderModule fragment) const -> std::expected<vk::raii::Pipeline, Error>;
     [[nodiscard]] auto createShadowPipeline(const ShadowPipelineKey& key) const
         -> std::expected<vk::raii::Pipeline, Error>;
-    [[nodiscard]] auto prepareDraw(const MeshDraw& draw) -> std::expected<void, Error>;
+    [[nodiscard]] auto prepareDraw(const MeshDraw& draw, bool hasEnvironment) -> std::expected<void, Error>;
     [[nodiscard]] static auto makeVertexAttributeDescriptions(const MeshPipelineKey& key)
         -> std::vector<vk::VertexInputAttributeDescription>;
 
@@ -85,6 +92,7 @@ private:
     OutputCompatibility _outputCompatibility;
     std::map<MeshPipelineKey, vk::raii::Pipeline> _pipelines;
     std::map<ShadowPipelineKey, vk::raii::Pipeline> _shadowPipelines;
+    std::optional<vk::raii::Pipeline> _skyboxPipeline;
     bool _warnedMissingNormalMapUv {false};
     bool _warnedMissingNormalMapTangent {false};
 };

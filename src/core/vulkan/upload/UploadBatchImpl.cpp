@@ -5,9 +5,11 @@
 #include "upload/UploadBatchImpl.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <glm/ext/vector_uint2.hpp>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -17,10 +19,12 @@
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
 #include <span>
+#include <stdexcept>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "../../EnvironmentMapFilter.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
@@ -41,6 +45,47 @@ using batch_upload::UploadOperation;
 namespace
 {
 constexpr auto stagingPageSize = std::uint64_t {4} * 1024;
+
+class StagingRollback final
+{
+public:
+    StagingRollback(std::vector<std::shared_ptr<BufferResource>>& pages, std::uint64_t& offset)
+        : _pages {pages},
+          _offset {offset},
+          _pageCount {pages.size()},
+          _savedOffset {offset}
+    {
+    }
+
+    StagingRollback(const StagingRollback&) = delete;
+    auto operator=(const StagingRollback&) -> StagingRollback& = delete;
+    StagingRollback(StagingRollback&&) = delete;
+    auto operator=(StagingRollback&&) -> StagingRollback& = delete;
+
+    ~StagingRollback() noexcept
+    {
+        if (!_committed)
+        {
+            while (_pages.size() > _pageCount)
+            {
+                _pages.pop_back();
+            }
+            _offset = _savedOffset;
+        }
+    }
+
+    void commit() noexcept
+    {
+        _committed = true;
+    }
+
+private:
+    std::vector<std::shared_ptr<BufferResource>>& _pages;
+    std::uint64_t& _offset;
+    std::size_t _pageCount;
+    std::uint64_t _savedOffset;
+    bool _committed {false};
+};
 
 auto alignOffset(std::uint64_t offset, std::uint64_t alignment) -> std::optional<std::uint64_t>
 {
@@ -65,6 +110,58 @@ auto validateStageRequest(std::span<const std::byte> bytes, std::uint64_t alignm
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Staging writes must be nonempty and aligned")};
     }
     return {};
+}
+
+auto allocateEnvironmentFacePixels(std::uint32_t width, std::uint32_t height) -> Result<std::vector<std::uint16_t>>
+{
+    if (height == 0 || width > std::numeric_limits<std::size_t>::max() / height / 4U)
+    {
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Environment face is too large")};
+    }
+    auto pixels = std::vector<std::uint16_t> {};
+    const auto pixelCount = static_cast<std::size_t>(width) * height * 4U;
+    if (pixelCount > pixels.max_size())
+    {
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Environment face is too large")};
+    }
+    pixels.resize(pixelCount);
+    return pixels;
+}
+
+void copyEnvironmentFaceRows(std::span<const std::byte> source,
+                             std::span<std::uint16_t> destination,
+                             glm::uvec2 extent,
+                             std::uint64_t sourceRowPitch)
+{
+    const auto rowBytes = static_cast<std::size_t>(extent.x) * 4U * sizeof(std::uint16_t);
+    const auto rowPitch = sourceRowPitch == 0 ? rowBytes : sourceRowPitch;
+    const auto destinationBytes = std::as_writable_bytes(destination);
+    for (auto row = std::uint32_t {}; row < extent.y; ++row)
+    {
+        const auto sourceOffset = static_cast<std::size_t>(row) * rowPitch;
+        const auto destinationOffset = static_cast<std::size_t>(row) * rowBytes;
+        const auto byteCount = rowBytes;
+        std::ranges::copy(source.subspan(sourceOffset, byteCount),
+                          destinationBytes.subspan(destinationOffset, byteCount).begin());
+    }
+}
+
+auto makeEnvironmentFacePixels(std::span<const std::byte> bytes,
+                               std::uint32_t width,
+                               std::uint32_t height,
+                               std::uint64_t sourceRowPitch) -> Result<std::vector<std::uint16_t>>
+{
+    auto pixels = allocateEnvironmentFacePixels(width, height);
+    if (!pixels)
+    {
+        return std::unexpected {pixels.error()};
+    }
+    copyEnvironmentFaceRows(bytes, *pixels, {width, height}, sourceRowPitch);
+    if (const auto valid = validateEnvironmentFace(*pixels, width); !valid)
+    {
+        return std::unexpected {valid.error()};
+    }
+    return std::move(*pixels);
 }
 
 void releaseUploadReservation(const UploadOperation& operation, UploadBatchId batchId)
@@ -192,6 +289,10 @@ UploadBatchImpl::~UploadBatchImpl()
     for (const auto& operation : _writes)
     {
         releaseUploadReservation(operation, _id);
+    }
+    for (const auto& generatedWrite : _generatedEnvironmentWrites)
+    {
+        generatedWrite.destination->cancelUpload(_id);
     }
     _manager.releaseBatch();
 }
@@ -351,34 +452,187 @@ auto UploadBatchImpl::write(const std::shared_ptr<TextureResource>& destination,
                             std::span<const std::byte> bytes,
                             const TextureUploadRegion& region) -> Result<void>
 {
+    if (destination && destination->getMipPolicy() == TextureMipPolicy::GenerateSpecularEnvironment)
+    {
+        return appendGeneratedEnvironmentFace(destination, bytes, region);
+    }
+    auto request = prepareTextureMipWrite(destination, bytes, region);
+    if (!request)
+    {
+        return std::unexpected {request.error()};
+    }
+    return request->destination->getMipPolicy() == TextureMipPolicy::Generate ? appendGeneratedTextureMips(*request)
+                                                                              : appendTextureMip(*request);
+}
+
+auto UploadBatchImpl::prepareTextureMipWrite(const std::shared_ptr<TextureResource>& destination,
+                                             std::span<const std::byte> bytes,
+                                             const TextureUploadRegion& region) -> Result<TextureMipWriteRequest>
+{
     const auto layout = _manager.validateTextureWrite(destination, region, bytes.size());
     if (!layout)
     {
         return std::unexpected {layout.error()};
     }
     const auto alreadyInBatch = hasTexture(destination);
-    const auto mipPolicy = destination->getMipPolicy();
-    if ((mipPolicy == TextureMipPolicy::Generate && alreadyInBatch) ||
-        (mipPolicy == TextureMipPolicy::Supplied && hasTextureMip(destination, region.mipLevel)))
+    if (isTextureMipWriteDuplicate(destination, region, alreadyInBatch))
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture mip level was already written")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture subresource was already written")};
     }
     const auto reserved = reserveTexture(destination, _id, alreadyInBatch);
     if (!reserved)
     {
         return std::unexpected {reserved.error()};
     }
-    const auto request = TextureMipWriteRequest {.destination = destination,
-                                                 .bytes = bytes,
-                                                 .region = region,
-                                                 .rowLength = layout->rowLength,
-                                                 .bufferOffsetAlignment = layout->bufferOffsetAlignment,
-                                                 .reserved = *reserved};
-    if (mipPolicy == TextureMipPolicy::Generate)
+    return TextureMipWriteRequest {.destination = destination,
+                                   .bytes = bytes,
+                                   .region = region,
+                                   .rowLength = layout->rowLength,
+                                   .bufferOffsetAlignment = layout->bufferOffsetAlignment,
+                                   .reserved = *reserved};
+}
+
+auto UploadBatchImpl::isTextureMipWriteDuplicate(const std::shared_ptr<TextureResource>& destination,
+                                                 const TextureUploadRegion& region,
+                                                 bool alreadyInBatch) const -> bool
+{
+    const auto mipPolicy = destination->getMipPolicy();
+    return (mipPolicy == TextureMipPolicy::Generate && alreadyInBatch) ||
+           ((mipPolicy == TextureMipPolicy::Supplied || destination->getPublicType() == TextureType::CubeMap) &&
+            hasTextureMip(destination, region.mipLevel, region.arrayLayer));
+}
+
+auto UploadBatchImpl::createGeneratedEnvironmentFace(const std::shared_ptr<TextureResource>& destination,
+                                                     std::span<const std::byte> bytes,
+                                                     const TextureUploadRegion& region)
+    -> Result<std::vector<std::uint16_t>>
+{
+    if (!destination || destination->getPublicType() != TextureType::CubeMap ||
+        destination->getMipPolicy() != TextureMipPolicy::GenerateSpecularEnvironment)
     {
-        return appendGeneratedTextureMips(request);
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Generated environment upload needs a cubemap texture")};
     }
-    return appendTextureMip(request);
+    if (region.mipLevel != 0)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Generated environment uploads need mip zero")};
+    }
+    const auto extent = destination->getExtent();
+    const auto layout = _manager.validateTextureWrite(destination, region, bytes.size());
+    if (!layout)
+    {
+        return std::unexpected {layout.error()};
+    }
+    return makeEnvironmentFacePixels(bytes, extent.width, extent.height, region.rowPitchBytes);
+}
+
+auto UploadBatchImpl::appendGeneratedEnvironmentFace(const std::shared_ptr<TextureResource>& destination,
+                                                     std::span<const std::byte> bytes,
+                                                     const TextureUploadRegion& region) -> Result<void>
+{
+    auto face = createGeneratedEnvironmentFace(destination, bytes, region);
+    if (!face)
+    {
+        return std::unexpected {face.error()};
+    }
+    const auto pending =
+        std::ranges::find(_generatedEnvironmentWrites, destination, &GeneratedEnvironmentWrite::destination);
+    if (pending != _generatedEnvironmentWrites.end() && pending->hasFace.at(region.arrayLayer))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Cubemap face was already written")};
+    }
+    auto pendingWrite = getOrCreateGeneratedEnvironmentWrite(destination);
+    if (!pendingWrite)
+    {
+        return std::unexpected {pendingWrite.error()};
+    }
+    auto& generatedWrite = **pendingWrite;
+    if (std::ranges::count(generatedWrite.hasFace, true) == environmentMapFaceCount - 1U)
+    {
+        return appendGeneratedEnvironmentMips(destination, generatedWrite, region.arrayLayer, *face);
+    }
+    generatedWrite.faces.at(region.arrayLayer) = std::move(*face);
+    generatedWrite.hasFace.at(region.arrayLayer) = true;
+    return {};
+}
+
+auto UploadBatchImpl::getOrCreateGeneratedEnvironmentWrite(const std::shared_ptr<TextureResource>& destination)
+    -> Result<GeneratedEnvironmentWrite*>
+{
+    const auto pending =
+        std::ranges::find(_generatedEnvironmentWrites, destination, &GeneratedEnvironmentWrite::destination);
+    if (pending != _generatedEnvironmentWrites.end())
+    {
+        return &*pending;
+    }
+    if (hasTexture(destination))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Generated environment texture was already written in this batch")};
+    }
+    _generatedEnvironmentWrites.push_back({.destination = destination, .faces = {}, .hasFace = {}});
+    const auto reserved = destination->reserveUpload(_id);
+    if (!reserved)
+    {
+        _generatedEnvironmentWrites.pop_back();
+        return std::unexpected {reserved.error()};
+    }
+    return &_generatedEnvironmentWrites.back();
+}
+
+auto UploadBatchImpl::createGeneratedEnvironmentMipChain(const std::shared_ptr<TextureResource>& destination,
+                                                         const GeneratedEnvironmentWrite& write,
+                                                         std::uint32_t finalFace,
+                                                         std::span<const std::uint16_t> face)
+    -> Result<SpecularEnvironmentMipChain>
+{
+    auto sourceFaces = std::array<std::span<const std::uint16_t>, environmentMapFaceCount> {};
+    for (auto sourceFace = std::size_t {}; sourceFace < sourceFaces.size(); ++sourceFace)
+    {
+        sourceFaces.at(sourceFace) =
+            sourceFace == finalFace ? face : std::span<const std::uint16_t> {write.faces.at(sourceFace)};
+    }
+    const auto extent = destination->getExtent();
+    auto mipChain = prefilterSpecularEnvironmentMap({.faceSize = extent.width, .faces = sourceFaces},
+                                                    destination->getSpecularEnvironmentSamplesPerTexel());
+    if (!mipChain)
+    {
+        return std::unexpected {mipChain.error()};
+    }
+    if (mipChain->levels.size() != destination->getMipLevels())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Generated cubemap mip count does not match")};
+    }
+    return std::move(*mipChain);
+}
+
+auto UploadBatchImpl::appendGeneratedEnvironmentMips(const std::shared_ptr<TextureResource>& destination,
+                                                     const GeneratedEnvironmentWrite& write,
+                                                     std::uint32_t finalFace,
+                                                     std::span<const std::uint16_t> face) -> Result<void>
+{
+    auto stagingRollback = StagingRollback {_stagingPages, _stagingOffset};
+    auto mipChain = createGeneratedEnvironmentMipChain(destination, write, finalFace, face);
+    if (!mipChain)
+    {
+        return std::unexpected {mipChain.error()};
+    }
+    auto uploads = createGeneratedEnvironmentUploads(destination, *mipChain);
+    if (!uploads)
+    {
+        return std::unexpected {uploads.error()};
+    }
+    if (_writes.size() > _writes.max_size() - uploads->size())
+    {
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Upload batch cannot retain cubemap writes")};
+    }
+    _writes.reserve(_writes.size() + uploads->size());
+    std::ranges::move(*uploads, std::back_inserter(_writes));
+    const auto pending =
+        std::ranges::find(_generatedEnvironmentWrites, destination, &GeneratedEnvironmentWrite::destination);
+    _generatedEnvironmentWrites.erase(pending);
+    stagingRollback.commit();
+    return {};
 }
 
 auto UploadBatchImpl::appendGeneratedTextureMips(const TextureMipWriteRequest& request) -> Result<void>
@@ -402,6 +656,88 @@ auto UploadBatchImpl::appendGeneratedTextureMips(const TextureMipWriteRequest& r
     }
     _writes.reserve(_writes.size() + uploads->size());
     std::ranges::move(*uploads, std::back_inserter(_writes));
+    return {};
+}
+
+auto UploadBatchImpl::createEnvironmentFaceUpload(const std::shared_ptr<TextureResource>& destination,
+                                                  const EnvironmentMapMip& mip,
+                                                  std::uint32_t mipLevel,
+                                                  std::uint32_t face) -> Result<UploadOperation>
+{
+    const auto pixels = std::span {mip.faces.at(face)};
+    const auto bytes = std::as_bytes(pixels);
+    const auto region = TextureUploadRegion {.extent = mip.extent, .mipLevel = mipLevel, .arrayLayer = face};
+    const auto layout = _manager.validateTextureWrite(destination, region, bytes.size());
+    if (!layout)
+    {
+        return std::unexpected {layout.error()};
+    }
+    const auto staging = stage(bytes, layout->bufferOffsetAlignment);
+    if (!staging)
+    {
+        return std::unexpected {staging.error()};
+    }
+    return UploadOperation {
+        TextureUpload {.staging = staging->buffer,
+                       .stagingOffset = staging->offset,
+                       .destination = destination,
+                       .region = region,
+                       .bufferRowLength = layout->rowLength,
+                       .firstForTexture = mipLevel == 0 && face == 0}
+    };
+}
+
+auto UploadBatchImpl::createGeneratedEnvironmentUploads(const std::shared_ptr<TextureResource>& destination,
+                                                        const SpecularEnvironmentMipChain& mipChain)
+    -> Result<std::vector<UploadOperation>>
+{
+    try
+    {
+        auto uploads = std::vector<UploadOperation> {};
+        uploads.reserve(mipChain.levels.size() * environmentMapFaceCount);
+        const auto appended = appendEnvironmentMipUploads(destination, mipChain, uploads);
+        if (!appended)
+        {
+            return std::unexpected {appended.error()};
+        }
+        return uploads;
+    }
+    catch (const std::length_error&)
+    {
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Upload batch cannot retain cubemap writes")};
+    }
+}
+
+auto UploadBatchImpl::appendEnvironmentMipUploads(const std::shared_ptr<TextureResource>& destination,
+                                                  const SpecularEnvironmentMipChain& mipChain,
+                                                  std::vector<UploadOperation>& uploads) -> Result<void>
+{
+    for (auto mipLevel = std::uint32_t {}; mipLevel < mipChain.levels.size(); ++mipLevel)
+    {
+        const auto appended =
+            appendEnvironmentFaceUploads(destination, mipChain.levels.at(mipLevel), mipLevel, uploads);
+        if (!appended)
+        {
+            return std::unexpected {appended.error()};
+        }
+    }
+    return {};
+}
+
+auto UploadBatchImpl::appendEnvironmentFaceUploads(const std::shared_ptr<TextureResource>& destination,
+                                                   const EnvironmentMapMip& mip,
+                                                   std::uint32_t mipLevel,
+                                                   std::vector<UploadOperation>& uploads) -> Result<void>
+{
+    for (auto face = std::uint32_t {}; face < mip.faces.size(); ++face)
+    {
+        auto upload = createEnvironmentFaceUpload(destination, mip, mipLevel, face);
+        if (!upload)
+        {
+            return std::unexpected {upload.error()};
+        }
+        uploads.push_back(std::move(*upload));
+    }
     return {};
 }
 
@@ -452,22 +788,34 @@ auto UploadBatchImpl::appendTextureMip(const TextureMipWriteRequest& request) ->
 
 auto UploadBatchImpl::hasTexture(const std::shared_ptr<TextureResource>& texture) const -> bool
 {
-    return std::ranges::any_of(_writes, [&](const UploadOperation& operation) {
-        return std::visit(
-            [&](const auto& upload) {
-                return refersTo(upload, texture);
-            },
-            operation);
-    });
+    return std::ranges::any_of(_generatedEnvironmentWrites,
+                               [&](const GeneratedEnvironmentWrite& write) {
+                                   return write.destination == texture;
+                               }) ||
+           std::ranges::any_of(_writes, [&](const UploadOperation& operation) {
+               return std::visit(
+                   [&](const auto& upload) {
+                       return refersTo(upload, texture);
+                   },
+                   operation);
+           });
 }
 
-auto UploadBatchImpl::hasTextureMip(const std::shared_ptr<TextureResource>& texture, std::uint32_t mipLevel) const
-    -> bool
+auto UploadBatchImpl::hasTextureMip(const std::shared_ptr<TextureResource>& texture,
+                                    std::uint32_t mipLevel,
+                                    std::uint32_t arrayLayer) const -> bool
 {
-    return std::ranges::any_of(_writes, [&](const UploadOperation& operation) {
-        const auto* upload = std::get_if<TextureUpload>(&operation);
-        return upload != nullptr && upload->destination == texture && upload->region.mipLevel == mipLevel;
-    });
+    return (mipLevel == 0 && arrayLayer < environmentMapFaceCount &&
+            std::ranges::any_of(
+                _generatedEnvironmentWrites,
+                [&](const GeneratedEnvironmentWrite& write) {
+                    return write.destination == texture && write.hasFace.at(arrayLayer);
+                })) ||
+           std::ranges::any_of(_writes, [&](const UploadOperation& operation) {
+               const auto* upload = std::get_if<TextureUpload>(&operation);
+               return upload != nullptr && upload->destination == texture && upload->region.mipLevel == mipLevel &&
+                      upload->region.arrayLayer == arrayLayer;
+           });
 }
 
 auto UploadBatchImpl::isFirstSuppliedMipUpload(std::size_t index, const TextureUpload& upload) const -> bool
@@ -478,21 +826,29 @@ auto UploadBatchImpl::isFirstSuppliedMipUpload(std::size_t index, const TextureU
     });
 }
 
-auto UploadBatchImpl::hasCompleteSuppliedMipChain(const std::shared_ptr<TextureResource>& texture) const -> bool
+auto UploadBatchImpl::hasCompleteSuppliedLayerMipChain(const std::shared_ptr<TextureResource>& texture,
+                                                       std::uint32_t arrayLayer) const -> bool
 {
-    auto writtenLevels = std::uint32_t {};
-    for (const auto& operation : _writes)
+    for (auto mipLevel = std::uint32_t {}; mipLevel < texture->getMipLevels(); ++mipLevel)
     {
-        const auto* upload = std::get_if<TextureUpload>(&operation);
-        if (upload != nullptr && upload->destination == texture)
+        if (!hasTextureMip(texture, mipLevel, arrayLayer))
         {
-            writtenLevels |= std::uint32_t {1} << upload->region.mipLevel;
+            return false;
         }
     }
-    const auto mipLevels = texture->getMipLevels();
-    const auto expectedLevels =
-        mipLevels == 32U ? std::numeric_limits<std::uint32_t>::max() : (std::uint32_t {1} << mipLevels) - 1U;
-    return writtenLevels == expectedLevels;
+    return true;
+}
+
+auto UploadBatchImpl::hasCompleteSuppliedMipChain(const std::shared_ptr<TextureResource>& texture) const -> bool
+{
+    for (auto arrayLayer = std::uint32_t {}; arrayLayer < texture->getArrayLayers(); ++arrayLayer)
+    {
+        if (!hasCompleteSuppliedLayerMipChain(texture, arrayLayer))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 auto UploadBatchImpl::validateSuppliedMipChains() const -> Result<void>
@@ -500,7 +856,9 @@ auto UploadBatchImpl::validateSuppliedMipChains() const -> Result<void>
     for (auto index = std::size_t {}; index < _writes.size(); ++index)
     {
         const auto* first = std::get_if<TextureUpload>(&_writes.at(index));
-        if (first == nullptr || first->destination->getMipPolicy() != TextureMipPolicy::Supplied ||
+        if (first == nullptr ||
+            (first->destination->getMipPolicy() != TextureMipPolicy::Supplied &&
+             first->destination->getPublicType() != TextureType::CubeMap) ||
             !isFirstSuppliedMipUpload(index, *first))
         {
             continue;
@@ -508,7 +866,7 @@ auto UploadBatchImpl::validateSuppliedMipChains() const -> Result<void>
         if (!hasCompleteSuppliedMipChain(first->destination))
         {
             return std::unexpected {
-                makeError(ErrorCode::InvalidArgument, "Supplied texture mip chain must upload every level")};
+                makeError(ErrorCode::InvalidArgument, "Texture upload must provide every required face and mip level")};
         }
     }
     return {};
@@ -516,6 +874,11 @@ auto UploadBatchImpl::validateSuppliedMipChains() const -> Result<void>
 
 auto UploadBatchImpl::submit() -> Result<CompletionPoint>
 {
+    if (!_generatedEnvironmentWrites.empty())
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Generated environment upload needs all six base-level faces")};
+    }
     if (const auto valid = validateSuppliedMipChains(); !valid)
     {
         return std::unexpected {valid.error()};

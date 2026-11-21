@@ -284,10 +284,11 @@ protected:
 TEST(ResourceMappings, MapsOnlyPublicTextureFormatsAndUsages)
 {
     constexpr auto formats = std::array {
-        std::pair {panda::PixelFormat::Rgba8Unorm, vk::Format::eR8G8B8A8Unorm},
-        std::pair {panda::PixelFormat::Rgba8Srgb,  vk::Format::eR8G8B8A8Srgb },
-        std::pair {panda::PixelFormat::Bgra8Unorm, vk::Format::eB8G8R8A8Unorm},
-        std::pair {panda::PixelFormat::Bgra8Srgb,  vk::Format::eB8G8R8A8Srgb }
+        std::pair {panda::PixelFormat::Rgba8Unorm,  vk::Format::eR8G8B8A8Unorm     },
+        std::pair {panda::PixelFormat::Rgba8Srgb,   vk::Format::eR8G8B8A8Srgb      },
+        std::pair {panda::PixelFormat::Bgra8Unorm,  vk::Format::eB8G8R8A8Unorm     },
+        std::pair {panda::PixelFormat::Bgra8Srgb,   vk::Format::eB8G8R8A8Srgb      },
+        std::pair {panda::PixelFormat::Rgba16Float, vk::Format::eR16G16B16A16Sfloat}
     };
     for (const auto& [format, native] : formats)
     {

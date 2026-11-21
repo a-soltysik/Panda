@@ -1,9 +1,15 @@
+#include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <glm/ext/quaternion_trigonometric.hpp>
 #include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_uint2.hpp>
 #include <glm/geometric.hpp>
+#include <glm/gtc/packing.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/trigonometric.hpp>
 #include <iostream>
@@ -18,6 +24,8 @@
 #include <panda/math/Transform.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/resources/Mesh.hpp>
+#include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/Texture.hpp>
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/Scene.hpp>
 #include <panda/submission/CompletionPoint.hpp>
@@ -25,14 +33,146 @@
 #include <panda/tools/gui/Window.hpp>
 #include <span>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace
 {
+using HdrColor = std::array<float, 4>;
+using PackedHdrColor = std::array<std::uint16_t, 4>;
+using EnvironmentFaces = std::array<std::vector<std::uint16_t>, 6>;
+
+constexpr auto environmentFaceSize = std::uint32_t {16};
+constexpr auto environmentFaceCount = std::size_t {6};
+
+constexpr auto diffuseIrradiance = HdrColor {1.0F, 1.0F, 1.0F, 1.0F};
+constexpr auto sharpEnvironmentFaces = std::array {
+    HdrColor {2.0F,  0.5F,  0.25F, 1.0F},
+    HdrColor {0.25F, 0.5F,  2.0F,  1.0F},
+    HdrColor {2.0F,  1.5F,  0.5F,  1.0F},
+    HdrColor {0.5F,  0.25F, 0.25F, 1.0F},
+    HdrColor {0.5F,  0.75F, 2.0F,  1.0F},
+    HdrColor {2.0F,  0.25F, 1.5F,  1.0F}
+};
+
+auto packHdrColor(HdrColor color) -> PackedHdrColor
+{
+    auto packed = PackedHdrColor {};
+    std::ranges::transform(color, packed.begin(), [](float channel) {
+        return glm::packHalf1x16(channel);
+    });
+    return packed;
+}
+
+auto makeHdrFace(glm::uvec2 extent, HdrColor color) -> std::vector<std::uint16_t>
+{
+    auto pixels = std::vector<std::uint16_t>(static_cast<std::size_t>(extent.x) * extent.y * color.size());
+    const auto packed = packHdrColor(color);
+    for (auto offset = std::size_t {}; offset < pixels.size(); offset += color.size())
+    {
+        std::ranges::copy(packed, pixels.begin() + static_cast<std::ptrdiff_t>(offset));
+    }
+    return pixels;
+}
+
+auto makeMaterial(float metallic, float roughness) -> panda::Material
+{
+    auto material = panda::Material {};
+    material.metallic = metallic;
+    material.roughness = roughness;
+    return material;
+}
+
+void addEnvironmentHighlight(EnvironmentFaces& sourceFaces)
+{
+    static constexpr auto highlightStart = 6U;
+    static constexpr auto highlightExtent = 4U;
+    const auto highlight = packHdrColor({8.0F, 6.0F, 4.0F, 1.0F});
+    for (auto row = highlightStart; row < highlightStart + highlightExtent; ++row)
+    {
+        for (auto column = highlightStart; column < highlightStart + highlightExtent; ++column)
+        {
+            const auto offset =
+                ((static_cast<std::size_t>(row) * environmentFaceSize) + column) * sharpEnvironmentFaces.at(4).size();
+            std::ranges::copy(highlight, sourceFaces.at(4).begin() + static_cast<std::ptrdiff_t>(offset));
+        }
+    }
+}
+
+auto makeEnvironmentSourceFaces() -> EnvironmentFaces
+{
+    auto sourceFaces = EnvironmentFaces {};
+    for (auto face = std::uint32_t {}; face < sourceFaces.size(); ++face)
+    {
+        sourceFaces.at(face) = makeHdrFace({environmentFaceSize, environmentFaceSize}, sharpEnvironmentFaces.at(face));
+    }
+    addEnvironmentHighlight(sourceFaces);
+    return sourceFaces;
+}
+
+void uploadEnvironmentMaps(const panda::Engine& context,
+                           const panda::Texture& diffuse,
+                           const panda::Texture& specular,
+                           const EnvironmentFaces& sourceFaces)
+{
+    auto upload = panda::expect(context.getSubmissionManager().createUploadBatch(), "Create environment upload batch");
+    for (auto face = std::uint32_t {}; face < environmentFaceCount; ++face)
+    {
+        const auto diffusePixels = makeHdrFace({1, 1}, diffuseIrradiance);
+        panda::expect(upload.write(diffuse,
+                                   std::as_bytes(std::span {
+                                       diffusePixels
+        }),
+                                   {.extent = {1, 1}, .arrayLayer = face}),
+                      "Stage diffuse irradiance face");
+        panda::expect(upload.write(specular,
+                                   std::as_bytes(std::span {
+                                       sourceFaces.at(face)
+        }),
+                                   {.extent = {environmentFaceSize, environmentFaceSize}, .arrayLayer = face}),
+                      "Stage specular environment face");
+    }
+    const auto completion = panda::expect(upload.submit(), "Submit environment cubemaps");
+    const auto status = panda::expect(context.getSubmissionManager().wait(completion, std::chrono::seconds {10}),
+                                      "Wait for environment upload");
+    panda::expect(status == panda::WaitStatus::Completed, "Environment upload did not finish in time");
+}
+
+auto createEnvironment(const panda::Engine& context) -> panda::EnvironmentLighting
+{
+    const auto sourceFaces = makeEnvironmentSourceFaces();
+    auto diffuse = panda::expect(context.getResourceManager().createTexture({
+                                     .extent = {1, 1},
+                                     .format = panda::PixelFormat::Rgba16Float,
+                                     .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+                                     .type = panda::TextureType::CubeMap
+    }),
+                                 "Create diffuse irradiance cubemap");
+    auto specular = panda::expect(context.getResourceManager().createTexture({
+                                      .extent = {environmentFaceSize, environmentFaceSize},
+                                      .format = panda::PixelFormat::Rgba16Float,
+                                      .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+                                      .mipPolicy = panda::TextureMipPolicy::GenerateSpecularEnvironment,
+                                      .specularEnvironmentSamplesPerTexel = 128,
+                                      .type = panda::TextureType::CubeMap
+    }),
+                                  "Create prefiltered specular cubemap");
+    uploadEnvironmentMaps(context, diffuse, specular, sourceFaces);
+    return {.diffuseIrradiance = std::move(diffuse), .specularRadiance = std::move(specular)};
+}
+
 struct AnimatedObjects
 {
     panda::scene::Entity group;
     std::vector<panda::scene::Entity> objects;
+};
+
+struct SceneDemoState
+{
+    const panda::tools::Window& window;
+    const panda::Engine& engine;
+    panda::scene::Scene& scene;
+    const AnimatedObjects& animatedObjects;
 };
 
 struct SceneMeshes
@@ -151,7 +291,8 @@ void addGround(panda::scene::Scene& scene, const panda::Mesh& ground)
     panda::expect(scene.setMesh(floor,
                                 panda::scene::MeshInstance {
                                     .mesh = ground,
-                                    .tint = {0.45F, 0.47F, 0.5F, 1.0F}
+                                    .tint = {0.45F, 0.47F, 0.5F, 1.0F},
+                                    .material = makeMaterial(0.7F, 0.3F)
     }),
                   "Attach ground");
 }
@@ -164,7 +305,8 @@ auto addSphere(panda::scene::Scene& scene, const panda::Mesh& sphere, const pand
     panda::expect(scene.setMesh(object,
                                 panda::scene::MeshInstance {
                                     .mesh = sphere,
-                                    .tint = {0.95F, 0.38F, 0.12F, 1.0F}
+                                    .tint = {0.95F, 0.95F, 0.95F, 1.0F},
+                                    .material = makeMaterial(0.7F, 0.3F)
     }),
                   "Attach sphere mesh");
     panda::expect(scene.setParent(object, group), "Parent sphere to group");
@@ -182,8 +324,10 @@ auto addCube(panda::scene::Scene& scene, const panda::Mesh& cube, const panda::s
     }),
         "Create cube object");
     const auto color = glm::vec4 {0.5F + (0.25F * grid.x), 0.5F + (0.25F * grid.y), 0.7F, 1.0F};
-    panda::expect(scene.setMesh(object, panda::scene::MeshInstance {.mesh = cube, .tint = color}),
-                  "Attach shared cube mesh");
+    panda::expect(
+        scene.setMesh(object,
+                      panda::scene::MeshInstance {.mesh = cube, .tint = color, .material = makeMaterial(0.7F, 0.3F)}),
+        "Attach shared cube mesh");
     panda::expect(scene.setParent(object, group), "Parent cube to group");
     return object;
 }
@@ -249,29 +393,26 @@ void animateWave(panda::scene::Scene& scene, std::span<const panda::scene::Entit
     }
 }
 
-void drawLoop(const panda::tools::Window& window,
-              panda::Engine& context,
-              panda::scene::Scene& scene,
-              const AnimatedObjects& objects)
+void drawLoop(const SceneDemoState& demo)
 {
     const auto start = std::chrono::steady_clock::now();
-    const auto& renderer = context.getWindowRenderer();
-    while (!window.shouldClose())
+    const auto& renderer = demo.engine.getWindowRenderer();
+    while (!demo.window.shouldClose())
     {
-        const auto extent = panda::expect(window.getFramebufferExtent(), "Read framebuffer size");
+        const auto extent = panda::expect(demo.window.getFramebufferExtent(), "Read framebuffer size");
         if (extent.x == 0 || extent.y == 0)
         {
             panda::expect(panda::tools::Window::waitForInput(), "Wait while framebuffer is suspended");
             continue;
         }
         const auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
-        animateGroup(scene, objects.group, elapsed);
-        animateWave(scene, objects.objects, elapsed);
+        animateGroup(demo.scene, demo.animatedObjects.group, elapsed);
+        animateWave(demo.scene, demo.animatedObjects.objects, elapsed);
         const auto aspect = static_cast<float>(extent.x) / static_cast<float>(extent.y);
-        const auto view = panda::expect(scene.createRenderView(aspect), "Prepare scene");
+        auto view = panda::expect(demo.scene.createRenderView(aspect), "Prepare scene");
         const auto frame = panda::expect(renderer.render(view), "Render scene");
         panda::expect(frame.status == panda::FrameResult::Status::Suspended ? panda::tools::Window::waitForInput()
-                                                                            : window.processInput(),
+                                                                            : demo.window.processInput(),
                       "Process input");
     }
 }
@@ -304,7 +445,7 @@ auto createMeshes(const panda::Engine& context) -> SceneMeshes
     return meshes;
 }
 
-void run(const panda::tools::Window& window, panda::Engine& context)
+void run(const panda::tools::Window& window, const panda::Engine& context)
 {
     const auto meshes = createMeshes(context);
     auto scene = panda::scene::Scene {};
@@ -313,7 +454,10 @@ void run(const panda::tools::Window& window, panda::Engine& context)
     addPointLight(scene);
     addSpotLight(scene);
     const auto objects = addObjects(scene, meshes);
-    drawLoop(window, context, scene, objects);
+    const auto environment = createEnvironment(context);
+    scene.setEnvironment(environment);
+    scene.setSkybox(environment.specularRadiance);
+    drawLoop({.window = window, .engine = context, .scene = scene, .animatedObjects = objects});
 }
 }
 

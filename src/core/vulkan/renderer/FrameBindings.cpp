@@ -67,12 +67,18 @@ auto shadowViewStride(std::uint64_t alignment) -> std::uint64_t
     return matrixSize + ((effectiveAlignment - (matrixSize % effectiveAlignment)) % effectiveAlignment);
 }
 
+constexpr auto makeDescriptorBinding(std::uint32_t binding,
+                                     vk::DescriptorType descriptorType,
+                                     vk::ShaderStageFlags stageFlags) -> vk::DescriptorSetLayoutBinding
+{
+    return {.binding = binding, .descriptorType = descriptorType, .descriptorCount = 1, .stageFlags = stageFlags};
+}
+
 constexpr auto makeTextureBinding(std::uint32_t binding) -> vk::DescriptorSetLayoutBinding
 {
-    return {.binding = binding,
-            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-            .descriptorCount = 1,
-            .stageFlags = vk::ShaderStageFlagBits::eFragment};
+    return makeDescriptorBinding(binding,
+                                 vk::DescriptorType::eCombinedImageSampler,
+                                 vk::ShaderStageFlagBits::eFragment);
 }
 
 constexpr auto makeTextureBindings() -> std::array<vk::DescriptorSetLayoutBinding, materialTextureSlots.size()>
@@ -87,33 +93,33 @@ constexpr auto makeTextureBindings() -> std::array<vk::DescriptorSetLayoutBindin
 
 constexpr auto makeFrameBindings()
 {
-    return std::array {
-        vk::DescriptorSetLayoutBinding {
-                                        .binding = PANDA_FRAME_UNIFORM_BINDING,
-                                        .descriptorType = vk::DescriptorType::eUniformBuffer,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_SHADOW_MAP_BINDING,
-                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   },
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_MATERIAL_DATA_BINDING,
-                                        .descriptorType = vk::DescriptorType::eStorageBuffer,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   },
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_LIGHT_DATA_BINDING,
-                                        .descriptorType = vk::DescriptorType::eStorageBuffer,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   },
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_SHADOW_DATA_BINDING,
-                                        .descriptorType = vk::DescriptorType::eStorageBuffer,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment                                   },
-        vk::DescriptorSetLayoutBinding {.binding = PANDA_FRAME_SHADOW_VIEW_BINDING,
-                                        .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eVertex                                     }
-    };
+    return std::array {makeDescriptorBinding(PANDA_FRAME_UNIFORM_BINDING,
+                                             vk::DescriptorType::eUniformBuffer,
+                                             vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment),
+                       makeDescriptorBinding(PANDA_FRAME_SHADOW_MAP_BINDING,
+                                             vk::DescriptorType::eCombinedImageSampler,
+                                             vk::ShaderStageFlagBits::eFragment),
+                       makeDescriptorBinding(PANDA_FRAME_MATERIAL_DATA_BINDING,
+                                             vk::DescriptorType::eStorageBuffer,
+                                             vk::ShaderStageFlagBits::eFragment),
+                       makeDescriptorBinding(PANDA_FRAME_LIGHT_DATA_BINDING,
+                                             vk::DescriptorType::eStorageBuffer,
+                                             vk::ShaderStageFlagBits::eFragment),
+                       makeDescriptorBinding(PANDA_FRAME_SHADOW_DATA_BINDING,
+                                             vk::DescriptorType::eStorageBuffer,
+                                             vk::ShaderStageFlagBits::eFragment),
+                       makeDescriptorBinding(PANDA_FRAME_SHADOW_VIEW_BINDING,
+                                             vk::DescriptorType::eUniformBufferDynamic,
+                                             vk::ShaderStageFlagBits::eVertex),
+                       makeDescriptorBinding(PANDA_FRAME_DIFFUSE_ENVIRONMENT_BINDING,
+                                             vk::DescriptorType::eCombinedImageSampler,
+                                             vk::ShaderStageFlagBits::eFragment),
+                       makeDescriptorBinding(PANDA_FRAME_SPECULAR_ENVIRONMENT_BINDING,
+                                             vk::DescriptorType::eCombinedImageSampler,
+                                             vk::ShaderStageFlagBits::eFragment),
+                       makeDescriptorBinding(PANDA_FRAME_SKYBOX_BINDING,
+                                             vk::DescriptorType::eCombinedImageSampler,
+                                             vk::ShaderStageFlagBits::eFragment)};
 }
 
 auto makeBufferWrite(vk::DescriptorSet set,
@@ -132,6 +138,39 @@ auto makeImageWrite(vk::DescriptorSet set, std::uint32_t binding, const vk::Desc
             .descriptorCount = 1,
             .descriptorType = vk::DescriptorType::eCombinedImageSampler,
             .pImageInfo = &info};
+}
+
+void updateEnvironmentDescriptors(const vk::raii::Device& device,
+                                  vk::DescriptorSet descriptorSet,
+                                  vk::Sampler sampler,
+                                  const RenderView& view)
+{
+    if (view.environment)
+    {
+        const auto diffuseInfo = vk::DescriptorImageInfo {
+            .sampler = sampler,
+            .imageView =
+                ::panda::detail::TextureResource::getResource(view.environment->diffuseIrradiance)->getNativeView(),
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+        const auto specularInfo = vk::DescriptorImageInfo {
+            .sampler = sampler,
+            .imageView =
+                ::panda::detail::TextureResource::getResource(view.environment->specularRadiance)->getNativeView(),
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+        const auto writes =
+            std::array {makeImageWrite(descriptorSet, PANDA_FRAME_DIFFUSE_ENVIRONMENT_BINDING, diffuseInfo),
+                        makeImageWrite(descriptorSet, PANDA_FRAME_SPECULAR_ENVIRONMENT_BINDING, specularInfo)};
+        device.updateDescriptorSets(writes, {});
+    }
+    if (view.skybox)
+    {
+        const auto skyboxInfo = vk::DescriptorImageInfo {
+            .sampler = sampler,
+            .imageView = ::panda::detail::TextureResource::getResource(*view.skybox)->getNativeView(),
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+        const auto write = makeImageWrite(descriptorSet, PANDA_FRAME_SKYBOX_BINDING, skyboxInfo);
+        device.updateDescriptorSets(write, {});
+    }
 }
 
 struct TextureFilterSettings
@@ -502,7 +541,7 @@ auto FrameBindings::initializeDescriptorPool() -> std::expected<void, Error>
     const auto poolSizes = std::array {
         vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBuffer,        .descriptorCount = setCount     },
         vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBufferDynamic, .descriptorCount = setCount     },
-        vk::DescriptorPoolSize {.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = setCount     },
+        vk::DescriptorPoolSize {.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = setCount * 4U},
         vk::DescriptorPoolSize {.type = vk::DescriptorType::eStorageBuffer,        .descriptorCount = setCount * 3U}
     };
     auto pool = checkedCreation(_device.createDescriptorPool(
@@ -605,11 +644,13 @@ auto FrameBindings::createUploadBuffer(vk::DeviceSize size, vk::BufferUsageFlagB
 
 auto FrameBindings::initializeSamplers() -> std::expected<void, Error>
 {
-    if (const auto sampler = initializeShadowSampler(); !sampler)
-    {
-        return sampler;
-    }
-    return initializeTextureSampler();
+    return initializeShadowSampler()
+        .and_then([this] {
+            return initializeTextureSampler();
+        })
+        .and_then([this] {
+            return initializeEnvironmentSampler();
+        });
 }
 
 auto FrameBindings::initializeShadowSampler() -> std::expected<void, Error>
@@ -650,6 +691,26 @@ auto FrameBindings::initializeTextureSampler() -> std::expected<void, Error>
         return std::unexpected {sampler.error()};
     }
     _textureSampler = std::move(*sampler);
+    return {};
+}
+
+auto FrameBindings::initializeEnvironmentSampler() -> std::expected<void, Error>
+{
+    auto sampler = createVulkanSampler(_device,
+                                       vk::SamplerCreateInfo {.magFilter = vk::Filter::eLinear,
+                                                              .minFilter = vk::Filter::eLinear,
+                                                              .mipmapMode = vk::SamplerMipmapMode::eLinear,
+                                                              .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+                                                              .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+                                                              .addressModeW = vk::SamplerAddressMode::eClampToEdge,
+                                                              .maxAnisotropy = 1.0F,
+                                                              .minLod = 0.0F,
+                                                              .maxLod = vk::LodClampNone});
+    if (!sampler)
+    {
+        return std::unexpected {sampler.error()};
+    }
+    _environmentSampler = std::move(*sampler);
     return {};
 }
 
@@ -892,7 +953,9 @@ auto FrameBindings::writeShadowRecords(FrameResources& frame, const ShadowAtlasP
     return frame.shadowViewBuffer->writeMapped(0, matrices);
 }
 
-void FrameBindings::updateFrameDescriptorSet(const FrameResources& frame, vk::ImageView shadowView)
+void FrameBindings::updateFrameDescriptorSet(const FrameResources& frame,
+                                             vk::ImageView shadowView,
+                                             const RenderView& view)
 {
     const auto descriptorSet = *frame.descriptorSet;
     const auto uniformInfo = makeBufferInfo(frame.uniformBuffer->getNative(), sizeof(FrameUniform));
@@ -917,6 +980,7 @@ void FrameBindings::updateFrameDescriptorSet(const FrameResources& frame, vk::Im
                         vk::DescriptorType::eUniformBufferDynamic,
                         shadowViewInfo)};
     _device.updateDescriptorSets(writes, {});
+    updateEnvironmentDescriptors(_device, descriptorSet, *_environmentSampler, view);
 }
 
 auto FrameBindings::writeTextureDescriptors(FrameResources& frame,
@@ -964,12 +1028,12 @@ auto FrameBindings::appendTextureDescriptorWrites(TextureDescriptorWriteBatch& b
         {
             return std::unexpected {sampler.error()};
         }
-        batch.imageInfos[imageInfoIndex] = makeTextureDescriptorInfo(texture, *sampler, batch.fallbackView);
+        batch.imageInfos.at(imageInfoIndex) = makeTextureDescriptorInfo(texture, *sampler, batch.fallbackView);
         batch.writes.push_back({.dstSet = descriptorSet,
                                 .dstBinding = slot.binding,
                                 .descriptorCount = 1,
                                 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                                .pImageInfo = &batch.imageInfos[imageInfoIndex]});
+                                .pImageInfo = &batch.imageInfos.at(imageInfoIndex)});
     }
     return {};
 }
@@ -1104,7 +1168,7 @@ auto FrameBindings::updateFrameDescriptors(FrameResources& frame,
     {
         return updated;
     }
-    updateFrameDescriptorSet(frame, shadowArrayView);
+    updateFrameDescriptorSet(frame, shadowArrayView, view);
     return writeTextureDescriptors(frame, view, textureFallbackView);
 }
 }

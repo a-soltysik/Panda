@@ -19,7 +19,18 @@ then associates them with scene objects. The sphere uses 48 longitude segments a
 latitude rings. Each frame supplies the current framebuffer aspect ratio to
 `Scene::createRenderView()` and passes the returned snapshot to
 `WindowRenderer::render()`. The application owns the loop and uploads; scene objects and
-snapshots retain mesh handles, so their Engine stays alive until those handles are released.
+snapshots retain mesh and environment handles, so their Engine stays alive until those
+handles are released.
+The demo builds a small procedural linear-HDR source cubemap, creates diffuse irradiance data,
+and writes its six base faces through `UploadBatch::write()` with `TextureUploadRegion` for a cubemap
+created with `TextureMipPolicy::GenerateSpecularEnvironment`. The upload generates and stages the
+GGX specular roughness mips using `TextureDesc::specularEnvironmentSamplesPerTexel`.
+It stores both maps on `Scene`, which copies them into each returned render view. The sharpest
+specular mip also serves as the visible skybox. The center sphere is a neutral, smooth metal, and
+the gray ground is moderately rough metal with softer colored reflections; both make the
+environment visible on surfaces. The moving Lit objects receive image-based light alongside the
+direct lights, while the skybox is drawn behind them. The example uses a small fixed sample count
+and resolution for startup; applications can precompute larger maps with more samples for content.
 `Engine::createWithSurface` returns the same move-only `Engine` type used by the
 headless path. Common service access stays on Engine, and this surface-enabled
 Engine also provides `getWindowRenderer()`.

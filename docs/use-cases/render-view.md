@@ -2,14 +2,15 @@
 
 ## Goal and boundary
 
-An application passes camera, lighting and mesh draw data to `WindowRenderer::render(view)`.
-Panda renders and presents that view without requiring a scene or entity system. An
-empty `RenderView::meshes` list is a valid view that presents only the background.
+An application passes camera, lighting, an optional skybox and mesh draw data to
+`WindowRenderer::render(view)`. Panda renders and presents that view without
+requiring a scene or entity system. An empty `RenderView::meshes` list is valid:
+Panda draws the skybox when present, otherwise it presents the solid background.
 This flow ends with a `FrameResult` or an `Error`.
 
 **The application** owns scene data, transforms and the lifetime of its `Engine`. **Panda** validates the view, records
-the built-in mesh rendering path, retains mesh
-and selected texture handles through GPU use, and owns frame-slot and swapchain synchronization. A returned
+the built-in rendering path, retains mesh and selected texture handles through GPU use, and owns frame-slot and
+swapchain synchronization. A returned
 `CompletionPoint` identifies submitted GPU work; it does not mean the image has been displayed.
 
 ## Preconditions
@@ -28,6 +29,8 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    normal map is ignored with a warning if TexCoord0 or Tangent is missing.
 3. Camera, light, transform, tint and material values are finite and valid for the
    built-in renderer. A zero-sized framebuffer is allowed and returns `Suspended`.
+4. An optional skybox is an uploaded, sampled square linear `Rgba16Float` cubemap
+   created by this Engine.
 
 ## Main flow
 
@@ -45,6 +48,10 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    excessive values detach shadows from their casters.
    `EngineOptions::maxLights` controls the total light budget; zero supports a view
    with no lights.
+   `RenderView::environment` optionally supplies preprocessed diffuse and specular
+   cubemaps for Lit materials; `RenderView::skybox` independently selects the
+   visible background. A view built from `Scene` copies its scene-wide settings;
+   the application may still override them per view before rendering.
    Mesh handles are ordinary values; Panda does not create entities or own application
    transforms.
    For position, rotation and scale, `panda::createModelMatrix()` builds the full
@@ -63,30 +70,35 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    the texture's Engine, sampled usage and required format. Base-color,
    metallic-roughness, emissive and occlusion maps also require TexCoord0; the normal
    map falls back with a warning when UVs or tangents are missing. It polls and
-   reclaims completed upload packets, then rejects a texture whose upload was never
-   submitted. Rendering remains queued
+   reclaims completed upload packets, then rejects a material or skybox texture whose
+   upload was never submitted. A skybox must be a sampled same-Engine `Rgba16Float`
+   cubemap. Rendering remains queued
    after any in-flight upload on the Engine submission queue.
 4. **Prepare the window frame.** `WindowPresentation::prepareWindowFrame()` checks the
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
    without acquiring an image. See [UC Suspend presentation and recreate the
    swapchain](recreate-swapchain.md).
-   For mesh draws, `FrameExecution::prepareOutput()` creates the renderer or
+   For mesh draws or a skybox, `FrameExecution::prepareOutput()` creates the renderer or
    prepares a change in extent, format or requested sample count. It waits for
    both slots before replacing attachments and compatible pipelines.
 5. **Retain resources and acquire.** `WindowPresentation` asks `FrameExecution::prepareSlot()`
-   to wait for the selected slot's prior GPU completion, then retain the view's mesh
-   and selected material texture handles in that slot. It checks submission capacity,
+   to wait for the selected slot's prior GPU completion, then retain the view's mesh,
+   material texture, environment and skybox handles in that slot. It checks submission capacity,
    acquires an image with its slot-owned semaphore and waits for that image's pending
    presentation fence before reuse.
 6. **Record the view.** `WindowPresentation` begins the command buffer and transitions the
    acquired image to color-attachment layout. It passes `FrameExecution` a borrowed
    `FrameOutput` containing that image view, extent and color format. An empty mesh
-   list clears the output to the configured background. Otherwise, the
+   list without a skybox clears the output to the configured solid background. Otherwise, the
    initialized `MeshRenderer` updates frame data,
    per-draw material records, light and shadow records, dynamic shadow-view matrices,
    and texture descriptors through `FrameBindings`. `MeshRenderer` clears the depth
    atlas once and renders opaque/masked casters into each opted-in light's guarded
    tile with that tile's view matrix.
+   When a skybox is present, `MeshPipelineCache` prepares its color-format-compatible
+   pipeline and `MeshRenderer` draws source radiance before geometry. Camera
+   orientation selects the visible direction; translation does not move the sky.
+   Depth writes are disabled for this draw, so later geometry covers the background.
    `MeshPipelineCache` prepares missing color and shadow variants before recording;
    draw recording then looks up those prepared pipelines without creating them. A base-color sample multiplies material
    and
@@ -111,7 +123,7 @@ and selected texture handles through GPU use, and owns frame-slot and swapchain 
    acquire semaphore and signaling the image's render-finished semaphore plus the
    Engine timeline. Only after submission succeeds does `FrameExecution` store the
    completion value and commit renderer and performance state. `WindowPresentation` then
-   marks the image initialized and advances its slot. Mesh and texture handles remain
+   marks the image initialized and advances its slot. Mesh and view texture handles remain
    retained in the execution slot until reuse after completion. See
    [UC Commit work to the Engine submission timeline](commit-context-submission.md).
 8. **Queue presentation.** `WindowPresentation::presentFrame()` queues the image with its
@@ -144,12 +156,12 @@ sequenceDiagram
     W ->> W: Validate camera, light, mesh layouts and texture requirements
     W ->> U: Collect completed upload packets
     U -->> W: Collection result
-    W ->> W: Reject material maps without a submitted upload
+    W ->> W: Reject material maps or skybox without a submitted upload
     W ->> P: Render validated view
     P ->> V: Check framebuffer and swapchain generation
-    opt View contains meshes
-        P ->> E: Step 4 - prepare output for the requested sample count
-        alt First mesh draw
+    opt View contains meshes or a skybox
+        P ->> E: Step 4 - prepare output extent, format and sample count
+        alt First mesh or skybox render
             E ->> R: Create renderer for the selected output
             R ->> RA: Create depth, MSAA and shadow attachments
             RA -->> R: Ready attachments and output description
@@ -165,23 +177,34 @@ sequenceDiagram
             R ->> RA: Publish replacements and reset replaced history
         end
     end
-    P ->> E: Wait for frame slot and retain mesh and selected material texture handles
+    P ->> E: Wait for frame slot and retain view resource handles
     P ->> V: Acquire image and wait for presentation reuse
     P ->> E: Begin command buffer
     P ->> V: Transition output image to color attachment
-    alt View has no meshes
+    alt View has no meshes or skybox
         E ->> V: Clear FrameOutput with encoded background color
-    else View contains meshes
+    else View contains a skybox or meshes
         R ->> B: Update frame data, material/light records and texture descriptors
         B ->> V: Write frame buffers and descriptor sets
-        R ->> K: Prepare needed color and shadow variants
+        opt View has a skybox
+            R ->> K: Prepare skybox pipeline for output compatibility
+        end
+        opt View contains meshes
+            R ->> K: Prepare needed color and shadow variants
+        end
         K ->> V: Create missing pipeline variants
-        R ->> K: Look up prepared pipelines during draw recording
         R ->> V: Clear atlas and record each configured light view into its guarded tile
-        R ->> V: Apply the same Mask cutoff as the camera pass
-        R ->> V: Record Opaque and Mask draws, then back-to-front Blend draws
-        R ->> V: Sample material maps and per-light atlas views for Lit shading
-        R ->> V: Add emission before tone mapping for Lit and Unlit shading
+        opt View has a skybox
+            R ->> K: Look up prepared skybox pipeline
+            R ->> V: Draw mip 0 using camera direction before geometry
+        end
+        opt View contains meshes
+            R ->> K: Look up prepared pipelines during draw recording
+            R ->> V: Apply the same Mask cutoff as the camera pass
+            R ->> V: Record Opaque and Mask draws, then back-to-front Blend draws
+            R ->> V: Sample material maps and per-light atlas views for Lit shading
+            R ->> V: Add emission before tone mapping for Lit and Unlit shading
+        end
     end
     P ->> V: Transition output image to present layout
     P ->> E: End command buffer
@@ -210,6 +233,15 @@ contract.
 **Camera construction.** `panda::tools::createPerspectiveCamera()` combines the
 checked perspective projection with right-handed look-at vectors and returns a
 `RenderCamera` for the view.
+
+**Upload environment maps.** Applications provide a precomputed diffuse irradiance
+cubemap with one mip and the sharp linear HDR source for specular reflections. Create
+the specular cubemap with `TextureMipPolicy::GenerateSpecularEnvironment`, set
+`TextureDesc::specularEnvironmentSamplesPerTexel`, then write its six mip-0 faces
+through `UploadBatch::write(texture, bytes, region)`. When the sixth face arrives,
+Panda generates and stages the full GGX roughness chain. An incomplete set makes
+`UploadBatch::submit()` return `InvalidArgument`; the same batch can accept the
+remaining faces and be submitted again.
 
 **Current shading model.** Built-in materials multiply linear `baseColor`, an
 optional sRGB base-color map, draw tint and optional vertex color (white when absent).
@@ -292,7 +324,7 @@ A frame error does not imply that already submitted work was rolled back.
 | Acquire returns timeout or not-ready                                                           | Return `Skipped` without a completion point.                                                                                     |
 | Acquire reports out-of-date                                                                    | Return `RecreatePending` without a completion point; the next call attempts recreation.                                          |
 | Acquire or present is suboptimal, or present reports out-of-date                               | Return `RecreatePending`; keep the accepted submission's completion point.                                                       |
-| Invalid view/material data, foreign mesh/texture, incompatible layout, or invalid material map | Return `InvalidArgument` before acquiring an image.                                                                              |
+| Invalid view/material data, foreign mesh/texture, incompatible layout, invalid material map, or invalid skybox | Return `InvalidArgument` before acquiring an image.                                                    |
 | Allocation fails while applying MSAA                                                           | Return the allocation error before acquiring an image. A subsequent compatible frame can reuse the prior configuration.         |
 | Capture is requested                                                                           | Use `WindowRenderer::renderWithCapture(view, target)`; capture may return `Unsupported` when the surface or formats cannot blit. |
 | Recording, submission or cleanup fails after acquire                                           | Return the relevant error; retire the acquired image. Failed retirement faults presentation.                                     |

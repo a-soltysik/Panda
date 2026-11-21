@@ -13,6 +13,7 @@ panda_add_component(panda_core
         Buffer.cpp
         Mesh.cpp
         Texture.cpp
+        EnvironmentMap.cpp
         OffscreenTarget.cpp
         ResourceManager.cpp
         OffscreenRenderer.cpp
@@ -98,6 +99,7 @@ panda_add_component(panda_core
         panda/rendering/RenderView.hpp
         panda/rendering/SampleCount.hpp
     PRIVATE_HEADERS
+        EnvironmentMapFilter.hpp
         Math.hpp
         vulkan/EngineCreation.hpp
         vulkan/EngineCreateInfo.hpp

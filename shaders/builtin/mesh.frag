@@ -15,6 +15,12 @@ layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) 
 } frameData;
 
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SHADOW_MAP_BINDING) uniform sampler2DArray shadowMap;
+#ifdef HAS_ENVIRONMENT
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_DIFFUSE_ENVIRONMENT_BINDING) uniform samplerCube
+    diffuseIrradianceMap;
+layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SPECULAR_ENVIRONMENT_BINDING) uniform samplerCube
+    specularRadianceMap;
+#endif
 layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_BASE_COLOR_BINDING) uniform sampler2D baseColorMap;
 layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING) uniform sampler2D
     metallicRoughnessMap;
@@ -284,7 +290,22 @@ void main()
     const float occlusionSample =
         material.hasOcclusionTexture != 0u ? texture(occlusionMap, textureCoordinates).r : 1.0;
     const float ambientOcclusion = mix(1.0, occlusionSample, clamp(material.occlusionStrength, 0.0, 1.0));
+#ifdef HAS_ENVIRONMENT
+    // shortcut: omit the preintegrated BRDF lookup, add it when calibrating environment energy against a reference.
+    const vec3 viewDirection = normalize(frameData.cameraPosition.xyz - worldPosition);
+    const float normalView = max(dot(normal, viewDirection), 0.0);
+    const vec3 f0 = mix(dielectricF0, mappedBaseColor.rgb, metallic);
+    const vec3 fresnel = fresnelSchlick(normalView, f0);
+    const vec3 diffuseWeight = (1.0 - fresnel) * (1.0 - metallic);
+    const vec3 irradiance = texture(diffuseIrradianceMap, normal).rgb;
+    const vec3 diffuseEnvironment = diffuseWeight * mappedBaseColor.rgb * irradiance / pi;
+    const vec3 reflectionDirection = reflect(-viewDirection, normal);
+    const float specularLod = roughness * float(textureQueryLevels(specularRadianceMap) - 1);
+    const vec3 specularEnvironment = textureLod(specularRadianceMap, reflectionDirection, specularLod).rgb * fresnel;
+    const vec3 ambient = (diffuseEnvironment + specularEnvironment) * ambientOcclusion;
+#else
     const vec3 ambient = mappedBaseColor.rgb * frameData.ambient.rgb * frameData.ambient.w * ambientOcclusion;
+#endif
     const vec3 mapped = toneMapAces(ambient + direct + emissive);
     const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
     fragmentColor = vec4(outputColor, opacity);

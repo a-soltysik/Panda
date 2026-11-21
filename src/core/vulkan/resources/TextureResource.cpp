@@ -43,11 +43,34 @@ auto isValidAddressMode(TextureAddressMode mode) -> bool
            mode == TextureAddressMode::ClampToEdge;
 }
 
+auto isValidTextureType(TextureType type) -> bool
+{
+    return type == TextureType::Texture2D || type == TextureType::CubeMap;
+}
+
+auto isSupportedGeneratedMipFormat(PixelFormat format) -> bool
+{
+    return format == PixelFormat::Rgba8Unorm || format == PixelFormat::Rgba8Srgb || format == PixelFormat::Bgra8Unorm ||
+           format == PixelFormat::Bgra8Srgb;
+}
+
+auto isValidMipPolicy(const TextureDesc& description) -> bool
+{
+    return description.mipPolicy == TextureMipPolicy::SingleLevel ||
+           description.mipPolicy == TextureMipPolicy::Supplied ||
+           (description.mipPolicy == TextureMipPolicy::Generate && description.type == TextureType::Texture2D &&
+            isSupportedGeneratedMipFormat(description.format)) ||
+           (description.mipPolicy == TextureMipPolicy::GenerateSpecularEnvironment &&
+            description.type == TextureType::CubeMap && description.specularEnvironmentSamplesPerTexel != 0);
+}
+
 auto validateDescription(const TextureResourceCreateInfo& description) -> Result<void>
 {
     if (description.extent.width == 0 || description.extent.height == 0 || description.arrayLayers == 0 ||
         description.format == vk::Format::eUndefined || !description.usage || description.mipLevels == 0 ||
-        description.mipLevels > fullMipLevelCount(description.extent))
+        description.mipLevels > fullMipLevelCount(description.extent) ||
+        (description.cubeCompatible &&
+         (description.extent.width != description.extent.height || description.arrayLayers != 6)))
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Invalid texture extent, layers, format or usage")};
@@ -62,14 +85,44 @@ auto validateDescription(const TextureResourceCreateInfo& description) -> Result
     return {};
 }
 
+auto validateImageLimits(const vk::raii::PhysicalDevice& physicalDevice,
+                         const TextureResourceCreateInfo& description,
+                         const vk::ImageFormatProperties& support) -> Result<void>
+{
+    if (description.extent.width > support.maxExtent.width || description.extent.height > support.maxExtent.height ||
+        (description.cubeCompatible && description.mipLevels > support.maxMipLevels))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture extent exceeds device limits")};
+    }
+    if (description.arrayLayers > 1 &&
+        (description.arrayLayers > support.maxArrayLayers ||
+         description.arrayLayers > physicalDevice.getProperties().limits.maxImageArrayLayers))
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Texture array layer count exceeds device limits")};
+    }
+    return {};
+}
+
+auto validateCubeSampling(const vk::raii::PhysicalDevice& physicalDevice, const TextureResourceCreateInfo& description)
+    -> Result<void>
+{
+    if (description.cubeCompatible && !(physicalDevice.getFormatProperties(description.format).optimalTilingFeatures &
+                                        vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "Cubemap format does not support linear sampling")};
+    }
+    return {};
+}
+
 auto validateFormatAndExtent(const vk::raii::PhysicalDevice& physicalDevice,
                              const TextureResourceCreateInfo& description) -> Result<void>
 {
-    const auto support = physicalDevice.getImageFormatProperties(description.format,
-                                                                 vk::ImageType::e2D,
-                                                                 vk::ImageTiling::eOptimal,
-                                                                 description.usage,
-                                                                 {});
+    const auto support = physicalDevice.getImageFormatProperties(
+        description.format,
+        vk::ImageType::e2D,
+        vk::ImageTiling::eOptimal,
+        description.usage,
+        description.cubeCompatible ? vk::ImageCreateFlagBits::eCubeCompatible : vk::ImageCreateFlags {});
     if (support.result == vk::Result::eErrorFormatNotSupported)
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Texture format and usage are unsupported")};
@@ -78,16 +131,13 @@ auto validateFormatAndExtent(const vk::raii::PhysicalDevice& physicalDevice,
     {
         return std::unexpected {makeVulkanError(support.result)};
     }
-    if (description.extent.width > support.value.maxExtent.width ||
-        description.extent.height > support.value.maxExtent.height)
+    if (const auto valid = validateImageLimits(physicalDevice, description, support.value); !valid)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture extent exceeds device limits")};
+        return valid;
     }
-    if (description.arrayLayers > 1 &&
-        (description.arrayLayers > support.value.maxArrayLayers ||
-         description.arrayLayers > physicalDevice.getProperties().limits.maxImageArrayLayers))
+    if (const auto valid = validateCubeSampling(physicalDevice, description); !valid)
     {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "Texture array layer count exceeds device limits")};
+        return valid;
     }
     return {};
 }
@@ -104,10 +154,10 @@ auto validateTextureRequest(const vk::raii::PhysicalDevice& physicalDevice,
 
 auto makeTextureCreateInfo(const TextureDesc& description) -> Result<TextureResourceCreateInfo>
 {
-    if (description.extent.x == 0 || description.extent.y == 0 ||
-        (description.mipPolicy != TextureMipPolicy::SingleLevel &&
-         description.mipPolicy != TextureMipPolicy::Supplied && description.mipPolicy != TextureMipPolicy::Generate) ||
-        !isValidAddressMode(description.addressMode))
+    if (description.extent.x == 0 || description.extent.y == 0 || !isValidTextureType(description.type) ||
+        !isValidMipPolicy(description) || !isValidAddressMode(description.addressMode) ||
+        (description.type == TextureType::CubeMap &&
+         (description.extent.x != description.extent.y || description.format != PixelFormat::Rgba16Float)))
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Invalid texture extent, mip policy or address mode")};
@@ -127,7 +177,9 @@ auto makeTextureCreateInfo(const TextureDesc& description) -> Result<TextureReso
         .extent = extent,
         .format = *format,
         .usage = *usage,
-        .mipLevels = description.mipPolicy == TextureMipPolicy::SingleLevel ? 1U : fullMipLevelCount(extent)};
+        .mipLevels = description.mipPolicy == TextureMipPolicy::SingleLevel ? 1U : fullMipLevelCount(extent),
+        .arrayLayers = description.type == TextureType::CubeMap ? 6U : 1U,
+        .cubeCompatible = description.type == TextureType::CubeMap};
 }
 
 auto validateSampleCount(vk::ImageUsageFlags usage, vk::SampleCountFlagBits samples) -> Result<void>
@@ -152,6 +204,7 @@ auto createNativeImage(const vk::raii::Device& device,
                        vk::SampleCountFlagBits samples) -> Result<vk::raii::Image>
 {
     const auto info = vk::ImageCreateInfo {
+        .flags = description.cubeCompatible ? vk::ImageCreateFlagBits::eCubeCompatible : vk::ImageCreateFlags {},
         .imageType = vk::ImageType::e2D,
         .format = description.format,
         .extent = vk::Extent3D {.width = description.extent.width, .height = description.extent.height, .depth = 1},
@@ -271,8 +324,10 @@ auto TextureResource::create(const vk::raii::Device& device,
     if (resource)
     {
         (*resource)->_publicFormat = description.format;
+        (*resource)->_publicType = description.type;
         (*resource)->_publicUsage = description.usage;
         (*resource)->_mipPolicy = description.mipPolicy;
+        (*resource)->_specularEnvironmentSamplesPerTexel = description.specularEnvironmentSamplesPerTexel;
         (*resource)->_addressMode = description.addressMode;
     }
     return resource;
@@ -321,13 +376,18 @@ TextureResource::TextureResource(MemoryPool& pool,
 auto TextureResource::createViews(const vk::raii::Device& device, const TextureResourceCreateInfo& description)
     -> Result<void>
 {
-    auto view = createNativeView(device, *_image, description.format, {.levelCount = description.mipLevels});
+    const auto viewDescription = description.cubeCompatible
+                                     ? NativeImageViewDescription {.type = vk::ImageViewType::eCube,
+                                                                   .levelCount = description.mipLevels,
+                                                                   .layerCount = 6}
+                                     : NativeImageViewDescription {.levelCount = description.mipLevels};
+    auto view = createNativeView(device, *_image, description.format, viewDescription);
     if (!view)
     {
         return std::unexpected {std::move(view.error())};
     }
     _view = std::move(*view);
-    if (description.createArrayView || description.arrayLayers > 1)
+    if (description.createArrayView || (description.arrayLayers > 1 && !description.cubeCompatible))
     {
         return createArrayViews(device, description);
     }
@@ -410,6 +470,11 @@ auto TextureResource::getUsage() const -> vk::ImageUsageFlags
 auto TextureResource::getPublicFormat() const -> PixelFormat
 {
     return _publicFormat;
+}
+
+auto TextureResource::getPublicType() const -> TextureType
+{
+    return _publicType;
 }
 
 auto TextureResource::getPublicUsage() const -> TextureUsage

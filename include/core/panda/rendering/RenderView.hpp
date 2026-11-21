@@ -167,6 +167,17 @@ struct SpotLight
 /// @brief One built-in light type accepted by RenderView and Scene.
 using Light = std::variant<DirectionalLight, PointLight, SpotLight>;
 
+/// @brief Preprocessed image-based lighting supplied to one view.
+/// Both textures must be uploaded linear RGBA16F cubemaps; diffuse irradiance has one mip and specular radiance has a
+/// roughness-filtered mip chain. Render submission retains both handles through GPU completion.
+struct EnvironmentLighting
+{
+    /// Diffuse irradiance sampled by the Lit shader for indirect diffuse response.
+    Texture diffuseIrradiance;
+    /// Specular radiance prefiltered from sharp to rough across its mip levels.
+    Texture specularRadiance;
+};
+
 /// @brief One uploaded mesh with an object-to-world transform, linear tint and material.
 struct MeshDraw
 {
@@ -181,10 +192,10 @@ struct MeshDraw
 };
 
 /// @brief Transient application-owned inputs for one renderer frame.
-/// The renderer copies draw values and retains mesh and texture handles through GPU completion.
+/// The renderer copies draw values and retains mesh, texture, environment and skybox handles through GPU completion.
 struct RenderView
 {
-    /// Camera used for mesh projection and view-dependent lighting.
+    /// Camera used for mesh projection, view-dependent lighting and skybox orientation.
     RenderCamera camera;
     /// Ordered lights used by Lit materials. Each light casts a shadow only when its `shadow` settings are present.
     std::vector<Light> lights;
@@ -193,5 +204,9 @@ struct RenderView
     /// Requested MSAA for mesh draws. Panda uses the highest supported count at or below this request.
     /// Changing the effective configuration may allocate and wait for prior submissions of this renderer.
     SampleCount requestedSampleCount {SampleCount::Four};
+    /// Optional preprocessed image-based lighting shared by Lit draws; absence keeps the simple ambient term.
+    std::optional<EnvironmentLighting> environment;
+    /// Optional uploaded linear HDR cubemap drawn as the background, independent of environment lighting.
+    std::optional<Texture> skybox;
 };
 }

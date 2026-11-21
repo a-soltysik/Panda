@@ -6,7 +6,8 @@ if(TARGET Panda::Tools)
 
     panda_add_test(panda_system_window_rendering system
         SOURCES WindowRendering.cpp
-        HEADERS "${PROJECT_SOURCE_DIR}/tests/support/GlfwTestSupport.hpp"
+        HEADERS "${PROJECT_SOURCE_DIR}/tests/support/EnvironmentLighting.hpp"
+                "${PROJECT_SOURCE_DIR}/tests/support/GlfwTestSupport.hpp"
                 "${PROJECT_SOURCE_DIR}/tests/support/TestGeometry.hpp"
         LIBRARIES Panda::Tools PandaTest::Support PandaTest::LogCapture glfw)
 endif()
@@ -18,6 +19,7 @@ if(TARGET Panda::Panda)
     panda_add_test(panda_system_offscreen_rendering system
         VULKAN_INTERNAL
         SOURCES OffscreenRendering.cpp
+        HEADERS "${PROJECT_SOURCE_DIR}/tests/support/EnvironmentLighting.hpp"
         LIBRARIES Panda::Panda PandaTest::LogCapture)
 
     panda_add_test(panda_system_buffer system

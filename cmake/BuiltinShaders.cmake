@@ -37,6 +37,11 @@ function(panda_add_builtin_shaders target)
     # Keep discard compatible with devices that lack shaderDemoteToHelperInvocation.
     panda_add_builtin_shader_command(mesh.frag mesh.frag --target-spv=spv1.3)
     panda_add_builtin_shader_command(mesh_normal.frag mesh.frag -DHAS_NORMAL_MAP=1 --target-spv=spv1.3)
+    panda_add_builtin_shader_command(mesh_environment.frag mesh.frag -DHAS_ENVIRONMENT=1 --target-spv=spv1.3)
+    panda_add_builtin_shader_command(mesh_normal_environment.frag mesh.frag -DHAS_ENVIRONMENT=1 -DHAS_NORMAL_MAP=1
+                                    --target-spv=spv1.3)
+    panda_add_builtin_shader_command(skybox.vert skybox.vert)
+    panda_add_builtin_shader_command(skybox.frag skybox.frag)
     panda_add_builtin_shader_command(shadow.vert shadow.vert)
     panda_add_builtin_shader_command(shadow_texture.vert shadow.vert -DHAS_BASE_COLOR_TEXTURE=1)
     panda_add_builtin_shader_command(shadow_vertex_alpha.vert shadow_vertex_alpha.vert)

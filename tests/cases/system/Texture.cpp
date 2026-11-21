@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <panda/Engine.hpp>
 #include <panda/base/Error.hpp>
 #include <panda/diagnostics/Logger.hpp>
@@ -10,6 +12,7 @@
 #include <panda/resources/Texture.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -101,6 +104,15 @@ TEST(TextureSystem, UploadsCompleteSuppliedAndGeneratedMipChains)
     }
     ASSERT_TRUE(context) << context.error().message;
 
+    const auto unsupportedGeneratedFormat = context->getResourceManager().createTexture({
+        .extent = {4, 4},
+        .format = panda::PixelFormat::Rgba16Float,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::Generate
+    });
+    ASSERT_FALSE(unsupportedGeneratedFormat);
+    EXPECT_EQ(unsupportedGeneratedFormat.error().code, panda::ErrorCode::InvalidArgument);
+
     auto supplied = context->getResourceManager().createTexture({
         .extent = {4, 4},
         .format = panda::PixelFormat::Rgba8Srgb,
@@ -168,4 +180,141 @@ TEST(TextureSystem, UploadsCompleteSuppliedAndGeneratedMipChains)
     const auto generatedWait = context->getSubmissionManager().wait(*generatedCompletion, std::chrono::seconds {10});
     ASSERT_TRUE(generatedWait) << generatedWait.error().message;
     EXPECT_EQ(*generatedWait, panda::WaitStatus::Completed);
+}
+
+TEST(TextureSystem, UploadsEveryCubemapFaceAndSuppliedMipBeforeSubmission)
+{
+    auto context = panda::Engine::create({.applicationName = "Panda cubemap upload", .enableValidation = true});
+    if (!context && context.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << context.error().message;
+    }
+    ASSERT_TRUE(context) << context.error().message;
+
+    auto cubemap = context->getResourceManager().createTexture({
+        .extent = {4, 4},
+        .format = panda::PixelFormat::Rgba16Float,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::Supplied,
+        .type = panda::TextureType::CubeMap
+    });
+    if (!cubemap && cubemap.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << cubemap.error().message;
+    }
+    ASSERT_TRUE(cubemap) << cubemap.error().message;
+    ASSERT_EQ(cubemap->getType(), panda::TextureType::CubeMap);
+    ASSERT_EQ(cubemap->getMipLevels(), 3U);
+
+    const auto levels =
+        std::array {std::vector<std::byte>(128U), std::vector<std::byte>(32U), std::vector<std::byte>(8U)};
+    auto batch = context->getSubmissionManager().createUploadBatch();
+    ASSERT_TRUE(batch) << batch.error().message;
+    for (auto mipLevel = std::uint32_t {}; mipLevel < levels.size(); ++mipLevel)
+    {
+        const auto extent = 4U >> mipLevel;
+        const auto region = panda::TextureUploadRegion {
+            .extent = {extent, extent},
+            .mipLevel = mipLevel,
+            .arrayLayer = 0
+        };
+        ASSERT_TRUE(batch->write(*cubemap, levels.at(mipLevel), region));
+        if (mipLevel == 0)
+        {
+            EXPECT_FALSE(batch->write(*cubemap, levels.at(mipLevel), region));
+        }
+    }
+    const auto incomplete = batch->submit();
+    ASSERT_FALSE(incomplete);
+    EXPECT_EQ(incomplete.error().code, panda::ErrorCode::InvalidArgument);
+
+    for (auto arrayLayer = std::uint32_t {1}; arrayLayer < 6; ++arrayLayer)
+    {
+        for (auto mipLevel = std::uint32_t {}; mipLevel < levels.size(); ++mipLevel)
+        {
+            const auto extent = 4U >> mipLevel;
+            ASSERT_TRUE(batch->write(*cubemap,
+                                     levels.at(mipLevel),
+                                     {
+                                         .extent = {extent, extent},
+                                         .mipLevel = mipLevel,
+                                         .arrayLayer = arrayLayer
+            }));
+        }
+    }
+    const auto completion = batch->submit();
+    ASSERT_TRUE(completion) << completion.error().message;
+    const auto waited = context->getSubmissionManager().wait(*completion, std::chrono::seconds {10});
+    ASSERT_TRUE(waited) << waited.error().message;
+    EXPECT_EQ(*waited, panda::WaitStatus::Completed);
+}
+
+TEST(TextureSystem, GeneratesAndUploadsPrefilteredCubemapMipChain)
+{
+    auto context = panda::Engine::create({.applicationName = "Panda generated cubemap", .enableValidation = true});
+    if (!context && context.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << context.error().message;
+    }
+    ASSERT_TRUE(context) << context.error().message;
+
+    auto invalidSamples = context->getResourceManager().createTexture({
+        .extent = {2, 2},
+        .format = panda::PixelFormat::Rgba16Float,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::GenerateSpecularEnvironment,
+        .specularEnvironmentSamplesPerTexel = 0,
+        .type = panda::TextureType::CubeMap
+    });
+    ASSERT_FALSE(invalidSamples);
+    EXPECT_EQ(invalidSamples.error().code, panda::ErrorCode::InvalidArgument);
+
+    auto cubemap = context->getResourceManager().createTexture({
+        .extent = {2, 2},
+        .format = panda::PixelFormat::Rgba16Float,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::GenerateSpecularEnvironment,
+        .specularEnvironmentSamplesPerTexel = 4,
+        .type = panda::TextureType::CubeMap
+    });
+    if (!cubemap && cubemap.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << cubemap.error().message;
+    }
+    ASSERT_TRUE(cubemap) << cubemap.error().message;
+    ASSERT_EQ(cubemap->getMipLevels(), 2U);
+
+    auto sourceFaces = std::array<std::vector<std::uint16_t>, 6> {};
+    auto batch = context->getSubmissionManager().createUploadBatch();
+    ASSERT_TRUE(batch) << batch.error().message;
+    for (auto face = std::uint32_t {}; face < 6U; ++face)
+    {
+        sourceFaces.at(face).assign(std::size_t {2U} * 2U * 4U, 0x3c00);
+        ASSERT_TRUE(batch->write(*cubemap,
+                                 std::as_bytes(std::span {
+                                     sourceFaces.at(face)
+        }),
+                                 {.extent = {2, 2}, .arrayLayer = face}));
+        if (face == 0)
+        {
+            const auto duplicate = batch->write(*cubemap,
+                                                std::as_bytes(std::span {
+                                                    sourceFaces.at(face)
+            }),
+                                                {.extent = {2, 2}, .arrayLayer = face});
+            ASSERT_FALSE(duplicate);
+            EXPECT_EQ(duplicate.error().code, panda::ErrorCode::InvalidArgument);
+        }
+        if (face == 4)
+        {
+            const auto incomplete = batch->submit();
+            ASSERT_FALSE(incomplete);
+            EXPECT_EQ(incomplete.error().code, panda::ErrorCode::InvalidArgument);
+        }
+    }
+    const auto completion = batch->submit();
+    ASSERT_TRUE(completion) << completion.error().message;
+    const auto waited = context->getSubmissionManager().wait(*completion, std::chrono::seconds {10});
+    ASSERT_TRUE(waited) << waited.error().message;
+    EXPECT_EQ(*waited, panda::WaitStatus::Completed);
 }

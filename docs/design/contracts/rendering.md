@@ -20,6 +20,13 @@ For v1, built-in Lit materials support opt-in [image-based lighting](../../devel
 from an application-supplied environment. It replaces the simple ambient term with diffuse environment lighting
 and adds roughness-dependent reflections. Direct lights apply with or without an environment.
 
+A view can independently select a linear HDR cubemap as its skybox. Sample it
+using the camera orientation and ignore camera translation. Draw it behind
+scene geometry in window and offscreen views, with solid color as the default
+background. The skybox uses the view's tone mapping and SDR encoding once.
+With the shared HDR path it contributes to the linear intermediate before
+the final tone-mapping pass.
+
 Windowed Engines request FIFO, MAILBOX or IMMEDIATE presentation through
 `EngineOptions::presentationMode`; FIFO is the default. Panda uses the requested
 mode exactly and returns `Unsupported` when the surface does not support it.
@@ -52,6 +59,33 @@ copies the same output to the swapchain image and presents it.
 Provide a metallic-roughness lit material for direct lighting and an unlit material. Simple ambient illumination is
 sufficient for the initial default scene.
 
+`RenderView::environment` accepts one uploaded, sampled pair of same-Engine,
+square linear `Rgba16Float` cubemaps. Faces use Vulkan layer order: +X, -X, +Y,
+-Y, +Z, -Z. The diffuse map stores cosine-weighted irradiance; Lit applies
+Lambert diffuse as `(1-F) * (1-metallic) * baseColor * irradiance / pi`. The
+specular map stores radiance prefiltered for roughness from its sharp mip 0 to
+its rough final mip; the shader samples the reflected view direction at
+`roughness * (mipLevels - 1)`. Panda validates the map types, formats, mip counts,
+ownership and upload state. This v1 specular evaluation uses Schlick Fresnel without
+a preintegrated BRDF lookup. The specular mips must be prefiltered for roughness
+across the environment; ordinary size-reduction mips are not an equivalent reflection
+filter. A cubemap created with `TextureMipPolicy::GenerateSpecularEnvironment`
+accepts six full mip-0 face writes through `UploadBatch::write(texture, bytes, region)`.
+After all faces arrive, Panda uses deterministic CPU GGX importance sampling and
+stages the full RGBA16F chain. `TextureDesc::specularEnvironmentSamplesPerTexel`
+controls the filter quality. Ordinary 2D `TextureMipPolicy::Generate` accepts
+RGBA8/BGRA8 UNORM and sRGB formats and keeps its box-reduction behavior; other
+formats must use `SingleLevel` or `Supplied`. Neither policy changes texture
+samplers. Applications continue to supply the single-level diffuse irradiance map.
+
+`RenderView::skybox` independently accepts one uploaded, sampled, square linear
+`Rgba16Float` cubemap from the same Engine. It samples source radiance at mip 0,
+uses the camera orientation while ignoring translation, and draws before geometry
+without depth writes so foreground meshes cover it. A missing skybox keeps the
+configured solid-color background. Skybox selection does not enable image-based
+lighting, and environment lighting does not draw a background. The skybox follows
+the same tone-mapping and output-encoding path as built-in materials.
+
 Base color is the product of texture color, material tint, instance tint, and optional vertex color. A missing
 base-color texture, instance tint, or vertex color contributes white. If supplied, the first built-in base-color map
 must be an uploaded, sampled `R8G8B8A8Srgb` or `B8G8R8A8Srgb` texture from the same Engine, and its mesh must declare
@@ -60,9 +94,12 @@ Built-in material maps use the Engine-wide `TextureFilteringPreset`: Nearest,
 Bilinear, Trilinear, or Anisotropic2x/4x/8x/16x. Anisotropic presets use
 trilinear filtering and are capped at the device limit; unsupported anisotropy
 falls back to trilinear. The default is Anisotropic8x. `TextureDesc::mipPolicy`
-chooses single-level, supplied, or CPU-generated mip data, while
-`TextureDesc::addressMode` applies repeat, mirrored repeat, or clamp-to-edge to
-both UV axes. Filtering is not configured per texture in this API. sRGB texture
+chooses single-level data, a supplied chain, 2D downsampling, or cubemap specular
+environment prefiltering. Generated specular cubemaps use six base-level face writes;
+`TextureDesc::specularEnvironmentSamplesPerTexel` controls GGX filter quality. The
+policy does not choose sampler filtering. `TextureDesc::addressMode` applies
+repeat, mirrored repeat, or clamp-to-edge to both UV axes. Filtering is not
+configured per texture in this API. sRGB texture
 formats decode color channels to linear values while alpha remains linear. The
 sampled alpha participates in Mask and Blend with material, draw, and vertex
 alpha.

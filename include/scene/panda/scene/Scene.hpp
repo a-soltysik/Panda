@@ -50,6 +50,8 @@ struct MeshInstance
     Mesh mesh;
     /// Nonnegative finite linear RGBA tint.
     glm::vec4 tint {1.0F};
+    /// Built-in renderer material copied into snapshots; renderer validation checks material textures.
+    Material material {};
 };
 
 /// @brief Perspective lens; pose comes from the object's world transform, looking along local -Z.
@@ -120,9 +122,9 @@ struct SpotLight
 /// @brief One light component attached to a scene entity.
 using Light = std::variant<DirectionalLight, PointLight, SpotLight>;
 
-/// @brief Move-only owner of CPU scene objects, transform hierarchy and retained mesh associations.
+/// @brief Move-only owner of CPU scene objects, transform hierarchy and retained render resource handles.
 /// CPU scene state is independent of Engine. Any Engine that owns a retained mesh
-/// must outlive the Scene and snapshots holding that mesh.
+/// or environment texture must outlive the Scene and snapshots holding that resource.
 /// Entities do not retain or dereference a Scene and are resolved only through a live Scene.
 /// Calling methods on a moved-from Scene violates the contract and aborts through `expect`.
 /// Calls must be serialized. Result-returning operations report InvalidArgument
@@ -213,6 +215,14 @@ public:
     /// @brief Attaches or removes validated light parameters; point uses world position, directional/spot use world rotation.
     [[nodiscard]] auto setLight(const Entity& entity, std::optional<Light> light) -> Result<void>;
 
+    /// @brief Sets or removes image-based lighting copied into future render snapshots.
+    /// Pass std::nullopt to remove it. Texture compatibility is checked by the renderer when submitted.
+    void setEnvironment(std::optional<EnvironmentLighting> environment);
+
+    /// @brief Sets or removes the visible background cubemap copied into future render snapshots.
+    /// Pass std::nullopt to remove it. Texture compatibility is checked by the renderer when submitted.
+    void setSkybox(std::optional<Texture> skybox);
+
     /// @brief Changes rendering visibility of this object alone; children remain independent.
     [[nodiscard]] auto setVisible(const Entity& entity, bool visible) -> Result<void>;
 
@@ -221,7 +231,7 @@ public:
 
     /// @brief Copies visible draws, active camera and visible lights into renderer input.
     /// @param aspectRatio Finite positive framebuffer width divided by height, supplied each frame.
-    /// @return A snapshot retaining its meshes, or InvalidArgument for a missing camera or invalid pose.
+    /// @return A snapshot retaining its meshes, environment and skybox, or InvalidArgument for a missing camera or invalid pose.
     /// Visible lights retain their optional shadow settings in the returned render snapshot.
     /// WindowRenderer::render() and OffscreenRenderer::render() validate renderer input
     /// and the configured light budget.

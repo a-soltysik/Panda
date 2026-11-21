@@ -18,6 +18,7 @@
 #include <panda/math/Projection.hpp>
 #include <panda/math/Transform.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Texture.hpp>
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/ObjectId.hpp>
 #include <panda/scene/Scene.hpp>
@@ -675,6 +676,16 @@ auto SceneState::setLight(const Entity& entity, std::optional<Light> light) -> R
     }
     slotAt(*index).light = light;
     return {};
+}
+
+void SceneState::setEnvironment(std::optional<EnvironmentLighting> environment)
+{
+    _environment = std::move(environment);
+}
+
+void SceneState::setSkybox(std::optional<Texture> skybox)
+{
+    _skybox = std::move(skybox);
 }
 
 auto SceneState::setVisible(const Entity& entity, bool visible) -> Result<void>

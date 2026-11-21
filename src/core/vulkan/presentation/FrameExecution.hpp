@@ -85,7 +85,7 @@ public:
     [[nodiscard]] auto endCommands(std::size_t index) -> std::expected<void, Error>;
     [[nodiscard]] auto command(std::size_t index) const -> vk::CommandBuffer;
     void setLastCompletion(std::size_t index, std::uint64_t value);
-    void markSubmitted(std::size_t index, std::uint64_t value, bool hadMeshDraws);
+    void markSubmitted(std::size_t index, std::uint64_t value, bool hadRendererWork);
     void discardUnsubmittedInputs(std::size_t index);
     [[nodiscard]] auto drain() -> std::expected<void, Error>;
     [[nodiscard]] auto isGpuTimestampSamplingEnabled() const noexcept -> bool;
@@ -106,7 +106,7 @@ private:
     explicit FrameExecution(const FrameExecutionCreateInfo& info);
 
     [[nodiscard]] auto initialize() -> std::expected<void, Error>;
-    [[nodiscard]] auto initializeMeshRenderer(vk::Extent2D extent, vk::Format colorFormat, SampleCount requested)
+    [[nodiscard]] auto initializeRenderer(vk::Extent2D extent, vk::Format colorFormat, SampleCount requested)
         -> Result<void>;
     [[nodiscard]] static auto retainViewResources(ExecutionSlot& slot,
                                                   const RenderView& view,
@@ -114,10 +114,10 @@ private:
         -> std::expected<void, Error>;
     [[nodiscard]] auto recordViewContent(std::size_t index, const FrameOutput& output, const RenderView& view)
         -> std::expected<void, Error>;
-    [[nodiscard]] auto recordMeshDraws(ExecutionSlot& slot,
-                                       std::size_t index,
-                                       const FrameOutput& output,
-                                       const RenderView& view) -> std::expected<void, Error>;
+    [[nodiscard]] auto recordRendererView(ExecutionSlot& slot,
+                                          std::size_t index,
+                                          const FrameOutput& output,
+                                          const RenderView& view) -> std::expected<void, Error>;
     [[nodiscard]] auto waitCompletion(std::uint64_t value) const -> std::expected<void, Error>;
 
     vk::PhysicalDevice _physicalDevice;

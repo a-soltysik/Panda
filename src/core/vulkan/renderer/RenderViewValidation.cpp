@@ -23,6 +23,7 @@
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/Mesh.hpp>
+#include <panda/resources/PixelFormat.hpp>
 #include <panda/resources/Texture.hpp>
 #include <variant>
 
@@ -349,6 +350,47 @@ auto validateLight(const Light& light) -> Result<void>
                       light);
 }
 
+auto isEnvironmentMap(const Texture& texture, const resources::MemoryPool& pool) -> bool
+{
+    return texture.isValid() && texture.getType() == TextureType::CubeMap &&
+           texture.getFormat() == PixelFormat::Rgba16Float &&
+           (texture.getUsage() & TextureUsage::Sampled) == TextureUsage::Sampled &&
+           ::panda::detail::TextureResource::getResource(texture)->belongsTo(pool);
+}
+
+auto validateEnvironment(const std::optional<EnvironmentLighting>& environment, const resources::MemoryPool& pool)
+    -> Result<void>
+{
+    if (!environment)
+    {
+        return {};
+    }
+    const auto& diffuse = environment->diffuseIrradiance;
+    const auto& specular = environment->specularRadiance;
+    if (!isEnvironmentMap(diffuse, pool) || diffuse.getMipLevels() != 1 || !isEnvironmentMap(specular, pool) ||
+        specular.getMipLevels() < 2)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                          "Environment lighting requires same-Engine sampled RGBA16F cubemaps "
+                                          "with one diffuse mip and at least two specular mips")};
+    }
+    return {};
+}
+
+auto validateSkybox(const std::optional<Texture>& skybox, const resources::MemoryPool& pool) -> Result<void>
+{
+    if (!skybox)
+    {
+        return {};
+    }
+    if (!isEnvironmentMap(*skybox, pool))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Skybox requires a same-Engine sampled RGBA16F cubemap")};
+    }
+    return {};
+}
+
 }
 
 auto validateRenderViewData(const RenderView& view) -> Result<void>
@@ -401,7 +443,9 @@ auto validateRenderViewMeshes(const RenderView& view, const resources::MemoryPoo
             return result;
         }
     }
-    return {};
+    return validateEnvironment(view.environment, pool).and_then([&] {
+        return validateSkybox(view.skybox, pool);
+    });
 }
 
 auto validateRenderViewTextures(const RenderView& view) -> Result<void>
@@ -412,6 +456,15 @@ auto validateRenderViewTextures(const RenderView& view) -> Result<void>
         {
             return result;
         }
+    }
+    if (view.environment && (!isUploadedTexture(view.environment->diffuseIrradiance) ||
+                             !isUploadedTexture(view.environment->specularRadiance)))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Environment cubemap has not been uploaded")};
+    }
+    if (view.skybox && !isUploadedTexture(*view.skybox))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Skybox cubemap has not been uploaded")};
     }
     return {};
 }

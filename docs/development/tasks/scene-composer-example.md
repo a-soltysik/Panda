@@ -18,8 +18,9 @@ can start with an empty scene and complete the workflow through the GUI.
   coverage through the corresponding light setting.
 - Navigate in first person with WASD and mouse look. Editing a GUI field or
   dragging a gizmo takes precedence over camera input.
+- Choose a solid background color or a supplied skybox asset through the GUI.
 - Save and reopen scene files. Preserve asset references, model transforms,
-  light settings and the active camera. Show a clear error for unresolved
+  light settings, the active camera and the background selection. Show a clear error for unresolved
   assets or failed saves and preserve the current scene on failed open.
 
 Specifications: [Import](../../design/contracts/scene.md#import-adapter),
@@ -34,7 +35,7 @@ Specifications: [Import](../../design/contracts/scene.md#import-adapter),
   modes, add and edit each light type, and walk through the result. Verify
   that GUI capture prevents unintended camera motion.
 - Save the scene, exit, and reopen the file in a fresh process. Verify the
-  model's textures, transforms, lights and camera. Exercise invalid import,
+  model's textures, transforms, lights, camera and skybox selection. Exercise invalid import,
   missing assets on reopen and a failed save with a readable diagnostic.
 
 Learning: Follow a model from its source file through import, an interactive

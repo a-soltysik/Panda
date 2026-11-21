@@ -84,6 +84,7 @@ private:
     {
         bool shadowPass {false};
         std::uint32_t materialIndex {};
+        bool hasEnvironment {false};
     };
 
     explicit MeshRenderer(const MeshRendererCreateInfo& info);
@@ -103,7 +104,7 @@ private:
                           const RenderView& view,
                           std::size_t shadowViewIndex);
     void recordColorPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
-    void recordBlendedDraws(vk::CommandBuffer command, std::size_t frameIndex);
+    void recordBlendedDraws(vk::CommandBuffer command, std::size_t frameIndex, bool hasEnvironment);
     void recordAttachments(vk::CommandBuffer command, vk::ImageView outputView, std::size_t frameIndex) const;
     static void recordShadowAttachment(vk::CommandBuffer command, vk::ImageView depthView);
     static void setViewportAndScissor(vk::CommandBuffer command, vk::Extent2D extent, vk::Offset2D offset = {});

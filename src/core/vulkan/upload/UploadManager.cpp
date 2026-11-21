@@ -194,17 +194,19 @@ auto validateTextureDestination(const std::shared_ptr<TextureResource>& destinat
 auto validateTextureMipRegion(const TextureResource& destination, const TextureUploadRegion& region)
     -> Result<vk::Extent2D>
 {
-    if (region.mipLevel >= destination.getMipLevels())
+    if (region.mipLevel >= destination.getMipLevels() || region.arrayLayer >= destination.getArrayLayers())
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture mip level is out of range")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture mip level or layer is out of range")};
     }
     const auto mipExtent = getMipExtent(destination.getExtent(), region.mipLevel);
     const auto fullLevel =
         region.offset == glm::ivec2 {} && region.extent == glm::uvec2 {mipExtent.width, mipExtent.height};
     const auto mipPolicy = destination.getMipPolicy();
     if ((mipPolicy == TextureMipPolicy::SingleLevel && region.mipLevel != 0) ||
-        (mipPolicy != TextureMipPolicy::SingleLevel && !fullLevel) ||
-        (mipPolicy == TextureMipPolicy::Generate && region.mipLevel != 0))
+        ((mipPolicy != TextureMipPolicy::SingleLevel || destination.getPublicType() == TextureType::CubeMap) &&
+         !fullLevel) ||
+        (mipPolicy == TextureMipPolicy::Generate && destination.getPublicType() == TextureType::Texture2D &&
+         region.mipLevel != 0))
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Mipmapped texture writes must cover one full level")};

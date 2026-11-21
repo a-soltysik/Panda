@@ -500,3 +500,103 @@ TEST_F(UploadBatchImplTest, CancelsGeneratedTextureReservationWhenMipStagingFail
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, panda::ErrorCode::DeviceLost);
 }
+
+TEST_F(UploadBatchImplTest, RollsBackFailedEnvironmentStagingAndAllowsRetry)
+{
+    const auto textureDescription = panda::TextureDesc {
+        .extent = {2, 2},
+        .format = panda::PixelFormat::Rgba16Float,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::GenerateSpecularEnvironment,
+        .specularEnvironmentSamplesPerTexel = 8,
+        .type = panda::TextureType::CubeMap
+    };
+    auto texture = makeTexture(textureDescription);
+    auto destination = makeBuffer(64);
+    auto page = makeBuffer(4096);
+    auto batch = makeBatch();
+    const auto existingBytes = std::array {std::byte {0x7f}, std::byte {0x7f}};
+    auto facePixels = std::array<std::uint16_t, 16> {};
+    facePixels.fill(0x3c00);
+    const auto faceBytes = std::as_bytes(std::span {facePixels});
+    auto stagingOffsets = std::vector<std::uint64_t> {};
+
+    EXPECT_CALL(managerMock, validateWrite(Ref(*manager), destination, 0, existingBytes.size()))
+        .WillOnce(Return(panda::Result<void> {}));
+    EXPECT_CALL(managerMock, validateTextureWrite(Ref(*manager), texture, _, _))
+        .Times(22)
+        .WillRepeatedly(
+            Return(panda::core::vulkan::upload::TextureUploadLayout {.rowLength = 0, .bufferOffsetAlignment = 4}));
+    EXPECT_CALL(textures, getExtent(Ref(*texture))).WillRepeatedly(Return(vk::Extent2D {.width = 2, .height = 2}));
+    EXPECT_CALL(textures, reserveUpload(Ref(*texture), _)).WillOnce(Return(panda::Result<void> {}));
+    EXPECT_CALL(managerMock, collect(Ref(*manager))).Times(16).WillRepeatedly(Return(panda::Result<void> {}));
+    EXPECT_CALL(managerMock, createStaging(Ref(*manager), 4096)).WillOnce(Return(page));
+    EXPECT_CALL(buffers, getSize(Ref(*page))).Times(15).WillRepeatedly(Return(4096));
+    EXPECT_CALL(buffers, writeMapped(Ref(*page), _, _))
+        .Times(16)
+        .WillRepeatedly([&](const BufferResource&, std::uint64_t offset, std::span<const std::byte>) {
+            stagingOffsets.push_back(offset);
+            if (stagingOffsets.size() == 4)
+            {
+                return panda::Result<void> {
+                    std::unexpected {panda::makeError(panda::ErrorCode::DeviceLost, "Controlled staging failure")}};
+            }
+            return panda::Result<void> {};
+        });
+
+    ASSERT_TRUE(batch->write(destination, 0, existingBytes));
+    for (auto face = std::uint32_t {}; face < 5U; ++face)
+    {
+        ASSERT_TRUE(batch->write(texture,
+                                 faceBytes,
+                                 {
+                                     .extent = {2, 2},
+                                     .arrayLayer = face
+        }));
+    }
+    const auto failed = batch->write(texture,
+                                     faceBytes,
+                                     {
+                                         .extent = {2, 2},
+                                         .arrayLayer = 5
+    });
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::DeviceLost);
+    ASSERT_TRUE(batch->write(texture,
+                             faceBytes,
+                             {
+                                 .extent = {2, 2},
+                                 .arrayLayer = 5
+    }));
+
+    EXPECT_THAT(stagingOffsets,
+                testing::ElementsAre(0, 4, 36, 68, 4, 36, 68, 100, 132, 164, 196, 204, 212, 220, 228, 236));
+    EXPECT_CALL(managerMock, submit(Ref(*manager), _, _))
+        .WillOnce([&](UploadManager&,
+                      std::span<const UploadOperation> writes,
+                      std::span<const std::shared_ptr<BufferResource>> pages) {
+            EXPECT_EQ(writes.size(), 13U);
+            EXPECT_EQ(pages.size(), 1U);
+            if (writes.size() != 13U || pages.size() != 1U)
+            {
+                return panda::Result<panda::CompletionPoint> {panda::CompletionPoint {}};
+            }
+            const auto& original = std::get<BufferUpload>(writes.front());
+            EXPECT_EQ(original.destination, destination);
+            EXPECT_EQ(original.stagingOffset, 0U);
+            for (auto index = std::size_t {}; index < 12U; ++index)
+            {
+                const auto& upload = std::get<TextureUpload>(writes[index + 1U]);
+                EXPECT_EQ(upload.destination, texture);
+                EXPECT_EQ(upload.region.mipLevel, index / 6U);
+                EXPECT_EQ(upload.region.arrayLayer, index % 6U);
+                EXPECT_EQ(upload.firstForTexture, index == 0U);
+            }
+            EXPECT_EQ(std::get<TextureUpload>(writes[1]).stagingOffset, 4U);
+            EXPECT_EQ(std::get<TextureUpload>(writes[12]).stagingOffset, 236U);
+            return panda::Result<panda::CompletionPoint> {panda::CompletionPoint {}};
+        });
+    EXPECT_CALL(textures, commitUpload(Ref(*texture), _));
+
+    EXPECT_TRUE(batch->submit());
+}

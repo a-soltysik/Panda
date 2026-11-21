@@ -39,6 +39,7 @@
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
+#include "EnvironmentLighting.hpp"
 #include "GlfwTestSupport.hpp"
 #include "LogCapture.hpp"
 #include "TestGeometry.hpp"
@@ -133,6 +134,19 @@ void verifyCompletion(const panda::Engine& context, panda::CompletionPoint point
     const auto polled = context.getSubmissionManager().poll(point);
     ASSERT_TRUE(polled);
     EXPECT_TRUE(*polled);
+}
+
+void verifyOptionalPerformanceSample(panda::Engine& context)
+{
+    if (!context.getFeatures().performance.isGpuTimestampSamplingEnabled)
+    {
+        return;
+    }
+    auto& performance = context.getPerformanceManager();
+    const auto sample = performance.getLatestSample();
+    ASSERT_TRUE(sample) << sample.error().message;
+    ASSERT_TRUE(*sample);
+    EXPECT_GT(sample->value().cpuFrameDuration, std::chrono::nanoseconds::zero());
 }
 
 auto windowRenderer(const panda::Engine& context) -> const panda::WindowRenderer&
@@ -277,7 +291,11 @@ void expectInvalidEmissiveMap(const panda::Engine& context,
                               const panda::Mesh& mesh,
                               const panda::Texture& texture)
 {
-    auto view = panda::RenderView {.camera = camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+    auto view = panda::RenderView {.camera = camera,
+                                   .lights = {panda::DirectionalLight {}},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {}};
     auto draw = panda::MeshDraw {.mesh = mesh};
     draw.material.emissiveTexture = texture;
     draw.material.emissive = {1.0F, 1.0F, 1.0F};
@@ -294,7 +312,11 @@ void expectInvalidNormalMap(const panda::Engine& context,
                             const panda::Texture& texture,
                             panda::MaterialModel model = panda::MaterialModel::Lit)
 {
-    auto view = panda::RenderView {.camera = camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+    auto view = panda::RenderView {.camera = camera,
+                                   .lights = {panda::DirectionalLight {}},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {}};
     auto draw = panda::MeshDraw {.mesh = mesh};
     draw.material.model = model;
     draw.material.normalTexture = texture;
@@ -311,7 +333,11 @@ void expectInvalidOcclusionMap(const panda::Engine& context,
                                const panda::Texture& texture,
                                panda::MaterialModel model = panda::MaterialModel::Lit)
 {
-    auto view = panda::RenderView {.camera = camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+    auto view = panda::RenderView {.camera = camera,
+                                   .lights = {panda::DirectionalLight {}},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {}};
     auto draw = panda::MeshDraw {.mesh = mesh};
     draw.material.model = model;
     draw.material.occlusionTexture = texture;
@@ -891,6 +917,8 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     auto context = std::move(*created);
     auto target = createTestTarget(context);
     ASSERT_TRUE(target.has_value()) << target.error().message;
+    auto offscreenTarget = createTestTarget(context);
+    ASSERT_TRUE(offscreenTarget.has_value()) << offscreenTarget.error().message;
     auto other = panda::Engine::create();
     ASSERT_TRUE(other) << other.error().message;
     auto foreignTarget = createTestTarget(*other);
@@ -907,10 +935,24 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
     const auto camera = makeTestCamera(renderExtent);
     ASSERT_TRUE(camera.has_value()) << camera.error().message;
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    const auto environment = panda::test::createEnvironmentLightingFixture(context);
+    if (!environment && environment.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << environment.error().message;
+    }
+    ASSERT_TRUE(environment.has_value()) << environment.error().message;
+    view.environment = *environment;
+    const auto skybox = panda::test::createSkyboxFixture(context);
+    if (!skybox && skybox.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << skybox.error().message;
+    }
+    ASSERT_TRUE(skybox.has_value()) << skybox.error().message;
+    view.skybox = *skybox;
     auto draw = panda::MeshDraw {.mesh = *mesh};
-    draw.material.model = panda::MaterialModel::Unlit;
-    draw.material.baseColor = {0.8F, 0.1F, 0.1F, 1.0F};
+    draw.material.model = panda::MaterialModel::Lit;
+    draw.material.renderFace = panda::RenderFace::Both;
     view.meshes.push_back(draw);
 
     const auto frame = windowRenderer(context).renderWithCapture(view, *target);
@@ -924,20 +966,15 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     ASSERT_TRUE(pixels.has_value()) << pixels.error().message;
     EXPECT_EQ(pixels->extent, renderExtent);
     ASSERT_EQ(pixels->rgba.size(), static_cast<std::size_t>(renderExtent.x) * renderExtent.y * 4);
-    if (context.getFeatures().performance.isGpuTimestampSamplingEnabled)
-    {
-        auto& performance = context.getPerformanceManager();
-        const auto sample = performance.getLatestSample();
-        ASSERT_TRUE(sample) << sample.error().message;
-        ASSERT_TRUE(*sample);
-        EXPECT_GT(sample->value().cpuFrameDuration, std::chrono::nanoseconds::zero());
-    }
-    auto redPixelFound = false;
-    for (auto index = std::size_t {}; index < pixels->rgba.size(); index += 4)
-    {
-        redPixelFound = redPixelFound || pixels->rgba.at(index) > pixels->rgba.at(index + 1) + 20;
-    }
-    EXPECT_TRUE(redPixelFound);
+    const auto offscreenFrame = context.getOffscreenRenderer().render(view, *offscreenTarget);
+    ASSERT_TRUE(offscreenFrame.has_value()) << offscreenFrame.error().message;
+    const auto offscreenPixels =
+        context.getOffscreenRenderer().readPixels(*offscreenTarget, offscreenFrame->completion);
+    ASSERT_TRUE(offscreenPixels.has_value()) << offscreenPixels.error().message;
+    EXPECT_EQ(pixels->rgba, offscreenPixels->rgba);
+    const auto center = ((static_cast<std::size_t>(renderExtent.y / 2U) * renderExtent.x) + (renderExtent.x / 2U)) * 4U;
+    EXPECT_GT(pixels->rgba.at(center + 1U), pixels->rgba.at(center));
+    verifyOptionalPerformanceSample(context);
 }
 
 TEST(HeadlessRendererSystem, RendersSixtyFiveDirectionalLightsWithinConfiguredBudget)
@@ -1040,7 +1077,7 @@ TEST(HeadlessRendererSystem, RendersUnlitMeshWithZeroLightBudget)
     ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
     const auto camera = makeTestCamera(renderExtent);
     ASSERT_TRUE(camera.has_value()) << camera.error().message;
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
     auto draw = panda::MeshDraw {.mesh = *mesh};
     draw.material.model = panda::MaterialModel::Unlit;
     view.meshes.push_back(draw);
@@ -1126,7 +1163,11 @@ TEST(HeadlessRendererSystem, RetainsTextureAfterApplicationReleasesItUntilFrameC
 
         const auto camera = makeTestCamera(renderExtent);
         ASSERT_TRUE(camera.has_value()) << camera.error().message;
-        auto view = panda::RenderView {.camera = *camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto view = panda::RenderView {.camera = *camera,
+                                       .lights = {panda::DirectionalLight {}},
+                                       .meshes = {},
+                                       .environment = {},
+                                       .skybox = {}};
         auto draw = panda::MeshDraw {.mesh = meshes->cube};
         draw.material.normalTexture = *texture;
         view.meshes.push_back(draw);
@@ -1255,8 +1296,11 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         unlitEmissiveDraw.material.emissiveTexture = meshes->baseColorMap;
         unlitEmissiveDraw.material.emissive = {1.0F, 0.8F, 0.3F};
         view->meshes.push_back(unlitEmissiveDraw);
-        auto missingUvView =
-            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto missingUvView = panda::RenderView {.camera = view->camera,
+                                                .lights = {panda::DirectionalLight {}},
+                                                .meshes = {},
+                                                .environment = {},
+                                                .skybox = {}};
         auto missingUvDraw = panda::MeshDraw {};
         missingUvDraw.mesh = meshes->triangle;
         missingUvDraw.material.model = panda::MaterialModel::Unlit;
@@ -1280,8 +1324,11 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_TRUE(uvlessLitMesh.has_value()) << uvlessLitMesh.error().message;
         expectInvalidEmissiveMap(context, *target, view->camera, *uvlessLitMesh, meshes->baseColorMap);
         expectInvalidOcclusionMap(context, *target, view->camera, *uvlessLitMesh, meshes->metallicRoughnessMap);
-        auto missingUvMrView =
-            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto missingUvMrView = panda::RenderView {.camera = view->camera,
+                                                  .lights = {panda::DirectionalLight {}},
+                                                  .meshes = {},
+                                                  .environment = {},
+                                                  .skybox = {}};
         auto missingUvMrDraw = panda::MeshDraw {};
         missingUvMrDraw.mesh = *uvlessLitMesh;
         missingUvMrDraw.material.metallicRoughnessTexture = meshes->metallicRoughnessMap;
@@ -1290,8 +1337,11 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_FALSE(missingUvMrResult.has_value());
         EXPECT_EQ(missingUvMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
-        auto unlitMrView =
-            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto unlitMrView = panda::RenderView {.camera = view->camera,
+                                              .lights = {panda::DirectionalLight {}},
+                                              .meshes = {},
+                                              .environment = {},
+                                              .skybox = {}};
         auto unlitMrDraw = panda::MeshDraw {};
         unlitMrDraw.mesh = meshes->cube;
         unlitMrDraw.material.model = panda::MaterialModel::Unlit;
@@ -1315,8 +1365,11 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         });
         ASSERT_TRUE(linearMap.has_value()) << linearMap.error().message;
         expectInvalidEmissiveMap(context, *target, view->camera, meshes->cube, *linearMap);
-        auto linearMapView =
-            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto linearMapView = panda::RenderView {.camera = view->camera,
+                                                .lights = {panda::DirectionalLight {}},
+                                                .meshes = {},
+                                                .environment = {},
+                                                .skybox = {}};
         auto linearBaseColorDraw = panda::MeshDraw {};
         linearBaseColorDraw.mesh = meshes->cube;
         linearBaseColorDraw.material.baseColorTexture = *linearMap;
@@ -1331,8 +1384,11 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
             .usage = ::panda::TextureUsage::TransferDestination | ::panda::TextureUsage::Sampled
         });
         ASSERT_TRUE(srgbMetallicRoughnessMap.has_value()) << srgbMetallicRoughnessMap.error().message;
-        auto srgbMrView =
-            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto srgbMrView = panda::RenderView {.camera = view->camera,
+                                             .lights = {panda::DirectionalLight {}},
+                                             .meshes = {},
+                                             .environment = {},
+                                             .skybox = {}};
         auto srgbMrDraw = panda::MeshDraw {};
         srgbMrDraw.mesh = meshes->cube;
         srgbMrDraw.material.metallicRoughnessTexture = *srgbMetallicRoughnessMap;
@@ -1348,8 +1404,11 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         });
         ASSERT_TRUE(unuploadedMap.has_value()) << unuploadedMap.error().message;
         expectInvalidEmissiveMap(context, *target, view->camera, meshes->cube, *unuploadedMap);
-        auto unuploadedMapView =
-            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto unuploadedMapView = panda::RenderView {.camera = view->camera,
+                                                    .lights = {panda::DirectionalLight {}},
+                                                    .meshes = {},
+                                                    .environment = {},
+                                                    .skybox = {}};
         auto unuploadedBaseColorDraw = panda::MeshDraw {};
         unuploadedBaseColorDraw.mesh = meshes->cube;
         unuploadedBaseColorDraw.material.baseColorTexture = *unuploadedMap;
@@ -1365,8 +1424,11 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         });
         ASSERT_TRUE(unuploadedMrMap.has_value()) << unuploadedMrMap.error().message;
         expectInvalidOcclusionMap(context, *target, view->camera, meshes->cube, *unuploadedMrMap);
-        auto unuploadedMrView =
-            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto unuploadedMrView = panda::RenderView {.camera = view->camera,
+                                                   .lights = {panda::DirectionalLight {}},
+                                                   .meshes = {},
+                                                   .environment = {},
+                                                   .skybox = {}};
         auto unuploadedMrDraw = panda::MeshDraw {};
         unuploadedMrDraw.mesh = meshes->cube;
         unuploadedMrDraw.material.metallicRoughnessTexture = *unuploadedMrMap;
@@ -1375,8 +1437,11 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         ASSERT_FALSE(unuploadedMrResult.has_value());
         EXPECT_EQ(unuploadedMrResult.error().code, panda::ErrorCode::InvalidArgument);
 
-        auto negativeEmissiveView =
-            panda::RenderView {.camera = view->camera, .lights = {panda::DirectionalLight {}}, .meshes = {}};
+        auto negativeEmissiveView = panda::RenderView {.camera = view->camera,
+                                                       .lights = {panda::DirectionalLight {}},
+                                                       .meshes = {},
+                                                       .environment = {},
+                                                       .skybox = {}};
         auto negativeEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube};
         negativeEmissiveDraw.material.emissive = {-1.0F, 0.0F, 0.0F};
         negativeEmissiveView.meshes.push_back(negativeEmissiveDraw);

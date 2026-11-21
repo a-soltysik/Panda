@@ -250,10 +250,13 @@ auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
     return panda::RenderView {
         .camera = {},
         .lights = {panda::DirectionalLight {.direction = {-0.55F, -0.6F, -0.58F}, .shadow = panda::ShadowSettings {}}},
-        .meshes = {
-                   panda::MeshDraw {.mesh = meshes.ground, .modelMatrix = groundTransform, .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
+        .meshes = {panda::MeshDraw {.mesh = meshes.ground,
+                                    .modelMatrix = groundTransform,
+                                    .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
                    cubeDraw, makeNormalMapDemoDraw(meshes),
-                   triangleDraw}
+                   triangleDraw},
+        .environment = {},
+        .skybox = {}
     };
 }
 
