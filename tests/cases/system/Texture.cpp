@@ -210,6 +210,9 @@ TEST(TextureSystem, UploadsEveryCubemapFaceAndSuppliedMipBeforeSubmission)
         std::array {std::vector<std::byte>(128U), std::vector<std::byte>(32U), std::vector<std::byte>(8U)};
     auto batch = context->getSubmissionManager().createUploadBatch();
     ASSERT_TRUE(batch) << batch.error().message;
+    const auto wholeCubemapWrite = batch->write(*cubemap, levels.front());
+    ASSERT_FALSE(wholeCubemapWrite);
+    EXPECT_EQ(wholeCubemapWrite.error().code, panda::ErrorCode::InvalidArgument);
     for (auto mipLevel = std::uint32_t {}; mipLevel < levels.size(); ++mipLevel)
     {
         const auto extent = 4U >> mipLevel;
@@ -312,6 +315,13 @@ TEST(TextureSystem, GeneratesAndUploadsPrefilteredCubemapMipChain)
             EXPECT_EQ(incomplete.error().code, panda::ErrorCode::InvalidArgument);
         }
     }
+    const auto duplicateAfterGeneration = batch->write(*cubemap,
+                                                       std::as_bytes(std::span {
+                                                           sourceFaces.front()
+    }),
+                                                       {.extent = {2, 2}, .arrayLayer = 0});
+    ASSERT_FALSE(duplicateAfterGeneration);
+    EXPECT_EQ(duplicateAfterGeneration.error().code, panda::ErrorCode::InvalidArgument);
     const auto completion = batch->submit();
     ASSERT_TRUE(completion) << completion.error().message;
     const auto waited = context->getSubmissionManager().wait(*completion, std::chrono::seconds {10});

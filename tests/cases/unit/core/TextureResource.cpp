@@ -439,6 +439,40 @@ TEST_F(TextureResourceTest, RejectsExtentBeyondDeviceLimitBeforeCreatingImage)
     EXPECT_EQ(oversized.error().code, panda::ErrorCode::InvalidArgument);
 }
 
+TEST_F(TextureResourceTest, RejectsCubemapWhenDeviceCannotSupportSixArrayLayers)
+{
+    auto desc = description(panda::PixelFormat::Rgba16Float);
+    desc.extent = {16, 16};
+    desc.type = panda::TextureType::CubeMap;
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_,
+                                                         _,
+                                                         VK_IMAGE_TYPE_2D,
+                                                         VK_IMAGE_TILING_OPTIMAL,
+                                                         _,
+                                                         VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+                                                         NotNull()))
+        .WillOnce([](VkPhysicalDevice,
+                     VkFormat,
+                     VkImageType,
+                     VkImageTiling,
+                     VkImageUsageFlags,
+                     VkImageCreateFlags,
+                     VkImageFormatProperties* output) {
+            *output = VkImageFormatProperties {};
+            output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+            output->maxMipLevels = 16;
+            output->maxArrayLayers = 2;
+            return success;
+        });
+    EXPECT_CALL(vulkan, vkCreateImage(_, _, _, _)).Times(0);
+
+    const auto result = TextureResource::create(device, *pool, desc);
+
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, panda::ErrorCode::Unsupported);
+}
+
 TEST_F(TextureResourceTest, RejectsInvalidSamplesAndMultisampledNonAttachments)
 {
     EXPECT_CALL(vulkan,

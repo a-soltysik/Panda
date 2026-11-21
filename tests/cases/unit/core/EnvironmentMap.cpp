@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <glm/gtc/packing.hpp>
+#include <limits>
 #include <panda/base/Error.hpp>
 #include <span>
 #include <vector>
@@ -114,6 +115,54 @@ TEST(EnvironmentMapFilter, SpreadsBrightRadianceIntoTheRoughestMip)
     EXPECT_NE(adjacentFace, singleSampleAdjacentFace);
 }
 
+TEST(EnvironmentMapFilter, PrefilterSamplesRadianceAcrossCubemapFaceEdges)
+{
+    static constexpr auto faceSize = std::uint32_t {2};
+    static constexpr auto background = std::array<std::uint16_t, 4> {0, 0, 0, 0x3c00};
+    auto topEdgeBright = makeFaces(faceSize, background);
+    auto bottomEdgeBright = makeFaces(faceSize, background);
+    for (auto column = std::uint32_t {}; column < faceSize; ++column)
+    {
+        const auto topOffset = (static_cast<std::size_t>(column) * background.size());
+        const auto bottomOffset = ((static_cast<std::size_t>(faceSize) + column) * background.size());
+        topEdgeBright.at(0).at(topOffset) = 0x4800;
+        bottomEdgeBright.at(0).at(bottomOffset) = 0x4800;
+    }
+    const auto topResult =
+        panda::detail::prefilterSpecularEnvironmentMap({.faceSize = faceSize, .faces = makeViews(topEdgeBright)}, 4);
+    const auto bottomResult =
+        panda::detail::prefilterSpecularEnvironmentMap({.faceSize = faceSize, .faces = makeViews(bottomEdgeBright)}, 4);
+
+    ASSERT_TRUE(topResult);
+    ASSERT_TRUE(bottomResult);
+    const auto topEdge = glm::unpackHalf1x16(topResult->levels.at(1).faces.at(0).at(0));
+    const auto bottomEdge = glm::unpackHalf1x16(bottomResult->levels.at(1).faces.at(0).at(0));
+    EXPECT_GT(bottomEdge, topEdge);
+}
+
+TEST(EnvironmentMapFilter, PreservesSingleLevelMapsAndRejectsInvalidFaceSizes)
+{
+    static constexpr auto color = std::array<std::uint16_t, 4> {0x4000, 0x3c00, 0x3800, 0x3c00};
+    const auto faces = makeFaces(1, color);
+    const auto singleLevel =
+        panda::detail::prefilterSpecularEnvironmentMap({.faceSize = 1, .faces = makeViews(faces)}, 16);
+    const auto zeroSize = panda::detail::prefilterSpecularEnvironmentMap({.faceSize = 0, .faces = {}}, 16);
+    const auto overflowSource = panda::detail::prefilterSpecularEnvironmentMap(
+        {.faceSize = std::numeric_limits<std::uint32_t>::max(), .faces = {}},
+        16);
+    const auto overflowSize = panda::detail::validateEnvironmentFace({}, std::numeric_limits<std::uint32_t>::max());
+
+    ASSERT_TRUE(singleLevel);
+    ASSERT_EQ(singleLevel->levels.size(), 1U);
+    EXPECT_EQ(singleLevel->levels.front().faces, faces);
+    ASSERT_FALSE(zeroSize);
+    EXPECT_EQ(zeroSize.error().code, panda::ErrorCode::InvalidArgument);
+    ASSERT_FALSE(overflowSource);
+    EXPECT_EQ(overflowSource.error().code, panda::ErrorCode::ResourceExhausted);
+    ASSERT_FALSE(overflowSize);
+    EXPECT_EQ(overflowSize.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
 TEST(EnvironmentMapFilter, RejectsInvalidInputWithoutChangingSourceFaces)
 {
     static constexpr auto faceSize = std::uint32_t {2};
@@ -131,6 +180,10 @@ TEST(EnvironmentMapFilter, RejectsInvalidInputWithoutChangingSourceFaces)
     const auto invalidFaces = faces;
     const auto negativeRadiance =
         panda::detail::prefilterSpecularEnvironmentMap({.faceSize = faceSize, .faces = makeViews(faces)}, 128);
+    auto nonfiniteFaces = makeFaces(faceSize, color);
+    nonfiniteFaces.at(0).at(0) = 0x7c00;
+    const auto nonfiniteRadiance =
+        panda::detail::prefilterSpecularEnvironmentMap({.faceSize = faceSize, .faces = makeViews(nonfiniteFaces)}, 128);
 
     EXPECT_FALSE(zeroSamples);
     EXPECT_EQ(zeroSamples.error().code, panda::ErrorCode::InvalidArgument);
@@ -138,6 +191,8 @@ TEST(EnvironmentMapFilter, RejectsInvalidInputWithoutChangingSourceFaces)
     EXPECT_EQ(shortFace.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_FALSE(negativeRadiance);
     EXPECT_EQ(negativeRadiance.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_FALSE(nonfiniteRadiance);
+    EXPECT_EQ(nonfiniteRadiance.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_EQ(originalFaces.at(0).at(0), color.at(0));
     EXPECT_EQ(faces, invalidFaces);
 }

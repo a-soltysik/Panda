@@ -94,18 +94,15 @@ and remains application-prepared.
 - Windows: MSVC 19.51.36260.0, CMake 4.4.2 and ccache 4.13.6 (`disable=false`).
   `msvc-quality`, interface-header verification, `panda_format_checks`,
   `clang-cuda-analysis-windows`, and `msvc-fast` all built successfully.
-  `ctest --preset msvc-fast` passed all 704 tests with 5 expected skips: 2
+  `ctest --preset msvc-fast` passed all 712 tests with 5 expected skips: 2
   output-device failure cases and 3 non-coherent-memory cases.
 - WSL Ubuntu: GCC 16.0.1 experimental, CMake 4.2.3, shaderc 2026.1-1,
   SPIRV-Tools 2026.1 and ccache 4.12.3 (`disable=false`). `gcc-quality`, interface-
-  header verification, `panda_format_checks`, `clang-cuda-analysis`, `gcc-fast`,
-  and `gcc-docs` passed. `ctest --preset gcc-fast` passed all 704 tests with 8
-  capability skips: 5 CUDA interop cases and 3 non-coherent-memory variants.
-- `python .agents/skills/panda-project-maintenance/scripts/check_docs.py` checked
-  89 Markdown files and the task queue. `cmake --preset docs-checks` and its
-  build passed; the Mermaid checker accepted 42 diagrams in 93 files. The Linux
-  API documentation build also passed.
-- The new filter unit and offscreen system tests ran in both full suites. The
-  offscreen renderer was exercised; `scene_demo` was not launched for visual
-  inspection. `git diff --check` found no whitespace errors; Git reported an
-  LF-to-CRLF warning for the unrelated `scene-composer-example.md` task card.
+  header verification, `panda_format_checks`, `clang-cuda-analysis`, and
+  `gcc-fast` built successfully. `ctest --preset gcc-fast` passed all 712 tests
+  with 8 expected skips: 5 CUDA interop cases and 3 non-coherent-memory cases.
+- The documentation checker, Mermaid checks and Linux API documentation build
+  passed. Codecov reported 81.85% patch coverage before the latest test additions;
+  coverage was not rerun locally, and the updated result is left to the PR check.
+- The offscreen renderer was exercised by the system tests. `scene_demo` was not
+  launched for visual inspection. `git diff --check` passed.
