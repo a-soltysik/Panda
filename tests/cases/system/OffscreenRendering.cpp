@@ -8,8 +8,10 @@
 #include <cstdint>
 #include <expected>
 #include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/ext/vector_uint2.hpp>
+#include <glm/trigonometric.hpp>
 #include <memory>
 #include <optional>
 #include <panda/Engine.hpp>
@@ -17,6 +19,7 @@
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/diagnostics/Logger.hpp>
 #include <panda/geometry/Geometry.hpp>
+#include <panda/geometry/Sphere.hpp>
 #include <panda/rendering/Camera.hpp>
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
@@ -30,8 +33,10 @@
 #include <utility>
 #include <vector>
 
+#include "EnvironmentLighting.hpp"
 #include "LogCapture.hpp"
 #include "resources/OffscreenTargetResource.hpp"
+#include "resources/TextureResource.hpp"
 
 namespace
 {
@@ -102,7 +107,7 @@ auto makeBlendView(const panda::Mesh& mesh, bool reverse) -> panda::Result<panda
     {
         return std::unexpected {camera.error()};
     }
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
     const auto red = makeBlendDraw(mesh, 0.0F, {0.8F, 0.0F, 0.0F, 0.5F});
     const auto blue = makeBlendDraw(mesh, 0.25F, {0.0F, 0.0F, 0.7F, 0.5F});
     view.meshes = reverse ? std::vector {blue, red} : std::vector {red, blue};
@@ -169,7 +174,7 @@ auto makeTexturedView(const panda::Mesh& mesh, const panda::Texture& texture) ->
     draw.material.model = panda::MaterialModel::Unlit;
     draw.material.renderFace = panda::RenderFace::Both;
     draw.material.baseColorTexture = texture;
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}};
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
     view.requestedSampleCount = panda::SampleCount::One;
     view.meshes.push_back(std::move(draw));
     return view;
@@ -251,6 +256,108 @@ auto renderEveryFilteringPreset(const panda::Engine& engine,
 auto centerPixel(const panda::ImageReadback& image) -> std::array<std::uint8_t, 4>
 {
     return pixelAt(image, image.extent.x / 2, image.extent.y / 2);
+}
+
+auto makeSkyboxCamera(glm::vec3 position, glm::vec3 target, float farPlane = 20.0F)
+    -> panda::Result<panda::RenderCamera>
+{
+    return panda::createPerspectiveCamera({
+        .position = position,
+        .target = target,
+        .up = {0.0F, 1.0F, 0.0F},
+        .verticalFieldOfViewRadians = glm::radians(60.0F),
+        .aspectRatio = 1.0F,
+        .nearPlane = 0.1F,
+        .farPlane = farPlane
+    });
+}
+
+auto renderOffscreenPixels(const panda::OffscreenRenderer& renderer,
+                           const panda::RenderView& view,
+                           const panda::OffscreenTarget& target) -> panda::Result<panda::ImageReadback>
+{
+    const auto frame = renderer.render(view, target);
+    if (!frame)
+    {
+        return std::unexpected {frame.error()};
+    }
+    return renderer.readPixels(target, frame->completion);
+}
+
+auto renderSpecularEnvironment(const panda::OffscreenRenderer& renderer,
+                               const panda::OffscreenTarget& target,
+                               const panda::RenderCamera& camera,
+                               const panda::Texture& diffuse,
+                               const panda::Texture& specular,
+                               const panda::Mesh& sphere) -> panda::Result<panda::ImageReadback>
+{
+    auto draw = panda::MeshDraw {.mesh = sphere};
+    draw.material.model = panda::MaterialModel::Lit;
+    draw.material.renderFace = panda::RenderFace::Both;
+    draw.material.metallic = 1.0F;
+    draw.material.roughness = 0.65F;
+    auto view = panda::RenderView {.camera = camera,
+                                   .lights = {},
+                                   .meshes = {std::move(draw)},
+                                   .environment = {},
+                                   .skybox = {}};
+    view.environment = panda::EnvironmentLighting {.diffuseIrradiance = diffuse, .specularRadiance = specular};
+    view.requestedSampleCount = panda::SampleCount::One;
+    const auto frame = renderer.render(view, target);
+    if (!frame)
+    {
+        return std::unexpected {frame.error()};
+    }
+    return renderer.readPixels(target, frame->completion);
+}
+
+auto adjacentFacePixelsDiffer(const panda::ImageReadback& first, const panda::ImageReadback& second) -> bool
+{
+    constexpr auto positions = std::array {
+        glm::uvec2 {106U, 26U},
+        glm::uvec2 {116U, 26U},
+        glm::uvec2 {126U, 26U},
+        glm::uvec2 {106U, 32U},
+        glm::uvec2 {116U, 32U},
+        glm::uvec2 {126U, 32U},
+        glm::uvec2 {106U, 38U},
+        glm::uvec2 {116U, 38U},
+        glm::uvec2 {126U, 38U}
+    };
+    return std::ranges::any_of(positions, [&first, &second](const auto& position) {
+        return pixelAt(first, position.x, position.y) != pixelAt(second, position.x, position.y);
+    });
+}
+
+auto generatedEnvironmentSampleCountsDifferOnAdjacentFace(const panda::Engine& engine,
+                                                          const panda::OffscreenRenderer& renderer,
+                                                          const panda::OffscreenTarget& target,
+                                                          const panda::RenderCamera& camera,
+                                                          const panda::Texture& diffuse,
+                                                          const panda::Mesh& sphere) -> panda::Result<bool>
+{
+    auto singleSampleSpecular = panda::test::createGeneratedSpecularEnvironmentFixture(engine, 1);
+    if (!singleSampleSpecular)
+    {
+        return std::unexpected {singleSampleSpecular.error()};
+    }
+    auto filteredSpecular = panda::test::createGeneratedSpecularEnvironmentFixture(engine, 128);
+    if (!filteredSpecular)
+    {
+        return std::unexpected {filteredSpecular.error()};
+    }
+    const auto singleSamplePixels =
+        renderSpecularEnvironment(renderer, target, camera, diffuse, *singleSampleSpecular, sphere);
+    if (!singleSamplePixels)
+    {
+        return std::unexpected {singleSamplePixels.error()};
+    }
+    const auto filteredPixels = renderSpecularEnvironment(renderer, target, camera, diffuse, *filteredSpecular, sphere);
+    if (!filteredPixels)
+    {
+        return std::unexpected {filteredPixels.error()};
+    }
+    return adjacentFacePixelsDiffer(*singleSamplePixels, *filteredPixels);
 }
 
 class OffscreenRenderBackendSystem : public testing::Test
@@ -563,6 +670,261 @@ TEST_F(OffscreenRenderBackendSystem, SelectsSuppliedMipsAndSamplesGeneratedSrgbM
     EXPECT_LE(suppliedPixel.at(1), 5U);
     EXPECT_NEAR(suppliedPixel.at(2), toByte(encodeSrgb(toneMap(1.0F))), 10);
     EXPECT_EQ(suppliedPixel.at(3), 255U);
+}
+
+TEST_F(OffscreenRenderBackendSystem, AppliesDiffuseAndRoughnessFilteredEnvironmentLighting)
+{
+    constexpr auto extent = glm::uvec2 {192, 64};
+    const auto target = activeEngine().getResourceManager().createOffscreenTarget({.extent = extent});
+    if (!target && target.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << target.error().message;
+    }
+    ASSERT_TRUE(target) << target.error().message;
+    auto environment = panda::test::createEnvironmentLightingFixture(activeEngine());
+    if (!environment && environment.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << environment.error().message;
+    }
+    ASSERT_TRUE(environment) << environment.error().message;
+    auto skybox = panda::test::createSkyboxFixture(activeEngine());
+    if (!skybox && skybox.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << skybox.error().message;
+    }
+    ASSERT_TRUE(skybox) << skybox.error().message;
+    const auto geometry = panda::createSphereGeometry({.longitudeSegments = 32, .latitudeRings = 16});
+    ASSERT_TRUE(geometry) << geometry.error().message;
+    const auto sphere = activeEngine().getResourceManager().createMeshFromGeometry(*geometry);
+    ASSERT_TRUE(sphere) << sphere.error().message;
+    auto upload = activeEngine().getSubmissionManager().createUploadBatch();
+    ASSERT_TRUE(upload) << upload.error().message;
+    ASSERT_TRUE(upload->write(*sphere, *geometry));
+    const auto uploaded = upload->submit();
+    ASSERT_TRUE(uploaded) << uploaded.error().message;
+    const auto uploadStatus = activeEngine().getSubmissionManager().wait(*uploaded, std::chrono::seconds {10});
+    ASSERT_TRUE(uploadStatus) << uploadStatus.error().message;
+    ASSERT_EQ(*uploadStatus, panda::WaitStatus::Completed);
+
+    const auto camera = panda::createPerspectiveCamera({
+        .position = {0.0F, 0.0F, 3.0F},
+        .target = {},
+        .up = {0.0F, 1.0F, 0.0F},
+        .verticalFieldOfViewRadians = 0.7853982F,
+        .aspectRatio = 3.0F,
+        .nearPlane = 0.1F,
+        .farPlane = 20.0F
+    });
+    ASSERT_TRUE(camera) << camera.error().message;
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    view.environment = *environment;
+    view.requestedSampleCount = panda::SampleCount::One;
+    const auto& renderer = activeEngine().getOffscreenRenderer();
+    const auto renderMaterial = [&](const panda::EnvironmentLighting& lighting,
+                                    float metallic,
+                                    float roughness) -> panda::Result<panda::ImageReadback> {
+        view.environment = lighting;
+        auto draw = panda::MeshDraw {.mesh = *sphere};
+        draw.material.model = panda::MaterialModel::Lit;
+        draw.material.renderFace = panda::RenderFace::Both;
+        draw.material.metallic = metallic;
+        draw.material.roughness = roughness;
+        view.meshes = {std::move(draw)};
+        const auto frame = renderer.render(view, *target);
+        if (!frame)
+        {
+            return std::unexpected {frame.error()};
+        }
+        return renderer.readPixels(*target, frame->completion);
+    };
+    const auto smoothPixels = renderMaterial(*environment, 1.0F, 0.045F);
+    ASSERT_TRUE(smoothPixels) << smoothPixels.error().message;
+    const auto roughPixels = renderMaterial(*environment, 1.0F, 0.9F);
+    ASSERT_TRUE(roughPixels) << roughPixels.error().message;
+    const auto dielectricPixels = renderMaterial(*environment, 0.0F, 0.5F);
+    ASSERT_TRUE(dielectricPixels) << dielectricPixels.error().message;
+    const auto smoothMetal = centerPixel(*smoothPixels);
+    const auto roughMetal = centerPixel(*roughPixels);
+    const auto dielectric = centerPixel(*dielectricPixels);
+    EXPECT_GT(smoothMetal.at(0), roughMetal.at(0) + 30U);
+    const auto smoothShoulder = std::max(pixelAt(*smoothPixels, 91, 32).at(0), pixelAt(*smoothPixels, 101, 32).at(0));
+    const auto roughShoulder = std::max(pixelAt(*roughPixels, 91, 32).at(0), pixelAt(*roughPixels, 101, 32).at(0));
+    EXPECT_GT(static_cast<int>(smoothMetal.at(0)) - smoothShoulder,
+              static_cast<int>(roughMetal.at(0)) - roughShoulder + 30);
+    EXPECT_GT(dielectric.at(1), dielectric.at(0) + 40U);
+
+    const auto sampleCountsDiffer = generatedEnvironmentSampleCountsDifferOnAdjacentFace(activeEngine(),
+                                                                                         renderer,
+                                                                                         *target,
+                                                                                         *camera,
+                                                                                         environment->diffuseIrradiance,
+                                                                                         *sphere);
+    ASSERT_TRUE(sampleCountsDiffer) << sampleCountsDiffer.error().message;
+    EXPECT_TRUE(*sampleCountsDiffer);
+
+    auto incomplete =
+        panda::RenderView {.camera = *camera, .lights = {}, .meshes = view.meshes, .environment = {}, .skybox = {}};
+    incomplete.environment = panda::EnvironmentLighting {.diffuseIrradiance = environment->diffuseIrradiance,
+                                                         .specularRadiance = environment->diffuseIrradiance};
+    const auto incompatible = renderer.render(incomplete, *target);
+    ASSERT_FALSE(incompatible);
+    EXPECT_EQ(incompatible.error().code, panda::ErrorCode::InvalidArgument);
+
+    auto unuploaded = activeEngine().getResourceManager().createTexture({
+        .extent = {8, 8},
+        .format = panda::PixelFormat::Rgba16Float,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::Supplied,
+        .type = panda::TextureType::CubeMap
+    });
+    ASSERT_TRUE(unuploaded) << unuploaded.error().message;
+    auto unuploadedSkyboxView =
+        panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    unuploadedSkyboxView.skybox = *unuploaded;
+    const auto unuploadedSkyboxFrame = renderer.render(unuploadedSkyboxView, *target);
+    ASSERT_FALSE(unuploadedSkyboxFrame);
+    EXPECT_EQ(unuploadedSkyboxFrame.error().code, panda::ErrorCode::InvalidArgument);
+    incomplete.environment->specularRadiance = *unuploaded;
+    const auto notUploaded = renderer.render(incomplete, *target);
+    ASSERT_FALSE(notUploaded);
+    EXPECT_EQ(notUploaded.error().code, panda::ErrorCode::InvalidArgument);
+
+    view.environment.reset();
+    const auto ambientFrame = renderer.render(view, *target);
+    ASSERT_TRUE(ambientFrame) << ambientFrame.error().message;
+    const auto ambientPixels = renderer.readPixels(*target, ambientFrame->completion);
+    ASSERT_TRUE(ambientPixels) << ambientPixels.error().message;
+    EXPECT_GT(dielectric.at(1), centerPixel(*ambientPixels).at(1) + 40U);
+
+    view.environment = *environment;
+    view.skybox = *skybox;
+    const auto combinedPixels = renderMaterial(*environment, 0.0F, 0.5F);
+    ASSERT_TRUE(combinedPixels) << combinedPixels.error().message;
+    EXPECT_EQ(centerPixel(*combinedPixels), dielectric);
+    auto backgroundView =
+        panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    backgroundView.skybox = *skybox;
+    const auto backgroundPixels = renderOffscreenPixels(renderer, backgroundView, *target);
+    ASSERT_TRUE(backgroundPixels) << backgroundPixels.error().message;
+    EXPECT_NE(centerPixel(*combinedPixels), centerPixel(*backgroundPixels));
+    const auto weakSkybox = std::weak_ptr {panda::detail::TextureResource::getResource(*skybox)};
+    const auto retainedFrame = renderer.render(view, *target);
+    ASSERT_TRUE(retainedFrame) << retainedFrame.error().message;
+    view.environment.reset();
+    view.skybox.reset();
+    environment->diffuseIrradiance.reset();
+    environment->specularRadiance.reset();
+    skybox->reset();
+    EXPECT_FALSE(weakSkybox.expired());
+    const auto retainedStatus =
+        activeEngine().getSubmissionManager().wait(retainedFrame->completion, std::chrono::seconds {10});
+    ASSERT_TRUE(retainedStatus) << retainedStatus.error().message;
+    EXPECT_EQ(*retainedStatus, panda::WaitStatus::Completed);
+}
+
+TEST_F(OffscreenRenderBackendSystem, RendersSkyboxAndSolidBackgroundForEmptyViews)
+{
+    constexpr auto extent = glm::uvec2 {64, 64};
+    const auto target = activeEngine().getResourceManager().createOffscreenTarget({.extent = extent});
+    if (!target && target.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << target.error().message;
+    }
+    ASSERT_TRUE(target) << target.error().message;
+    const auto skybox = panda::test::createSkyboxFixture(activeEngine());
+    if (!skybox && skybox.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << skybox.error().message;
+    }
+    ASSERT_TRUE(skybox) << skybox.error().message;
+    const auto camera = makeSkyboxCamera({0.0F, 0.0F, 3.0F}, {});
+    ASSERT_TRUE(camera) << camera.error().message;
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    view.skybox = *skybox;
+    const auto& renderer = activeEngine().getOffscreenRenderer();
+    const auto frame = renderer.render(view, *target);
+    ASSERT_TRUE(frame) << frame.error().message;
+    EXPECT_EQ(frame->effectiveSampleCount, panda::SampleCount::One);
+    const auto pixels = renderer.readPixels(*target, frame->completion);
+    ASSERT_TRUE(pixels) << pixels.error().message;
+    const auto center = centerPixel(*pixels);
+    const auto expectedChannel = toByte(encodeSrgb(toneMap(1.0F)));
+    EXPECT_NEAR(center.at(0), expectedChannel, 3);
+    EXPECT_LE(center.at(1), 3U);
+    EXPECT_NEAR(center.at(2), expectedChannel, 3);
+    EXPECT_EQ(center.at(3), 255U);
+    const auto distantCamera = makeSkyboxCamera({0.0F, 0.0F, 3.0F}, {}, 10'000'000.0F);
+    ASSERT_TRUE(distantCamera) << distantCamera.error().message;
+    view.camera = *distantCamera;
+    const auto distantPixels = renderOffscreenPixels(renderer, view, *target);
+    ASSERT_TRUE(distantPixels) << distantPixels.error().message;
+    EXPECT_EQ(centerPixel(*distantPixels), center);
+    view.skybox.reset();
+    const auto solidPixels = renderOffscreenPixels(renderer, view, *target);
+    ASSERT_TRUE(solidPixels) << solidPixels.error().message;
+    EXPECT_NE(centerPixel(*solidPixels), center);
+}
+
+TEST_F(OffscreenRenderBackendSystem, SkyboxUsesCameraRotationButIgnoresTranslation)
+{
+    constexpr auto extent = glm::uvec2 {64, 64};
+    const auto target = activeEngine().getResourceManager().createOffscreenTarget({.extent = extent});
+    if (!target && target.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << target.error().message;
+    }
+    ASSERT_TRUE(target) << target.error().message;
+    const auto skybox = panda::test::createSkyboxFixture(activeEngine());
+    ASSERT_TRUE(skybox) << skybox.error().message;
+    const auto camera = makeSkyboxCamera({0.0F, 0.0F, 3.0F}, {});
+    ASSERT_TRUE(camera) << camera.error().message;
+    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    view.skybox = *skybox;
+    const auto& renderer = activeEngine().getOffscreenRenderer();
+    const auto original = renderOffscreenPixels(renderer, view, *target);
+    ASSERT_TRUE(original) << original.error().message;
+    const auto center = centerPixel(*original);
+    const auto translatedCamera = makeSkyboxCamera({4.0F, 2.0F, 6.0F}, {4.0F, 2.0F, 5.0F});
+    ASSERT_TRUE(translatedCamera) << translatedCamera.error().message;
+    view.camera = *translatedCamera;
+    const auto translatedPixels = renderOffscreenPixels(renderer, view, *target);
+    ASSERT_TRUE(translatedPixels) << translatedPixels.error().message;
+    EXPECT_EQ(centerPixel(*translatedPixels), center);
+
+    const auto rotatedCamera = makeSkyboxCamera({0.0F, 0.0F, 3.0F}, {3.0F, 0.0F, 3.0F});
+    ASSERT_TRUE(rotatedCamera) << rotatedCamera.error().message;
+    view.camera = *rotatedCamera;
+    const auto rotatedPixels = renderOffscreenPixels(renderer, view, *target);
+    ASSERT_TRUE(rotatedPixels) << rotatedPixels.error().message;
+    const auto rotatedCenter = centerPixel(*rotatedPixels);
+    EXPECT_NE(rotatedCenter, center);
+}
+
+TEST_F(OffscreenRenderBackendSystem, RejectsIncompatibleSkyboxTexture)
+{
+    const auto target = activeEngine().getResourceManager().createOffscreenTarget({
+        .extent = {16, 16}
+    });
+    if (!target && target.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << target.error().message;
+    }
+    ASSERT_TRUE(target) << target.error().message;
+    const auto incompatible = activeEngine().getResourceManager().createTexture({
+        .extent = {1, 1},
+        .format = panda::PixelFormat::Rgba8Unorm,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled
+    });
+    if (!incompatible && incompatible.error().code == panda::ErrorCode::Unsupported)
+    {
+        GTEST_SKIP() << incompatible.error().message;
+    }
+    ASSERT_TRUE(incompatible) << incompatible.error().message;
+    auto view = panda::RenderView {};
+    view.skybox = *incompatible;
+    const auto rejected = activeEngine().getOffscreenRenderer().render(view, *target);
+    ASSERT_FALSE(rejected);
+    EXPECT_EQ(rejected.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST_F(OffscreenRenderBackendSystem, ValidatesTargetExtentOwnershipAndLifetime)

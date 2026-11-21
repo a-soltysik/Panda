@@ -13,7 +13,6 @@
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Texture.hpp>
-#include <span>
 #include <vector>
 
 #include "renderer/ShaderData.hpp"
@@ -107,7 +106,7 @@ private:
     {
         FrameResources& frame;
         vk::ImageView fallbackView;
-        std::span<vk::DescriptorImageInfo> imageInfos;
+        std::vector<vk::DescriptorImageInfo>& imageInfos;
         std::vector<vk::WriteDescriptorSet>& writes;
     };
 
@@ -128,6 +127,7 @@ private:
     [[nodiscard]] auto initializeSamplers() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeShadowSampler() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeTextureSampler() -> std::expected<void, Error>;
+    [[nodiscard]] auto initializeEnvironmentSampler() -> std::expected<void, Error>;
     [[nodiscard]] auto createTextureSampler(TextureAddressMode addressMode,
                                             std::uint32_t mipLevels,
                                             TextureFilteringPreset preset,
@@ -162,7 +162,7 @@ private:
         -> std::expected<void, Error>;
     [[nodiscard]] auto writeShadowRecords(FrameResources& frame, const ShadowAtlasPlan& plan) const
         -> std::expected<void, Error>;
-    void updateFrameDescriptorSet(const FrameResources& frame, vk::ImageView shadowView);
+    void updateFrameDescriptorSet(const FrameResources& frame, vk::ImageView shadowView, const RenderView& view);
     [[nodiscard]] auto appendTextureDescriptorWrites(TextureDescriptorWriteBatch& batch,
                                                      std::size_t drawIndex,
                                                      const MeshDraw& draw) -> std::expected<void, Error>;
@@ -183,6 +183,7 @@ private:
     vk::raii::PipelineLayout _pipelineLayout {nullptr};
     vk::raii::Sampler _shadowSampler {nullptr};
     vk::raii::Sampler _textureSampler {nullptr};
+    vk::raii::Sampler _environmentSampler {nullptr};
     vk::raii::DescriptorPool _descriptorPool {nullptr};
     std::vector<FrameResources> _frames;
     std::vector<MaterialRecord> _materialRecords;

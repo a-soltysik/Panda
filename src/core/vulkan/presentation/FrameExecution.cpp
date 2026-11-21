@@ -13,8 +13,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <iterator>
 #include <memory>
-#include <new>
 #include <numeric>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/SampleCount.hpp>
@@ -41,15 +41,25 @@ void retainTexture(std::vector<Texture>& retained, const Texture& texture)
     }
 }
 
-void retainMaterialTextures(std::vector<Texture>& retained, const RenderView& view)
+void retainViewTextures(std::vector<Texture>& retained, const RenderView& view)
 {
-    retained.reserve(view.meshes.size() * renderer::materialTextureSlots.size());
+    retained.reserve((view.meshes.size() * renderer::materialTextureSlots.size()) + (view.environment ? 2U : 0U) +
+                     (view.skybox ? 1U : 0U));
     for (const auto& draw : view.meshes)
     {
         for (const auto& slot : renderer::materialTextureSlots)
         {
             retainTexture(retained, draw.material.*(slot.texture));
         }
+    }
+    if (view.environment)
+    {
+        retainTexture(retained, view.environment->diffuseIrradiance);
+        retainTexture(retained, view.environment->specularRadiance);
+    }
+    if (view.skybox)
+    {
+        retainTexture(retained, *view.skybox);
     }
 }
 
@@ -143,24 +153,11 @@ auto FrameExecution::retainViewResources(ExecutionSlot& slot,
     -> std::expected<void, Error>
 {
     slot.retainedMeshes.clear();
+    slot.retainedMeshes.reserve(view.meshes.size());
+    std::ranges::transform(view.meshes, std::back_inserter(slot.retainedMeshes), &MeshDraw::mesh);
     slot.retainedTextures.clear();
-    slot.retainedTarget.reset();
-    try
-    {
-        slot.retainedMeshes.reserve(view.meshes.size());
-        for (const auto& draw : view.meshes)
-        {
-            slot.retainedMeshes.push_back(draw.mesh);
-        }
-        retainMaterialTextures(slot.retainedTextures, view);
-        slot.retainedTarget = std::move(target);
-    }
-    catch (const std::bad_alloc&)
-    {
-        slot.retainedMeshes.clear();
-        slot.retainedTextures.clear();
-        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Unable to retain render view resources")};
-    }
+    retainViewTextures(slot.retainedTextures, view);
+    slot.retainedTarget = std::move(target);
     return {};
 }
 
@@ -218,18 +215,18 @@ auto FrameExecution::recordContent(std::size_t index, const FrameOutput& output,
 auto FrameExecution::recordViewContent(std::size_t index, const FrameOutput& output, const RenderView& view)
     -> std::expected<void, Error>
 {
-    if (view.meshes.empty())
+    if (view.meshes.empty() && !view.skybox)
     {
         recordClearRendering(_slots.at(index).command, output);
         return {};
     }
-    return recordMeshDraws(_slots.at(index), index, output, view);
+    return recordRendererView(_slots.at(index), index, output, view);
 }
 
-auto FrameExecution::recordMeshDraws(ExecutionSlot& slot,
-                                     std::size_t index,
-                                     const FrameOutput& output,
-                                     const RenderView& view) -> std::expected<void, Error>
+auto FrameExecution::recordRendererView(ExecutionSlot& slot,
+                                        std::size_t index,
+                                        const FrameOutput& output,
+                                        const RenderView& view) -> std::expected<void, Error>
 {
     if (const auto updated = _renderer->updateFrame(index, view); !updated)
     {
@@ -241,27 +238,28 @@ auto FrameExecution::recordMeshDraws(ExecutionSlot& slot,
 
 auto FrameExecution::prepareOutput(vk::Extent2D extent, vk::Format colorFormat, const RenderView& view) -> Result<void>
 {
-    if (view.meshes.empty())
+    if (view.meshes.empty() && !view.skybox)
     {
         return {};
     }
+    const auto requestedSampleCount = view.meshes.empty() ? SampleCount::One : view.requestedSampleCount;
     if (!_renderer)
     {
-        return initializeMeshRenderer(extent, colorFormat, view.requestedSampleCount);
+        return initializeRenderer(extent, colorFormat, requestedSampleCount);
     }
     const auto& current = _renderer->getOutputDescription();
     if (current.extent == extent && current.colorFormat == colorFormat &&
-        current.requestedSampleCount == view.requestedSampleCount)
+        current.requestedSampleCount == requestedSampleCount)
     {
         return {};
     }
     // The attachment and pipeline replacements may release objects used by either slot.
     return drain().and_then([&] {
-        return _renderer->resize(extent, colorFormat, view.requestedSampleCount);
+        return _renderer->resize(extent, colorFormat, requestedSampleCount);
     });
 }
 
-auto FrameExecution::initializeMeshRenderer(vk::Extent2D extent, vk::Format colorFormat, SampleCount requested)
+auto FrameExecution::initializeRenderer(vk::Extent2D extent, vk::Format colorFormat, SampleCount requested)
     -> Result<void>
 {
     if (_pool == nullptr)
@@ -302,10 +300,10 @@ void FrameExecution::setLastCompletion(std::size_t index, std::uint64_t value)
     _slots.at(index).lastCompletion = value;
 }
 
-void FrameExecution::markSubmitted(std::size_t index, std::uint64_t value, bool hadMeshDraws)
+void FrameExecution::markSubmitted(std::size_t index, std::uint64_t value, bool hadRendererWork)
 {
     setLastCompletion(index, value);
-    if (_renderer != nullptr && hadMeshDraws)
+    if (_renderer != nullptr && hadRendererWork)
     {
         _renderer->markSubmitted(index);
     }

@@ -41,6 +41,11 @@ auto Texture::getFormat() const noexcept -> PixelFormat
     return _resource ? _resource->getPublicFormat() : PixelFormat::Undefined;
 }
 
+auto Texture::getType() const noexcept -> TextureType
+{
+    return _resource ? _resource->getPublicType() : TextureType::Texture2D;
+}
+
 auto Texture::getUsage() const noexcept -> TextureUsage
 {
     return _resource ? _resource->getPublicUsage() : TextureUsage::None;

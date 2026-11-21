@@ -26,6 +26,8 @@ auto mapPixelFormat(PixelFormat format) -> Result<vk::Format>
         return vk::Format::eB8G8R8A8Unorm;
     case PixelFormat::Bgra8Srgb:
         return vk::Format::eB8G8R8A8Srgb;
+    case PixelFormat::Rgba16Float:
+        return vk::Format::eR16G16B16A16Sfloat;
     case PixelFormat::Undefined:
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Texture format is undefined")};
     }

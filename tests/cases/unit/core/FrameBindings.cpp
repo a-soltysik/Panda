@@ -777,6 +777,25 @@ TEST_F(FrameBindingsTest, PropagatesSamplerCreationFailures)
     EXPECT_FALSE(textureSampler);
 }
 
+TEST_F(FrameBindingsTest, PropagatesEnvironmentSamplerCreationFailure)
+{
+    EXPECT_CALL(vulkan, vkCreateSampler(deviceHandle, NotNull(), _, NotNull()))
+        .Times(3)
+        .WillOnce([this](VkDevice, const VkSamplerCreateInfo*, const VkAllocationCallbacks*, VkSampler* output) {
+            *output = fakeHandle<VkSampler>(nextHandle++);
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        })
+        .WillOnce([this](VkDevice, const VkSamplerCreateInfo*, const VkAllocationCallbacks*, VkSampler* output) {
+            *output = fakeHandle<VkSampler>(nextHandle++);
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        })
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
+
+    const auto bindings = createBindings();
+
+    EXPECT_FALSE(bindings);
+}
+
 TEST_F(FrameBindingsTest, PropagatesUniformAndMaterialBufferCreationFailures)
 {
     EXPECT_CALL(buffers, createNative(Ref(device), Ref(*pool), _)).WillOnce(Return(bufferFailure()));

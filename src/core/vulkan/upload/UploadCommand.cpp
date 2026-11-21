@@ -63,7 +63,7 @@ void transitionToTransfer(vk::CommandBuffer command, const TextureResource& text
                                                        .baseMipLevel = 0,
                                                        .levelCount = texture.getMipLevels(),
                                                        .baseArrayLayer = 0,
-                                                       .layerCount = 1}
+                                                       .layerCount = texture.getArrayLayers()}
     };
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }
@@ -84,7 +84,7 @@ void transitionToSampled(vk::CommandBuffer command, const TextureResource& textu
                                                        .baseMipLevel = 0,
                                                        .levelCount = texture.getMipLevels(),
                                                        .baseArrayLayer = 0,
-                                                       .layerCount = 1}
+                                                       .layerCount = texture.getArrayLayers()}
     };
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }
@@ -110,7 +110,7 @@ void recordCopy(vk::CommandBuffer command, const TextureUpload& texture)
         .bufferImageHeight = 0,
         .imageSubresource = vk::ImageSubresourceLayers {.aspectMask = vk::ImageAspectFlagBits::eColor,
                                                         .mipLevel = texture.region.mipLevel,
-                                                        .baseArrayLayer = 0,
+                                                        .baseArrayLayer = texture.region.arrayLayer,
                                                         .layerCount = 1},
         .imageOffset = vk::Offset3D {.x = texture.region.offset.x, .y = texture.region.offset.y, .z = 0},
         .imageExtent = vk::Extent3D {.width = texture.region.extent.x, .height = texture.region.extent.y, .depth = 1}

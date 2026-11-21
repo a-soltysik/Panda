@@ -18,6 +18,7 @@ Specifications: [Materials, faces, and output](../../design/contracts/rendering.
   support before using it. Verify single-sample rendering and MSAA resolve.
 - Verify that a partially transparent surface over a bright background is
   blended in linear HDR and tone-mapped once. Check equivalent SDR colors
-  in window and offscreen output for the same view.
+  in window and offscreen output for the same view. When the skybox is
+  enabled, verify that its radiance is composited before the final pass.
 
 Learning: Compare blending before and after tone mapping for the same two colors.

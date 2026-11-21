@@ -10,6 +10,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <memory>
@@ -429,6 +430,37 @@ TEST_F(UploadManagerTest, RejectsMipmappedRegionsOutsideTheirAllowedLevels)
     EXPECT_EQ(invalidMip.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_EQ(partialMip.error().code, panda::ErrorCode::InvalidArgument);
     EXPECT_EQ(nonBaseGeneratedMip.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(UploadManagerTest, RejectsCubemapLayersOutsideTheSixFaces)
+{
+    EXPECT_CALL(submission, construct(_, 0));
+    auto submissions = SubmissionQueue {device, 0};
+    auto uploads = UploadManager {device, *pool, submissions, 0};
+    const auto description = panda::TextureDesc {
+        .extent = {8, 8},
+        .format = panda::PixelFormat::Rgba16Float,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::Supplied,
+        .type = panda::TextureType::CubeMap
+    };
+    EXPECT_CALL(textureMock, create(_, Ref(*pool), _)).WillOnce(Return(panda::Result<void> {}));
+    auto created = TextureResource::create(device, *pool, description);
+    ASSERT_TRUE(created);
+    auto destination = std::move(*created);
+    const auto region = panda::TextureUploadRegion {
+        .extent = {8, 8},
+        .arrayLayer = 6
+    };
+    EXPECT_CALL(textureMock, belongsTo(Ref(*destination), Ref(*pool))).WillOnce(Return(true));
+    EXPECT_CALL(textureMock, getUsage(Ref(*destination)))
+        .Times(2)
+        .WillRepeatedly(Return(vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled));
+
+    const auto result = uploads.validateTextureWrite(destination, region, std::size_t {512});
+
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
 TEST_F(UploadManagerTest, PreservesCommandCreationFailureBeforeQueueSubmission)

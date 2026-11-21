@@ -215,6 +215,31 @@ TEST_F(MeshPipelineCacheTest, FailedCreationCanBeRetriedWithoutPublishingAnInval
     EXPECT_TRUE(cache.prepare(key));
 }
 
+TEST_F(MeshPipelineCacheTest, PropagatesSkyboxShaderModuleCreationFailures)
+{
+    EXPECT_CALL(vulkan, vkCreateShaderModule(deviceHandle, NotNull(), nullptr, NotNull()))
+        .Times(3)
+        .WillOnce(testing::Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)))
+        .WillOnce(
+            [this](VkDevice, const VkShaderModuleCreateInfo*, const VkAllocationCallbacks*, VkShaderModule* output) {
+                *output = fakeHandle<VkShaderModule>(nextHandle++);
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            })
+        .WillOnce(testing::Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
+    EXPECT_CALL(vulkan, vkDestroyShaderModule(deviceHandle, _, nullptr));
+    EXPECT_CALL(vulkan, vkCreateGraphicsPipelines(_, _, _, _, _, _)).Times(0);
+
+    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
+    cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
+                                  .depthFormat = vk::Format::eD32Sfloat,
+                                  .sampleCount = vk::SampleCountFlagBits::e1});
+    auto view = panda::RenderView {};
+    view.skybox.emplace();
+
+    EXPECT_FALSE(cache.prepare(view));
+    EXPECT_FALSE(cache.prepare(view));
+}
+
 TEST_F(MeshPipelineCacheTest, OutputCompatibilityInvalidatesOnlyDependentVariants)
 {
     expectShaderModules(10);

@@ -98,6 +98,11 @@ auto UploadBatch::write(const Mesh& destination, const Geometry& geometry) -> Re
 auto UploadBatch::write(const Texture& destination, std::span<const std::byte> bytes, std::uint64_t rowPitchBytes)
     -> Result<void>
 {
+    if (destination.getType() == TextureType::CubeMap)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Cubemap uploads must specify a face with TextureUploadRegion")};
+    }
     const auto extent = destination.getExtent();
     return write(destination, bytes, TextureUploadRegion {.extent = extent, .rowPitchBytes = rowPitchBytes});
 }

@@ -31,10 +31,12 @@ struct TextureUploadRegion
     glm::ivec2 offset {};
     /// Nonempty extent in texels (x is width, y is height); compressed extents may end at an image edge.
     glm::uvec2 extent {};
-    /// Destination mip level; supplied mip chains require one full-level write for every level.
+    /// Destination mip level; supplied chains require every level on every image layer.
     std::uint32_t mipLevel {0};
     /// Byte stride between source block rows; zero means tightly packed rows.
     std::uint64_t rowPitchBytes {0};
+    /// Destination image layer; cubemap faces use Vulkan order: +X, -X, +Y, -Y, +Z, -Z.
+    std::uint32_t arrayLayer {0};
 };
 
 /// @brief Move-only batch borrowing its Engine until submitted or destroyed.
@@ -78,21 +80,23 @@ public:
     /// Indices must refer to supplied vertices; validation examines each index once.
     /// @return Success or a validation/allocation/cache error; failure queues no part of this mesh write.
     [[nodiscard]] auto write(const Mesh& destination, const Geometry& geometry) -> Result<void>;
-    /// @brief Snapshots a full base-level upload into owned staging.
-    /// @param destination Texture from the same Engine with transfer-destination and sampled usage.
+    /// @brief Snapshots a full base-level 2D texture upload into owned staging.
+    /// @param destination 2D texture from the same Engine with transfer-destination and sampled usage.
     /// @param bytes Source texels or compressed blocks, with rows separated by rowPitchBytes.
     /// @param rowPitchBytes Source byte stride between block rows; zero means tightly packed.
     /// @return Success or a validation/allocation/cache error. Failed writes leave earlier writes intact.
     /// Generate policy uploads derive the full chain from this base level. Supplied policy uploads this as level zero;
-    /// add the remaining full levels with the region overload before submitting. A texture can be uploaded only once.
+    /// add the remaining full levels with the region overload before submitting. Use the region overload for
+    /// cubemaps. A texture can be uploaded only once.
     [[nodiscard]] auto write(const Texture& destination,
                              std::span<const std::byte> bytes,
                              std::uint64_t rowPitchBytes = 0) -> Result<void>;
     /// @brief Snapshots one texture region or full mip level into owned staging.
     /// @param destination Texture from the same Engine with transfer-destination and sampled usage.
     /// @param bytes Source begins at the first copied texel or block; each block row uses rowPitchBytes.
-    /// @param region Destination rectangle, mip level and source row stride in bytes. Supplied chains require one
-    /// complete level per write; submission fails until every level is present.
+    /// @param region Destination rectangle, mip level, array layer and source row stride in bytes. Cubemap writes
+    /// require a full face. Supplied cubemaps need every face and mip; GenerateSpecularEnvironment needs six base
+    /// faces and generates the roughness mips internally. Supplied 2D chains need every level before submission.
     /// @return Success or a validation/allocation/cache error. Failed writes leave earlier writes intact.
     /// Multiple calls for one texture must use the same batch; regions are copied in insertion order.
     [[nodiscard]] auto write(const Texture& destination,

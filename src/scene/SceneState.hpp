@@ -42,6 +42,8 @@ public:
     [[nodiscard]] auto setOrthographicCamera(const Entity& entity, std::optional<OrthographicCamera> camera)
         -> Result<void>;
     [[nodiscard]] auto setLight(const Entity& entity, std::optional<Light> light) -> Result<void>;
+    void setEnvironment(std::optional<EnvironmentLighting> environment);
+    void setSkybox(std::optional<Texture> skybox);
     [[nodiscard]] auto setVisible(const Entity& entity, bool visible) -> Result<void>;
     [[nodiscard]] auto setActiveCamera(const Entity& entity) -> Result<void>;
     [[nodiscard]] auto createRenderView(float aspectRatio) -> Result<RenderView>;
@@ -95,5 +97,7 @@ private:
     std::map<ObjectId, std::optional<std::size_t>> _objectSlots;
     ObjectId _nextObjectId {1};
     std::optional<std::size_t> _activeCamera;
+    std::optional<EnvironmentLighting> _environment;
+    std::optional<Texture> _skybox;
 };
 }

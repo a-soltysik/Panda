@@ -284,10 +284,11 @@ protected:
 TEST(ResourceMappings, MapsOnlyPublicTextureFormatsAndUsages)
 {
     constexpr auto formats = std::array {
-        std::pair {panda::PixelFormat::Rgba8Unorm, vk::Format::eR8G8B8A8Unorm},
-        std::pair {panda::PixelFormat::Rgba8Srgb,  vk::Format::eR8G8B8A8Srgb },
-        std::pair {panda::PixelFormat::Bgra8Unorm, vk::Format::eB8G8R8A8Unorm},
-        std::pair {panda::PixelFormat::Bgra8Srgb,  vk::Format::eB8G8R8A8Srgb }
+        std::pair {panda::PixelFormat::Rgba8Unorm,  vk::Format::eR8G8B8A8Unorm     },
+        std::pair {panda::PixelFormat::Rgba8Srgb,   vk::Format::eR8G8B8A8Srgb      },
+        std::pair {panda::PixelFormat::Bgra8Unorm,  vk::Format::eB8G8R8A8Unorm     },
+        std::pair {panda::PixelFormat::Bgra8Srgb,   vk::Format::eB8G8R8A8Srgb      },
+        std::pair {panda::PixelFormat::Rgba16Float, vk::Format::eR16G16B16A16Sfloat}
     };
     for (const auto& [format, native] : formats)
     {
@@ -436,6 +437,40 @@ TEST_F(TextureResourceTest, RejectsExtentBeyondDeviceLimitBeforeCreatingImage)
     const auto oversized = TextureResource::create(device, *pool, desc);
     ASSERT_FALSE(oversized);
     EXPECT_EQ(oversized.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(TextureResourceTest, RejectsCubemapWhenDeviceCannotSupportSixArrayLayers)
+{
+    auto desc = description(panda::PixelFormat::Rgba16Float);
+    desc.extent = {16, 16};
+    desc.type = panda::TextureType::CubeMap;
+    EXPECT_CALL(vulkan,
+                vkGetPhysicalDeviceImageFormatProperties(_,
+                                                         _,
+                                                         VK_IMAGE_TYPE_2D,
+                                                         VK_IMAGE_TILING_OPTIMAL,
+                                                         _,
+                                                         VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+                                                         NotNull()))
+        .WillOnce([](VkPhysicalDevice,
+                     VkFormat,
+                     VkImageType,
+                     VkImageTiling,
+                     VkImageUsageFlags,
+                     VkImageCreateFlags,
+                     VkImageFormatProperties* output) {
+            *output = VkImageFormatProperties {};
+            output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+            output->maxMipLevels = 16;
+            output->maxArrayLayers = 2;
+            return success;
+        });
+    EXPECT_CALL(vulkan, vkCreateImage(_, _, _, _)).Times(0);
+
+    const auto result = TextureResource::create(device, *pool, desc);
+
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, panda::ErrorCode::Unsupported);
 }
 
 TEST_F(TextureResourceTest, RejectsInvalidSamplesAndMultisampledNonAttachments)

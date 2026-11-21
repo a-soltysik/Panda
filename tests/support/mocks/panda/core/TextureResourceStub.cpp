@@ -63,14 +63,18 @@ auto TextureResource::create(const vk::raii::Device& device,
         .mipLevels =
             description.mipPolicy == TextureMipPolicy::SingleLevel
                 ? 1U
-                : static_cast<std::uint32_t>(std::bit_width(std::max(description.extent.x, description.extent.y)))
+                : static_cast<std::uint32_t>(std::bit_width(std::max(description.extent.x, description.extent.y))),
+        .arrayLayers = description.type == TextureType::CubeMap ? 6U : 1U,
+        .cubeCompatible = description.type == TextureType::CubeMap
     };
     auto resource = std::shared_ptr<TextureResource> {
         new TextureResource {pool, vk::raii::Image {nullptr}, nativeDescription, samples}
     };
     resource->_publicFormat = description.format;
+    resource->_publicType = description.type;
     resource->_publicUsage = description.usage;
     resource->_mipPolicy = description.mipPolicy;
+    resource->_specularEnvironmentSamplesPerTexel = description.specularEnvironmentSamplesPerTexel;
     resource->_addressMode = description.addressMode;
     return resource;
 }
@@ -124,6 +128,11 @@ auto TextureResource::getUsage() const -> vk::ImageUsageFlags
 auto TextureResource::getPublicFormat() const -> PixelFormat
 {
     return _publicFormat;
+}
+
+auto TextureResource::getPublicType() const -> TextureType
+{
+    return _publicType;
 }
 
 auto TextureResource::getPublicUsage() const -> TextureUsage

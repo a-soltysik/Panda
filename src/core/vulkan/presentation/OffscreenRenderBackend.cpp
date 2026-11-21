@@ -413,7 +413,7 @@ auto OffscreenRenderBackend::submitFrame(std::size_t slotIndex,
     {
         *request.submittedValue = *submitted;
     }
-    _execution->markSubmitted(slotIndex, *submitted, !request.view.meshes.empty());
+    _execution->markSubmitted(slotIndex, *submitted, !request.view.meshes.empty() || request.view.skybox.has_value());
     if (_execution->isGpuTimestampSamplingEnabled())
     {
         request.submittedPerformanceSlot = FrameExecution::slotCount + slotIndex;

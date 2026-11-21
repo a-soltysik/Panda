@@ -5,6 +5,7 @@
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/math/Transform.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Texture.hpp>
 #include <panda/scene/Entity.hpp>
 #include <panda/scene/ObjectId.hpp>
 #include <panda/scene/Scene.hpp>
@@ -119,6 +120,16 @@ auto Scene::setOrthographicCamera(const Entity& entity, std::optional<Orthograph
 auto Scene::setLight(const Entity& entity, std::optional<Light> light) -> Result<void>
 {
     return expect(_state, "Cannot use a moved-from Scene").setLight(entity, light);
+}
+
+void Scene::setEnvironment(std::optional<EnvironmentLighting> environment)
+{
+    expect(_state, "Cannot use a moved-from Scene").setEnvironment(std::move(environment));
+}
+
+void Scene::setSkybox(std::optional<Texture> skybox)
+{
+    expect(_state, "Cannot use a moved-from Scene").setSkybox(std::move(skybox));
 }
 
 auto Scene::setVisible(const Entity& entity, bool visible) -> Result<void>

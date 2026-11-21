@@ -139,7 +139,10 @@ auto SceneRenderViewBuilder::appendRenderObject(std::size_t index, RenderView& v
     }
     if (slot.mesh)
     {
-        view.meshes.push_back({.mesh = slot.mesh->mesh, .modelMatrix = slot.worldMatrix, .tint = slot.mesh->tint});
+        view.meshes.push_back({.mesh = slot.mesh->mesh,
+                               .modelMatrix = slot.worldMatrix,
+                               .tint = slot.mesh->tint,
+                               .material = slot.mesh->material});
     }
     return appendLight(index, view);
 }
@@ -194,6 +197,8 @@ auto SceneRenderViewBuilder::build(float aspectRatio) -> Result<RenderView>
     }
     auto view = RenderView {};
     view.camera = *camera;
+    view.environment = _scene._environment;
+    view.skybox = _scene._skybox;
     auto collected = collectRenderObjects(view);
     if (!collected)
     {

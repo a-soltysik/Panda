@@ -303,6 +303,11 @@ void MeshRenderer::recordColorPass(vk::CommandBuffer command, std::size_t frameI
 {
     setViewportAndScissor(command, _attachments->getOutputDescription().extent);
     bindFrameDescriptorSet(command, {.frameIndex = frameIndex, .shadowViewOffset = 0});
+    if (view.skybox)
+    {
+        command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipelineCache().getSkyboxPipeline());
+        command.draw(3, 1, 0, 0);
+    }
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
     {
@@ -315,22 +320,29 @@ void MeshRenderer::recordColorPass(vk::CommandBuffer command, std::size_t frameI
         }
         else
         {
-            recordDraw(command, frameIndex, draw, {.shadowPass = false, .materialIndex = materialIndex});
+            recordDraw(
+                command,
+                frameIndex,
+                draw,
+                {.shadowPass = false, .materialIndex = materialIndex, .hasEnvironment = view.environment.has_value()});
         }
         ++materialIndex;
     }
-    recordBlendedDraws(command, frameIndex);
+    recordBlendedDraws(command, frameIndex, view.environment.has_value());
     command.endRendering();
 }
 
-void MeshRenderer::recordBlendedDraws(vk::CommandBuffer command, std::size_t frameIndex)
+void MeshRenderer::recordBlendedDraws(vk::CommandBuffer command, std::size_t frameIndex, bool hasEnvironment)
 {
     std::ranges::stable_sort(_blendDraws, [](const BlendDraw& left, const BlendDraw& right) {
         return left.cameraDepth > right.cameraDepth;
     });
     for (const auto& blendDraw : _blendDraws)
     {
-        recordDraw(command, frameIndex, *blendDraw.draw, {.materialIndex = blendDraw.materialIndex});
+        recordDraw(command,
+                   frameIndex,
+                   *blendDraw.draw,
+                   {.materialIndex = blendDraw.materialIndex, .hasEnvironment = hasEnvironment});
     }
     _blendDraws.clear();
 }
@@ -414,7 +426,7 @@ void MeshRenderer::recordDraw(vk::CommandBuffer command,
     }
     else
     {
-        command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipelineCache().getPipeline(draw));
+        command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipelineCache().getPipeline(draw, pass.hasEnvironment));
     }
     bindTextureDescriptors(command, frameIndex, draw, pass);
     const auto constants = makeDrawConstants(draw);

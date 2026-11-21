@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file
-/// Shared ownership of fixed-size 2D images.
+/// Shared ownership of fixed-size 2D images and cubemaps.
 
 #include <bit>
 #include <cstdint>
@@ -31,8 +31,19 @@ enum class TextureMipPolicy : std::uint8_t
     SingleLevel,
     /// Allocate and upload every level in the full chain.
     Supplied,
-    /// Generate the full chain on the CPU from the uploaded base level.
+    /// Generate 2D mip levels by downsampling RGBA8/BGRA8 UNORM or sRGB images.
     Generate,
+    /// Generate cubemap roughness mips with GGX specular environment filtering.
+    GenerateSpecularEnvironment,
+};
+
+/// @brief Image view type created for a public texture.
+enum class TextureType : std::uint8_t
+{
+    /// A two-dimensional image with one array layer.
+    Texture2D,
+    /// A square, six-face linear HDR image; uploads use Vulkan cube-face layer order.
+    CubeMap,
 };
 
 /// @brief Addressing at one edge of a sampled 2D texture.
@@ -45,6 +56,7 @@ enum class TextureAddressMode : std::uint8_t
 
 namespace detail
 {
+inline constexpr auto defaultSpecularEnvironmentSamplesPerTexel = std::uint32_t {128};
 class TextureResource;
 }
 
@@ -59,8 +71,12 @@ struct TextureDesc
     TextureUsage usage {TextureUsage::None};
     /// Single level by default; supplied and generated policies allocate the full mip chain.
     TextureMipPolicy mipPolicy {TextureMipPolicy::SingleLevel};
+    /// GGX importance samples per output texel; used only by GenerateSpecularEnvironment.
+    std::uint32_t specularEnvironmentSamplesPerTexel {detail::defaultSpecularEnvironmentSamplesPerTexel};
     /// How UV coordinates outside [0,1] are handled on both axes.
     TextureAddressMode addressMode {TextureAddressMode::Repeat};
+    /// Image view type; CubeMap requires square Rgba16Float data.
+    TextureType type {TextureType::Texture2D};
 };
 
 /// @brief Copyable resource owner. Engine outlives every copy.
@@ -87,6 +103,8 @@ public:
     [[nodiscard]] auto getExtent() const noexcept -> glm::uvec2;
     /// @brief Returns the selected format, or Undefined for an empty handle.
     [[nodiscard]] auto getFormat() const noexcept -> PixelFormat;
+    /// @brief Returns the view type, or Texture2D for an empty handle.
+    [[nodiscard]] auto getType() const noexcept -> TextureType;
     /// @brief Returns the creation usage, or None for an empty handle.
     [[nodiscard]] auto getUsage() const noexcept -> TextureUsage;
     /// @brief Returns the allocated mip-level count, or zero for an empty handle.

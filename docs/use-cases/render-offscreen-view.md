@@ -18,18 +18,20 @@ the Engine that created it.
    `Engine::getResourceManager().createOffscreenTarget()` with a nonzero
    `glm::uvec2` extent in pixels (x is width, y is height). The current target
    format is RGBA8 sRGB.
-2. **Build and upload the view.** The application supplies camera, lights and mesh
-   draws. Required mesh and texture data must be uploaded; see
+2. **Build and upload the view.** The application supplies camera, lights, an
+   optional skybox and mesh draws. A skybox is an uploaded, sampled square linear
+   `Rgba16Float` cubemap from the same Engine. Required mesh and texture data must be uploaded; see
    [UC Upload a complete mesh payload into a batch](upload-mesh-payload.md) and
    [UC Upload texture contents or regions](upload-texture.md).
 3. **Submit the render.** The application calls
    `Engine::getOffscreenRenderer().render(view, target)`. `OffscreenRenderer`
    validates the view and target, collects completed uploads, then lazily initializes
    `OffscreenRenderBackend` before recording the built-in rendering path. It
-   prepares mesh attachments for the target and the requested sample count,
-   retains the target and view resources, then submits the command buffer on
+   prepares output for mesh draws or a skybox, retains the target and view resources,
+   then submits the command buffer on
    the Engine queue. Success returns `FrameResult::Status::Rendered`, a
-   `CompletionPoint` and the effective sample count.
+   `CompletionPoint` and the effective sample count. A skybox-only view uses one
+   sample; mesh draws follow `RenderView::requestedSampleCount`.
 4. **Request pixels.** When CPU pixels are needed, the application calls
    `readPixels(target, completion)` with a point covering that target's latest
    render. Panda validates the target and point, submits an image-to-buffer copy,
@@ -52,11 +54,21 @@ sequenceDiagram
     R->>R: Validate view and target
     R->>U: Collect completed upload packets
     U-->>R: Collection result
-    R->>R: Reject material maps without a submitted upload
+    R->>R: Reject material maps or skybox without a submitted upload
     R->>O: Initialize lazily and submit offscreen frame
-    O->>E: Prepare target format, extent and sample count
+    O->>E: Prepare target format, extent and sample count when needed
     O->>E: Retain target and view resources and record content
-    E->>V: Transition target and record clear/draws
+    alt No meshes and no skybox
+        E->>V: Transition target and clear to the solid background
+    else Skybox or mesh draws
+        E->>V: Transition target and render with shared output encoding
+        opt Skybox selected
+            E->>V: Draw skybox before geometry using camera orientation
+        end
+        opt Meshes selected
+            E->>V: Draw geometry over the background
+        end
+    end
     O->>Q: Submit command buffer
     Q-->>O: CompletionPoint
     O-->>R: FrameResult::Rendered

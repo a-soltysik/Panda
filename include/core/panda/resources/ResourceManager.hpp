@@ -46,7 +46,7 @@ public:
     /// May allocate; submits no work and does not wait.
     [[nodiscard]] auto createBuffer(const BufferDesc& description) const -> Result<Buffer>;
 
-    /// @brief Creates an optimal-tiled, single-mip, single-layer 2D image with undefined initial contents.
+    /// @brief Creates an optimal-tiled 2D image or cubemap with undefined initial contents.
     /// @return A shared image owner or a validation/allocation/backend error.
     /// May allocate; submits no work and does not wait.
     [[nodiscard]] auto createTexture(const TextureDesc& description) const -> Result<Texture>;

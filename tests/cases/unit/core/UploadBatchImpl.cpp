@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -499,4 +500,200 @@ TEST_F(UploadBatchImplTest, CancelsGeneratedTextureReservationWhenMipStagingFail
 
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, panda::ErrorCode::DeviceLost);
+}
+
+TEST_F(UploadBatchImplTest, RollsBackFailedEnvironmentStagingAndAllowsRetry)
+{
+    const auto textureDescription = panda::TextureDesc {
+        .extent = {16, 16},
+        .format = panda::PixelFormat::Rgba16Float,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::GenerateSpecularEnvironment,
+        .specularEnvironmentSamplesPerTexel = 8,
+        .type = panda::TextureType::CubeMap
+    };
+    auto texture = makeTexture(textureDescription);
+    auto destination = makeBuffer(64);
+    auto stagingPages = std::array {makeBuffer(4096),
+                                    makeBuffer(4096),
+                                    makeBuffer(4096),
+                                    makeBuffer(4096),
+                                    makeBuffer(4096),
+                                    makeBuffer(4096)};
+    auto batch = makeBatch();
+    const auto existingBytes = std::array {std::byte {0x7f}, std::byte {0x7f}};
+    auto facePixels = std::vector<std::uint16_t>(std::size_t {1024});
+    std::ranges::fill(facePixels, std::uint16_t {0x3c00});
+    const auto faceBytes = std::as_bytes(std::span {facePixels});
+    auto stagingWrites = std::vector<std::pair<const BufferResource*, std::uint64_t>> {};
+
+    EXPECT_CALL(managerMock, validateWrite(Ref(*manager), destination, 0, existingBytes.size()))
+        .WillOnce(Return(panda::Result<void> {}));
+    EXPECT_CALL(managerMock, validateTextureWrite(Ref(*manager), texture, _, _))
+        .Times(40)
+        .WillRepeatedly(
+            Return(panda::core::vulkan::upload::TextureUploadLayout {.rowLength = 0, .bufferOffsetAlignment = 4}));
+    EXPECT_CALL(textures, getExtent(Ref(*texture)))
+        .Times(9)
+        .WillRepeatedly(Return(vk::Extent2D {.width = 16, .height = 16}));
+    EXPECT_CALL(textures, reserveUpload(Ref(*texture), _)).WillOnce(Return(panda::Result<void> {}));
+    EXPECT_CALL(managerMock, collect(Ref(*manager))).Times(34).WillRepeatedly(Return(panda::Result<void> {}));
+    EXPECT_CALL(managerMock, createStaging(Ref(*manager), 4096))
+        .Times(6)
+        .WillOnce(Return(stagingPages.at(0)))
+        .WillOnce(Return(stagingPages.at(1)))
+        .WillOnce(Return(stagingPages.at(2)))
+        .WillOnce(Return(stagingPages.at(3)))
+        .WillOnce(Return(stagingPages.at(4)))
+        .WillOnce(Return(stagingPages.at(5)));
+    EXPECT_CALL(buffers, getSize(_)).Times(33).WillRepeatedly(Return(4096));
+    EXPECT_CALL(buffers, writeMapped(_, _, _))
+        .Times(34)
+        .WillRepeatedly([&](const BufferResource& buffer, std::uint64_t offset, std::span<const std::byte>) {
+            stagingWrites.emplace_back(&buffer, offset);
+            if (stagingWrites.size() == 4)
+            {
+                return panda::Result<void> {
+                    std::unexpected {panda::makeError(panda::ErrorCode::DeviceLost, "Controlled staging failure")}};
+            }
+            return panda::Result<void> {};
+        });
+
+    ASSERT_TRUE(batch->write(destination, 0, existingBytes));
+    for (auto face = std::uint32_t {}; face < 5U; ++face)
+    {
+        ASSERT_TRUE(batch->write(texture,
+                                 faceBytes,
+                                 {
+                                     .extent = {16, 16},
+                                     .arrayLayer = face
+        }));
+    }
+    const auto failed = batch->write(texture,
+                                     faceBytes,
+                                     {
+                                         .extent = {16, 16},
+                                         .arrayLayer = 5
+    });
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, panda::ErrorCode::DeviceLost);
+    ASSERT_TRUE(batch->write(texture,
+                             faceBytes,
+                             {
+                                 .extent = {16, 16},
+                                 .arrayLayer = 5
+    }));
+
+    ASSERT_EQ(stagingWrites.size(), 34U);
+    EXPECT_EQ(stagingWrites.at(0), (std::pair {stagingPages.at(0).get(), std::uint64_t {0}}));
+    EXPECT_EQ(stagingWrites.at(1), (std::pair {stagingPages.at(0).get(), std::uint64_t {4}}));
+    EXPECT_EQ(stagingWrites.at(2), (std::pair {stagingPages.at(1).get(), std::uint64_t {0}}));
+    EXPECT_EQ(stagingWrites.at(3), (std::pair {stagingPages.at(1).get(), std::uint64_t {2048}}));
+    EXPECT_EQ(stagingWrites.at(4), (std::pair {stagingPages.at(0).get(), std::uint64_t {4}}));
+    EXPECT_EQ(stagingWrites.at(5), (std::pair {stagingPages.at(2).get(), std::uint64_t {0}}));
+    EXPECT_CALL(managerMock, submit(Ref(*manager), _, _))
+        .WillOnce([&](UploadManager&,
+                      std::span<const UploadOperation> writes,
+                      std::span<const std::shared_ptr<BufferResource>> pagesUsed) {
+            EXPECT_EQ(writes.size(), 31U);
+            if (writes.size() != 31U)
+            {
+                return panda::Result<panda::CompletionPoint> {panda::CompletionPoint {}};
+            }
+            EXPECT_THAT(pagesUsed,
+                        testing::ElementsAre(stagingPages.at(0),
+                                             stagingPages.at(2),
+                                             stagingPages.at(3),
+                                             stagingPages.at(4),
+                                             stagingPages.at(5)));
+            return panda::Result<panda::CompletionPoint> {panda::CompletionPoint {}};
+        });
+    EXPECT_CALL(textures, commitUpload(Ref(*texture), _));
+
+    EXPECT_TRUE(batch->submit());
+}
+
+TEST_F(UploadBatchImplTest, RetriesAfterEnvironmentReservationFailureAndReleasesPendingUpload)
+{
+    const auto description = panda::TextureDesc {
+        .extent = {2, 2},
+        .format = panda::PixelFormat::Rgba16Float,
+        .usage = panda::TextureUsage::TransferDestination | panda::TextureUsage::Sampled,
+        .mipPolicy = panda::TextureMipPolicy::GenerateSpecularEnvironment,
+        .specularEnvironmentSamplesPerTexel = 8,
+        .type = panda::TextureType::CubeMap
+    };
+    auto texture = makeTexture(description);
+    auto batch = makeBatch();
+    auto facePixels = std::array<std::uint16_t, 16> {};
+    facePixels.fill(0x3c00);
+    const auto faceBytes = std::as_bytes(std::span {facePixels});
+    const auto region = panda::TextureUploadRegion {
+        .extent = {2, 2}
+    };
+    EXPECT_CALL(managerMock, validateTextureWrite(Ref(*manager), texture, _, faceBytes.size()))
+        .Times(4)
+        .WillRepeatedly(
+            Return(panda::core::vulkan::upload::TextureUploadLayout {.rowLength = 0, .bufferOffsetAlignment = 4}));
+    EXPECT_CALL(textures, getExtent(Ref(*texture)))
+        .Times(4)
+        .WillRepeatedly(Return(vk::Extent2D {.width = 2, .height = 2}));
+    EXPECT_CALL(textures, reserveUpload(Ref(*texture), _))
+        .WillOnce(Return(panda::Result<void> {
+            std::unexpected {panda::makeError(panda::ErrorCode::DeviceLost, "Reservation failed")}}))
+        .WillOnce(Return(panda::Result<void> {}));
+    EXPECT_CALL(textures, cancelUpload(Ref(*texture), _));
+
+    const auto reservationFailure = batch->write(texture, faceBytes, region);
+    const auto retry = batch->write(texture, faceBytes, region);
+    auto secondFaceRegion = region;
+    secondFaceRegion.arrayLayer = 1;
+    const auto secondFace = batch->write(texture, faceBytes, secondFaceRegion);
+    const auto duplicateFace = batch->write(texture, faceBytes, secondFaceRegion);
+
+    ASSERT_FALSE(reservationFailure);
+    EXPECT_EQ(reservationFailure.error().code, panda::ErrorCode::DeviceLost);
+    EXPECT_TRUE(retry);
+    EXPECT_TRUE(secondFace);
+    ASSERT_FALSE(duplicateFace);
+    EXPECT_EQ(duplicateFace.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(UploadBatchImplTest, RejectsNonBaseMipForGeneratedEnvironmentInput)
+{
+    auto description = textureDescription();
+    description.extent = {2, 2};
+    description.format = panda::PixelFormat::Rgba16Float;
+    description.mipPolicy = panda::TextureMipPolicy::GenerateSpecularEnvironment;
+    description.type = panda::TextureType::CubeMap;
+    auto texture = makeTexture(description);
+    auto batch = makeBatch();
+    const auto facePixels = std::array<std::uint16_t, 4> {0x3c00, 0x3c00, 0x3c00, 0x3c00};
+    const auto region = panda::TextureUploadRegion {
+        .extent = {1, 1},
+        .mipLevel = 1
+    };
+
+    const auto result = batch->write(texture, std::as_bytes(std::span {facePixels}), region);
+
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
+
+    auto invalidFacePixels = std::array<std::uint16_t, 16> {};
+    std::ranges::fill(invalidFacePixels, std::uint16_t {0x3c00});
+    invalidFacePixels.at(0) = 0x7c00;
+    const auto faceBytes = std::as_bytes(std::span {invalidFacePixels});
+    EXPECT_CALL(textures, getExtent(Ref(*texture))).WillOnce(Return(vk::Extent2D {.width = 2, .height = 2}));
+    EXPECT_CALL(managerMock, validateTextureWrite(Ref(*manager), texture, _, faceBytes.size()))
+        .WillOnce(
+            Return(panda::core::vulkan::upload::TextureUploadLayout {.rowLength = 0, .bufferOffsetAlignment = 4}));
+
+    const auto invalidRadiance = batch->write(texture,
+                                              faceBytes,
+                                              {
+                                                  .extent = {2, 2}
+    });
+
+    ASSERT_FALSE(invalidRadiance);
+    EXPECT_EQ(invalidRadiance.error().code, panda::ErrorCode::InvalidArgument);
 }

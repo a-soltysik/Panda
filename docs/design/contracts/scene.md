@@ -6,9 +6,11 @@ Applications may supply render data directly without a scene, tools or ECS. The
 optional `Panda::Scene` module supports rapid prototyping and runs without the GUI;
 it builds on the renderer's direct interface. A newly constructed `Scene` starts empty. The
 current implementation provides runtime handles, 64-bit object IDs, names,
-transform hierarchy, mesh associations, perspective and orthographic cameras, and
-directional-light objects. `Scene::createRenderView()` prepares a snapshot for the
-direct renderer. Core provides CPU geometry helpers; applications own GPU uploads.
+transform hierarchy, mesh associations with tint and built-in material values,
+perspective and orthographic cameras, lights, and optional scene-wide environment
+lighting and skybox handles. `Scene::createRenderView()` copies these into a
+snapshot for the direct renderer. Core provides CPU geometry helpers; applications
+own GPU uploads.
 
 ## Empty scene and application setup
 
@@ -16,8 +18,11 @@ Creating a Scene adds no entities, camera, light, or GPU resources. The applicat
 creates entities and attaches the components it needs with `createEntity()`,
 `setCamera()` or `setOrthographicCamera()`, `setActiveCamera()`, and
 `setLight()`. It owns geometry creation and mesh upload, then attaches
-the resulting handles with `setMesh()`. Applications may also provide render data
-directly without using a scene.
+the resulting handles with `setMesh()`. The application creates and uploads
+environment cubemaps, then sets scene-wide IBL and skybox handles with
+`Scene::setEnvironment()` and `Scene::setSkybox()`. `Scene::createRenderView()`
+copies them into each snapshot; direct renderer users can still configure a
+`RenderView` themselves. See the [rendering contract](rendering.md#rendering-path).
 
 ## Entities and transforms
 
@@ -67,8 +72,8 @@ component reference. Mutators validate and mark derived data dirty themselves.
 The public scene API provides these behaviors:
 
 - Create an empty scene. Create objects with a name, identity local transform and
-  no parent; attach application-created mesh handles and optional camera/light
-  values; prepare renderer input from the scene state. Core provides CPU geometry
+  no parent; attach application-created mesh handles with tint and material values,
+  and optional camera/light values; prepare renderer input from the scene state. Core provides CPU geometry
   helpers for cube, plane and sphere meshes; the application caches and uploads GPU meshes.
 - Check scene identity and the slot reuse count when resolving handles. Support explicit
   subtree deletion or deletion of one object; reject the latter when it has children.
@@ -78,6 +83,9 @@ The public scene API provides these behaviors:
   reparenting reject singular or unrepresentable results rather than approximating.
 - Allow visibility changes without stopping compute or physics or deleting children.
   The active camera must belong to the scene; rendering without one fails clearly.
+- Retain optional image-based lighting and skybox handles for the scene and copy
+  them into each render snapshot. The renderer validates their Engine ownership,
+  upload completion and texture compatibility before submission.
 - Assign every object a stable scene-lifetime ID, allow an explicit ID when creating
   an object, and support lookup with ordinary absence.
   Preparing renderer input validates scene data and the camera. Rendering validates
@@ -284,7 +292,8 @@ defined when serialization is implemented. Each object has an `id`, editable `na
 optional `parentId`, local TRS (`position:[x,y,z]`, `rotation:[x,y,z,w]`, `scale:[x,y,z]`),
 visibility and a component object with known typed camera/light/mesh entries.
 `settings` contains ambient, active camera ID, requested renderer quality and
-background. IDs are unique within the document; names may repeat. Emit stable key
+background. Store a solid background color or a skybox asset reference resolved
+by the application on load. IDs are unique within the document; names may repeat. Emit stable key
 ordering and finite numeric values for reviewable diffs. Serialize only accepted
 scene fields; never dump application storage, native handles or raw GLM bytes.
 
