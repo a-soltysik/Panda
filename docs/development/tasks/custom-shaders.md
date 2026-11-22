@@ -14,8 +14,8 @@ Non-goal: No runtime shader DSL, descriptor arrays or implicit migration.
 Interface: shader build integration, programs, resource bindings, procedural
 draws and explicit shadow variants.
 
-Paths: `cmake/`, `../../../include/core/panda`, `src/shader/`, `shaders/`, `tests/shader/` and directly affected
-documentation.
+Paths: `cmake/`, `../../../include/core/panda/rendering/`, `../../../src/core/vulkan/renderer/`, `../../../shaders/`,
+`../../../tests/cases/unit/core/`, `../../../examples/` and directly affected documentation.
 Specifications: [Shader integration](../../design/contracts/rendering.md#shader-integration),
 [procedural instanced draws](../../design/contracts/rendering.md#procedural-instanced-draws),
 [shader deployment](../../design/package-and-toolchain.md#shader-and-asset-deployment).
@@ -27,6 +27,10 @@ replacement and cache behavior.
 
 - Verify SPIR-V/host offsets, wrong-layout and foreign-context rejection,
   missing shadow variant, and camera and shadow reload rollback.
+- Declare descriptor set/binding numbers and vertex input locations in GLSL;
+  build and validate their C++ layouts from reflection, removing their duplicate
+  macros from `ShaderInterface.inc`. Retain shared definitions only for values
+  that SPIR-V reflection cannot recover, such as light-type tags.
 - Provide a runnable graphics-only example with application-owned opaque
   sphere impostor shaders, a uniform buffer and instance storage buffers.
   Compare sphere depth with a mesh reference in the camera and all shadow
@@ -45,35 +49,34 @@ Learning: Explain the difference between SPIR-V compilation and device pipeline 
 The CMake helper compiles application GLSL with `glslc`, validates each SPIR-V
 output, and tracks GLSL includes. A Python standard-library script embeds the
 validated words using a readable C++ header template. The generated lookup uses
-source-relative keys and returns `std::optional<ShaderResource>`. Runtime programs,
-reflected layout rejection, resource bindings, shadow variants, pipeline
-warmup/cache and transactional reload remain to be implemented. Procedural
-instancing and its sphere-impostor rendering and scale measurements also remain.
+source-relative keys and returns `std::optional<ShaderResource>`. SPIRV-Reflect
+is linked privately through its upstream static-library CMake option. A private
+adapter checks the `main` stage and returns owning descriptor, block-member and
+push-constant metadata. Mock-backed unit tests cover API failures and metadata
+copying without linking the SPIRV-Reflect library; integration tests use compiled
+GLSL and the real library to verify `std140` offsets. Image dimension/sample type
+and capability checks remain. The adapter is not yet connected to program or
+pipeline creation, so the GLSL single-source layout rule and removal of duplicate
+binding macros remain unimplemented. Runtime programs, layout rejection,
+resource bindings, shadow variants, pipeline warmup/cache and transactional reload
+remain. Procedural instancing and its sphere-impostor rendering and scale
+measurements also remain.
 
 ## Verification
 
-Windows used CMake 4.4.2, MSVC toolset 14.51.36231, Python 3.14.6, Vulkan SDK
-1.4.341.1 (`glslc` shaderc v2026.1 and `spirv-val` SPIRV-Tools v2026.1), and
-clang-format 22.1.8.
+Windows passed the `msvc-quality` build, interface-header and format checks,
+`clang-cuda-analysis-windows`, and the `msvc-fast` build and full CTest suite
+(740 total: 735 passed, 5 skipped). Linux passed the matching `gcc-quality`,
+interface-header, format and `clang-cuda-analysis` checks, plus the `gcc-fast`
+build and full CTest suite (740 total: 732 passed, 8 skipped). CUDA analysis on
+both platforms reported that the installed CUDA version is newer than Clang's
+partially supported 12.9. The project-maintenance checker found no structural
+errors in 90 Markdown files and the task queue; `docs-checks` validated 43
+Mermaid diagrams in 94 files, and `gcc-docs` passed.
 
-- `cmake --preset msvc-fast`, `cmake --build --preset msvc-fast --parallel`, and
-  `ctest --preset msvc-fast` passed; 729 tests registered, 724 passed and five
-  were skipped.
-- `cmake --preset msvc-quality` and
-  `cmake --build --preset msvc-quality --parallel` passed.
-- `cmake --build --preset msvc-quality --target all_verify_interface_header_sets
-  panda_format_checks --parallel` passed.
-- `cmake --preset clang-cuda-analysis-windows` and its build passed. Clang warned
-  that the installed CUDA version is newer than its partially supported version
-  12.9.
-- `cmake --preset docs-checks` and its build passed; `check_docs.py` checked the
-  Markdown files and task queue without structural errors.
-
-The WSL mirror passed `gcc-quality`, the interface-header and formatting targets,
-`clang-cuda-analysis`, `gcc-fast` and its full 729-test suite (721 passed, eight
-hardware/capability cases skipped), `docs-checks`, and `gcc-docs`. CUDA analysis
-reported the same CUDA-version warning.
-
-The test checks generated SPIR-V bytes, stage and source-relative lookup, including
-two files with the same basename. It does not create a custom Vulkan pipeline or
-verify custom shader rendering on a GPU.
+These checks do not create a custom Vulkan pipeline or verify custom shader
+rendering on a GPU. Reflected layouts are not yet consumed by program creation,
+so GLSL is not yet the implemented single source for descriptor bindings and
+vertex locations. Runtime programs, layout rejection, resource bindings, shadow
+variants, pipeline warmup/cache, transactional reload and procedural-instancing
+checks remain.

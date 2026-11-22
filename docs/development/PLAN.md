@@ -72,6 +72,9 @@ when working in smaller implementation slices.
 | Compute integration     | Application-driven batched compute workload and mixed-workload/lifecycle tests; no recurring engine scheduler                                                                                                                 |
 | Replacement acceptance  | Restricted physics, working Scene Composer example, full benchmark evidence, documentation and accepted functional replacement                                                                                                |
 
+The custom shader task makes GLSL the source for descriptor bindings and vertex input locations, with C++ layouts
+derived through reflection.
+
 Tests, documentation and a useful learning example accompany each task. Add features
 to the benchmark harness as they become available. A failed required probe stops
 dependent work until its design or support decision is resolved.

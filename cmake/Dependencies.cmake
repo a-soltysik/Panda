@@ -49,6 +49,17 @@ if(PANDA_BUILD_ENGINE)
             "GLM_DISABLE_AUTO_DETECTION OFF"
     )
     panda_enable_sanitizers(glm::glm)
+
+    # SPIRV-Reflect checks custom shader interfaces at runtime.
+    panda_add_dependency(spirv_reflect 1.4.341.0
+            GIT_TAG vulkan-sdk-1.4.341.0
+            GITHUB_REPOSITORY KhronosGroup/SPIRV-Reflect
+            SYSTEM YES
+            OPTIONS
+            "SPIRV_REFLECT_EXECUTABLE OFF"
+            "SPIRV_REFLECT_STATIC_LIB ON"
+            "SPIRV_REFLECT_BUILD_TESTS OFF"
+            "SPIRV_REFLECT_INSTALL OFF")
 endif()
 
 if (PANDA_BUILD_TESTS)
