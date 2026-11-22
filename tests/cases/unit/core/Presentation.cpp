@@ -26,6 +26,7 @@
 #include <span>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "DeviceSelection.hpp"
 #include "FakeHandle.hpp"
@@ -402,7 +403,7 @@ TEST_F(PresentationTest, FrameExecutionRecordsPlainFrameOutputWithoutWindowServi
             ASSERT_NE(rendering->pColorAttachments, nullptr);
             const auto& attachment = std::span {rendering->pColorAttachments, rendering->colorAttachmentCount}.front();
             EXPECT_EQ(attachment.imageView, static_cast<VkImageView>(imageView));
-            EXPECT_NEAR(std::span {attachment.clearValue.color.float32}.front(), 0.1718F, 0.0001F);
+            EXPECT_NEAR(std::span {attachment.clearValue.color.float32}.front(), 0.129F, 0.002F);
             EXPECT_EQ(rendering->renderArea.extent.width, 320U);
             EXPECT_EQ(rendering->renderArea.extent.height, 200U);
         });
@@ -423,6 +424,48 @@ TEST_F(PresentationTest, FrameExecutionRecordsPlainFrameOutputWithoutWindowServi
     },
                                              view));
     EXPECT_TRUE(frameExecution.endCommands(0));
+}
+
+TEST_F(PresentationTest, FrameExecutionClearsAdditionalOutputForPlainFrames)
+{
+    expectNativeFrameResources(0);
+    expectNativeResourceDestruction({});
+    const auto first = vk::ImageView {fakeHandle<VkImageView>(901)};
+    const auto second = vk::ImageView {fakeHandle<VkImageView>(902)};
+    auto recordedViews = std::vector<VkImageView> {};
+    EXPECT_CALL(vulkan, vkResetCommandPool(_, _, _)).WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    EXPECT_CALL(vulkan, vkBeginCommandBuffer(_, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+    EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull()))
+        .Times(2)
+        .WillRepeatedly([&recordedViews](VkCommandBuffer, const VkRenderingInfo* rendering) {
+            ASSERT_EQ(rendering->colorAttachmentCount, 1U);
+            recordedViews.push_back(rendering->pColorAttachments->imageView);
+        });
+    EXPECT_CALL(vulkan, vkCmdEndRendering(_)).Times(2);
+    EXPECT_CALL(vulkan, vkEndCommandBuffer(_)).WillOnce(Return(static_cast<VkResult>(vk::Result::eSuccess)));
+
+    auto execution = createFrameExecution();
+    ASSERT_TRUE(execution);
+    const auto view = panda::RenderView {};
+    const auto additionalOutput = panda::core::vulkan::presentation::FrameOutput {
+        .imageView = second,
+        .extent = {.width = 320, .height = 200},
+        .colorFormat = vk::Format::eB8G8R8A8Srgb
+    };
+    ASSERT_TRUE((*execution)->prepareSlot(0, view));
+    ASSERT_TRUE((*execution)->beginCommands(0));
+    ASSERT_TRUE((*execution)
+                    ->recordContent(0,
+                                    {
+                                        .imageView = first,
+                                        .extent = {.width = 320, .height = 200},
+                                        .colorFormat = vk::Format::eR8G8B8A8Unorm
+    },
+                                    view,
+                                    &additionalOutput));
+    ASSERT_TRUE((*execution)->endCommands(0));
+    EXPECT_THAT(recordedViews, testing::ElementsAre(first, second));
 }
 
 TEST_F(PresentationTest, FrameExecutionReportsUnitAnisotropyWithoutAFilteringPreset)

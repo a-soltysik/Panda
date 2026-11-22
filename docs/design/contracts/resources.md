@@ -451,8 +451,9 @@ An explicit `OffscreenTarget` is retained by the execution slot until the render
 completes. `OffscreenRenderer::render()` returns `FrameResult::Status::Rendered`
 without presentation. `readPixels()` accepts only a completion point covering that
 target's latest render, submits an image-to-buffer copy and waits for the copy before
-returning host pixels. `WindowRenderer::renderWithCapture()` renders into that same
-target and copies it to the acquired swapchain image before presentation.
+returning host pixels. `WindowRenderer::renderWithCapture()` renders the scene once
+into HDR, then writes format-correct SDR results to the target and acquired
+swapchain image before presentation.
 
 For a normal frame: reclaim completed work, wait/poll the selected slot, acquire an
 image, prepare and submit rendering, then present. Do not submit frame work after an

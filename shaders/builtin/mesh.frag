@@ -3,7 +3,6 @@
 
 #include "ShaderInterface.inc"
 
-layout(constant_id = PANDA_MESH_OUTPUT_SRGB_SPECIALIZATION_ID) const uint outputIsSrgb = 1u;
 layout(constant_id = PANDA_MESH_ALPHA_MODE_SPECIALIZATION_ID) const uint alphaMode = 0u;
 
 layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) uniform FrameData
@@ -105,19 +104,6 @@ float geometrySchlick(float normalDirection, float k)
 vec3 fresnelSchlick(float viewHalf, vec3 f0)
 {
     return f0 + ((1.0 - f0) * pow(1.0 - viewHalf, 5.0));
-}
-
-vec3 encodeSrgb(vec3 linearColor)
-{
-    const bvec3 lowRange = lessThanEqual(linearColor, vec3(0.0031308));
-    const vec3 low = linearColor * 12.92;
-    const vec3 high = (1.055 * pow(max(linearColor, vec3(0.0)), vec3(1.0 / 2.4))) - 0.055;
-    return mix(high, low, lowRange);
-}
-
-vec3 toneMapAces(vec3 color)
-{
-    return clamp((color * ((2.51 * color) + 0.03)) / ((color * ((2.43 * color) + 0.59)) + 0.14), 0.0, 1.0);
 }
 
 uint pointShadowFace(vec3 directionFromLight)
@@ -254,9 +240,7 @@ void main()
     const float opacity = alphaMode == 2u ? clamp(mappedBaseColor.a, 0.0, 1.0) : mappedBaseColor.a;
     if (material.isLit == 0u)
     {
-        const vec3 mapped = toneMapAces(mappedBaseColor.rgb + emissive);
-        const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
-        fragmentColor = vec4(outputColor, opacity);
+        fragmentColor = vec4(mappedBaseColor.rgb + emissive, opacity);
         return;
     }
     vec3 normal = normalize(worldNormal);
@@ -306,7 +290,5 @@ void main()
 #else
     const vec3 ambient = mappedBaseColor.rgb * frameData.ambient.rgb * frameData.ambient.w * ambientOcclusion;
 #endif
-    const vec3 mapped = toneMapAces(ambient + direct + emissive);
-    const vec3 outputColor = outputIsSrgb == 1u ? mapped : encodeSrgb(mapped);
-    fragmentColor = vec4(outputColor, opacity);
+    fragmentColor = vec4(ambient + direct + emissive, opacity);
 }

@@ -27,7 +27,8 @@ the Engine that created it.
    `Engine::getOffscreenRenderer().render(view, target)`. `OffscreenRenderer`
    validates the view and target, collects completed uploads, then lazily initializes
    `OffscreenRenderBackend` before recording the built-in rendering path. It
-   prepares output for mesh draws or a skybox, retains the target and view resources,
+   prepares the shared HDR renderer and SDR output pipeline for mesh draws or a skybox,
+   retains the target and view resources,
    then submits the command buffer on
    the Engine queue. Success returns `FrameResult::Status::Rendered`, a
    `CompletionPoint` and the effective sample count. A skybox-only view uses one
@@ -56,18 +57,12 @@ sequenceDiagram
     U-->>R: Collection result
     R->>R: Reject material maps or skybox without a submitted upload
     R->>O: Initialize lazily and submit offscreen frame
-    O->>E: Prepare target format, extent and sample count when needed
+    O->>E: Prepare HDR attachments and target-format output pipeline when needed
     O->>E: Retain target and view resources and record content
     alt No meshes and no skybox
-        E->>V: Transition target and clear to the solid background
+        E->>V: Transition target and clear to the transformed solid background
     else Skybox or mesh draws
-        E->>V: Transition target and render with shared output encoding
-        opt Skybox selected
-            E->>V: Draw skybox before geometry using camera orientation
-        end
-        opt Meshes selected
-            E->>V: Draw geometry over the background
-        end
+        Note over E,V: UC Render a view through the shared HDR path writes SDR pixels to the target
     end
     O->>Q: Submit command buffer
     Q-->>O: CompletionPoint
@@ -101,11 +96,13 @@ the [resource lifetime contract](../design/contracts/resources.md#frame-and-wind
 
 **Sample count.** Request a count through `RenderView` and query supported choices
 with `OffscreenRenderer::getSupportedSampleCounts()`. Multisampled mesh color is
-resolved into the single-sample target before readback or window capture.
+resolved into a single-sample HDR image before tone mapping writes the SDR target
+for readback or window capture. See
+[UC Render a view through the shared HDR path](render-hdr-output.md).
 
 **Window capture.** A windowed Engine can use
-`WindowRenderer::renderWithCapture(view, target)` to render once, present the same
-output and copy it into a target. See [UC Render and present an application
+`WindowRenderer::renderWithCapture(view, target)` to render once and write
+format-correct SDR output to the swapchain and target. See [UC Render and present an application
 view](render-view.md).
 
 ## Variants and errors
@@ -122,6 +119,8 @@ view](render-view.md).
 
 - [Rendering contract](../design/contracts/rendering.md#offscreen-output) defines
   the shared rendering and image boundary.
+- [UC Render a view through the shared HDR path](render-hdr-output.md) explains
+  how the target receives tone-mapped SDR pixels.
 - [Frame and window state](../design/contracts/resources.md#frame-and-window-state)
   defines Engine-scoped completion and resource retention.
 - [UC Observe or wait for submitted GPU work](observe-completion.md) explains the

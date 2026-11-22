@@ -37,6 +37,7 @@ panda_add_component(panda_core
         vulkan/performance/PerformanceManagerImpl.cpp
         vulkan/presentation/FrameExecution.cpp
         vulkan/presentation/OffscreenRenderBackend.cpp
+        vulkan/presentation/ToneMappingPass.cpp
         vulkan/presentation/WindowPresentation.cpp
         vulkan/renderer/FrameBindings.cpp
         vulkan/renderer/MeshRenderer.cpp
@@ -116,6 +117,7 @@ panda_add_component(panda_core
         vulkan/presentation/WindowPresentation.hpp
         vulkan/presentation/FrameExecution.hpp
         vulkan/presentation/OffscreenRenderBackend.hpp
+        vulkan/presentation/ToneMappingPass.hpp
         vulkan/SubmissionQueue.hpp
         vulkan/presentation/SwapchainGeneration.hpp
         vulkan/upload/UploadBatchId.hpp

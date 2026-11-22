@@ -223,9 +223,13 @@ protected:
                 }});
     }
 
-    void expectAdapter(bool windowed, bool separateQueues = false, TimestampScenario timestamps = {})
+    void expectAdapter(bool windowed,
+                       bool separateQueues = false,
+                       TimestampScenario timestamps = {},
+                       bool hdrBlendSupport = true)
     {
         expectEnumeration(timestamps.periodNanoseconds);
+        expectRenderFormatSupport(hdrBlendSupport);
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFeatures2(physical, NotNull()))
             .WillOnce(testing::Action<decltype(vkGetPhysicalDeviceFeatures2)> {
                 [windowed](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
@@ -246,6 +250,36 @@ protected:
         {
             expectPresentationSupport(separateQueues);
         }
+    }
+
+    void expectRenderFormatSupport(bool blendSupport = true)
+    {
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceFormatProperties(physical, VK_FORMAT_R16G16B16A16_SFLOAT, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([blendSupport](VkPhysicalDevice, VkFormat, VkFormatProperties* properties) {
+                properties->optimalTilingFeatures =
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
+                    (blendSupport ? static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT)
+                                  : VkFormatFeatureFlags {}) |
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+            });
+        EXPECT_CALL(
+            vulkan,
+            vkGetPhysicalDeviceImageFormatProperties(physical, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice,
+                               VkFormat,
+                               VkImageType,
+                               VkImageTiling,
+                               VkImageUsageFlags,
+                               VkImageCreateFlags,
+                               VkImageFormatProperties* properties) {
+                properties->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                properties->sampleCounts = static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_1_BIT) |
+                                           static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_2_BIT) |
+                                           static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_4_BIT);
+                return success;
+            });
     }
 
     void expectEnumeration(float timestampPeriod)
@@ -869,6 +903,19 @@ TEST_F(EngineLifecycleTest, CreatesEngineWithZeroLightBudget)
     ASSERT_TRUE(created);
 }
 
+TEST_F(EngineLifecycleTest, RejectsAdapterWithoutHdrBlendSupportBeforeCreatingDevice)
+{
+    expectInstance();
+    expectAdapter(false, false, {}, false);
+    expectParentsDestroyed(false, false);
+    EXPECT_CALL(vulkan, vkCreateDevice(_, NotNull(), nullptr, NotNull())).Times(0);
+
+    const auto created = panda::Engine::create();
+
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::Unsupported);
+}
+
 TEST_F(EngineLifecycleTest, TimelineCreationFailurePreventsEnginePublication)
 {
     expectInstance();
@@ -906,8 +953,8 @@ TEST_F(EngineLifecycleTest, CaptureInitializationFailureDoesNotAcquireWindowImag
     auto* const image = fakeHandle<VkImage>(40);
     auto* const imageView = fakeHandle<VkImageView>(41);
     auto* const memory = fakeHandle<VkDeviceMemory>(42);
-    expectOffscreenTarget(image, imageView, memory);
     expectWindowed(false, true);
+    expectOffscreenTarget(image, imageView, memory);
     EXPECT_CALL(window, getFramebufferExtent())
         .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}}));
     EXPECT_CALL(vulkan, vkAcquireNextImageKHR(_, _, _, _, _, _)).Times(0);

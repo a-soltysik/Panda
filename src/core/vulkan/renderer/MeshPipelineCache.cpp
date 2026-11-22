@@ -102,11 +102,6 @@ auto makeVertexAttributeDescription(std::uint32_t location, vk::Format format, s
     return {.location = location, .binding = meshVertexBufferBinding, .format = format, .offset = offset};
 }
 
-auto isSrgb(vk::Format format) -> bool
-{
-    return format == vk::Format::eB8G8R8A8Srgb || format == vk::Format::eR8G8B8A8Srgb;
-}
-
 auto makeRasterizationState(RenderFace renderFace, bool mirrored) -> vk::PipelineRasterizationStateCreateInfo
 {
     auto cullMode = vk::CullModeFlagBits::eNone;
@@ -138,6 +133,19 @@ auto makeShaderStages(vk::ShaderModule vertex, vk::ShaderModule fragment, const 
                                            .module = fragment,
                                            .pName = "main",
                                            .pSpecializationInfo = &specialization}
+    };
+}
+
+auto makeShaderStages(vk::ShaderModule vertex, vk::ShaderModule fragment)
+    -> std::array<vk::PipelineShaderStageCreateInfo, 2>
+{
+    return {
+        vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eVertex,
+                                           .module = vertex,
+                                           .pName = "main"},
+        vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eFragment,
+                                           .module = fragment,
+                                           .pName = "main"}
     };
 }
 
@@ -276,39 +284,20 @@ auto makeGraphicsPipelineCreateInfo(const GraphicsPipelineState& state) -> vk::G
 
 struct FragmentSpecializationData
 {
-    std::uint32_t outputIsSrgb;
     std::uint32_t alphaMode;
 };
 
 auto makeFragmentSpecialization(const FragmentSpecializationData& data) -> vk::SpecializationInfo
 {
-    static constexpr auto entries = std::array {
-        vk::SpecializationMapEntry {.constantID = PANDA_MESH_OUTPUT_SRGB_SPECIALIZATION_ID,
-                                    .offset = offsetof(FragmentSpecializationData, outputIsSrgb),
-                                    .size = sizeof(std::uint32_t)},
-        vk::SpecializationMapEntry {.constantID = PANDA_MESH_ALPHA_MODE_SPECIALIZATION_ID,
-                                    .offset = offsetof(FragmentSpecializationData, alphaMode),
-                                    .size = sizeof(std::uint32_t)}
-    };
-    return {.mapEntryCount = static_cast<std::uint32_t>(entries.size()),
-            .pMapEntries = entries.data(),
-            .dataSize = sizeof(data),
-            .pData = &data};
-}
-
-auto makeOutputSrgbSpecialization(const std::uint32_t& outputIsSrgb) -> vk::SpecializationInfo
-{
-    static constexpr auto entry = vk::SpecializationMapEntry {.constantID = PANDA_MESH_OUTPUT_SRGB_SPECIALIZATION_ID,
-                                                              .offset = 0,
+    static constexpr auto entry = vk::SpecializationMapEntry {.constantID = PANDA_MESH_ALPHA_MODE_SPECIALIZATION_ID,
+                                                              .offset = offsetof(FragmentSpecializationData, alphaMode),
                                                               .size = sizeof(std::uint32_t)};
-    return {.mapEntryCount = 1, .pMapEntries = &entry, .dataSize = sizeof(outputIsSrgb), .pData = &outputIsSrgb};
+    return {.mapEntryCount = 1, .pMapEntries = &entry, .dataSize = sizeof(data), .pData = &data};
 }
 
-auto makeMeshFragmentSpecialization(AlphaMode alphaMode, const FragmentSpecializationData& data)
-    -> vk::SpecializationInfo
+auto makeMeshFragmentSpecialization(const FragmentSpecializationData& data) -> vk::SpecializationInfo
 {
-    return alphaMode == AlphaMode::Opaque ? makeOutputSrgbSpecialization(data.outputIsSrgb)
-                                          : makeFragmentSpecialization(data);
+    return makeFragmentSpecialization(data);
 }
 
 auto makeAlphaModeSpecialization(const std::uint32_t& alphaMode) -> vk::SpecializationInfo
@@ -608,10 +597,8 @@ auto MeshPipelineCache::createMeshPipeline(const MeshPipelineKey& key,
                                                             .inputRate = vk::VertexInputRate::eVertex};
     const auto attributes = makeVertexAttributeDescriptions(key);
     const auto vertexInput = makeVertexInputState(binding, attributes);
-    const auto outputIsSrgb = static_cast<std::uint32_t>(isSrgb(_outputCompatibility.colorFormat));
-    const auto specializationData = FragmentSpecializationData {.outputIsSrgb = outputIsSrgb,
-                                                                .alphaMode = static_cast<std::uint32_t>(key.alphaMode)};
-    const auto specialization = makeMeshFragmentSpecialization(key.alphaMode, specializationData);
+    const auto specializationData = FragmentSpecializationData {.alphaMode = static_cast<std::uint32_t>(key.alphaMode)};
+    const auto specialization = makeMeshFragmentSpecialization(specializationData);
     const auto stages = makeShaderStages(vertex, fragment, specialization);
     const auto colorOutput = _outputCompatibility.colorFormat;
     const auto rendering = vk::PipelineRenderingCreateInfo {.colorAttachmentCount = 1,
@@ -650,9 +637,7 @@ auto MeshPipelineCache::createSkyboxPipeline() const -> std::expected<vk::raii::
 auto MeshPipelineCache::createSkyboxPipelineWithModules(vk::ShaderModule vertex, vk::ShaderModule fragment) const
     -> std::expected<vk::raii::Pipeline, Error>
 {
-    const auto outputIsSrgb = static_cast<std::uint32_t>(isSrgb(_outputCompatibility.colorFormat));
-    const auto specialization = makeOutputSrgbSpecialization(outputIsSrgb);
-    const auto stages = makeShaderStages(vertex, fragment, specialization);
+    const auto stages = makeShaderStages(vertex, fragment);
     const auto colorOutput = _outputCompatibility.colorFormat;
     const auto rendering = vk::PipelineRenderingCreateInfo {.colorAttachmentCount = 1,
                                                             .pColorAttachmentFormats = &colorOutput,

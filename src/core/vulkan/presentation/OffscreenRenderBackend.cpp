@@ -8,7 +8,6 @@
 #include "presentation/OffscreenRenderBackend.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -120,14 +119,14 @@ void transitionTargetToTransferSource(vk::CommandBuffer command, const ::panda::
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }
 
-void transitionCaptureImageToTransferDestination(vk::CommandBuffer command, const WindowCaptureOutput& output)
+void transitionCaptureImageToColorAttachment(vk::CommandBuffer command, const WindowCaptureOutput& output)
 {
     const auto barrier = vk::ImageMemoryBarrier2 {
-        .srcStageMask = vk::PipelineStageFlagBits2::eNone,
-        .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
-        .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
+        .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
         .oldLayout = output.initialized ? vk::ImageLayout::ePresentSrcKHR : vk::ImageLayout::eUndefined,
-        .newLayout = vk::ImageLayout::eTransferDstOptimal,
+        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
         .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
         .image = output.image,
@@ -138,7 +137,7 @@ void transitionCaptureImageToTransferDestination(vk::CommandBuffer command, cons
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }
 
-void transitionCapturedTargetToColor(vk::CommandBuffer command, const ::panda::detail::OffscreenTargetResource& target)
+void transitionTargetBackToColor(vk::CommandBuffer command, const ::panda::detail::OffscreenTargetResource& target)
 {
     const auto barrier = vk::ImageMemoryBarrier2 {
         .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
@@ -160,10 +159,10 @@ void transitionCapturedTargetToColor(vk::CommandBuffer command, const ::panda::d
 void transitionCaptureImageToPresent(vk::CommandBuffer command, const WindowCaptureOutput& output)
 {
     const auto barrier = vk::ImageMemoryBarrier2 {
-        .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
-        .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
+        .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
         .dstStageMask = vk::PipelineStageFlagBits2::eNone,
-        .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+        .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .newLayout = vk::ImageLayout::ePresentSrcKHR,
         .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
         .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
@@ -173,47 +172,6 @@ void transitionCaptureImageToPresent(vk::CommandBuffer command, const WindowCapt
                                                        .layerCount = 1}
     };
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
-}
-
-void blitToWindow(vk::CommandBuffer command,
-                  const ::panda::detail::OffscreenTargetResource& target,
-                  const WindowCaptureOutput& output)
-{
-    const auto sourceOffsets = std::array {
-        vk::Offset3D {},
-        vk::Offset3D {.x = static_cast<std::int32_t>(target.getExtent().width),
-                      .y = static_cast<std::int32_t>(target.getExtent().height),
-                      .z = 1}
-    };
-    const auto destinationOffsets = std::array {
-        vk::Offset3D {},
-        vk::Offset3D {.x = static_cast<std::int32_t>(output.extent.width),
-                      .y = static_cast<std::int32_t>(output.extent.height),
-                      .z = 1}
-    };
-    const auto region = vk::ImageBlit {
-        .srcSubresource = vk::ImageSubresourceLayers {.aspectMask = vk::ImageAspectFlagBits::eColor, .layerCount = 1},
-        .srcOffsets = sourceOffsets,
-        .dstSubresource = vk::ImageSubresourceLayers {.aspectMask = vk::ImageAspectFlagBits::eColor, .layerCount = 1},
-        .dstOffsets = destinationOffsets
-    };
-    command.blitImage(target.getImage(),
-                      vk::ImageLayout::eTransferSrcOptimal,
-                      output.image,
-                      vk::ImageLayout::eTransferDstOptimal,
-                      region,
-                      vk::Filter::eNearest);
-}
-
-void recordCaptureCopy(vk::CommandBuffer command,
-                       const ::panda::detail::OffscreenTargetResource& target,
-                       const WindowCaptureOutput& output)
-{
-    transitionTargetToTransferSource(command, target);
-    transitionCaptureImageToTransferDestination(command, output);
-    blitToWindow(command, target, output);
-    transitionCapturedTargetToColor(command, target);
-    transitionCaptureImageToPresent(command, output);
 }
 
 void recordPixelCopy(vk::CommandBuffer command,
@@ -227,7 +185,7 @@ void recordPixelCopy(vk::CommandBuffer command,
         .imageExtent = vk::Extent3D {.width = extent.width, .height = extent.height, .depth = 1}
     };
     command.copyImageToBuffer(target.getImage(), vk::ImageLayout::eTransferSrcOptimal, buffer, region);
-    transitionCapturedTargetToColor(command, target);
+    transitionTargetBackToColor(command, target);
     const auto bufferBarrier = vk::BufferMemoryBarrier2 {.srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
                                                          .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
                                                          .dstStageMask = vk::PipelineStageFlagBits2::eHost,
@@ -306,8 +264,7 @@ auto OffscreenRenderBackend::initialize() -> std::expected<void, Error>
 
 auto OffscreenRenderBackend::getSupportedSampleCounts() const -> Result<std::vector<SampleCount>>
 {
-    return renderer::RenderAttachments::getSupportedSampleCounts(_physicalDevice,
-                                                                 ::panda::detail::OffscreenTargetResource::colorFormat);
+    return renderer::RenderAttachments::getSupportedSampleCounts(_physicalDevice, renderer::hdrColorFormat);
 }
 
 auto OffscreenRenderBackend::recordFrame(std::size_t slotIndex,
@@ -323,15 +280,22 @@ auto OffscreenRenderBackend::recordFrame(std::size_t slotIndex,
                                      .extent = target->getExtent(),
                                      .colorFormat = target->getFormat()};
     transitionTargetToColor(command, *target);
-    if (const auto recorded = _execution->recordContent(slotIndex, output, request.view); !recorded)
-    {
-        return std::unexpected {recorded.error()};
-    }
+    auto windowOutput = std::optional<FrameOutput> {};
     if (request.windowOutput != nullptr)
     {
-        recordCaptureCopy(command, *target, *request.windowOutput);
+        transitionCaptureImageToColorAttachment(command, *request.windowOutput);
+        windowOutput = FrameOutput {.imageView = request.windowOutput->imageView,
+                                    .extent = request.windowOutput->extent,
+                                    .colorFormat = request.windowOutput->format};
     }
-    return _execution->endCommands(slotIndex);
+    return _execution->recordContent(slotIndex, output, request.view, windowOutput ? &*windowOutput : nullptr)
+        .and_then([&] {
+            if (request.windowOutput != nullptr)
+            {
+                transitionCaptureImageToPresent(command, *request.windowOutput);
+            }
+            return _execution->endCommands(slotIndex);
+        });
 }
 
 auto OffscreenRenderBackend::render(const RenderView& view,
@@ -347,19 +311,10 @@ auto OffscreenRenderBackend::render(const RenderView& view,
 
 auto OffscreenRenderBackend::renderWithCapture(const WindowCaptureRequest& request) -> std::expected<FrameResult, Error>
 {
-    if (!request.output.image || !request.acquire || !request.finished)
+    if (!request.output.image || !request.output.imageView || !request.acquire || !request.finished)
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Capture needs a swapchain image and semaphores")};
-    }
-    const auto& target = ::panda::detail::OffscreenTargetResource::getResource(request.target);
-    const auto sourceFeatures = _physicalDevice.getFormatProperties(target->getFormat()).optimalTilingFeatures;
-    const auto destinationFeatures = _physicalDevice.getFormatProperties(request.output.format).optimalTilingFeatures;
-    if (!(sourceFeatures & vk::FormatFeatureFlagBits::eBlitSrc) ||
-        !(destinationFeatures & vk::FormatFeatureFlagBits::eBlitDst))
-    {
-        return std::unexpected {
-            makeError(ErrorCode::Unsupported, "Device formats do not support window capture blits")};
     }
     request.submittedPerformanceSlot.reset();
     const auto frameRequest = FrameRequest {.view = request.view,
@@ -380,8 +335,11 @@ auto OffscreenRenderBackend::renderInternal(const FrameRequest& request) -> std:
     }
     const auto targetResource = ::panda::detail::OffscreenTargetResource::getResource(request.target);
     const auto slotIndex = _nextSlot;
-    if (const auto ready =
-            _execution->prepareOutput(targetResource->getExtent(), targetResource->getFormat(), request.view);
+    if (const auto ready = _execution->prepareOutput(
+            targetResource->getExtent(),
+            targetResource->getFormat(),
+            request.view,
+            request.windowOutput != nullptr ? std::optional {request.windowOutput->format} : std::nullopt);
         !ready)
     {
         return std::unexpected {ready.error()};

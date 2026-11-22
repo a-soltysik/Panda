@@ -78,47 +78,27 @@ swapchain synchronization. A returned
    framebuffer extent and swapchain generation. A zero extent returns `Suspended`
    without acquiring an image. See [UC Suspend presentation and recreate the
    swapchain](recreate-swapchain.md).
-   For mesh draws or a skybox, `FrameExecution::prepareOutput()` creates the renderer or
-   prepares a change in extent, format or requested sample count. It waits for
-   both slots before replacing attachments and compatible pipelines.
+   For mesh draws or a skybox, `FrameExecution::prepareOutput()` creates or resizes
+   the renderer for the fixed HDR format and requested sample count, then prepares
+   the output pipeline for the swapchain format. It waits for both slots before
+   replacing attachments. See
+   [UC Render a view through the shared HDR path](render-hdr-output.md).
 5. **Retain resources and acquire.** `WindowPresentation` asks `FrameExecution::prepareSlot()`
    to wait for the selected slot's prior GPU completion, then retain the view's mesh,
    material texture, environment and skybox handles in that slot. It checks submission capacity,
    acquires an image with its slot-owned semaphore and waits for that image's pending
    presentation fence before reuse.
-6. **Record the view.** `WindowPresentation` begins the command buffer and transitions the
-   acquired image to color-attachment layout. It passes `FrameExecution` a borrowed
-   `FrameOutput` containing that image view, extent and color format. An empty mesh
-   list without a skybox clears the output to the configured solid background. Otherwise, the
-   initialized `MeshRenderer` updates frame data,
-   per-draw material records, light and shadow records, dynamic shadow-view matrices,
-   and texture descriptors through `FrameBindings`. `MeshRenderer` clears the depth
-   atlas once and renders opaque/masked casters into each opted-in light's guarded
-   tile with that tile's view matrix.
-   When a skybox is present, `MeshPipelineCache` prepares its color-format-compatible
-   pipeline and `MeshRenderer` draws source radiance before geometry. Camera
-   orientation selects the visible direction; translation does not move the sky.
-   Depth writes are disabled for this draw, so later geometry covers the background.
-   `MeshPipelineCache` prepares missing color and shadow variants before recording;
-   draw recording then looks up those prepared pipelines without creating them. A base-color sample multiplies material
-   and
-   draw tint and optional vertex color; a metallic-roughness sample scales Lit
-   material values with its blue and green channels respectively. The emissive
-   sample multiplies the linear emissive factor and is added before tone mapping
-   for Lit and Unlit draws. The occlusion map's red channel scales only the Lit
-   ambient term by `mix(1, sample, occlusionStrength)`; it leaves direct light and
-   shadows unchanged. An absent map contributes white. Opaque draws
-   cast a full silhouette. Mask draws multiply texture, material, draw and vertex alpha
-   and apply the material cutoff in both shadow and camera passes. The camera pass
-   selects pipelines from each material model, alpha mode, consumed vertex attributes,
-   face mode and transform handedness while summing directional, point and spot
-   lighting. Point/spot lights use finite-range attenuation and spot-cone falloff.
-   Each light samples its own atlas view; point lights choose one of six cube faces
-   from the dominant axis between light and shaded point. The 3x3 PCF taps clamp to
-   the selected tile, so they do not read neighboring maps.
-   `FrameExecution` records content and its timing markers; it does not acquire or
-   present images, or transition the output image. `WindowPresentation` records the final
-   transition to present layout and ends the command buffer.
+6. **Record the view.** `WindowPresentation` begins the command buffer, transitions the
+   acquired image to color-attachment layout, and passes `FrameExecution` a borrowed
+   `FrameOutput` with the image view, extent and swapchain format. An empty mesh list
+   without a skybox clears the SDR output to the configured background. Otherwise,
+   `FrameExecution` records the shared HDR scene and SDR output pass described by
+   [UC Render a view through the shared HDR path](render-hdr-output.md). It updates
+   material, light and shadow records through `FrameBindings`; `MeshRenderer` renders
+   configured shadow maps before the camera view. `FrameExecution` records content
+   and timing markers but does not transition or present the output image.
+   `WindowPresentation` records the final transition to present layout and ends the
+   command buffer.
 7. **Submit GPU work.** `SubmissionQueue` submits the command buffer, waiting on the
    acquire semaphore and signaling the image's render-finished semaphore plus the
    Engine timeline. Only after submission succeeds does `FrameExecution` store the
@@ -144,10 +124,6 @@ sequenceDiagram
     participant U as UploadManager
     participant P as WindowPresentation
     participant E as FrameExecution
-    participant R as MeshRenderer
-    participant RA as RenderAttachments
-    participant B as FrameBindings
-    participant K as MeshPipelineCache
     participant Q as SubmissionQueue
     participant V as Vulkan
     A ->> A: Step 1 - build the view
@@ -160,51 +136,16 @@ sequenceDiagram
     W ->> P: Render validated view
     P ->> V: Check framebuffer and swapchain generation
     opt View contains meshes or a skybox
-        P ->> E: Step 4 - prepare output extent, format and sample count
-        alt First mesh or skybox render
-            E ->> R: Create renderer for the selected output
-            R ->> RA: Create depth, MSAA and shadow attachments
-            RA -->> R: Ready attachments and output description
-            R ->> B: Create frame bindings after shadow views exist
-            B -->> R: Pipeline layout
-            R ->> K: Create cache with output compatibility
-        else Output settings changed
-            E ->> Q: Wait for both execution slots
-            E ->> R: Resize or change MSAA
-            R ->> RA: Prepare output attachment replacements
-            RA -->> R: Pending replacements and output description
-            R ->> K: Set compatibility after preparation succeeds
-            R ->> RA: Publish replacements and reset replaced history
-        end
+        P ->> E: Step 4 - prepare HDR attachments and SDR output pipeline
     end
     P ->> E: Wait for frame slot and retain view resource handles
     P ->> V: Acquire image and wait for presentation reuse
     P ->> E: Begin command buffer
     P ->> V: Transition output image to color attachment
     alt View has no meshes or skybox
-        E ->> V: Clear FrameOutput with encoded background color
+        E ->> V: Clear FrameOutput to transformed background color
     else View contains a skybox or meshes
-        R ->> B: Update frame data, material/light records and texture descriptors
-        B ->> V: Write frame buffers and descriptor sets
-        opt View has a skybox
-            R ->> K: Prepare skybox pipeline for output compatibility
-        end
-        opt View contains meshes
-            R ->> K: Prepare needed color and shadow variants
-        end
-        K ->> V: Create missing pipeline variants
-        R ->> V: Clear atlas and record each configured light view into its guarded tile
-        opt View has a skybox
-            R ->> K: Look up prepared skybox pipeline
-            R ->> V: Draw mip 0 using camera direction before geometry
-        end
-        opt View contains meshes
-            R ->> K: Look up prepared pipelines during draw recording
-            R ->> V: Apply the same Mask cutoff as the camera pass
-            R ->> V: Record Opaque and Mask draws, then back-to-front Blend draws
-            R ->> V: Sample material maps and per-light atlas views for Lit shading
-            R ->> V: Add emission before tone mapping for Lit and Unlit shading
-        end
+        Note over E, V: Step 6 - UC Render a view through the shared HDR path
     end
     P ->> V: Transition output image to present layout
     P ->> E: End command buffer
@@ -225,8 +166,9 @@ architecture. An optional scene library may prepare the same render data, but Co
 does not depend on that library.
 
 **Capture the same frame.** `WindowRenderer::renderWithCapture(view, target)` uses
-the target as the render output, copies that image to the acquired swapchain image,
-and presents it. The scene is rendered once. See
+the target and acquired swapchain image as SDR outputs for one HDR scene render.
+`ToneMappingPass` writes each with the output format's sRGB behavior; no blit
+converts between the formats. See
 [UC Render a view to an image](render-offscreen-view.md) for the target and readback
 contract.
 
@@ -269,9 +211,9 @@ silhouette. The material's `RenderFace` selects front sides, back sides or both;
 a negative determinant reverse pipeline winding in both passes. Lit shading
 orients back-facing normals consistently when rendering `Back` or `Both`. A
 constant ambient term contributes
-0.06 times base color to Lit materials. The shader applies the ACES fitted tone curve and
-outputs sRGB, using hardware conversion for sRGB swapchain formats or shader encoding
-for UNORM formats. A frame slot owns one sampled 2D-array shadow depth image, with
+0.06 times base color to Lit materials. Mesh and skybox shaders keep RGB linear;
+the shared HDR path blends and tone-maps scene radiance before writing sRGB output.
+A frame slot owns one sampled 2D-array shadow depth image, with
 one or more 4096² layers used as atlas pages. It grows to fit the frame's shadow
 plan. Each opted-in directional or spot light occupies one guarded tile; each point
 light occupies six cube-oriented tiles. Defaults are 2048 with 30 m orthographic coverage for directional,
@@ -288,7 +230,9 @@ attachment sample count supported by the active formats and device limits (4x, t
 `AlphaMode::Blend` uses the combined texture, material, draw and optional vertex alpha
 for straight-alpha compositing. It runs after Opaque and Mask with depth testing enabled
 and depth writes disabled; mesh origins are sorted back-to-front. Blended meshes do
-not cast shadows. Intersecting transparent meshes can still sort incorrectly.
+not cast shadows. Intersecting transparent meshes can still sort incorrectly. Blending
+uses linear HDR radiance before the shared final tone-mapping pass; see
+[UC Render a view through the shared HDR path](render-hdr-output.md).
 
 **Slot and image lifetimes differ.** `FrameExecution` owns two reusable execution
 slots, including command buffers and retained mesh and texture handles.
@@ -296,11 +240,13 @@ slots, including command buffers and retained mesh and texture handles.
 swapchain images, render-finished semaphores and presentation fences.
 
 **Output boundary.** `FrameOutput` is borrowed for one recording operation.
-`FrameExecution` uses its image view, extent and format to record clear or mesh
-content; `WindowPresentation` alone owns the output-layout transitions and presentation.
+`FrameExecution` uses its image view, extent and SDR format to record a transformed
+clear or the shared HDR path's final output; `WindowPresentation` alone owns the
+output-layout transitions and presentation.
 
 **Attachment publication.** `RenderAttachments` owns per-slot color, depth and shadow
-images with their committed layout history. A failed replacement leaves the renderer's
+images, including the single-sample HDR resolve image and optional multisample color
+image, with their committed layout history. A failed replacement leaves the renderer's
 current attachments and pipeline compatibility available. A submitted frame reports its
 effective sample count. Shadow images keep their
 fixed extent across window resize, so `FrameBindings` can keep using the same shadow views.
@@ -326,7 +272,6 @@ A frame error does not imply that already submitted work was rolled back.
 | Acquire or present is suboptimal, or present reports out-of-date                               | Return `RecreatePending`; keep the accepted submission's completion point.                                                       |
 | Invalid view/material data, foreign mesh/texture, incompatible layout, invalid material map, or invalid skybox | Return `InvalidArgument` before acquiring an image.                                                    |
 | Allocation fails while applying MSAA                                                           | Return the allocation error before acquiring an image. A subsequent compatible frame can reuse the prior configuration.         |
-| Capture is requested                                                                           | Use `WindowRenderer::renderWithCapture(view, target)`; capture may return `Unsupported` when the surface or formats cannot blit. |
 | Recording, submission or cleanup fails after acquire                                           | Return the relevant error; retire the acquired image. Failed retirement faults presentation.                                     |
 | Surface or device is lost                                                                      | Return the Vulkan error and fault presentation; Engine teardown still attempts its drain.                                        |
 
@@ -334,6 +279,8 @@ A frame error does not imply that already submitted work was rolled back.
 
 - [Rendering contract](../design/contracts/rendering.md) defines the renderer boundary
   and its supported inputs.
+- [UC Render a view through the shared HDR path](render-hdr-output.md) explains
+  linear blending, HDR resolve and the final SDR output.
 - [Resources and frames](../design/contracts/resources.md#frame-and-window-state)
   defines frame results, recreation and presentation state.
 - [UC Upload texture contents or regions](upload-texture.md) explains how material

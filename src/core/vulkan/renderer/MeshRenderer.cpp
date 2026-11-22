@@ -72,11 +72,30 @@ auto makeClearColor(vk::Format format) -> vk::ClearColorValue
     static constexpr auto clearGreen = 0.035F;
     static constexpr auto clearBlue = 0.05F;
     const auto isSrgb = format == vk::Format::eB8G8R8A8Srgb || format == vk::Format::eR8G8B8A8Srgb;
+    const auto isHdr = format == hdrColorFormat;
     return vk::ClearColorValue {
-        std::array {isSrgb ? clearRed : ::panda::detail::linearToSrgb(clearRed),
-                    isSrgb ? clearGreen : ::panda::detail::linearToSrgb(clearGreen),
-                    isSrgb ? clearBlue : ::panda::detail::linearToSrgb(clearBlue),
+        std::array {isSrgb || isHdr ? clearRed : ::panda::detail::linearToSrgb(clearRed),
+                    isSrgb || isHdr ? clearGreen : ::panda::detail::linearToSrgb(clearGreen),
+                    isSrgb || isHdr ? clearBlue : ::panda::detail::linearToSrgb(clearBlue),
                     1.0F}
+    };
+}
+
+auto makeToneMappedClearColor(vk::Format format) -> vk::ClearColorValue
+{
+    constexpr auto clear = std::array {0.025F, 0.035F, 0.05F};
+    const auto srgb = format == vk::Format::eB8G8R8A8Srgb || format == vk::Format::eR8G8B8A8Srgb;
+    const auto transform = [srgb](float value) {
+        const auto mapped =
+            std::clamp((value * ((2.51F * value) + 0.03F)) / ((value * ((2.43F * value) + 0.59F)) + 0.14F), 0.0F, 1.0F);
+        if (srgb)
+        {
+            return mapped;
+        }
+        return ::panda::detail::linearToSrgb(mapped);
+    };
+    return vk::ClearColorValue {
+        std::array {transform(clear.at(0)), transform(clear.at(1)), transform(clear.at(2)), 1.0F}
     };
 }
 
@@ -234,16 +253,20 @@ auto MeshRenderer::getOutputDescription() const noexcept -> const OutputDescript
     return _attachments->getOutputDescription();
 }
 
-void MeshRenderer::record(vk::CommandBuffer command,
-                          vk::ImageView colorView,
-                          std::size_t frameIndex,
-                          const RenderView& view)
+auto MeshRenderer::getResolvedColorView(std::size_t frameIndex) const -> vk::ImageView
+{
+    return _attachments->getResolvedColorView(frameIndex);
+}
+
+void MeshRenderer::record(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view)
 {
     recordShadowPass(command, frameIndex, view);
     _attachments->transitionColor(command, frameIndex);
     _attachments->transitionDepth(command, frameIndex);
-    recordAttachments(command, colorView, frameIndex);
+    _attachments->transitionResolvedColorToAttachment(command, frameIndex);
+    recordAttachments(command, _attachments->getResolvedColorView(frameIndex), frameIndex);
     recordColorPass(command, frameIndex, view);
+    _attachments->transitionResolvedColorToSampling(command, frameIndex);
 }
 
 void MeshRenderer::recordShadowPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view)

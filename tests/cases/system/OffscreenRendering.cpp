@@ -210,15 +210,17 @@ auto toByte(float value) -> std::uint8_t
 
 auto expectedCenterPixel() -> std::array<std::uint8_t, 4>
 {
-    constexpr auto backgroundRed = 0.025F;
-    constexpr auto backgroundGreen = 0.035F;
-    constexpr auto backgroundBlue = 0.05F;
-    const auto red = toneMap(0.8F);
-    const auto blue = toneMap(0.7F);
-    return {toByte(encodeSrgb((0.25F * red) + (0.25F * backgroundRed))),
-            toByte(encodeSrgb(0.25F * backgroundGreen)),
-            toByte(encodeSrgb((0.5F * blue) + (0.25F * backgroundBlue))),
+    static constexpr auto composite = std::array {0.45F, 0.0F, 0.6F};
+    return {toByte(encodeSrgb(toneMap(composite.at(0)))),
+            toByte(encodeSrgb(toneMap(composite.at(1)))),
+            toByte(encodeSrgb(toneMap(composite.at(2)))),
             255};
+}
+
+template <typename Value>
+auto hasUnsupportedError(const std::expected<Value, panda::Error>& result) -> bool
+{
+    return !result && result.error().code == panda::ErrorCode::Unsupported;
 }
 
 auto pixelAt(const panda::ImageReadback& image, std::uint32_t x, std::uint32_t y) -> std::array<std::uint8_t, 4>
@@ -401,22 +403,29 @@ TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrd
     auto createdTarget = activeEngine().getResourceManager().createOffscreenTarget({
         .extent = {32, 32}
     });
-    if (!createdTarget && createdTarget.error().code == panda::ErrorCode::Unsupported)
+    if (hasUnsupportedError(createdTarget))
     {
         GTEST_SKIP() << createdTarget.error().message;
     }
     ASSERT_TRUE(createdTarget) << createdTarget.error().message;
     auto target = std::move(*createdTarget);
     auto mesh = createBlendQuad(activeEngine());
-    if (!mesh && mesh.error().code == panda::ErrorCode::Unsupported)
+    if (hasUnsupportedError(mesh))
     {
         GTEST_SKIP() << mesh.error().message;
     }
     ASSERT_TRUE(mesh) << mesh.error().message;
-    const auto firstView = makeBlendView(*mesh, true);
+    auto firstView = makeBlendView(*mesh, true);
     ASSERT_TRUE(firstView) << firstView.error().message;
+    const auto skybox = panda::test::createSkyboxFixture(activeEngine());
+    if (hasUnsupportedError(skybox))
+    {
+        GTEST_SKIP() << skybox.error().message;
+    }
+    ASSERT_TRUE(skybox) << skybox.error().message;
+    firstView->skybox = *skybox;
     const auto firstFrame = activeEngine().getOffscreenRenderer().render(*firstView, target);
-    if (!firstFrame && firstFrame.error().code == panda::ErrorCode::Unsupported)
+    if (hasUnsupportedError(firstFrame))
     {
         GTEST_SKIP() << firstFrame.error().message;
     }
@@ -434,8 +443,9 @@ TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrd
         EXPECT_EQ(latest.value().frameIndex, 0U);
     }
 
-    const auto secondView = makeBlendView(*mesh, false);
+    auto secondView = makeBlendView(*mesh, false);
     ASSERT_TRUE(secondView) << secondView.error().message;
+    secondView->skybox = *skybox;
     const auto secondFrame = activeEngine().getOffscreenRenderer().render(*secondView, target);
     ASSERT_TRUE(secondFrame) << secondFrame.error().message;
     const auto staleReadback = activeEngine().getOffscreenRenderer().readPixels(target, firstFrame->completion);

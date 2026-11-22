@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <panda/base/Error.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/SampleCount.hpp>
@@ -38,6 +39,8 @@ class MeshRenderer;
 
 namespace panda::core::vulkan::presentation
 {
+class ToneMappingPass;
+
 struct FrameOutput
 {
     vk::ImageView imageView;
@@ -73,15 +76,19 @@ public:
     auto operator=(FrameExecution&&) -> FrameExecution& = delete;
     ~FrameExecution();
 
-    [[nodiscard]] auto prepareOutput(vk::Extent2D extent, vk::Format colorFormat, const RenderView& view)
-        -> Result<void>;
+    [[nodiscard]] auto prepareOutput(vk::Extent2D extent,
+                                     vk::Format colorFormat,
+                                     const RenderView& view,
+                                     std::optional<vk::Format> additionalOutputFormat = {}) -> Result<void>;
     [[nodiscard]] auto prepareSlot(std::size_t index,
                                    const RenderView& view,
                                    std::shared_ptr<::panda::detail::OffscreenTargetResource> target = {})
         -> std::expected<void, Error>;
     [[nodiscard]] auto beginCommands(std::size_t index) -> std::expected<void, Error>;
-    [[nodiscard]] auto recordContent(std::size_t index, const FrameOutput& output, const RenderView& view)
-        -> std::expected<void, Error>;
+    [[nodiscard]] auto recordContent(std::size_t index,
+                                     const FrameOutput& output,
+                                     const RenderView& view,
+                                     const FrameOutput* additionalOutput = nullptr) -> std::expected<void, Error>;
     [[nodiscard]] auto endCommands(std::size_t index) -> std::expected<void, Error>;
     [[nodiscard]] auto command(std::size_t index) const -> vk::CommandBuffer;
     void setLastCompletion(std::size_t index, std::uint64_t value);
@@ -108,16 +115,28 @@ private:
     [[nodiscard]] auto initialize() -> std::expected<void, Error>;
     [[nodiscard]] auto initializeRenderer(vk::Extent2D extent, vk::Format colorFormat, SampleCount requested)
         -> Result<void>;
+    [[nodiscard]] auto prepareRenderer(vk::Extent2D extent, SampleCount requested) -> Result<void>;
+    [[nodiscard]] auto resizeRenderer(vk::Extent2D extent, SampleCount requested) -> Result<void>;
+    [[nodiscard]] auto initializeToneMapping() -> Result<void>;
+    [[nodiscard]] auto setToneMappingInputViews() -> Result<void>;
+    [[nodiscard]] auto prepareToneMappingOutputs(vk::Format colorFormat,
+                                                 std::optional<vk::Format> additionalOutputFormat) -> Result<void>;
     [[nodiscard]] static auto retainViewResources(ExecutionSlot& slot,
                                                   const RenderView& view,
                                                   std::shared_ptr<::panda::detail::OffscreenTargetResource> target)
         -> std::expected<void, Error>;
-    [[nodiscard]] auto recordViewContent(std::size_t index, const FrameOutput& output, const RenderView& view)
-        -> std::expected<void, Error>;
-    [[nodiscard]] auto recordRendererView(ExecutionSlot& slot,
-                                          std::size_t index,
+    [[nodiscard]] auto recordViewContent(std::size_t index,
+                                         const FrameOutput& output,
+                                         const RenderView& view,
+                                         const FrameOutput* additionalOutput) -> std::expected<void, Error>;
+    [[nodiscard]] auto recordRendererView(std::size_t index,
                                           const FrameOutput& output,
-                                          const RenderView& view) -> std::expected<void, Error>;
+                                          const RenderView& view,
+                                          const FrameOutput* additionalOutput) -> std::expected<void, Error>;
+    void recordToneMappingOutputs(const ExecutionSlot& slot,
+                                  std::size_t index,
+                                  const FrameOutput& output,
+                                  const FrameOutput* additionalOutput) const;
     [[nodiscard]] auto waitCompletion(std::uint64_t value) const -> std::expected<void, Error>;
 
     vk::PhysicalDevice _physicalDevice;
@@ -130,6 +149,7 @@ private:
     std::uint32_t _maxLights;
     std::size_t _performanceSlotBase;
     std::unique_ptr<renderer::MeshRenderer> _renderer;
+    std::unique_ptr<ToneMappingPass> _toneMapping;
     std::array<ExecutionSlot, slotCount> _slots;
 };
 }

@@ -31,6 +31,7 @@
 #include "presentation/OffscreenRenderBackend.hpp"
 #include "presentation/WindowPresentation.hpp"
 #include "renderer/FrameBindings.hpp"
+#include "renderer/RenderAttachments.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace panda::core::vulkan::engine
@@ -172,6 +173,11 @@ auto selectPhysicalDevice(EngineCreateInfo& resources,
     }
     resources.device->physicalDevice = vk::raii::PhysicalDevice {instanceResources.instance, selected->physicalDevice};
     if (const auto supported = renderer::FrameBindings::validateDeviceLimits(selected->limits, maxLights); !supported)
+    {
+        return std::unexpected {supported.error()};
+    }
+    if (const auto supported = renderer::RenderAttachments::validateRequiredFormats(selected->physicalDevice);
+        !supported)
     {
         return std::unexpected {supported.error()};
     }
