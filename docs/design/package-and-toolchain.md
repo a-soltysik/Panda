@@ -352,6 +352,8 @@ The first cube needs no external shader directory or special working directory.
 
 Provide CMake integration to compile application shaders and generate target-local
 embedded resources. Track include dependencies and avoid basename collisions. The
+helper uses Python 3 at build time to write the generated C++ header; builds that do
+not call it need no Python dependency. The
 [shader specification](contracts/rendering.md#build-loading-and-reload-boundary) defines
 the generated C++ lookup interface.
 
