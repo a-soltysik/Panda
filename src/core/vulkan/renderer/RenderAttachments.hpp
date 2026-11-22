@@ -24,6 +24,7 @@ class TextureResource;
 namespace panda::core::vulkan::renderer
 {
 inline constexpr auto shadowExtent = vk::Extent2D {.width = shadowAtlasExtent, .height = shadowAtlasExtent};
+inline constexpr auto hdrColorFormat = vk::Format::eR16G16B16A16Sfloat;
 
 struct OutputDescription
 {
@@ -52,6 +53,7 @@ public:
     {
         OutputDescription description;
         std::vector<std::shared_ptr<::panda::detail::TextureResource>> colorAttachments;
+        std::vector<std::shared_ptr<::panda::detail::TextureResource>> resolvedColorAttachments;
         std::vector<std::shared_ptr<::panda::detail::TextureResource>> depthAttachments;
     };
 
@@ -59,6 +61,7 @@ public:
         -> std::expected<std::unique_ptr<RenderAttachments>, Error>;
     [[nodiscard]] static auto getSupportedSampleCounts(vk::PhysicalDevice physicalDevice, vk::Format colorFormat)
         -> Result<std::vector<SampleCount>>;
+    [[nodiscard]] static auto validateRequiredFormats(vk::PhysicalDevice physicalDevice) -> Result<void>;
 
     RenderAttachments(const RenderAttachments&) = delete;
     auto operator=(const RenderAttachments&) -> RenderAttachments& = delete;
@@ -71,6 +74,9 @@ public:
     [[nodiscard]] auto getShadowLayerView(std::size_t frameIndex, std::uint32_t layer) const -> vk::ImageView;
     [[nodiscard]] auto getDepthView(std::size_t frameIndex) const -> vk::ImageView;
     [[nodiscard]] auto getColorView(std::size_t frameIndex) const -> vk::ImageView;
+    [[nodiscard]] auto getResolvedColorView(std::size_t frameIndex) const -> vk::ImageView;
+    void transitionResolvedColorToAttachment(vk::CommandBuffer command, std::size_t frameIndex) const;
+    void transitionResolvedColorToSampling(vk::CommandBuffer command, std::size_t frameIndex) const;
     [[nodiscard]] auto prepareResize(vk::Extent2D extent,
                                      vk::Format colorFormat,
                                      SampleCount requestedSampleCount = SampleCount::Four)
@@ -89,8 +95,10 @@ private:
     {
         std::shared_ptr<::panda::detail::TextureResource> shadowMap;
         std::shared_ptr<::panda::detail::TextureResource> colorAttachment;
+        std::shared_ptr<::panda::detail::TextureResource> resolvedColorAttachment;
         std::shared_ptr<::panda::detail::TextureResource> depthAttachment;
         bool colorInitialized {false};
+        bool resolvedColorInitialized {false};
         bool depthInitialized {false};
         bool shadowInitialized {false};
     };
@@ -106,6 +114,8 @@ private:
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
     [[nodiscard]] auto createColorAttachments(vk::Extent2D extent, vk::Format format, vk::SampleCountFlagBits samples)
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
+    [[nodiscard]] auto createResolvedColorAttachments(vk::Extent2D extent)
+        -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
     [[nodiscard]] auto createShadowMaps(std::uint32_t layerCount)
         -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>;
     [[nodiscard]] auto createResizeAttachments(const OutputDescription& description,
@@ -113,6 +123,8 @@ private:
                                                bool formatChanged) -> std::expected<PendingResize, Error>;
     void replaceDepthAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> replacements) noexcept;
     void replaceColorAttachments(std::vector<std::shared_ptr<::panda::detail::TextureResource>> replacements) noexcept;
+    void replaceResolvedColorAttachments(
+        std::vector<std::shared_ptr<::panda::detail::TextureResource>> replacements) noexcept;
 
     vk::PhysicalDevice _physicalDevice;
     const vk::raii::Device& _device;

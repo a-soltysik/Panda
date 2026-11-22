@@ -87,6 +87,14 @@ protected:
 
     void expectImageFormatProperties()
     {
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceFormatProperties(_, VK_FORMAT_R16G16B16A16_SFLOAT, NotNull()))
+            .Times(AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice, VkFormat, VkFormatProperties* properties) {
+                properties->optimalTilingFeatures =
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) |
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+            });
         EXPECT_CALL(vulkan,
                     vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
             .Times(AnyNumber())
@@ -221,8 +229,10 @@ TEST_F(RenderAttachmentsTest, NoOpFormatAndExtentResizePreserveOnlyUnaffectedRes
     const auto createsBeforeFormatChange = createdUsages.size();
     auto formatChange = (*attachments)->prepareResize({.width = 64, .height = 64}, vk::Format::eR8G8B8A8Srgb);
     ASSERT_TRUE(formatChange);
-    ASSERT_EQ(createdUsages.size(), createsBeforeFormatChange + 1);
-    EXPECT_EQ(createdUsages.back(), vk::ImageUsageFlagBits::eColorAttachment);
+    ASSERT_EQ(createdUsages.size(), createsBeforeFormatChange + 2);
+    EXPECT_EQ(createdUsages.at(createsBeforeFormatChange), vk::ImageUsageFlagBits::eColorAttachment);
+    EXPECT_EQ(createdUsages.at(createsBeforeFormatChange + 1),
+              vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled);
     (*attachments)->publishResize(std::move(*formatChange));
     (*attachments)->transitionColor(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
     (*attachments)->transitionDepth(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
@@ -235,9 +245,11 @@ TEST_F(RenderAttachmentsTest, NoOpFormatAndExtentResizePreserveOnlyUnaffectedRes
     const auto createsBeforeExtentChange = createdUsages.size();
     auto extentChange = (*attachments)->prepareResize({.width = 128, .height = 64}, vk::Format::eR8G8B8A8Srgb);
     ASSERT_TRUE(extentChange);
-    ASSERT_EQ(createdUsages.size(), createsBeforeExtentChange + 2);
+    ASSERT_EQ(createdUsages.size(), createsBeforeExtentChange + 3);
     EXPECT_EQ(createdUsages.at(createsBeforeExtentChange), vk::ImageUsageFlagBits::eDepthStencilAttachment);
     EXPECT_EQ(createdUsages.at(createsBeforeExtentChange + 1), vk::ImageUsageFlagBits::eColorAttachment);
+    EXPECT_EQ(createdUsages.at(createsBeforeExtentChange + 2),
+              vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled);
     (*attachments)->publishResize(std::move(*extentChange));
     (*attachments)->transitionColor(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
     (*attachments)->transitionDepth(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(4)}, 0);
@@ -309,6 +321,20 @@ TEST_F(RenderAttachmentsTest, SelectsTheHighestSupportedCountAtOrBelowTheRequest
     ASSERT_TRUE(off);
     EXPECT_EQ(off->description.sampleCount, vk::SampleCountFlagBits::e1);
     EXPECT_TRUE(off->colorAttachments.empty());
+}
+
+TEST_F(RenderAttachmentsTest, RejectsHdrFormatWithoutBlendSupport)
+{
+    EXPECT_CALL(vulkan, vkGetPhysicalDeviceFormatProperties(_, VK_FORMAT_R16G16B16A16_SFLOAT, NotNull()))
+        .WillOnce([](VkPhysicalDevice, VkFormat, VkFormatProperties* properties) {
+            properties->optimalTilingFeatures =
+                static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
+                static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+        });
+
+    const auto supported = RenderAttachments::validateRequiredFormats(physical);
+    ASSERT_FALSE(supported);
+    EXPECT_EQ(supported.error().code, panda::ErrorCode::Unsupported);
 }
 
 TEST_F(RenderAttachmentsTest, RecordingDoesNotCommitLayoutHistoryUntilSubmission)

@@ -785,6 +785,15 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceProperties2(VkPhysicalDevice devic
                                                                                                      properties);
 }
 
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceFormatProperties(VkPhysicalDevice device,
+                                                               VkFormat format,
+                                                               VkFormatProperties* properties)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkGetPhysicalDeviceFormatProperties(device,
+                                                                                                          format,
+                                                                                                          properties);
+}
+
 // Vulkan fixes this entry point's seven-parameter C signature.
 // NOLINTNEXTLINE(readability-function-size)
 VKAPI_ATTR auto VKAPI_CALL vkGetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
@@ -937,6 +946,8 @@ const auto entryPoints = std::array {
                 .function = genericVulkanProc(&vkInvalidateMappedMemoryRanges)                                                         },
     EntryPoint {.name = "vkGetPhysicalDeviceProperties2",
                 .function = genericVulkanProc(&vkGetPhysicalDeviceProperties2)                                                         },
+    EntryPoint {.name = "vkGetPhysicalDeviceFormatProperties",
+                .function = genericVulkanProc(&vkGetPhysicalDeviceFormatProperties)                                                    },
     EntryPoint {.name = "vkGetPhysicalDeviceImageFormatProperties",
                 .function = genericVulkanProc(&vkGetPhysicalDeviceImageFormatProperties)                                               },
     EntryPoint {.name = "vkGetPhysicalDeviceMemoryProperties",

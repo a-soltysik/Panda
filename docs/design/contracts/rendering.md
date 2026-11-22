@@ -51,8 +51,9 @@ render graph are outside this capability.
 `OffscreenRenderer::render()` call and may read the latest completed output as tightly packed, top-to-bottom RGBA bytes;
 RGB is sRGB encoded and alpha is linear UNORM. `OffscreenTargetDesc::extent` and
 `ImageReadback::extent` are `glm::uvec2` pixel values with x as width and y as
-height. `WindowRenderer::renderWithCapture()` renders once into that target,
-copies the same output to the swapchain image and presents it.
+height. `WindowRenderer::renderWithCapture()` renders the HDR scene once, then
+records format-correct SDR output to both the target and swapchain image before
+presenting.
 
 ## Built-in materials
 

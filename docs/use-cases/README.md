@@ -27,6 +27,7 @@ forwarding and helper calculations.
 | [UC Reclaim completed upload packets](reclaim-completed-uploads.md)                            | Observe queue completion and release retained upload owners                                                          |
 | [UC Render and present an application view](render-view.md)                                    | Validate per-mesh layouts and materials, draw meshes or an empty background, and present with frame/image synchronization |
 | [UC Render a view to an image](render-offscreen-view.md)                                         | Submit a view to a target and optionally copy its pixels to host memory                                                  |
+| [UC Render a view through the shared HDR path](render-hdr-output.md)                             | Composite linear scene radiance, resolve MSAA in HDR and write the shared SDR output                                      |
 | [UC Write an image file](write-image-file.md)                                                    | Validate an `ImageReadback` and write raw RGBA, PNG, BMP or JPEG through optional `Panda::Tools`       |
 | [UC Collect paired CPU and GPU frame timings](collect-frame-timings.md)                        | Opt-in timestamp collection, CPU/GPU pairing and nonblocking sample retrieval                                        |
 | [UC Execute a controlled benchmark smoke run and save a report](benchmark-smoke-run.md)        | Validate a stable static-cube run with optional lights, collect measured samples and write JSON/log output             |

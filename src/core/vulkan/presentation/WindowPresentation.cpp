@@ -75,6 +75,16 @@ void recordImageBarrier(vk::CommandBuffer command, const vk::ImageMemoryBarrier2
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }
 
+auto makeWindowCaptureOutput(const SwapchainImage& image, vk::Extent2D extent, vk::Format format)
+    -> presentation::WindowCaptureOutput
+{
+    return {.image = image.image,
+            .imageView = *image.view,
+            .extent = extent,
+            .format = format,
+            .initialized = image.initialized};
+}
+
 void transitionToColorAttachment(vk::CommandBuffer command, const SwapchainImage& image)
 {
     const auto transition = ImageTransition {
@@ -163,7 +173,7 @@ auto WindowPresentation::getSupportedSampleCounts() const -> Result<std::vector<
     {
         return std::unexpected {makeError(ErrorCode::Unsupported, "Window has no active swapchain format")};
     }
-    return renderer::RenderAttachments::getSupportedSampleCounts(_physicalDevice, _generation->format);
+    return renderer::RenderAttachments::getSupportedSampleCounts(_physicalDevice, renderer::hdrColorFormat);
 }
 
 auto WindowPresentation::ensureWindowGeneration(glm::uvec2 requested) -> std::expected<void, Error>
@@ -281,10 +291,6 @@ auto WindowPresentation::renderWithCapture(const CaptureFrameRequest& request) -
     {
         return FrameResult {.status = FrameResult::Status::Suspended, .completion = {}};
     }
-    if (!activeGeneration().supportsTransferDestination)
-    {
-        return std::unexpected {makeError(ErrorCode::Unsupported, "Surface does not support captured presentation")};
-    }
     return executeAcquiredCaptureFrame(request);
 }
 
@@ -313,10 +319,7 @@ auto WindowPresentation::submitAcquiredCaptureFrame(const AcquiredImage& acquire
     {
         return std::unexpected {waited.error()};
     }
-    const auto output = presentation::WindowCaptureOutput {.image = image.image,
-                                                           .extent = activeGeneration().extent,
-                                                           .format = activeGeneration().format,
-                                                           .initialized = image.initialized};
+    const auto output = makeWindowCaptureOutput(image, activeGeneration().extent, activeGeneration().format);
     auto submissionValue = std::uint64_t {};
     const auto capture =
         presentation::WindowCaptureRequest {.view = request.view,

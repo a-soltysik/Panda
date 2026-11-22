@@ -26,6 +26,18 @@ namespace panda::core::vulkan::renderer
 {
 namespace
 {
+using TextureAttachments = std::vector<std::shared_ptr<::panda::detail::TextureResource>>;
+
+template <typename Factory>
+auto createAttachmentsIf(bool required, Factory&& factory) -> std::expected<TextureAttachments, Error>
+{
+    if (required)
+    {
+        return std::forward<Factory>(factory)();
+    }
+    return TextureAttachments {};
+}
+
 auto depthFormatSupported(vk::PhysicalDevice physicalDevice, vk::Format format) -> std::expected<bool, Error>
 {
     constexpr auto usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled;
@@ -41,6 +53,39 @@ auto depthFormatSupported(vk::PhysicalDevice physicalDevice, vk::Format format) 
     }
     return (support.value.sampleCounts & vk::SampleCountFlagBits::e1) != vk::SampleCountFlags {} &&
            support.value.maxExtent.width >= shadowExtent.width && support.value.maxExtent.height >= shadowExtent.height;
+}
+
+auto hdrImageUsageSupported(vk::PhysicalDevice physicalDevice) -> Result<void>
+{
+    constexpr auto usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled;
+    const auto support = physicalDevice.getImageFormatProperties(hdrColorFormat,
+                                                                 vk::ImageType::e2D,
+                                                                 vk::ImageTiling::eOptimal,
+                                                                 usage,
+                                                                 {});
+    if (support.result == vk::Result::eErrorFormatNotSupported ||
+        (support.result == vk::Result::eSuccess && !(support.value.sampleCounts & vk::SampleCountFlagBits::e1)))
+    {
+        return std::unexpected {makeError(ErrorCode::Unsupported, "HDR color format cannot be used for rendering")};
+    }
+    if (support.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {makeVulkanError(support.result)};
+    }
+    return {};
+}
+
+auto hdrFormatSupported(vk::PhysicalDevice physicalDevice) -> Result<void>
+{
+    const auto features = physicalDevice.getFormatProperties(hdrColorFormat).optimalTilingFeatures;
+    if (!(features & vk::FormatFeatureFlagBits::eColorAttachment) ||
+        !(features & vk::FormatFeatureFlagBits::eColorAttachmentBlend) ||
+        !(features & vk::FormatFeatureFlagBits::eSampledImage))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::Unsupported, "HDR color format lacks attachment, blend or sampling support")};
+    }
+    return hdrImageUsageSupported(physicalDevice);
 }
 
 auto querySampleCounts(vk::PhysicalDevice physicalDevice,
@@ -72,6 +117,12 @@ auto colorAttachmentsChanged(const OutputDescription& current, const OutputDescr
     return current.extent.width != next.extent.width || current.extent.height != next.extent.height ||
            current.colorFormat != next.colorFormat || current.sampleCount != next.sampleCount;
 }
+
+auto resolvedColorAttachmentsChanged(const OutputDescription& current, const OutputDescription& next) -> bool
+{
+    return current.extent.width != next.extent.width || current.extent.height != next.extent.height ||
+           current.colorFormat != next.colorFormat;
+}
 }
 
 RenderAttachments::RenderAttachments(vk::PhysicalDevice physicalDevice,
@@ -99,6 +150,10 @@ auto RenderAttachments::create(const RenderAttachmentsCreateInfo& info)
         info.extent.height == 0 || info.colorFormat == vk::Format::eUndefined)
     {
         return std::unexpected {makeError(ErrorCode::InvalidArgument, "Invalid render attachment creation parameters")};
+    }
+    if (const auto supported = hdrFormatSupported(info.physicalDevice); !supported)
+    {
+        return std::unexpected {supported.error()};
     }
     auto attachments = std::unique_ptr<RenderAttachments> {
         new RenderAttachments {info.physicalDevice, info.device, info.pool, info.frameCount}
@@ -184,6 +239,28 @@ auto RenderAttachments::createColorAttachments(vk::Extent2D extent, vk::Format f
             _pool,
             {.extent = extent, .format = format, .usage = vk::ImageUsageFlagBits::eColorAttachment},
             samples);
+        if (!attachment)
+        {
+            return std::unexpected {attachment.error()};
+        }
+        attachments.push_back(std::move(*attachment));
+    }
+    return attachments;
+}
+
+auto RenderAttachments::createResolvedColorAttachments(vk::Extent2D extent)
+    -> std::expected<std::vector<std::shared_ptr<::panda::detail::TextureResource>>, Error>
+{
+    auto attachments = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
+    attachments.reserve(_frames.size());
+    for (auto index = std::size_t {}; index < _frames.size(); ++index)
+    {
+        auto attachment = ::panda::detail::TextureResource::createNative(
+            _device,
+            _pool,
+            {.extent = extent,
+             .format = hdrColorFormat,
+             .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled});
         if (!attachment)
         {
             return std::unexpected {attachment.error()};
@@ -300,6 +377,20 @@ auto RenderAttachments::getSupportedSampleCounts(vk::PhysicalDevice physicalDevi
     return counts;
 }
 
+auto RenderAttachments::validateRequiredFormats(vk::PhysicalDevice physicalDevice) -> Result<void>
+{
+    if (const auto supported = hdrFormatSupported(physicalDevice); !supported)
+    {
+        return supported;
+    }
+    const auto depthFormat = chooseDepthFormat(physicalDevice);
+    if (!depthFormat)
+    {
+        return std::unexpected {depthFormat.error()};
+    }
+    return {};
+}
+
 auto RenderAttachments::getOutputDescription() const noexcept -> const OutputDescription&
 {
     return _description;
@@ -326,6 +417,11 @@ auto RenderAttachments::getColorView(std::size_t frameIndex) const -> vk::ImageV
     return attachment ? attachment->getNativeView() : vk::ImageView {};
 }
 
+auto RenderAttachments::getResolvedColorView(std::size_t frameIndex) const -> vk::ImageView
+{
+    return _frames.at(frameIndex).resolvedColorAttachment->getNativeView();
+}
+
 auto RenderAttachments::prepareResize(vk::Extent2D extent, vk::Format colorFormat, SampleCount requestedSampleCount)
     -> std::expected<PendingResize, Error>
 {
@@ -337,7 +433,10 @@ auto RenderAttachments::prepareResize(vk::Extent2D extent, vk::Format colorForma
     const auto formatChanged = colorFormat != _description.colorFormat;
     if (!extentChanged && !formatChanged && requestedSampleCount == _description.requestedSampleCount)
     {
-        return PendingResize {.description = _description, .colorAttachments = {}, .depthAttachments = {}};
+        return PendingResize {.description = _description,
+                              .colorAttachments = {},
+                              .resolvedColorAttachments = {},
+                              .depthAttachments = {}};
     }
     const auto sampleCount = supportedSampleCounts(_physicalDevice, colorFormat, _description.depthFormat)
                                  .and_then([&](vk::SampleCountFlags supported) {
@@ -384,29 +483,32 @@ auto RenderAttachments::createResizeAttachments(const OutputDescription& descrip
                                                 bool extentChanged,
                                                 bool formatChanged) -> std::expected<PendingResize, Error>
 {
-    auto depthAttachments = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
-    if (extentChanged || description.sampleCount != _description.sampleCount)
+    const auto sampleCountChanged = description.sampleCount != _description.sampleCount;
+    auto depthAttachments = createAttachmentsIf(extentChanged || sampleCountChanged, [&] {
+        return createDepthAttachments(description.extent, description.sampleCount);
+    });
+    if (!depthAttachments)
     {
-        auto created = createDepthAttachments(description.extent, description.sampleCount);
-        if (!created)
-        {
-            return std::unexpected {created.error()};
-        }
-        depthAttachments = std::move(*created);
+        return std::unexpected {depthAttachments.error()};
     }
-    auto colorAttachments = std::vector<std::shared_ptr<::panda::detail::TextureResource>> {};
-    if (extentChanged || formatChanged || description.sampleCount != _description.sampleCount)
+    auto colorAttachments = createAttachmentsIf(extentChanged || formatChanged || sampleCountChanged, [&] {
+        return createColorAttachments(description.extent, description.colorFormat, description.sampleCount);
+    });
+    if (!colorAttachments)
     {
-        auto created = createColorAttachments(description.extent, description.colorFormat, description.sampleCount);
-        if (!created)
-        {
-            return std::unexpected {created.error()};
-        }
-        colorAttachments = std::move(*created);
+        return std::unexpected {colorAttachments.error()};
+    }
+    auto resolvedColorAttachments = createAttachmentsIf(extentChanged || formatChanged, [&] {
+        return createResolvedColorAttachments(description.extent);
+    });
+    if (!resolvedColorAttachments)
+    {
+        return std::unexpected {resolvedColorAttachments.error()};
     }
     return PendingResize {.description = description,
-                          .colorAttachments = std::move(colorAttachments),
-                          .depthAttachments = std::move(depthAttachments)};
+                          .colorAttachments = std::move(*colorAttachments),
+                          .resolvedColorAttachments = std::move(*resolvedColorAttachments),
+                          .depthAttachments = std::move(*depthAttachments)};
 }
 
 void RenderAttachments::publishResize(PendingResize resize) noexcept
@@ -418,6 +520,10 @@ void RenderAttachments::publishResize(PendingResize resize) noexcept
     if (colorAttachmentsChanged(_description, resize.description))
     {
         replaceColorAttachments(std::move(resize.colorAttachments));
+    }
+    if (resolvedColorAttachmentsChanged(_description, resize.description))
+    {
+        replaceResolvedColorAttachments(std::move(resize.resolvedColorAttachments));
     }
     _description = resize.description;
 }
@@ -444,6 +550,17 @@ void RenderAttachments::replaceColorAttachments(
     }
 }
 
+void RenderAttachments::replaceResolvedColorAttachments(
+    std::vector<std::shared_ptr<::panda::detail::TextureResource>> replacements) noexcept
+{
+    for (auto index = std::size_t {}; index < _frames.size(); ++index)
+    {
+        auto& frame = _frames.at(index);
+        frame.resolvedColorAttachment = std::move(replacements.at(index));
+        frame.resolvedColorInitialized = false;
+    }
+}
+
 void RenderAttachments::transitionColor(vk::CommandBuffer command, std::size_t frameIndex) const
 {
     if (_description.sampleCount == vk::SampleCountFlagBits::e1)
@@ -465,6 +582,48 @@ void RenderAttachments::transitionColor(vk::CommandBuffer command, std::size_t f
         .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eColor,
                                                                                                                  .levelCount = 1,
                                                                                                                  .layerCount = 1}
+    };
+    command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
+}
+
+void RenderAttachments::transitionResolvedColorToAttachment(vk::CommandBuffer command, std::size_t frameIndex) const
+{
+    const auto& frame = _frames.at(frameIndex);
+    const auto barrier = vk::ImageMemoryBarrier2 {
+        .srcStageMask = frame.resolvedColorInitialized ? vk::PipelineStageFlagBits2::eFragmentShader
+                                                       : vk::PipelineStageFlagBits2::eNone,
+        .srcAccessMask = frame.resolvedColorInitialized ? vk::AccessFlagBits2::eShaderSampledRead : vk::AccessFlags2 {},
+        .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+        .oldLayout =
+            frame.resolvedColorInitialized ? vk::ImageLayout::eShaderReadOnlyOptimal : vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .image = frame.resolvedColorAttachment->getNative(),
+        .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                                                                                                                      .levelCount = 1,
+                                                                                                                      .layerCount = 1}
+    };
+    command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
+}
+
+void RenderAttachments::transitionResolvedColorToSampling(vk::CommandBuffer command, std::size_t frameIndex) const
+{
+    const auto& frame = _frames.at(frameIndex);
+    const auto barrier = vk::ImageMemoryBarrier2 {
+        .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+        .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+        .dstAccessMask = vk::AccessFlagBits2::eShaderSampledRead,
+        .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .image = frame.resolvedColorAttachment->getNative(),
+        .subresourceRange = vk::ImageSubresourceRange {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                                                       .levelCount = 1,
+                                                       .layerCount = 1}
     };
     command.pipelineBarrier2(vk::DependencyInfo {.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier});
 }
@@ -542,6 +701,7 @@ void RenderAttachments::markSubmitted(std::size_t frameIndex) noexcept
 {
     auto& frame = _frames.at(frameIndex);
     frame.colorInitialized = _description.sampleCount != vk::SampleCountFlagBits::e1;
+    frame.resolvedColorInitialized = true;
     frame.depthInitialized = true;
     frame.shadowInitialized = true;
 }

@@ -47,6 +47,7 @@ struct OffscreenRenderBackendCreateInfo
 struct WindowCaptureOutput
 {
     vk::Image image;
+    vk::ImageView imageView;
     vk::Extent2D extent;
     vk::Format format;
     bool initialized {false};

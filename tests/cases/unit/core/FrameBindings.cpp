@@ -62,6 +62,21 @@ class FrameBindingsTest : public testing::Test
 protected:
     void SetUp() override
     {
+        initializeMemoryPool();
+        installDeviceProperties();
+        installFormatSupport();
+        installDescriptorDefaults();
+        EXPECT_CALL(buffers, createNative(_, Ref(*pool), _))
+            .Times(AnyNumber())
+            .WillRepeatedly(Return(panda::Result<void> {}));
+        EXPECT_CALL(buffers, getNative(_)).Times(AnyNumber()).WillRepeatedly([this](const BufferResource&) {
+            return fakeHandle<VkBuffer>(nextHandle++);
+        });
+        EXPECT_CALL(buffers, writeMapped(_, _, _)).Times(AnyNumber()).WillRepeatedly(Return(panda::Result<void> {}));
+    }
+
+    void initializeMemoryPool()
+    {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* properties) {
                 properties->memoryTypeCount = 1;
@@ -79,7 +94,10 @@ protected:
                 maintenance->maxMemoryAllocationSize = 4096;
             });
         pool = MemoryPool::create(physical, device);
+    }
 
+    void installDeviceProperties()
+    {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
             .Times(AnyNumber())
             .WillRepeatedly([this](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) {
@@ -97,14 +115,32 @@ protected:
             .WillRepeatedly([this](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
                 features->features.samplerAnisotropy = samplerAnisotropy;
             });
-        installDescriptorDefaults();
-        EXPECT_CALL(buffers, createNative(_, Ref(*pool), _))
+    }
+
+    void installFormatSupport()
+    {
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceFormatProperties(_, VK_FORMAT_R16G16B16A16_SFLOAT, NotNull()))
             .Times(AnyNumber())
-            .WillRepeatedly(Return(panda::Result<void> {}));
-        EXPECT_CALL(buffers, getNative(_)).Times(AnyNumber()).WillRepeatedly([this](const BufferResource&) {
-            return fakeHandle<VkBuffer>(nextHandle++);
-        });
-        EXPECT_CALL(buffers, writeMapped(_, _, _)).Times(AnyNumber()).WillRepeatedly(Return(panda::Result<void> {}));
+            .WillRepeatedly([](VkPhysicalDevice, VkFormat, VkFormatProperties* properties) {
+                properties->optimalTilingFeatures =
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) |
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+            });
+        EXPECT_CALL(vulkan,
+                    vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
+            .Times(AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice,
+                               VkFormat,
+                               VkImageType,
+                               VkImageTiling,
+                               VkImageUsageFlags,
+                               VkImageCreateFlags,
+                               VkImageFormatProperties* properties) {
+                properties->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                properties->sampleCounts = allSampleCounts;
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
     }
 
     void TearDown() override
@@ -978,13 +1014,12 @@ TEST_F(FrameBindingsTest, MeshRendererUpdatePropagatesBindingFailure)
     EXPECT_EQ(updated.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-TEST_F(FrameBindingsTest, OneSampleColorPassClearsTheSwapchainWithoutResolveAttachment)
+TEST_F(FrameBindingsTest, OneSampleColorPassUsesTheHdrResolveTarget)
 {
     auto renderer = createMeshRenderer(VK_SAMPLE_COUNT_1_BIT);
     ASSERT_TRUE(renderer);
     EXPECT_EQ((*renderer)->getSampleCount(), vk::SampleCountFlagBits::e1);
 
-    auto* const swapchainImageView = fakeHandle<VkImageView>(900);
     auto colorPassCount = 0;
     EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull()))
         .Times(2)
@@ -993,7 +1028,7 @@ TEST_F(FrameBindingsTest, OneSampleColorPassClearsTheSwapchainWithoutResolveAtta
             {
                 ASSERT_EQ(rendering->colorAttachmentCount, 1U);
                 const auto& attachment = *rendering->pColorAttachments;
-                EXPECT_EQ(attachment.imageView, swapchainImageView);
+                EXPECT_EQ(attachment.imageView, fakeHandle<VkImageView>(90));
                 EXPECT_EQ(attachment.loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR);
                 EXPECT_EQ(attachment.storeOp, VK_ATTACHMENT_STORE_OP_STORE);
                 EXPECT_EQ(attachment.resolveImageView, VK_NULL_HANDLE);
@@ -1008,7 +1043,7 @@ TEST_F(FrameBindingsTest, OneSampleColorPassClearsTheSwapchainWithoutResolveAtta
     const auto command = vk::CommandBuffer {fakeHandle<VkCommandBuffer>(901)};
     const auto view = panda::RenderView {};
 
-    (*renderer)->record(command, vk::ImageView {swapchainImageView}, 0, view);
+    (*renderer)->record(command, 0, view);
 }
 
 TEST_F(FrameBindingsTest, RecordsEveryPointFaceWithItsOwnDynamicShadowViewOffset)
@@ -1040,7 +1075,7 @@ TEST_F(FrameBindingsTest, RecordsEveryPointFaceWithItsOwnDynamicShadowViewOffset
     EXPECT_CALL(vulkan, vkCmdBeginRendering(_, NotNull())).Times(2);
     EXPECT_CALL(vulkan, vkCmdEndRendering(_)).Times(2);
 
-    (*renderer)->record(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(902)}, {}, 0, view);
+    (*renderer)->record(vk::CommandBuffer {fakeHandle<VkCommandBuffer>(902)}, 0, view);
 
     ASSERT_EQ(offsets.size(), 8U);
     for (auto index = std::uint32_t {}; index < 7U; ++index)

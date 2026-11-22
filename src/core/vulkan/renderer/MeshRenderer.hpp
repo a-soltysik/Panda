@@ -30,6 +30,7 @@ class TextureResource;
 namespace panda::core::vulkan::renderer
 {
 [[nodiscard]] auto makeClearColor(vk::Format format) -> vk::ClearColorValue;
+[[nodiscard]] auto makeToneMappedClearColor(vk::Format format) -> vk::ClearColorValue;
 
 struct MeshRendererCreateInfo
 {
@@ -63,7 +64,9 @@ public:
     [[nodiscard]] auto updateFrame(std::size_t frameIndex, const RenderView& view) -> std::expected<void, Error>;
     [[nodiscard]] auto getSampleCount() const noexcept -> vk::SampleCountFlagBits;
     [[nodiscard]] auto getEffectiveAnisotropy(TextureFilteringPreset preset) const noexcept -> float;
-    void record(vk::CommandBuffer command, vk::ImageView colorView, std::size_t frameIndex, const RenderView& view);
+    [[nodiscard]] auto getResolvedColorView(std::size_t frameIndex) const -> vk::ImageView;
+    void record(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
+    void transitionResolvedColorToSampling(vk::CommandBuffer command, std::size_t frameIndex) const;
     void markSubmitted(std::size_t frameIndex) noexcept;
 
 private:

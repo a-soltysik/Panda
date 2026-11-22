@@ -190,6 +190,7 @@ protected:
     void expectAdapter(bool windowed, bool separateQueues = false, std::uint32_t timestampValidBits = 0)
     {
         expectEnumeration();
+        expectRenderFormatSupport();
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFeatures2(physical, NotNull()))
             .WillOnce(testing::Action<decltype(vkGetPhysicalDeviceFeatures2)> {
                 [windowed](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
@@ -210,6 +211,35 @@ protected:
         {
             expectPresentationSupport(separateQueues);
         }
+    }
+
+    void expectRenderFormatSupport()
+    {
+        EXPECT_CALL(vulkan, vkGetPhysicalDeviceFormatProperties(physical, VK_FORMAT_R16G16B16A16_SFLOAT, NotNull()))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice, VkFormat, VkFormatProperties* properties) {
+                properties->optimalTilingFeatures =
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) |
+                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+            });
+        EXPECT_CALL(
+            vulkan,
+            vkGetPhysicalDeviceImageFormatProperties(physical, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
+            .Times(testing::AnyNumber())
+            .WillRepeatedly([](VkPhysicalDevice,
+                               VkFormat,
+                               VkImageType,
+                               VkImageTiling,
+                               VkImageUsageFlags,
+                               VkImageCreateFlags,
+                               VkImageFormatProperties* properties) {
+                properties->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                properties->sampleCounts = static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_1_BIT) |
+                                           static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_2_BIT) |
+                                           static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_4_BIT);
+                return success;
+            });
     }
 
     void expectEnumeration()
@@ -563,6 +593,9 @@ protected:
                                VkImageFormatProperties* output) {
                 *output = VkImageFormatProperties {};
                 output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
+                output->sampleCounts = static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_1_BIT) |
+                                       static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_2_BIT) |
+                                       static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_4_BIT);
                 return success;
             });
     }

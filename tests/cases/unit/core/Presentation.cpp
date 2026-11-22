@@ -402,7 +402,7 @@ TEST_F(PresentationTest, FrameExecutionRecordsPlainFrameOutputWithoutWindowServi
             ASSERT_NE(rendering->pColorAttachments, nullptr);
             const auto& attachment = std::span {rendering->pColorAttachments, rendering->colorAttachmentCount}.front();
             EXPECT_EQ(attachment.imageView, static_cast<VkImageView>(imageView));
-            EXPECT_NEAR(std::span {attachment.clearValue.color.float32}.front(), 0.1718F, 0.0001F);
+            EXPECT_NEAR(std::span {attachment.clearValue.color.float32}.front(), 0.129F, 0.002F);
             EXPECT_EQ(rendering->renderArea.extent.width, 320U);
             EXPECT_EQ(rendering->renderArea.extent.height, 200U);
         });

@@ -16,6 +16,7 @@
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/SampleCount.hpp>
 #include <panda/resources/Texture.hpp>
@@ -26,8 +27,10 @@
 
 #include "FrameResultMapping.hpp"
 #include "performance/PerformanceManagerImpl.hpp"
+#include "presentation/ToneMappingPass.hpp"
 #include "renderer/MaterialTextureSlots.hpp"
 #include "renderer/MeshRenderer.hpp"
+#include "renderer/RenderAttachments.hpp"
 
 namespace panda::core::vulkan::presentation
 {
@@ -99,7 +102,7 @@ void recordClearRendering(vk::CommandBuffer command, const FrameOutput& output)
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue {.color = renderer::makeClearColor(output.colorFormat)}};
+        .clearValue = vk::ClearValue {.color = renderer::makeToneMappedClearColor(output.colorFormat)}};
     const auto rendering = vk::RenderingInfo {.renderArea = vk::Rect2D {.extent = output.extent},
                                               .layerCount = 1,
                                               .colorAttachmentCount = 1,
@@ -190,8 +193,10 @@ auto FrameExecution::beginCommands(std::size_t index) -> std::expected<void, Err
     return {};
 }
 
-auto FrameExecution::recordContent(std::size_t index, const FrameOutput& output, const RenderView& view)
-    -> std::expected<void, Error>
+auto FrameExecution::recordContent(std::size_t index,
+                                   const FrameOutput& output,
+                                   const RenderView& view,
+                                   const FrameOutput* additionalOutput) -> std::expected<void, Error>
 {
     if (_performance != nullptr)
     {
@@ -201,7 +206,7 @@ auto FrameExecution::recordContent(std::size_t index, const FrameOutput& output,
             return std::unexpected {timestamp.error()};
         }
     }
-    if (const auto content = recordViewContent(index, output, view); !content)
+    if (const auto content = recordViewContent(index, output, view, additionalOutput); !content)
     {
         return std::unexpected {content.error()};
     }
@@ -212,51 +217,130 @@ auto FrameExecution::recordContent(std::size_t index, const FrameOutput& output,
     return {};
 }
 
-auto FrameExecution::recordViewContent(std::size_t index, const FrameOutput& output, const RenderView& view)
-    -> std::expected<void, Error>
+auto FrameExecution::recordViewContent(std::size_t index,
+                                       const FrameOutput& output,
+                                       const RenderView& view,
+                                       const FrameOutput* additionalOutput) -> std::expected<void, Error>
 {
     if (view.meshes.empty() && !view.skybox)
     {
         recordClearRendering(_slots.at(index).command, output);
+        if (additionalOutput != nullptr)
+        {
+            recordClearRendering(_slots.at(index).command, *additionalOutput);
+        }
         return {};
     }
-    return recordRendererView(_slots.at(index), index, output, view);
+    return recordRendererView(index, output, view, additionalOutput);
 }
 
-auto FrameExecution::recordRendererView(ExecutionSlot& slot,
-                                        std::size_t index,
+auto FrameExecution::recordRendererView(std::size_t index,
                                         const FrameOutput& output,
-                                        const RenderView& view) -> std::expected<void, Error>
+                                        const RenderView& view,
+                                        const FrameOutput* additionalOutput) -> std::expected<void, Error>
 {
+    auto& slot = _slots.at(index);
     if (const auto updated = _renderer->updateFrame(index, view); !updated)
     {
         return std::unexpected {updated.error()};
     }
-    _renderer->record(slot.command, output.imageView, index, view);
+    _renderer->record(slot.command, index, view);
+    recordToneMappingOutputs(slot, index, output, additionalOutput);
     return {};
 }
 
-auto FrameExecution::prepareOutput(vk::Extent2D extent, vk::Format colorFormat, const RenderView& view) -> Result<void>
+void FrameExecution::recordToneMappingOutputs(const ExecutionSlot& slot,
+                                              std::size_t index,
+                                              const FrameOutput& output,
+                                              const FrameOutput* additionalOutput) const
+{
+    _toneMapping->record(slot.command, index, output);
+    if (additionalOutput != nullptr)
+    {
+        _toneMapping->record(slot.command, index, *additionalOutput);
+    }
+}
+
+auto FrameExecution::prepareOutput(vk::Extent2D extent,
+                                   vk::Format colorFormat,
+                                   const RenderView& view,
+                                   std::optional<vk::Format> additionalOutputFormat) -> Result<void>
 {
     if (view.meshes.empty() && !view.skybox)
     {
         return {};
     }
     const auto requestedSampleCount = view.meshes.empty() ? SampleCount::One : view.requestedSampleCount;
+    if (const auto renderer = prepareRenderer(extent, requestedSampleCount); !renderer)
+    {
+        return renderer;
+    }
+    if (const auto pass = initializeToneMapping(); !pass)
+    {
+        return pass;
+    }
+    return prepareToneMappingOutputs(colorFormat, additionalOutputFormat);
+}
+
+auto FrameExecution::prepareRenderer(vk::Extent2D extent, SampleCount requested) -> Result<void>
+{
     if (!_renderer)
     {
-        return initializeRenderer(extent, colorFormat, requestedSampleCount);
+        return initializeRenderer(extent, renderer::hdrColorFormat, requested);
     }
     const auto& current = _renderer->getOutputDescription();
-    if (current.extent == extent && current.colorFormat == colorFormat &&
-        current.requestedSampleCount == requestedSampleCount)
+    if (current.extent == extent && current.requestedSampleCount == requested)
     {
         return {};
     }
-    // The attachment and pipeline replacements may release objects used by either slot.
-    return drain().and_then([&] {
-        return _renderer->resize(extent, colorFormat, requestedSampleCount);
+    if (const auto resized = resizeRenderer(extent, requested); !resized)
+    {
+        return resized;
+    }
+    return _toneMapping ? setToneMappingInputViews() : Result<void> {};
+}
+
+auto FrameExecution::resizeRenderer(vk::Extent2D extent, SampleCount requested) -> Result<void>
+{
+    // The attachment replacements may release objects used by either slot.
+    return drain().and_then([this, extent, requested] {
+        return _renderer->resize(extent, renderer::hdrColorFormat, requested);
     });
+}
+
+auto FrameExecution::initializeToneMapping() -> Result<void>
+{
+    if (_toneMapping)
+    {
+        return {};
+    }
+    auto pass = ToneMappingPass::create(_device);
+    if (!pass)
+    {
+        return std::unexpected {pass.error()};
+    }
+    _toneMapping = std::move(*pass);
+    return setToneMappingInputViews();
+}
+
+auto FrameExecution::setToneMappingInputViews() -> Result<void>
+{
+    const auto views = std::array {_renderer->getResolvedColorView(0), _renderer->getResolvedColorView(1)};
+    return _toneMapping->setInputViews(views);
+}
+
+auto FrameExecution::prepareToneMappingOutputs(vk::Format colorFormat, std::optional<vk::Format> additionalOutputFormat)
+    -> Result<void>
+{
+    if (const auto prepared = _toneMapping->prepare(colorFormat); !prepared)
+    {
+        return prepared;
+    }
+    if (additionalOutputFormat && *additionalOutputFormat != colorFormat)
+    {
+        return _toneMapping->prepare(*additionalOutputFormat);
+    }
+    return {};
 }
 
 auto FrameExecution::initializeRenderer(vk::Extent2D extent, vk::Format colorFormat, SampleCount requested)

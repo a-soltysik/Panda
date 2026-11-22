@@ -936,13 +936,6 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     const auto camera = makeTestCamera(renderExtent);
     ASSERT_TRUE(camera.has_value()) << camera.error().message;
     auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
-    const auto environment = panda::test::createEnvironmentLightingFixture(context);
-    if (!environment && environment.error().code == panda::ErrorCode::Unsupported)
-    {
-        GTEST_SKIP() << environment.error().message;
-    }
-    ASSERT_TRUE(environment.has_value()) << environment.error().message;
-    view.environment = *environment;
     const auto skybox = panda::test::createSkyboxFixture(context);
     if (!skybox && skybox.error().code == panda::ErrorCode::Unsupported)
     {
@@ -951,8 +944,10 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     ASSERT_TRUE(skybox.has_value()) << skybox.error().message;
     view.skybox = *skybox;
     auto draw = panda::MeshDraw {.mesh = *mesh};
-    draw.material.model = panda::MaterialModel::Lit;
+    draw.material.model = panda::MaterialModel::Unlit;
     draw.material.renderFace = panda::RenderFace::Both;
+    draw.material.baseColor = {0.0F, 1.0F, 0.0F, 0.5F};
+    draw.material.alphaMode = panda::AlphaMode::Blend;
     view.meshes.push_back(draw);
 
     const auto frame = windowRenderer(context).renderWithCapture(view, *target);
