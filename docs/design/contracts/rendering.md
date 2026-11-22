@@ -216,6 +216,11 @@ The standard draw interface separates renderer-owned data from application shade
 bindings and packing when implementing each interface; group resources by use and update frequency where useful.
 Independent Vulkan compute programs are not forced into a material descriptor layout.
 
+For built-in and application graphics shaders, GLSL layout qualifiers are the source of truth for descriptor set and
+binding numbers and vertex input locations. Write these numbers in GLSL and use SPIR-V reflection in C++ to construct
+and validate the matching layouts; do not duplicate them in `ShaderInterface.inc`. Keep shared definitions only for
+cross-language values that reflection cannot recover, such as light-type tags.
+
 ## Shader integration
 
 ### Programs, materials, and application resources

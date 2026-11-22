@@ -42,6 +42,7 @@ panda_add_component(panda_core
         vulkan/renderer/FrameBindings.cpp
         vulkan/renderer/MeshRenderer.cpp
         vulkan/renderer/MeshPipelineCache.cpp
+        vulkan/renderer/ShaderReflection.cpp
         vulkan/renderer/RenderAttachments.cpp
         vulkan/renderer/RenderViewValidation.cpp
         vulkan/renderer/ShadowAtlas.cpp
@@ -142,13 +143,14 @@ panda_add_component(panda_core
         vulkan/renderer/FrameBindings.hpp
         vulkan/renderer/MaterialTextureSlots.hpp
         vulkan/renderer/MeshPipelineCache.hpp
+        vulkan/renderer/ShaderReflection.hpp
         vulkan/renderer/RenderAttachments.hpp
         vulkan/renderer/ShadowAtlas.hpp
         vulkan/renderer/ShaderData.hpp
         vulkan/renderer/RenderViewValidation.hpp
         vulkan/renderer/ShadowView.hpp
     LIBRARIES PUBLIC panda_base Vulkan::Headers glm::glm
-             PRIVATE Vulkan::Vulkan)
+             PRIVATE Vulkan::Vulkan spirv-reflect-static)
 target_include_directories(panda_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 add_library(panda_core_internal INTERFACE)
 set_target_properties(panda_core_internal PROPERTIES FOLDER "Panda/Internal")
