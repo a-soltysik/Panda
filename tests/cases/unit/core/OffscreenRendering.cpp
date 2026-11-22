@@ -7,10 +7,13 @@
 #include <gtest/gtest.h>
 #include <vulkan/vulkan_core.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <memory>
 #include <optional>
 #include <panda/base/Error.hpp>
+#include <panda/rendering/RenderView.hpp>
 #include <tuple>
 #include <utility>
 
@@ -141,4 +144,43 @@ TEST_F(OffscreenRenderBackendTest, InitializationFailureIsRetryableAndSuccessIsI
 TEST_F(OffscreenRenderBackendTest, UninitializedShellDrainsWithoutNativeWork)
 {
     EXPECT_TRUE(rendering().drain());
+}
+
+TEST_F(OffscreenRenderBackendTest, RejectsCaptureRequestsWithAnyMissingVulkanHandle)
+{
+    const auto view = panda::RenderView {};
+    const auto target = panda::OffscreenTarget {};
+    auto submittedValue = std::uint64_t {};
+    auto performanceSlot = std::optional<std::size_t> {};
+    const auto image = vk::Image {fakeHandle<VkImage>(30)};
+    const auto imageView = vk::ImageView {fakeHandle<VkImageView>(31)};
+    const auto acquire = vk::Semaphore {fakeHandle<VkSemaphore>(32)};
+    const auto finished = vk::Semaphore {fakeHandle<VkSemaphore>(33)};
+    const auto makeOutput = [](vk::Image imageHandle, vk::ImageView viewHandle) {
+        return panda::core::vulkan::presentation::WindowCaptureOutput {
+            .image = imageHandle,
+            .imageView = viewHandle,
+            .extent = {.width = 16, .height = 16},
+            .format = vk::Format::eB8G8R8A8Srgb,
+            .initialized = false
+        };
+    };
+    const auto validate = [&](panda::core::vulkan::presentation::WindowCaptureOutput captureOutput,
+                              vk::Semaphore acquireSemaphore,
+                              vk::Semaphore finishedSemaphore) {
+        const auto result = rendering().renderWithCapture({.view = view,
+                                                           .target = target,
+                                                           .output = captureOutput,
+                                                           .acquire = acquireSemaphore,
+                                                           .finished = finishedSemaphore,
+                                                           .submittedValue = submittedValue,
+                                                           .submittedPerformanceSlot = performanceSlot});
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
+    };
+
+    validate(makeOutput({}, imageView), acquire, finished);
+    validate(makeOutput(image, {}), acquire, finished);
+    validate(makeOutput(image, imageView), {}, finished);
+    validate(makeOutput(image, imageView), acquire, {});
 }

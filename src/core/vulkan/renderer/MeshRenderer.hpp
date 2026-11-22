@@ -66,7 +66,6 @@ public:
     [[nodiscard]] auto getEffectiveAnisotropy(TextureFilteringPreset preset) const noexcept -> float;
     [[nodiscard]] auto getResolvedColorView(std::size_t frameIndex) const -> vk::ImageView;
     void record(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
-    void transitionResolvedColorToSampling(vk::CommandBuffer command, std::size_t frameIndex) const;
     void markSubmitted(std::size_t frameIndex) noexcept;
 
 private:

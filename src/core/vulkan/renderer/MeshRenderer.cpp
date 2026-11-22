@@ -92,8 +92,7 @@ auto makeToneMappedClearColor(vk::Format format) -> vk::ClearColorValue
         {
             return mapped;
         }
-        return mapped <= 0.0031308F ? mapped * 12.92F
-                                    : (1.055F * std::pow(std::max(mapped, 0.0F), 1.0F / 2.4F)) - 0.055F;
+        return ::panda::detail::linearToSrgb(mapped);
     };
     return vk::ClearColorValue {
         std::array {transform(clear.at(0)), transform(clear.at(1)), transform(clear.at(2)), 1.0F}
@@ -267,11 +266,6 @@ void MeshRenderer::record(vk::CommandBuffer command, std::size_t frameIndex, con
     _attachments->transitionResolvedColorToAttachment(command, frameIndex);
     recordAttachments(command, _attachments->getResolvedColorView(frameIndex), frameIndex);
     recordColorPass(command, frameIndex, view);
-    _attachments->transitionResolvedColorToSampling(command, frameIndex);
-}
-
-void MeshRenderer::transitionResolvedColorToSampling(vk::CommandBuffer command, std::size_t frameIndex) const
-{
     _attachments->transitionResolvedColorToSampling(command, frameIndex);
 }
 

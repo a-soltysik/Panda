@@ -288,17 +288,14 @@ auto OffscreenRenderBackend::recordFrame(std::size_t slotIndex,
                                     .extent = request.windowOutput->extent,
                                     .colorFormat = request.windowOutput->format};
     }
-    if (const auto recorded =
-            _execution->recordContent(slotIndex, output, request.view, windowOutput ? &*windowOutput : nullptr);
-        !recorded)
-    {
-        return std::unexpected {recorded.error()};
-    }
-    if (request.windowOutput != nullptr)
-    {
-        transitionCaptureImageToPresent(command, *request.windowOutput);
-    }
-    return _execution->endCommands(slotIndex);
+    return _execution->recordContent(slotIndex, output, request.view, windowOutput ? &*windowOutput : nullptr)
+        .and_then([&] {
+            if (request.windowOutput != nullptr)
+            {
+                transitionCaptureImageToPresent(command, *request.windowOutput);
+            }
+            return _execution->endCommands(slotIndex);
+        });
 }
 
 auto OffscreenRenderBackend::render(const RenderView& view,

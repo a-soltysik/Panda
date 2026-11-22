@@ -19,21 +19,28 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <panda/EngineOptions.hpp>
 #include <panda/base/Error.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Buffer.hpp>
+#include <panda/submission/CompletionPoint.hpp>
 #include <span>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "FakeHandle.hpp"
+#include "Math.hpp"
 #include "ScopedMock.hpp"
+#include "SubmissionQueue.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/BufferResourceMock.hpp"
+#include "panda/core/SubmissionQueueMock.hpp"
 #include "panda/core/TextureResourceMock.hpp"
+#include "presentation/FrameExecution.hpp"
+#include "presentation/ToneMappingPass.hpp"
 #include "renderer/MeshRenderer.hpp"
 #include "renderer/ShaderData.hpp"
 #include "resources/BufferResource.hpp"
@@ -45,6 +52,7 @@ constexpr auto allSampleCounts = static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT
                                  static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_2_BIT) |
                                  static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_4_BIT);
 
+using panda::core::vulkan::presentation::FrameExecution;
 using panda::core::vulkan::renderer::FrameBindings;
 using panda::core::vulkan::renderer::LightRecord;
 using panda::core::vulkan::renderer::MaterialRecord;
@@ -66,6 +74,7 @@ protected:
         installDeviceProperties();
         installFormatSupport();
         installDescriptorDefaults();
+        installToneMappingPipelineLayoutDefault();
         EXPECT_CALL(buffers, createNative(_, Ref(*pool), _))
             .Times(AnyNumber())
             .WillRepeatedly(Return(panda::Result<void> {}));
@@ -145,6 +154,7 @@ protected:
 
     void TearDown() override
     {
+        queue.reset();
         pool.reset();
         std::ignore = device.release();
         std::ignore = instance.release();
@@ -199,12 +209,51 @@ protected:
                 properties->sampleCounts = supportedSamples;
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
+        expectMeshRendererTextures();
+        return panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
+    }
+
+    void expectMeshRendererTextures()
+    {
         EXPECT_CALL(textures, createNative(Ref(device), Ref(*pool), _, _))
             .Times(AnyNumber())
             .WillRepeatedly(Return(panda::Result<void> {}));
         EXPECT_CALL(textures, getNative(_)).Times(AnyNumber()).WillRepeatedly(Return(fakeHandle<VkImage>(91)));
         EXPECT_CALL(textures, getNativeView(_)).Times(AnyNumber()).WillRepeatedly(Return(fakeHandle<VkImageView>(90)));
-        return panda::core::vulkan::renderer::MeshRenderer::create(meshRendererInfo());
+    }
+
+    auto createFrameExecution() -> std::expected<std::unique_ptr<FrameExecution>, panda::Error>
+    {
+        EXPECT_CALL(submissions, construct(_, 0));
+        queue.emplace(device, 0);
+        EXPECT_CALL(vulkan, vkCreateCommandPool(deviceHandle, NotNull(), _, NotNull()))
+            .Times(2)
+            .WillRepeatedly(
+                [this](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool* output) {
+                    *output = fakeHandle<VkCommandPool>(nextHandle++);
+                    return static_cast<VkResult>(vk::Result::eSuccess);
+                });
+        EXPECT_CALL(vulkan, vkAllocateCommandBuffers(deviceHandle, NotNull(), NotNull()))
+            .Times(2)
+            .WillRepeatedly([this](VkDevice, const VkCommandBufferAllocateInfo* info, VkCommandBuffer* output) {
+                for (auto& command : std::span {output, info->commandBufferCount})
+                {
+                    command = fakeHandle<VkCommandBuffer>(nextHandle++);
+                }
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
+        EXPECT_CALL(vulkan, vkDestroyCommandPool(deviceHandle, _, _)).Times(2);
+        EXPECT_CALL(submissions, waitValue(0, _))
+            .Times(AnyNumber())
+            .WillRepeatedly(Return(panda::Result<panda::WaitStatus> {panda::WaitStatus::Completed}));
+        return FrameExecution::create({.physicalDevice = physical,
+                                       .device = device,
+                                       .queueFamily = 0,
+                                       .submissions = *queue,
+                                       .pool = pool.get(),
+                                       .performance = nullptr,
+                                       .textureFilteringPreset = nullptr,
+                                       .maxLights = panda::EngineOptions::defaultMaxLights});
     }
 
     static auto bufferFailure() -> panda::Result<void>
@@ -225,6 +274,70 @@ protected:
         installDescriptorLayoutDefaults();
         installDescriptorPoolDefaults();
         installSamplerDefaults();
+    }
+
+    void installToneMappingPipelineLayoutDefault()
+    {
+        EXPECT_CALL(vulkan,
+                    vkCreatePipelineLayout(_,
+                                           testing::Truly([](const VkPipelineLayoutCreateInfo* info) {
+                                               return info->setLayoutCount == 1U;
+                                           }),
+                                           _,
+                                           NotNull()))
+            .Times(AnyNumber())
+            .WillRepeatedly([this](VkDevice,
+                                   const VkPipelineLayoutCreateInfo*,
+                                   const VkAllocationCallbacks*,
+                                   VkPipelineLayout* output) {
+                *output = fakeHandle<VkPipelineLayout>(nextHandle++);
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
+    }
+
+    auto createToneMappingPass()
+    {
+        return panda::core::vulkan::presentation::ToneMappingPass::create(device);
+    }
+
+    void expectToneMappingShaders(std::size_t count)
+    {
+        EXPECT_CALL(vulkan, vkCreateShaderModule(deviceHandle, NotNull(), nullptr, NotNull()))
+            .Times(static_cast<int>(count))
+            .WillRepeatedly([this](VkDevice,
+                                   const VkShaderModuleCreateInfo* info,
+                                   const VkAllocationCallbacks*,
+                                   VkShaderModule* output) {
+                EXPECT_GT(info->codeSize, 0U);
+                EXPECT_NE(info->pCode, nullptr);
+                *output = fakeHandle<VkShaderModule>(nextHandle++);
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            });
+        EXPECT_CALL(vulkan, vkDestroyShaderModule(deviceHandle, _, nullptr)).Times(static_cast<int>(count));
+    }
+
+    void expectToneMappingPipelines(std::size_t count, VkResult result)
+    {
+        EXPECT_CALL(vulkan, vkCreateGraphicsPipelines(deviceHandle, _, 1, NotNull(), nullptr, NotNull()))
+            .Times(static_cast<int>(count))
+            .WillRepeatedly([this, result](VkDevice,
+                                           VkPipelineCache,
+                                           std::uint32_t,
+                                           const VkGraphicsPipelineCreateInfo* info,
+                                           const VkAllocationCallbacks*,
+                                           VkPipeline* output) {
+                EXPECT_EQ(info->stageCount, 2U);
+                EXPECT_NE(info->pNext, nullptr);
+                if (result == VK_SUCCESS)
+                {
+                    *output = fakeHandle<VkPipeline>(nextHandle++);
+                }
+                return result;
+            });
+        if (result == VK_SUCCESS)
+        {
+            EXPECT_CALL(vulkan, vkDestroyPipeline(deviceHandle, _, nullptr)).Times(static_cast<int>(count));
+        }
     }
 
     void installDescriptorLayoutDefaults()
@@ -293,6 +406,7 @@ protected:
 
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::BufferResourceMock> buffers;
+    panda::test::ScopedMock<panda::test::SubmissionQueueMock> submissions;
     panda::test::ScopedMock<panda::test::TextureResourceMock> textures;
     vk::raii::Context loader {vkGetInstanceProcAddr};
     vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
@@ -300,6 +414,7 @@ protected:
     VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
     vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
+    std::optional<panda::detail::SubmissionQueue> queue;
     std::uintptr_t nextHandle {10};
     VkBool32 samplerAnisotropy {VK_FALSE};
     float maxSamplerAnisotropy {6.0F};
@@ -316,6 +431,249 @@ TEST(MeshRenderer, EncodesLinearClearForTheAttachmentFormat)
     EXPECT_NEAR(unorm.float32.at(0), 0.1718F, 0.0001F);
     EXPECT_FLOAT_EQ(srgb.float32.at(3), 1.0F);
     EXPECT_FLOAT_EQ(unorm.float32.at(3), 1.0F);
+}
+
+TEST(MeshRenderer, EncodesToneMappedClearForSrgbAndUnormOutputs)
+{
+    const auto blueSrgb = panda::core::vulkan::renderer::makeToneMappedClearColor(vk::Format::eB8G8R8A8Srgb);
+    const auto redSrgb = panda::core::vulkan::renderer::makeToneMappedClearColor(vk::Format::eR8G8B8A8Srgb);
+    const auto unorm = panda::core::vulkan::renderer::makeToneMappedClearColor(vk::Format::eB8G8R8A8Unorm);
+    EXPECT_FLOAT_EQ(blueSrgb.float32.at(0), redSrgb.float32.at(0));
+    EXPECT_NEAR(unorm.float32.at(0), ::panda::detail::linearToSrgb(blueSrgb.float32.at(0)), 0.0001F);
+    EXPECT_FLOAT_EQ(blueSrgb.float32.at(3), 1.0F);
+    EXPECT_FLOAT_EQ(unorm.float32.at(3), 1.0F);
+}
+
+TEST_F(FrameBindingsTest, ToneMappingInitializationPropagatesVulkanFailures)
+{
+    constexpr auto failure = static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory);
+
+    EXPECT_CALL(vulkan,
+                vkCreateSampler(deviceHandle,
+                                testing::Truly([](const VkSamplerCreateInfo* info) {
+                                    return info->magFilter == VK_FILTER_NEAREST &&
+                                           info->addressModeU == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE &&
+                                           info->borderColor == VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+                                }),
+                                _,
+                                NotNull()))
+        .WillOnce(Return(failure))
+        .RetiresOnSaturation();
+    auto pass = createToneMappingPass();
+    ASSERT_FALSE(pass);
+    EXPECT_EQ(pass.error().code, panda::ErrorCode::ResourceExhausted);
+
+    EXPECT_CALL(vulkan,
+                vkCreateDescriptorSetLayout(deviceHandle,
+                                            testing::Truly([](const VkDescriptorSetLayoutCreateInfo* info) {
+                                                return info->bindingCount == 1U;
+                                            }),
+                                            _,
+                                            NotNull()))
+        .WillOnce(Return(failure))
+        .RetiresOnSaturation();
+    pass = createToneMappingPass();
+    ASSERT_FALSE(pass);
+    EXPECT_EQ(pass.error().code, panda::ErrorCode::ResourceExhausted);
+
+    EXPECT_CALL(vulkan,
+                vkCreatePipelineLayout(deviceHandle,
+                                       testing::Truly([](const VkPipelineLayoutCreateInfo* info) {
+                                           return info->setLayoutCount == 1U;
+                                       }),
+                                       _,
+                                       NotNull()))
+        .WillOnce(Return(failure))
+        .RetiresOnSaturation();
+    pass = createToneMappingPass();
+    ASSERT_FALSE(pass);
+    EXPECT_EQ(pass.error().code, panda::ErrorCode::ResourceExhausted);
+
+    EXPECT_CALL(vulkan,
+                vkCreateDescriptorPool(deviceHandle,
+                                       testing::Truly([](const VkDescriptorPoolCreateInfo* info) {
+                                           return info->maxSets == 2U;
+                                       }),
+                                       _,
+                                       NotNull()))
+        .WillOnce(Return(failure))
+        .RetiresOnSaturation();
+    pass = createToneMappingPass();
+    ASSERT_FALSE(pass);
+    EXPECT_EQ(pass.error().code, panda::ErrorCode::ResourceExhausted);
+
+    EXPECT_CALL(vulkan,
+                vkAllocateDescriptorSets(deviceHandle,
+                                         testing::Truly([](const VkDescriptorSetAllocateInfo* info) {
+                                             return info->descriptorSetCount == 2U;
+                                         }),
+                                         NotNull()))
+        .WillOnce(Return(failure))
+        .RetiresOnSaturation();
+    pass = createToneMappingPass();
+    ASSERT_FALSE(pass);
+    EXPECT_EQ(pass.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(FrameBindingsTest, ToneMappingPipelinePropagatesShaderAndPipelineFailures)
+{
+    auto pass = createToneMappingPass();
+    ASSERT_TRUE(pass);
+    EXPECT_CALL(vulkan, vkCreateShaderModule(deviceHandle, NotNull(), nullptr, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorDeviceLost)));
+    auto prepared = (*pass)->prepare(vk::Format::eB8G8R8A8Srgb);
+    ASSERT_FALSE(prepared);
+    EXPECT_EQ(prepared.error().code, panda::ErrorCode::DeviceLost);
+
+    pass = createToneMappingPass();
+    ASSERT_TRUE(pass);
+    EXPECT_CALL(vulkan, vkCreateShaderModule(deviceHandle, NotNull(), nullptr, NotNull()))
+        .WillOnce(
+            [this](VkDevice, const VkShaderModuleCreateInfo*, const VkAllocationCallbacks*, VkShaderModule* output) {
+                *output = fakeHandle<VkShaderModule>(nextHandle++);
+                return static_cast<VkResult>(vk::Result::eSuccess);
+            })
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorDeviceLost)));
+    EXPECT_CALL(vulkan, vkDestroyShaderModule(deviceHandle, _, nullptr));
+    prepared = (*pass)->prepare(vk::Format::eR8G8B8A8Srgb);
+    ASSERT_FALSE(prepared);
+    EXPECT_EQ(prepared.error().code, panda::ErrorCode::DeviceLost);
+
+    pass = createToneMappingPass();
+    ASSERT_TRUE(pass);
+    expectToneMappingShaders(2);
+    expectToneMappingPipelines(1, static_cast<VkResult>(vk::Result::eErrorDeviceLost));
+    prepared = (*pass)->prepare(vk::Format::eB8G8R8A8Unorm);
+    ASSERT_FALSE(prepared);
+    EXPECT_EQ(prepared.error().code, panda::ErrorCode::DeviceLost);
+}
+
+TEST_F(FrameBindingsTest, ToneMappingSetsInputsAndCachesSrgbPipelineVariants)
+{
+    auto pass = createToneMappingPass();
+    ASSERT_TRUE(pass);
+    const auto first = vk::ImageView {fakeHandle<VkImageView>(1001)};
+    const auto second = vk::ImageView {fakeHandle<VkImageView>(1002)};
+    auto inputs = (*pass)->setInputViews(std::array<vk::ImageView, 2> {first, vk::ImageView {}});
+    ASSERT_FALSE(inputs);
+    EXPECT_EQ(inputs.error().code, panda::ErrorCode::InvalidArgument);
+    inputs = (*pass)->setInputViews(std::array<vk::ImageView, 2> {vk::ImageView {}, second});
+    ASSERT_FALSE(inputs);
+    EXPECT_EQ(inputs.error().code, panda::ErrorCode::InvalidArgument);
+    ASSERT_TRUE((*pass)->setInputViews(std::array<vk::ImageView, 2> {first, second}));
+
+    expectToneMappingShaders(6);
+    EXPECT_CALL(vulkan, vkCreateGraphicsPipelines(deviceHandle, _, 1, NotNull(), nullptr, NotNull()))
+        .Times(3)
+        .WillRepeatedly([this](VkDevice,
+                               VkPipelineCache,
+                               std::uint32_t,
+                               const VkGraphicsPipelineCreateInfo* info,
+                               const VkAllocationCallbacks*,
+                               VkPipeline* output) {
+            const auto* const rendering = static_cast<const VkPipelineRenderingCreateInfo*>(info->pNext);
+            EXPECT_EQ(rendering->colorAttachmentCount, 1U);
+            const auto stages = std::span {info->pStages, info->stageCount};
+            const auto* const specialization = stages.back().pSpecializationInfo;
+            const auto colorFormat =
+                std::span {rendering->pColorAttachmentFormats, rendering->colorAttachmentCount}.front();
+            EXPECT_NE(specialization, nullptr);
+            if (specialization == nullptr)
+            {
+                return static_cast<VkResult>(vk::Result::eErrorUnknown);
+            }
+            const auto* const isSrgb = static_cast<const std::uint32_t*>(specialization->pData);
+            EXPECT_EQ(*isSrgb, colorFormat == VK_FORMAT_B8G8R8A8_SRGB || colorFormat == VK_FORMAT_R8G8B8A8_SRGB);
+            *output = fakeHandle<VkPipeline>(nextHandle++);
+            return static_cast<VkResult>(vk::Result::eSuccess);
+        });
+    EXPECT_CALL(vulkan, vkDestroyPipeline(deviceHandle, _, nullptr)).Times(3);
+
+    ASSERT_TRUE((*pass)->prepare(vk::Format::eB8G8R8A8Srgb));
+    ASSERT_TRUE((*pass)->prepare(vk::Format::eR8G8B8A8Srgb));
+    ASSERT_TRUE((*pass)->prepare(vk::Format::eB8G8R8A8Unorm));
+    EXPECT_TRUE((*pass)->prepare(vk::Format::eB8G8R8A8Srgb));
+}
+
+TEST_F(FrameBindingsTest, FrameExecutionPropagatesToneMappingInitializationFailure)
+{
+    expectMeshRendererTextures();
+    auto execution = createFrameExecution();
+    ASSERT_TRUE(execution);
+    const auto view = makeView(1);
+    EXPECT_CALL(vulkan,
+                vkCreateSampler(deviceHandle,
+                                testing::Truly([](const VkSamplerCreateInfo* info) {
+                                    return info->magFilter == VK_FILTER_NEAREST &&
+                                           info->addressModeU == VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE &&
+                                           info->borderColor == VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+                                }),
+                                _,
+                                NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)))
+        .RetiresOnSaturation();
+
+    const auto prepared = (*execution)->prepareOutput({.width = 64, .height = 64}, vk::Format::eB8G8R8A8Srgb, view);
+
+    ASSERT_FALSE(prepared);
+    EXPECT_EQ(prepared.error().code, panda::ErrorCode::ResourceExhausted);
+
+    expectToneMappingShaders(2);
+    expectToneMappingPipelines(1, static_cast<VkResult>(vk::Result::eSuccess));
+    const auto retried = (*execution)->prepareOutput({.width = 128, .height = 64}, vk::Format::eB8G8R8A8Srgb, view);
+    ASSERT_TRUE(retried);
+}
+
+TEST_F(FrameBindingsTest, FrameExecutionPropagatesToneMappingPipelineFailure)
+{
+    expectMeshRendererTextures();
+    auto execution = createFrameExecution();
+    ASSERT_TRUE(execution);
+    const auto view = makeView(1);
+    EXPECT_CALL(vulkan, vkCreateShaderModule(deviceHandle, NotNull(), nullptr, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorDeviceLost)))
+        .RetiresOnSaturation();
+
+    const auto prepared = (*execution)->prepareOutput({.width = 64, .height = 64}, vk::Format::eB8G8R8A8Srgb, view);
+
+    ASSERT_FALSE(prepared);
+    EXPECT_EQ(prepared.error().code, panda::ErrorCode::DeviceLost);
+}
+
+TEST_F(FrameBindingsTest, FrameExecutionPropagatesResizeAndRecordingFailures)
+{
+    expectMeshRendererTextures();
+    auto execution = createFrameExecution();
+    ASSERT_TRUE(execution);
+    const auto view = makeView(1);
+    expectToneMappingShaders(2);
+    expectToneMappingPipelines(1, static_cast<VkResult>(vk::Result::eSuccess));
+    ASSERT_TRUE(
+        (*execution)
+            ->prepareOutput({.width = 64, .height = 64}, vk::Format::eB8G8R8A8Srgb, view, vk::Format::eB8G8R8A8Srgb));
+    ASSERT_TRUE((*execution)->prepareOutput({.width = 128, .height = 64}, vk::Format::eB8G8R8A8Srgb, view));
+
+    (*execution)->setLastCompletion(0, 1);
+    EXPECT_CALL(submissions, waitValue(1, 10'000'000'000))
+        .WillOnce(Return(panda::Result<panda::WaitStatus> {
+            std::unexpected {panda::makeError(panda::ErrorCode::ResourceExhausted, "wait failed")}}));
+    const auto resized = (*execution)->prepareOutput({.width = 192, .height = 64}, vk::Format::eB8G8R8A8Srgb, view);
+    ASSERT_FALSE(resized);
+    EXPECT_EQ(resized.error().code, panda::ErrorCode::ResourceExhausted);
+
+    (*execution)->setLastCompletion(0, 0);
+    ASSERT_TRUE((*execution)->prepareSlot(0, view));
+    EXPECT_CALL(buffers, writeMapped(_, _, _)).WillOnce(Return(bufferFailure())).RetiresOnSaturation();
+    const auto recorded = (*execution)
+                              ->recordContent(0,
+                                              {
+                                                  .imageView = fakeHandle<VkImageView>(900),
+                                                  .extent = {.width = 128, .height = 64},
+                                                  .colorFormat = vk::Format::eB8G8R8A8Srgb
+    },
+                                              view);
+    ASSERT_FALSE(recorded);
+    EXPECT_EQ(recorded.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
 TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors)

@@ -27,10 +27,17 @@ separately for the swapchain and readback target.
 
 ## Verification
 
-- Windows `msvc-fast`: full build passed; CTest had 0 failures and 5 skips
-  (2 output-device failure cases and 3 non-coherent-memory cases).
-- WSL Ubuntu `gcc-fast`: full build passed; CTest had 0 failures and 8 skips
-  (5 CUDA interop and 3 non-coherent-memory cases unavailable in this environment).
-- `check_docs.py` checked 90 Markdown files and the task queue. `docs-checks`
-  validated 43 Mermaid diagrams in 94 files.
+- Windows `msvc-fast`: full build; CTest passed 728/728 with 5 skips (2 output-device
+  failure cases and 3 non-coherent-memory cases).
+- WSL Ubuntu `gcc-fast`: full build; CTest passed 728/728 with 8 skips (5 CUDA
+  interop and 3 non-coherent-memory cases unavailable in this environment).
+- WSL Ubuntu `gcc-coverage`: CTest passed 709/709 with 4 skips. Coverage was 95.3%
+  lines, 98.3% functions and 85.5% branches; changed production lines were 99.38%
+  covered (320/322).
+- Windows `msvc-quality` and WSL `gcc-quality` passed, including isolated public
+  header builds and formatting. CUDA host/device analysis passed on both platforms;
+  Clang warned that the installed Toolkit 13.0 is newer than its fully supported 12.9.
+- `check_docs.py` checked 90 Markdown files and the task queue with no structural
+  errors. `docs-checks` validated 43 Mermaid diagrams in 94 files; `gcc-docs`
+  generated the public API documentation.
 - `git diff --check` passed.

@@ -46,6 +46,7 @@ protected:
     {
         expectMemoryProperties();
         expectPhysicalDeviceProperties();
+        expectFormatProperties();
         expectImageFormatProperties();
         expectTextureResourceCalls();
         expectPipelineBarrierCalls();
@@ -85,27 +86,42 @@ protected:
             });
     }
 
-    void expectImageFormatProperties()
+    void expectFormatProperties()
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFormatProperties(_, VK_FORMAT_R16G16B16A16_SFLOAT, NotNull()))
             .Times(AnyNumber())
-            .WillRepeatedly([](VkPhysicalDevice, VkFormat, VkFormatProperties* properties) {
-                properties->optimalTilingFeatures =
-                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
-                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) |
-                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+            .WillRepeatedly([this](VkPhysicalDevice, VkFormat, VkFormatProperties* properties) {
+                properties->optimalTilingFeatures = hdrFormatFeatures;
             });
+    }
+
+    void expectImageFormatProperties()
+    {
         EXPECT_CALL(vulkan,
                     vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, _))
             .Times(AnyNumber())
-            .WillRepeatedly([](VkPhysicalDevice,
-                               VkFormat format,
-                               VkImageType,
-                               VkImageTiling,
-                               VkImageUsageFlags,
-                               VkImageCreateFlags,
-                               VkImageFormatProperties* properties) {
+            .WillRepeatedly([this](VkPhysicalDevice,
+                                   VkFormat format,
+                                   VkImageType,
+                                   VkImageTiling,
+                                   VkImageUsageFlags usage,
+                                   VkImageCreateFlags,
+                                   VkImageFormatProperties* properties) {
                 *properties = VkImageFormatProperties {};
+                if (format == VK_FORMAT_R16G16B16A16_SFLOAT &&
+                    usage == (static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) |
+                              static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_SAMPLED_BIT)))
+                {
+                    properties->sampleCounts = hdrImageSampleCounts;
+                    return hdrImageSupportResult;
+                }
+                if ((format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_D16_UNORM) &&
+                    usage == (static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
+                              static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_SAMPLED_BIT)) &&
+                    depthImageSupportResult != vk::Result::eSuccess)
+                {
+                    return static_cast<VkResult>(depthImageSupportResult);
+                }
                 properties->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
                 constexpr auto multisampleCounts = static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_1_BIT) |
                                                    static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT_2_BIT) |
@@ -136,6 +152,12 @@ protected:
                 {
                     return panda::Result<void> {std::unexpected {
                         panda::makeError(panda::ErrorCode::ResourceExhausted, "color allocation failed")}};
+                }
+                if (failResolvedColorAllocation &&
+                    description.usage == (vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled))
+                {
+                    return panda::Result<void> {std::unexpected {
+                        panda::makeError(panda::ErrorCode::ResourceExhausted, "resolved color allocation failed")}};
                 }
                 return panda::Result<void> {};
             });
@@ -203,6 +225,14 @@ protected:
     std::vector<VkImageMemoryBarrier2> barriers;
     std::uintptr_t nextHandle {10};
     bool failColorAllocation {false};
+    bool failResolvedColorAllocation {false};
+    VkFormatFeatureFlags hdrFormatFeatures {
+        static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
+        static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) |
+        static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)};
+    VkResult hdrImageSupportResult {static_cast<VkResult>(vk::Result::eSuccess)};
+    VkSampleCountFlags hdrImageSampleCounts {VK_SAMPLE_COUNT_1_BIT};
+    vk::Result depthImageSupportResult {vk::Result::eSuccess};
 };
 }
 
@@ -307,6 +337,23 @@ TEST_F(RenderAttachmentsTest, FailedMsaaReplacementKeepsPublishedResourcesAndAll
     EXPECT_EQ((*attachments)->getOutputDescription().sampleCount, vk::SampleCountFlagBits::e2);
 }
 
+TEST_F(RenderAttachmentsTest, HeightOnlyResizeRecreatesResolvedColorAttachments)
+{
+    auto attachments = createAttachments();
+    ASSERT_TRUE(attachments);
+    const auto initial = (*attachments)->getOutputDescription();
+    const auto initialResolvedView = (*attachments)->getResolvedColorView(0);
+    auto extent = initial.extent;
+    ++extent.height;
+
+    auto resized = (*attachments)->prepareResize(extent, initial.colorFormat);
+
+    ASSERT_TRUE(resized);
+    EXPECT_EQ(resized->description.extent, extent);
+    (*attachments)->publishResize(std::move(*resized));
+    EXPECT_NE((*attachments)->getResolvedColorView(0), initialResolvedView);
+}
+
 TEST_F(RenderAttachmentsTest, SelectsTheHighestSupportedCountAtOrBelowTheRequest)
 {
     constexpr auto format = vk::Format::eB8G8R8A8Srgb;
@@ -335,6 +382,76 @@ TEST_F(RenderAttachmentsTest, RejectsHdrFormatWithoutBlendSupport)
     const auto supported = RenderAttachments::validateRequiredFormats(physical);
     ASSERT_FALSE(supported);
     EXPECT_EQ(supported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(RenderAttachmentsTest, RejectsUnsupportedHdrImageUsageAndMissingFeatures)
+{
+    hdrImageSupportResult = static_cast<VkResult>(vk::Result::eErrorFormatNotSupported);
+    auto supported = RenderAttachments::validateRequiredFormats(physical);
+    ASSERT_FALSE(supported);
+    EXPECT_EQ(supported.error().code, panda::ErrorCode::Unsupported);
+
+    hdrImageSupportResult = static_cast<VkResult>(vk::Result::eSuccess);
+    hdrImageSampleCounts = 0;
+    supported = RenderAttachments::validateRequiredFormats(physical);
+    ASSERT_FALSE(supported);
+    EXPECT_EQ(supported.error().code, panda::ErrorCode::Unsupported);
+
+    hdrImageSampleCounts = VK_SAMPLE_COUNT_1_BIT;
+    hdrFormatFeatures &= ~static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
+    supported = RenderAttachments::validateRequiredFormats(physical);
+    ASSERT_FALSE(supported);
+    EXPECT_EQ(supported.error().code, panda::ErrorCode::Unsupported);
+
+    hdrFormatFeatures = static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
+                        static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+    supported = RenderAttachments::validateRequiredFormats(physical);
+    ASSERT_FALSE(supported);
+    EXPECT_EQ(supported.error().code, panda::ErrorCode::Unsupported);
+
+    hdrFormatFeatures = static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
+                        static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT);
+    supported = RenderAttachments::validateRequiredFormats(physical);
+    ASSERT_FALSE(supported);
+    EXPECT_EQ(supported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(RenderAttachmentsTest, PropagatesHdrAndDepthFormatQueryErrors)
+{
+    hdrImageSupportResult = static_cast<VkResult>(vk::Result::eErrorDeviceLost);
+    auto supported = RenderAttachments::validateRequiredFormats(physical);
+    ASSERT_FALSE(supported);
+    EXPECT_EQ(supported.error().code, panda::ErrorCode::DeviceLost);
+
+    hdrImageSupportResult = static_cast<VkResult>(vk::Result::eSuccess);
+    depthImageSupportResult = vk::Result::eErrorFormatNotSupported;
+    supported = RenderAttachments::validateRequiredFormats(physical);
+    ASSERT_FALSE(supported);
+    EXPECT_EQ(supported.error().code, panda::ErrorCode::Unsupported);
+
+    depthImageSupportResult = vk::Result::eErrorDeviceLost;
+    supported = RenderAttachments::validateRequiredFormats(physical);
+    ASSERT_FALSE(supported);
+    EXPECT_EQ(supported.error().code, panda::ErrorCode::DeviceLost);
+}
+
+TEST_F(RenderAttachmentsTest, PropagatesHdrValidationAndResolvedAttachmentAllocationFailures)
+{
+    hdrFormatFeatures &= ~static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+    const auto unsupported = createAttachments();
+    ASSERT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+    EXPECT_TRUE(createdUsages.empty());
+
+    hdrFormatFeatures = static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
+                        static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) |
+                        static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+    auto attachments = createAttachments();
+    ASSERT_TRUE(attachments);
+    failResolvedColorAllocation = true;
+    const auto resized = (*attachments)->prepareResize({.width = 128, .height = 64}, vk::Format::eR8G8B8A8Unorm);
+    ASSERT_FALSE(resized);
+    EXPECT_EQ(resized.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
 TEST_F(RenderAttachmentsTest, RecordingDoesNotCommitLayoutHistoryUntilSubmission)

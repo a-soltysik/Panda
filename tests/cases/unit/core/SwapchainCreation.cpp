@@ -133,18 +133,18 @@ protected:
             });
     }
 
-    void expectFormats(Failure failure)
+    void expectFormats(Failure failure, vk::Format format = vk::Format::eB8G8R8A8Srgb)
     {
         EXPECT_CALL(vulkan,
                     vkGetPhysicalDeviceSurfaceFormatsKHR(fakeHandle<VkPhysicalDevice>(2), surface, NotNull(), _))
             .Times(failure == Failure::Formats ? 1 : 2)
             .WillRepeatedly(
-                [failure](VkPhysicalDevice, VkSurfaceKHR, std::uint32_t* count, VkSurfaceFormatKHR* output) {
+                [failure, format](VkPhysicalDevice, VkSurfaceKHR, std::uint32_t* count, VkSurfaceFormatKHR* output) {
                     *count = 1;
                     if (output != nullptr)
                     {
                         *output = VkSurfaceFormatKHR {
-                            .format = static_cast<VkFormat>(vk::Format::eB8G8R8A8Srgb),
+                            .format = static_cast<VkFormat>(format),
                             .colorSpace = static_cast<VkColorSpaceKHR>(vk::ColorSpaceKHR::eSrgbNonlinear)};
                     }
                     return failure == Failure::Formats ? exhausted : success;
@@ -198,20 +198,27 @@ protected:
         }
     }
 
-    void verifySwapchainInfo(const VkSwapchainCreateInfoKHR& info, bool separateQueues, vk::PresentModeKHR presentMode)
+    void verifySwapchainInfo(const VkSwapchainCreateInfoKHR& info,
+                             bool separateQueues,
+                             vk::PresentModeKHR presentMode,
+                             vk::Format format)
     {
         verifySwapchainIdentity(info, presentMode);
         verifySwapchainSharing(info, separateQueues);
+        EXPECT_EQ(info.imageFormat, static_cast<VkFormat>(format));
     }
 
-    void expectSwapchain(Failure failure, bool separateQueues, vk::PresentModeKHR presentMode)
+    void expectSwapchain(Failure failure,
+                         bool separateQueues,
+                         vk::PresentModeKHR presentMode,
+                         vk::Format format = vk::Format::eB8G8R8A8Srgb)
     {
         EXPECT_CALL(vulkan, vkCreateSwapchainKHR(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
-            .WillOnce([this, failure, separateQueues, presentMode](VkDevice,
-                                                                   const VkSwapchainCreateInfoKHR* info,
-                                                                   const VkAllocationCallbacks*,
-                                                                   VkSwapchainKHR* output) {
-                verifySwapchainInfo(*info, separateQueues, presentMode);
+            .WillOnce([this, failure, separateQueues, presentMode, format](VkDevice,
+                                                                           const VkSwapchainCreateInfoKHR* info,
+                                                                           const VkAllocationCallbacks*,
+                                                                           VkSwapchainKHR* output) {
+                verifySwapchainInfo(*info, separateQueues, presentMode, format);
                 *output = chain;
                 return failure == Failure::Swapchain ? exhausted : success;
             });
@@ -232,17 +239,17 @@ protected:
             });
     }
 
-    void expectView(std::size_t index, Failure failure)
+    void expectView(std::size_t index, Failure failure, vk::Format format = vk::Format::eB8G8R8A8Srgb)
     {
         EXPECT_CALL(vulkan, vkCreateImageView(fakeHandle<VkDevice>(3), NotNull(), nullptr, NotNull()))
             .InSequence(creation)
-            .WillOnce([index, failure](VkDevice,
-                                       const VkImageViewCreateInfo* info,
-                                       const VkAllocationCallbacks*,
-                                       VkImageView* output) {
+            .WillOnce([index, failure, format](VkDevice,
+                                               const VkImageViewCreateInfo* info,
+                                               const VkAllocationCallbacks*,
+                                               VkImageView* output) {
                 EXPECT_EQ(info->image, fakeHandle<VkImage>(10 + index));
                 EXPECT_EQ(info->viewType, static_cast<VkImageViewType>(vk::ImageViewType::e2D));
-                EXPECT_EQ(info->format, static_cast<VkFormat>(vk::Format::eB8G8R8A8Srgb));
+                EXPECT_EQ(info->format, static_cast<VkFormat>(format));
                 EXPECT_EQ(info->subresourceRange.levelCount, 1U);
                 EXPECT_EQ(info->subresourceRange.layerCount, 1U);
                 *output = fakeHandle<VkImageView>(20 + index);
@@ -275,9 +282,9 @@ protected:
                 });
     }
 
-    void expectImage(std::size_t index, Failure failure)
+    void expectImage(std::size_t index, Failure failure, vk::Format format = vk::Format::eB8G8R8A8Srgb)
     {
-        expectView(index, failure);
+        expectView(index, failure, format);
         if (failure != Failure::View)
         {
             expectSemaphore(index, failure);
@@ -314,14 +321,15 @@ protected:
         Failure failure,
         bool separateQueues = false,
         bool completedFirstImage = false,
-        panda::EngineOptions::PresentationMode presentationMode = panda::EngineOptions::PresentationMode::Fifo)
+        panda::EngineOptions::PresentationMode presentationMode = panda::EngineOptions::PresentationMode::Fifo,
+        vk::Format format = vk::Format::eB8G8R8A8Srgb)
     {
         expectCapabilities(failure);
         if (failure == Failure::Capabilities)
         {
             return;
         }
-        expectFormats(failure);
+        expectFormats(failure, format);
         if (failure == Failure::Formats || failure == Failure::Configuration)
         {
             return;
@@ -332,15 +340,15 @@ protected:
             return;
         }
         const auto vulkanMode = requestedVulkanPresentMode(presentationMode);
-        expectSwapchain(failure, separateQueues, vulkanMode);
+        expectSwapchain(failure, separateQueues, vulkanMode, format);
         if (failure == Failure::Swapchain)
         {
             return;
         }
-        expectOwnedImages(failure, completedFirstImage);
+        expectOwnedImages(failure, completedFirstImage, format);
     }
 
-    void expectOwnedImages(Failure failure, bool completedFirstImage)
+    void expectOwnedImages(Failure failure, bool completedFirstImage, vk::Format format)
     {
         expectImages(failure, 2U);
         if (failure == Failure::Images)
@@ -348,23 +356,23 @@ protected:
             EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
             return;
         }
-        expectImageFailures(failure, completedFirstImage);
+        expectImageFailures(failure, completedFirstImage, format);
         EXPECT_CALL(vulkan, vkDestroySwapchainKHR(fakeHandle<VkDevice>(3), chain, nullptr)).After(cleanup);
     }
 
-    void expectImageFailures(Failure failure, bool completedFirstImage)
+    void expectImageFailures(Failure failure, bool completedFirstImage, vk::Format format)
     {
         if (failure == Failure::None)
         {
-            expectImage(0, Failure::None);
-            expectImage(1, Failure::None);
+            expectImage(0, Failure::None, format);
+            expectImage(1, Failure::None, format);
             return;
         }
         if (completedFirstImage)
         {
-            expectImage(0, Failure::None);
+            expectImage(0, Failure::None, format);
         }
-        expectImage(completedFirstImage ? 1U : 0U, failure);
+        expectImage(completedFirstImage ? 1U : 0U, failure, format);
     }
 
     auto create(bool separateQueues = false,
@@ -404,8 +412,17 @@ TEST_F(SwapchainCreationTest, OwnsCompleteGenerationAndKeepsSwapchainImagesBorro
     ASSERT_EQ(generation->images.size(), 2U);
     EXPECT_EQ(*generation->swapchain, vk::SwapchainKHR {chain});
     EXPECT_EQ(generation->extent, (vk::Extent2D {.width = 640, .height = 480}));
+    EXPECT_EQ(generation->format, vk::Format::eB8G8R8A8Srgb);
     EXPECT_EQ(generation->images.front().image, vk::Image {fakeHandle<VkImage>(10)});
     EXPECT_EQ(*generation->images.front().view, vk::ImageView {fakeHandle<VkImageView>(20)});
+}
+
+TEST_F(SwapchainCreationTest, PreservesTheSelectedRgbaSrgbSurfaceFormat)
+{
+    expectCreation(Failure::None, false, true, panda::EngineOptions::PresentationMode::Fifo, vk::Format::eR8G8B8A8Srgb);
+    const auto generation = create();
+    ASSERT_TRUE(generation);
+    EXPECT_EQ(generation->format, vk::Format::eR8G8B8A8Srgb);
 }
 
 TEST_F(SwapchainCreationTest, UsesConcurrentSharingForSeparateQueueFamilies)

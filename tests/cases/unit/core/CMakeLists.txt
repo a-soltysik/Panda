@@ -168,7 +168,8 @@ panda_add_test(panda_unit_frame_bindings unit
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core" "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"
     SOURCES FrameBindings.cpp
     LIBRARIES Panda::Panda PandaTest::Support
-    MOCKS PandaTest::VulkanMock PandaTest::BufferResourceMock PandaTest::TextureResourceMock)
+    MOCKS PandaTest::VulkanMock PandaTest::BufferResourceMock
+          PandaTest::TextureResourceMock PandaTest::SubmissionQueueMock)
 
 panda_add_test(panda_unit_render_attachments unit
     VULKAN_INTERNAL

@@ -223,10 +223,13 @@ protected:
                 }});
     }
 
-    void expectAdapter(bool windowed, bool separateQueues = false, TimestampScenario timestamps = {})
+    void expectAdapter(bool windowed,
+                       bool separateQueues = false,
+                       TimestampScenario timestamps = {},
+                       bool hdrBlendSupport = true)
     {
         expectEnumeration(timestamps.periodNanoseconds);
-        expectRenderFormatSupport();
+        expectRenderFormatSupport(hdrBlendSupport);
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFeatures2(physical, NotNull()))
             .WillOnce(testing::Action<decltype(vkGetPhysicalDeviceFeatures2)> {
                 [windowed](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
@@ -249,14 +252,15 @@ protected:
         }
     }
 
-    void expectRenderFormatSupport()
+    void expectRenderFormatSupport(bool blendSupport = true)
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFormatProperties(physical, VK_FORMAT_R16G16B16A16_SFLOAT, NotNull()))
             .Times(testing::AnyNumber())
-            .WillRepeatedly([](VkPhysicalDevice, VkFormat, VkFormatProperties* properties) {
+            .WillRepeatedly([blendSupport](VkPhysicalDevice, VkFormat, VkFormatProperties* properties) {
                 properties->optimalTilingFeatures =
                     static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) |
-                    static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) |
+                    (blendSupport ? static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT)
+                                  : VkFormatFeatureFlags {}) |
                     static_cast<VkFormatFeatureFlags>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
             });
         EXPECT_CALL(
@@ -897,6 +901,19 @@ TEST_F(EngineLifecycleTest, CreatesEngineWithZeroLightBudget)
     const auto created = panda::Engine::create({.maxLights = 0});
 
     ASSERT_TRUE(created);
+}
+
+TEST_F(EngineLifecycleTest, RejectsAdapterWithoutHdrBlendSupportBeforeCreatingDevice)
+{
+    expectInstance();
+    expectAdapter(false, false, {}, false);
+    expectParentsDestroyed(false, false);
+    EXPECT_CALL(vulkan, vkCreateDevice(_, NotNull(), nullptr, NotNull())).Times(0);
+
+    const auto created = panda::Engine::create();
+
+    ASSERT_FALSE(created);
+    EXPECT_EQ(created.error().code, panda::ErrorCode::Unsupported);
 }
 
 TEST_F(EngineLifecycleTest, TimelineCreationFailurePreventsEnginePublication)
