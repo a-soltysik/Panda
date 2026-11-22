@@ -177,3 +177,12 @@ panda_add_test(panda_unit_render_attachments unit
     SOURCES RenderAttachments.cpp
     LIBRARIES Panda::Panda PandaTest::Support
     MOCKS PandaTest::VulkanMock PandaTest::TextureResourceMock)
+
+panda_add_test(panda_unit_shader_resources unit
+    SOURCES ShaderResources.cpp
+    LIBRARIES Panda::Panda)
+panda_add_shaders(panda_unit_shader_resources
+    NAMESPACE test::shader
+    SOURCES fixtures/shaders/basic.vert fixtures/shaders/basic.frag
+            fixtures/shaders/left/marker.vert fixtures/shaders/right/marker.vert
+    INCLUDE_DIRECTORIES fixtures/shaders)

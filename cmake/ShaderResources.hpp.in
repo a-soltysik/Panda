@@ -1,0 +1,39 @@
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string_view>
+
+namespace PANDA_SHADER_NAMESPACE_PLACEHOLDER
+{
+enum class Stage : std::uint8_t
+{
+    Vertex,
+    Fragment
+};
+
+struct ShaderResource
+{
+    std::string_view key;
+    Stage stage;
+    std::span<const std::uint32_t> words;
+};
+
+namespace detail
+{
+PANDA_SHADER_ARRAYS_PLACEHOLDER
+}  // namespace detail
+
+inline constexpr std::array<ShaderResource, PANDA_SHADER_COUNT_PLACEHOLDER> shaderResources {
+    PANDA_SHADER_ENTRIES_PLACEHOLDER};
+
+[[nodiscard]] constexpr auto findShader(std::string_view key) noexcept -> std::optional<ShaderResource>
+{
+    // NOLINTNEXTLINE(readability-qualified-auto): std::array iterators differ between libstdc++ and MSVC.
+    const auto shader = std::ranges::find(shaderResources, key, &ShaderResource::key);
+    return shader == shaderResources.end() ? std::nullopt : std::optional<ShaderResource> {*shader};
+}
+}  // namespace PANDA_SHADER_NAMESPACE_PLACEHOLDER

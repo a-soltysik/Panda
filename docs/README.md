@@ -5,8 +5,9 @@ integration. The design, build foundation, GPU resources, CUDA handoff and
 first-scene phases are accepted. A C++23 static library, shared logger/checked
 diagnostics, direct application-supplied mesh rendering with a built-in lit
 material and directional shadows, an optional Scene module, GLFW window tools,
-and CUDA external-buffer import and handoff exist. Broader renderer features,
-graphics-only consumer integration is planned before application-driven compute;
+and CUDA external-buffer import and handoff exist. Custom shader integration is in
+progress; the remaining renderer features and graphics-only consumer integration
+are planned before application-driven compute;
 full application modules and replacement acceptance follow afterward.
 See [the plan](development/PLAN.md) for current work and approvals.
 

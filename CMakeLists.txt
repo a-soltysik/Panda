@@ -36,6 +36,7 @@ include(cmake/StaticAnalysis.cmake)
 include(cmake/Formatting.cmake)
 include(cmake/Targets.cmake)
 include(cmake/BuiltinShaders.cmake)
+include(cmake/ShaderResources.cmake)
 
 if(PANDA_BUILD_TESTS)
     enable_testing()
