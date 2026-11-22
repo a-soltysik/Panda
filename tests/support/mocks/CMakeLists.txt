@@ -27,6 +27,14 @@ panda_add_mock(panda_test_vulkan_mock
     LIBRARIES PandaTest::MockHeaders)
 add_library(PandaTest::VulkanMock ALIAS panda_test_vulkan_mock)
 
+panda_add_mock(panda_test_spirv_reflect_mock
+    REPLACES spirv-reflect-static
+    API_LIBRARY spirv-reflect-static
+    SOURCES external/spirv_reflect/SpirvReflectStub.cpp
+    HEADERS external/spirv_reflect/SpirvReflectMock.hpp
+    LIBRARIES PandaTest::MockHeaders)
+add_library(PandaTest::SpirvReflectMock ALIAS panda_test_spirv_reflect_mock)
+
 panda_add_mock(panda_test_range_allocator_mock
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core/vulkan"
     REPLACES panda::core::vulkan::resources::RangeAllocator

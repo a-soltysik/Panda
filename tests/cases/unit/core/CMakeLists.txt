@@ -178,12 +178,8 @@ panda_add_test(panda_unit_render_attachments unit
     LIBRARIES Panda::Panda PandaTest::Support
     MOCKS PandaTest::VulkanMock PandaTest::TextureResourceMock)
 
-panda_add_test(panda_unit_shader_resources unit
-    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core"
-    SOURCES ShaderResources.cpp ShaderReflection.cpp
-    LIBRARIES Panda::Panda)
-panda_add_shaders(panda_unit_shader_resources
-    NAMESPACE test::shader
-    SOURCES fixtures/shaders/basic.vert fixtures/shaders/basic.frag
-            fixtures/shaders/left/marker.vert fixtures/shaders/right/marker.vert
-    INCLUDE_DIRECTORIES fixtures/shaders)
+panda_add_test(panda_unit_shader_reflection unit
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core" "${PROJECT_SOURCE_DIR}/src/core/vulkan"
+    SOURCES ShaderReflection.cpp "${PROJECT_SOURCE_DIR}/src/core/vulkan/renderer/ShaderReflection.cpp"
+    LIBRARIES panda_base
+    MOCKS PandaTest::SpirvReflectMock)

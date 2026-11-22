@@ -52,35 +52,31 @@ validated words using a readable C++ header template. The generated lookup uses
 source-relative keys and returns `std::optional<ShaderResource>`. SPIRV-Reflect
 is linked privately through its upstream static-library CMake option. A private
 adapter checks the `main` stage and returns owning descriptor, block-member and
-push-constant metadata; tests verify `std140` offsets. Image dimension/sample
-type and capability checks remain. The adapter is not yet connected to program
-or pipeline creation, so the GLSL single-source layout rule and removal of
-duplicate binding macros remain unimplemented. Runtime programs, layout
-rejection, resource bindings, shadow variants, pipeline warmup/cache and
-transactional reload remain. Procedural instancing and its sphere-impostor
-rendering and scale measurements also remain.
+push-constant metadata. Mock-backed unit tests cover API failures and metadata
+copying without linking the SPIRV-Reflect library; integration tests use compiled
+GLSL and the real library to verify `std140` offsets. Image dimension/sample type
+and capability checks remain. The adapter is not yet connected to program or
+pipeline creation, so the GLSL single-source layout rule and removal of duplicate
+binding macros remain unimplemented. Runtime programs, layout rejection,
+resource bindings, shadow variants, pipeline warmup/cache and transactional reload
+remain. Procedural instancing and its sphere-impostor rendering and scale
+measurements also remain.
 
 ## Verification
 
-Windows used CMake 4.4.2, MSVC toolset 14.51.36231, Vulkan SDK 1.4.341.1 and
-clang-format 22.1.8. The full `msvc-quality` build, interface-header and format
-targets, and `clang-cuda-analysis-windows` passed. CUDA analysis warned that the
-installed CUDA version is newer than Clang's partially supported 12.9. The full
-`msvc-fast` build and CTest suite passed: 731 tests, 726 passed and five were
-skipped. The `docs-checks` preset passed.
+Windows passed the `msvc-quality` build, interface-header and format checks,
+`clang-cuda-analysis-windows`, and the `msvc-fast` build and full CTest suite
+(740 total: 735 passed, 5 skipped). Linux passed the matching `gcc-quality`,
+interface-header, format and `clang-cuda-analysis` checks, plus the `gcc-fast`
+build and full CTest suite (740 total: 732 passed, 8 skipped). CUDA analysis on
+both platforms reported that the installed CUDA version is newer than Clang's
+partially supported 12.9. The project-maintenance checker found no structural
+errors in 90 Markdown files and the task queue; `docs-checks` validated 43
+Mermaid diagrams in 94 files, and `gcc-docs` passed.
 
-The synchronized WSL mirror passed `gcc-quality`, the interface-header and
-format targets, and `clang-cuda-analysis`. CUDA analysis reported the same
-version warning. The full `gcc-fast` build and CTest suite passed: 731 tests,
-723 passed and eight were skipped for local hardware or capability reasons.
-Both C and C++ builds used ccache. The `docs-checks` preset validated 43 Mermaid
-diagrams in 94 files, and `gcc-docs` passed. The project-maintenance checker
-checked 90 Markdown files and the task queue with no structural errors.
-
-The new tests check reflected descriptor and push-constant metadata, `std140`
-member offsets, stage mismatch and invalid headers. They do not create a custom
-Vulkan pipeline or verify custom shader rendering on a GPU. Reflected layouts
-are not yet consumed by program creation, so GLSL is not yet the implemented
-single source for descriptor bindings and vertex locations. Runtime programs,
-layout rejection, resource bindings, shadow variants, pipeline warmup/cache,
-transactional reload and procedural-instancing checks remain.
+These checks do not create a custom Vulkan pipeline or verify custom shader
+rendering on a GPU. Reflected layouts are not yet consumed by program creation,
+so GLSL is not yet the implemented single source for descriptor bindings and
+vertex locations. Runtime programs, layout rejection, resource bindings, shadow
+variants, pipeline warmup/cache, transactional reload and procedural-instancing
+checks remain.

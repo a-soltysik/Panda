@@ -47,3 +47,13 @@ panda_add_test(panda_integration_texture_resource integration
     SOURCES TextureResource.cpp
     LIBRARIES Panda::Panda PandaTest::Support
     MOCKS PandaTest::VulkanMock)
+
+panda_add_test(panda_integration_shader_resources integration
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core"
+    SOURCES ShaderResources.cpp ShaderReflection.cpp
+    LIBRARIES Panda::Panda)
+panda_add_shaders(panda_integration_shader_resources
+    NAMESPACE test::shader
+    SOURCES fixtures/shaders/basic.vert fixtures/shaders/basic.frag
+            fixtures/shaders/left/marker.vert fixtures/shaders/right/marker.vert
+    INCLUDE_DIRECTORIES fixtures/shaders)
