@@ -47,5 +47,33 @@ auto spvReflectEnumerateEntryPointPushConstantBlocks(const SpvReflectShaderModul
     return panda::test::ScopedMock<panda::test::SpirvReflectMock>::getActiveMock()
         .enumerateEntryPointPushConstantBlocks(p_module, entry_point, p_count, pp_blocks);
 }
+
+auto spvReflectEnumerateEntryPointInputVariables(const SpvReflectShaderModule* p_module,
+                                                 const char* entry_point,
+                                                 std::uint32_t* p_count,
+                                                 SpvReflectInterfaceVariable** pp_variables) -> SpvReflectResult
+{
+    return panda::test::ScopedMock<panda::test::SpirvReflectMock>::getActiveMock()
+        .enumerateEntryPointInputVariables(p_module, entry_point, p_count, pp_variables);
+}
+
+auto spvReflectEnumerateEntryPointOutputVariables(const SpvReflectShaderModule* p_module,
+                                                  const char* entry_point,
+                                                  std::uint32_t* p_count,
+                                                  SpvReflectInterfaceVariable** pp_variables) -> SpvReflectResult
+{
+    return panda::test::ScopedMock<panda::test::SpirvReflectMock>::getActiveMock()
+        .enumerateEntryPointOutputVariables(p_module, entry_point, p_count, pp_variables);
+}
+
+auto spvReflectEnumerateSpecializationConstants(const SpvReflectShaderModule* p_module,
+                                                std::uint32_t* p_count,
+                                                SpvReflectSpecializationConstant** pp_constants) -> SpvReflectResult
+{
+    return panda::test::ScopedMock<panda::test::SpirvReflectMock>::getActiveMock().enumerateSpecializationConstants(
+        p_module,
+        p_count,
+        pp_constants);
+}
 }
 // NOLINTEND(readability-identifier-naming)

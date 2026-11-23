@@ -1,9 +1,5 @@
 #version 450
-#extension GL_GOOGLE_include_directive : require
-
-#include "ShaderInterface.inc"
-
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SKYBOX_BINDING) uniform samplerCube skyboxMap;
+layout(set = 0, binding = 8) uniform samplerCube skyboxMap;
 layout(location = 0) in vec3 worldDirection;
 layout(location = 0) out vec4 fragmentColor;
 

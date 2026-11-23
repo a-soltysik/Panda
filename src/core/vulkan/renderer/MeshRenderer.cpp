@@ -33,7 +33,6 @@
 #include "renderer/MeshPipelineCache.hpp"
 #include "renderer/RenderAttachments.hpp"
 #include "renderer/ShaderData.hpp"
-#include "renderer/ShaderInterface.inc"
 #include "resources/MeshResource.hpp"
 
 namespace panda::core::vulkan::renderer
@@ -190,7 +189,7 @@ auto MeshRenderer::initializeBindingsAndPipeline() -> std::expected<void, Error>
         return std::unexpected {bindings.error()};
     }
     _bindings = std::move(*bindings);
-    _pipelineCache.emplace(_device, _bindings->getPipelineLayout());
+    _pipelineCache.emplace(_device, _bindings->getPipelineLayout(), _bindings->getShaderDescriptorSchema());
     const auto& description = _attachments->getOutputDescription();
     pipelineCache().setOutputCompatibility({.colorFormat = description.colorFormat,
                                             .depthFormat = description.depthFormat,
@@ -431,7 +430,7 @@ void MeshRenderer::bindFrameDescriptorSet(vk::CommandBuffer command, FrameDescri
     const auto descriptorSet = _bindings->getFrameDescriptorSet(binding.frameIndex);
     command.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                _bindings->getPipelineLayout(),
-                               PANDA_FRAME_DESCRIPTOR_SET,
+                               _bindings->getFrameDescriptorSetIndex(),
                                1,
                                &descriptorSet,
                                1,
@@ -475,7 +474,7 @@ void MeshRenderer::bindTextureDescriptors(vk::CommandBuffer command,
         const auto textureSet = _bindings->getTextureDescriptorSet(frameIndex, pass.materialIndex);
         command.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                    _bindings->getPipelineLayout(),
-                                   PANDA_TEXTURE_DESCRIPTOR_SET,
+                                   _bindings->getTextureDescriptorSetIndex(),
                                    1,
                                    &textureSet,
                                    0,

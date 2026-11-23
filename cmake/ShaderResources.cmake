@@ -93,6 +93,8 @@ function(panda_add_shaders target)
                 ${shader_arguments}
         DEPENDS ${shader_spirv_files} "${shader_generator}" "${shader_template}"
         VERBATIM)
+    add_custom_target("${target}_shader_resources" DEPENDS "${shader_header}")
+    panda_add_static_analysis_dependency("${target}" "${target}_shader_resources")
     target_sources("${target}" PRIVATE "${shader_header}")
     target_include_directories("${target}" PRIVATE "${shader_root}")
 endfunction()

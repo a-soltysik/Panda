@@ -314,7 +314,7 @@ auto FrameExecution::initializeToneMapping() -> Result<void>
     {
         return {};
     }
-    auto pass = ToneMappingPass::create(_device);
+    auto pass = ToneMappingPass::create(_device, _physicalDevice.getProperties().limits.maxBoundDescriptorSets);
     if (!pass)
     {
         return std::unexpected {pass.error()};

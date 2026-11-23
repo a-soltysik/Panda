@@ -6,11 +6,13 @@
 
 #include "presentation/ToneMappingPass.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <numeric>
 #include <panda/vulkan/Error.hpp>
 #include <span>
 #include <utility>
@@ -19,7 +21,8 @@
 #include "BuiltinShaders.hpp"
 #include "VulkanError.hpp"
 #include "presentation/FrameExecution.hpp"
-#include "renderer/ShaderInterface.inc"
+#include "renderer/DescriptorSets.hpp"
+#include "renderer/ShaderReflection.hpp"
 
 namespace panda::core::vulkan::presentation
 {
@@ -27,23 +30,33 @@ using detail::checkedCreation;
 
 namespace
 {
-auto createShaderModule(const vk::raii::Device& device, std::span<const std::uint32_t> words)
-    -> std::expected<vk::raii::ShaderModule, Error>
-{
-    const auto info = vk::ShaderModuleCreateInfo {.codeSize = words.size_bytes(), .pCode = words.data()};
-    const auto module = (*device).createShaderModule(info, nullptr, *device.getDispatcher());
-    if (module.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(module.result)};
-    }
-    return std::expected<vk::raii::ShaderModule, Error> {std::in_place,
-                                                         device,
-                                                         static_cast<vk::ShaderModule::CType>(module.value)};
-}
-
 auto isSrgb(vk::Format format) -> bool
 {
     return format == vk::Format::eB8G8R8A8Srgb || format == vk::Format::eR8G8B8A8Srgb;
+}
+
+auto hasToneMappingDescriptor(const renderer::ShaderProgramLayout& program) -> bool
+{
+    if (program.descriptors.size() != 1)
+    {
+        return false;
+    }
+    const auto& descriptor = program.descriptors.front();
+    return descriptor.kind == renderer::ShaderDescriptorKind::CombinedImageSampler && descriptor.count == 1 &&
+           std::ranges::find(descriptor.names, "hdrColor") != descriptor.names.end();
+}
+
+auto reflectedStageFlags(std::span<const renderer::ShaderProgramDescriptor::StageLayout> stageLayouts)
+    -> vk::ShaderStageFlags
+{
+    return std::accumulate(stageLayouts.begin(),
+                           stageLayouts.end(),
+                           vk::ShaderStageFlags {},
+                           [](auto flags, const auto& stage) {
+                               return flags | (stage.stage == renderer::ShaderStage::Vertex
+                                                   ? vk::ShaderStageFlagBits::eVertex
+                                                   : vk::ShaderStageFlagBits::eFragment);
+                           });
 }
 
 constexpr auto inputAssembly =
@@ -88,69 +101,63 @@ auto createPipelineForStages(const vk::raii::Device& device,
     return checkedCreation(device.createGraphicsPipeline(nullptr, createInfo));
 }
 
-auto createToneMappingPipeline(const vk::raii::Device& device, vk::PipelineLayout layout, vk::Format outputFormat)
-    -> std::expected<vk::raii::Pipeline, Error>
+auto createToneMappingPipeline(const vk::raii::Device& device,
+                               vk::PipelineLayout layout,
+                               vk::Format outputFormat,
+                               std::uint32_t specializationId) -> std::expected<vk::raii::Pipeline, Error>
 {
-    auto vertex = createShaderModule(device, renderer::shaders::toneMapVertex);
-    if (!vertex)
-    {
-        return std::unexpected {vertex.error()};
-    }
-    auto fragment = createShaderModule(device, renderer::shaders::toneMapFragment);
-    if (!fragment)
-    {
-        return std::unexpected {fragment.error()};
-    }
-    const auto outputIsSrgb = static_cast<std::uint32_t>(isSrgb(outputFormat));
-    static constexpr auto specializationEntry =
-        vk::SpecializationMapEntry {.constantID = PANDA_OUTPUT_SRGB_SPECIALIZATION_ID,
-                                    .offset = 0,
-                                    .size = sizeof(std::uint32_t)};
-    const auto specialization = vk::SpecializationInfo {.mapEntryCount = 1,
-                                                        .pMapEntries = &specializationEntry,
-                                                        .dataSize = sizeof(outputIsSrgb),
-                                                        .pData = &outputIsSrgb};
-    const auto stages = std::array {
-        vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eVertex,
-                                           .module = **vertex,
-                                           .pName = "main"},
-        vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eFragment,
-                                           .module = **fragment,
-                                           .pName = "main",
-                                           .pSpecializationInfo = &specialization}
-    };
-    return createPipelineForStages(device, layout, outputFormat, stages);
+    return detail::createShaderModule(device, renderer::shaders::toneMapVertex).and_then([&](auto vertex) {
+        return detail::createShaderModule(device, renderer::shaders::toneMapFragment).and_then([&](auto fragment) {
+            const auto outputIsSrgb = static_cast<std::uint32_t>(isSrgb(outputFormat));
+            const auto specializationEntry =
+                vk::SpecializationMapEntry {.constantID = specializationId, .offset = 0, .size = sizeof(std::uint32_t)};
+            const auto specialization = vk::SpecializationInfo {.mapEntryCount = 1,
+                                                                .pMapEntries = &specializationEntry,
+                                                                .dataSize = sizeof(outputIsSrgb),
+                                                                .pData = &outputIsSrgb};
+            const auto stages = std::array {
+                vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eVertex,
+                                                   .module = *vertex,
+                                                   .pName = "main"},
+                vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eFragment,
+                                                   .module = *fragment,
+                                                   .pName = "main",
+                                                   .pSpecializationInfo = &specialization}
+            };
+            return createPipelineForStages(device, layout, outputFormat, stages);
+        });
+    });
 }
 }
 
-ToneMappingPass::ToneMappingPass(const vk::raii::Device& device)
-    : _device {device}
+ToneMappingPass::ToneMappingPass(const vk::raii::Device& device, std::uint32_t maxBoundDescriptorSets)
+    : _device {device},
+      _maxBoundDescriptorSets {maxBoundDescriptorSets}
 {
 }
 
 ToneMappingPass::~ToneMappingPass() = default;
 
-auto ToneMappingPass::create(const vk::raii::Device& device) -> std::expected<std::unique_ptr<ToneMappingPass>, Error>
+auto ToneMappingPass::create(const vk::raii::Device& device, std::uint32_t maxBoundDescriptorSets)
+    -> std::expected<std::unique_ptr<ToneMappingPass>, Error>
 {
-    auto pass = std::unique_ptr<ToneMappingPass> {new ToneMappingPass {device}};
-    if (const auto initialized = pass->initialize(); !initialized)
-    {
-        return std::unexpected {initialized.error()};
-    }
-    return pass;
+    auto pass = std::unique_ptr<ToneMappingPass> {
+        new ToneMappingPass {device, maxBoundDescriptorSets}
+    };
+    return pass->initialize().transform([&] {
+        return std::move(pass);
+    });
 }
 
 auto ToneMappingPass::initialize() -> std::expected<void, Error>
 {
-    if (const auto sampler = initializeSampler(); !sampler)
-    {
-        return sampler;
-    }
-    if (const auto layouts = initializeLayouts(); !layouts)
-    {
-        return layouts;
-    }
-    return initializeDescriptors();
+    return initializeLayouts()
+        .and_then([this] {
+            return initializeSampler();
+        })
+        .and_then([this] {
+            return initializeDescriptors();
+        });
 }
 
 auto ToneMappingPass::initializeSampler() -> std::expected<void, Error>
@@ -162,24 +169,75 @@ auto ToneMappingPass::initializeSampler() -> std::expected<void, Error>
                                                                .addressModeV = vk::SamplerAddressMode::eClampToEdge,
                                                                .addressModeW = vk::SamplerAddressMode::eClampToEdge,
                                                                .maxLod = 0.0F};
-    const auto sampler = static_cast<vk::Device>(_device).createSampler(samplerInfo);
-    if (sampler.result != vk::Result::eSuccess)
+    return detail::createVulkanSampler(_device, samplerInfo).transform([this](auto sampler) {
+        _sampler = std::move(sampler);
+    });
+}
+
+auto ToneMappingPass::reflectInterface() -> std::expected<void, Error>
+{
+    const auto program =
+        renderer::reflectGraphicsProgram(renderer::shaders::toneMapVertex,
+                                         std::span<const std::uint32_t> {renderer::shaders::toneMapFragment},
+                                         "tone mapping pipeline");
+    if (!program)
     {
-        return std::unexpected {makeVulkanError(sampler.result)};
+        return std::unexpected {program.error()};
     }
-    _sampler = vk::raii::Sampler {_device, sampler.value};
+    return reflectDescriptor(*program)
+        .and_then([&] {
+            return renderer::specializationConstantId(*program,
+                                                      renderer::ShaderStage::Fragment,
+                                                      "outputIsSrgb",
+                                                      "tone mapping pipeline");
+        })
+        .transform([this](auto id) {
+            _outputSrgbSpecializationId = id;
+        });
+}
+
+auto ToneMappingPass::reflectDescriptor(const renderer::ShaderProgramLayout& program) -> Result<void>
+{
+    if (!hasToneMappingDescriptor(program))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Tone mapping shader has an incompatible descriptor interface")};
+    }
+    const auto& descriptor = program.descriptors.front();
+    if (descriptor.set >= _maxBoundDescriptorSets)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::Unsupported, "Tone mapping shader descriptor set exceeds device limits")};
+    }
+    const auto stages = reflectedStageFlags(descriptor.stageLayouts);
+    if (!stages)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Tone mapping shader descriptor has no reflected stages")};
+    }
+    _descriptorSetIndex = descriptor.set;
+    _binding = {.binding = descriptor.binding,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                .descriptorCount = descriptor.count,
+                .stageFlags = stages};
     return {};
 }
 
-auto ToneMappingPass::initializeLayouts() -> std::expected<void, Error>
+auto ToneMappingPass::initializeLayouts() -> Result<void>
 {
-    static constexpr auto binding =
-        vk::DescriptorSetLayoutBinding {.binding = 0,
-                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                                        .descriptorCount = 1,
-                                        .stageFlags = vk::ShaderStageFlagBits::eFragment};
+    return reflectInterface()
+        .and_then([this] {
+            return createSetLayout();
+        })
+        .and_then([this] {
+            return createPipelineLayout();
+        });
+}
+
+auto ToneMappingPass::createSetLayout() -> Result<void>
+{
     const auto layout = (*_device).createDescriptorSetLayout(
-        vk::DescriptorSetLayoutCreateInfo {.bindingCount = 1, .pBindings = &binding},
+        vk::DescriptorSetLayoutCreateInfo {.bindingCount = 1, .pBindings = &_binding},
         nullptr,
         *_device.getDispatcher());
     if (layout.result != vk::Result::eSuccess)
@@ -189,43 +247,37 @@ auto ToneMappingPass::initializeLayouts() -> std::expected<void, Error>
     _descriptorSetLayout =
         vk::raii::DescriptorSetLayout {_device, static_cast<vk::DescriptorSetLayout::CType>(layout.value)};
 
-    const auto descriptorSetLayout = *_descriptorSetLayout;
-    auto pipelineLayout = checkedCreation(_device.createPipelineLayout(
-        vk::PipelineLayoutCreateInfo {.setLayoutCount = 1, .pSetLayouts = &descriptorSetLayout}));
-    if (!pipelineLayout)
-    {
-        return std::unexpected {pipelineLayout.error()};
-    }
-    _pipelineLayout = std::move(*pipelineLayout);
     return {};
+}
+
+auto ToneMappingPass::createPipelineLayout() -> Result<void>
+{
+    auto layouts = std::vector<vk::DescriptorSetLayout>(_descriptorSetIndex + 1U);
+    for (auto index = std::uint32_t {}; index < _descriptorSetIndex; ++index)
+    {
+        auto emptyLayout = checkedCreation(_device.createDescriptorSetLayout({}));
+        if (!emptyLayout)
+        {
+            return std::unexpected {emptyLayout.error()};
+        }
+        _emptyDescriptorSetLayouts.push_back(std::move(*emptyLayout));
+        layouts.at(index) = *_emptyDescriptorSetLayouts.back();
+    }
+    layouts.back() = *_descriptorSetLayout;
+    auto pipelineLayout = checkedCreation(_device.createPipelineLayout(
+        vk::PipelineLayoutCreateInfo {.setLayoutCount = static_cast<std::uint32_t>(layouts.size()),
+                                      .pSetLayouts = layouts.data()}));
+    return std::move(pipelineLayout).transform([this](auto layout) {
+        _pipelineLayout = std::move(layout);
+    });
 }
 
 auto ToneMappingPass::initializeDescriptors() -> std::expected<void, Error>
 {
-    static constexpr auto poolSize = vk::DescriptorPoolSize {.type = vk::DescriptorType::eCombinedImageSampler,
-                                                             .descriptorCount = static_cast<std::uint32_t>(frameCount)};
-    auto pool = checkedCreation(_device.createDescriptorPool(
-        vk::DescriptorPoolCreateInfo {.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                      .maxSets = static_cast<std::uint32_t>(frameCount),
-                                      .poolSizeCount = 1,
-                                      .pPoolSizes = &poolSize}));
-    if (!pool)
-    {
-        return std::unexpected {pool.error()};
-    }
-    _descriptorPool = std::move(*pool);
-
-    const auto layouts = std::array<vk::DescriptorSetLayout, frameCount> {*_descriptorSetLayout, *_descriptorSetLayout};
-    auto descriptorSets = _device.allocateDescriptorSets(
-        vk::DescriptorSetAllocateInfo {.descriptorPool = *_descriptorPool,
-                                       .descriptorSetCount = static_cast<std::uint32_t>(layouts.size()),
-                                       .pSetLayouts = layouts.data()});
-    if (descriptorSets.result != vk::Result::eSuccess)
-    {
-        return std::unexpected {makeVulkanError(descriptorSets.result)};
-    }
-    _descriptorSets = std::move(descriptorSets.value);
-    return {};
+    return renderer::createDescriptorSets(_device, *_descriptorSetLayout, std::span {&_binding, 1U}, frameCount)
+        .transform([this](auto descriptors) {
+            _descriptors = std::move(descriptors);
+        });
 }
 
 auto ToneMappingPass::setInputViews(const std::array<vk::ImageView, frameCount>& views) -> std::expected<void, Error>
@@ -241,10 +293,10 @@ auto ToneMappingPass::setInputViews(const std::array<vk::ImageView, frameCount>&
         imageInfos.at(index) = {.sampler = *_sampler,
                                 .imageView = views.at(index),
                                 .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
-        writes.at(index) = {.dstSet = *_descriptorSets.at(index),
-                            .dstBinding = 0,
-                            .descriptorCount = 1,
-                            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        writes.at(index) = {.dstSet = *_descriptors.sets.at(index),
+                            .dstBinding = _binding.binding,
+                            .descriptorCount = _binding.descriptorCount,
+                            .descriptorType = _binding.descriptorType,
                             .pImageInfo = &imageInfos.at(index)};
     }
     _device.updateDescriptorSets(writes, {});
@@ -268,7 +320,7 @@ auto ToneMappingPass::prepare(vk::Format outputFormat) -> std::expected<void, Er
 
 auto ToneMappingPass::createPipeline(vk::Format outputFormat) const -> std::expected<vk::raii::Pipeline, Error>
 {
-    return createToneMappingPipeline(_device, *_pipelineLayout, outputFormat);
+    return createToneMappingPipeline(_device, *_pipelineLayout, outputFormat, _outputSrgbSpecializationId);
 }
 
 void ToneMappingPass::record(vk::CommandBuffer command, std::size_t frameIndex, const FrameOutput& output) const
@@ -290,8 +342,14 @@ void ToneMappingPass::record(vk::CommandBuffer command, std::size_t frameIndex, 
                                         .maxDepth = 1.0F};
     command.setViewport(0, viewport);
     command.setScissor(0, vk::Rect2D {.extent = output.extent});
-    const auto descriptorSet = *_descriptorSets.at(frameIndex);
-    command.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+    const auto descriptorSet = *_descriptors.sets.at(frameIndex);
+    command.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                               *_pipelineLayout,
+                               _descriptorSetIndex,
+                               1,
+                               &descriptorSet,
+                               0,
+                               nullptr);
     command.draw(3, 1, 0, 0);
     command.endRendering();
 }

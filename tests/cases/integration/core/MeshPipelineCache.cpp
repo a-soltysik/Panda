@@ -9,22 +9,86 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <glm/ext/matrix_transform.hpp>
+#include <iterator>
 #include <panda/rendering/RenderView.hpp>
+#include <string>
+#include <string_view>
 #include <tuple>
+#include <vector>
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "external/vulkan/VulkanMock.hpp"
+#include "renderer/ShaderReflection.hpp"
 
 namespace
 {
 using panda::core::vulkan::renderer::MeshPipelineCache;
+using panda::core::vulkan::renderer::ShaderDescriptor;
+using panda::core::vulkan::renderer::ShaderDescriptorKind;
 using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
+
+struct BuiltinShaderDescriptorEntry
+{
+    std::string_view name;
+    std::uint32_t set;
+    std::uint32_t binding;
+    ShaderDescriptorKind kind;
+};
+
+constexpr auto builtinShaderDescriptorEntries = std::array {
+    BuiltinShaderDescriptorEntry {
+                                  .name = "frameData",            .set = 0, .binding = 0, .kind = ShaderDescriptorKind::UniformBuffer       },
+    BuiltinShaderDescriptorEntry {
+                                  .name = "shadowMap",            .set = 0, .binding = 1, .kind = ShaderDescriptorKind::CombinedImageSampler},
+    BuiltinShaderDescriptorEntry {
+                                  .name = "materialData",         .set = 0, .binding = 2, .kind = ShaderDescriptorKind::StorageBuffer       },
+    BuiltinShaderDescriptorEntry {
+                                  .name = "lightData",            .set = 0, .binding = 3, .kind = ShaderDescriptorKind::StorageBuffer       },
+    BuiltinShaderDescriptorEntry {
+                                  .name = "shadowData",           .set = 0, .binding = 4, .kind = ShaderDescriptorKind::StorageBuffer       },
+    BuiltinShaderDescriptorEntry {
+                                  .name = "shadowViewData",       .set = 0, .binding = 5, .kind = ShaderDescriptorKind::UniformBuffer       },
+    BuiltinShaderDescriptorEntry {
+                                  .name = "diffuseIrradianceMap", .set = 0, .binding = 6, .kind = ShaderDescriptorKind::CombinedImageSampler},
+    BuiltinShaderDescriptorEntry {
+                                  .name = "specularRadianceMap",  .set = 0, .binding = 7, .kind = ShaderDescriptorKind::CombinedImageSampler},
+    BuiltinShaderDescriptorEntry {
+                                  .name = "skyboxMap",            .set = 0, .binding = 8, .kind = ShaderDescriptorKind::CombinedImageSampler},
+    BuiltinShaderDescriptorEntry {
+                                  .name = "baseColorMap",         .set = 1, .binding = 0, .kind = ShaderDescriptorKind::CombinedImageSampler},
+    BuiltinShaderDescriptorEntry {
+                                  .name = "metallicRoughnessMap", .set = 1, .binding = 1, .kind = ShaderDescriptorKind::CombinedImageSampler},
+    BuiltinShaderDescriptorEntry {
+                                  .name = "emissiveMap",          .set = 1, .binding = 2, .kind = ShaderDescriptorKind::CombinedImageSampler},
+    BuiltinShaderDescriptorEntry {
+                                  .name = "normalMap",            .set = 1, .binding = 3, .kind = ShaderDescriptorKind::CombinedImageSampler},
+    BuiltinShaderDescriptorEntry {
+                                  .name = "occlusionMap",         .set = 1, .binding = 4, .kind = ShaderDescriptorKind::CombinedImageSampler}
+};
+
+auto builtinShaderDescriptorSchema() -> std::vector<ShaderDescriptor>
+{
+    auto schema = std::vector<ShaderDescriptor> {};
+    schema.reserve(builtinShaderDescriptorEntries.size());
+    std::ranges::transform(builtinShaderDescriptorEntries, std::back_inserter(schema), [](const auto& entry) {
+        return ShaderDescriptor {.name = std::string {entry.name},
+                                 .set = entry.set,
+                                 .binding = entry.binding,
+                                 .count = 1,
+                                 .kind = entry.kind,
+                                 .arrayDimensions = {},
+                                 .members = {}};
+    });
+    return schema;
+}
 
 class MeshPipelineCacheTest : public testing::Test
 {
@@ -144,7 +208,9 @@ TEST_F(MeshPipelineCacheTest, PreparesSeparateTexturedAndUntexturedMaskShadowVar
 {
     expectShaderModules(4);
     expectSuccessfulPipelines(2);
-    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
+    auto cache = MeshPipelineCache {device,
+                                    vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)},
+                                    builtinShaderDescriptorSchema()};
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
@@ -167,7 +233,9 @@ TEST_F(MeshPipelineCacheTest, PrepareCachesVariantsAndBlendDoesNotCreateShadowPi
     expectShaderModules(2);
     expectSuccessfulPipelines(1);
 
-    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
+    auto cache = MeshPipelineCache {device,
+                                    vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)},
+                                    builtinShaderDescriptorSchema()};
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
@@ -206,7 +274,9 @@ TEST_F(MeshPipelineCacheTest, FailedCreationCanBeRetriedWithoutPublishingAnInval
         });
     EXPECT_CALL(vulkan, vkDestroyPipeline(deviceHandle, _, nullptr));
 
-    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
+    auto cache = MeshPipelineCache {device,
+                                    vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)},
+                                    builtinShaderDescriptorSchema()};
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
@@ -229,7 +299,9 @@ TEST_F(MeshPipelineCacheTest, PropagatesSkyboxShaderModuleCreationFailures)
     EXPECT_CALL(vulkan, vkDestroyShaderModule(deviceHandle, _, nullptr));
     EXPECT_CALL(vulkan, vkCreateGraphicsPipelines(_, _, _, _, _, _)).Times(0);
 
-    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
+    auto cache = MeshPipelineCache {device,
+                                    vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)},
+                                    builtinShaderDescriptorSchema()};
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
@@ -240,11 +312,53 @@ TEST_F(MeshPipelineCacheTest, PropagatesSkyboxShaderModuleCreationFailures)
     EXPECT_FALSE(cache.prepare(view));
 }
 
+TEST_F(MeshPipelineCacheTest, RejectsIncompatibleDescriptorSchemasBeforeCreatingPipelines)
+{
+    EXPECT_CALL(vulkan, vkCreateShaderModule(_, _, _, _)).Times(0);
+    EXPECT_CALL(vulkan, vkCreateGraphicsPipelines(_, _, _, _, _, _)).Times(0);
+    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}, {}};
+    cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
+                                  .depthFormat = vk::Format::eD32Sfloat,
+                                  .sampleCount = vk::SampleCountFlagBits::e1});
+
+    EXPECT_FALSE(cache.prepare(MeshPipelineCache::MeshPipelineKey {.vertexStride = 12}));
+    EXPECT_FALSE(cache.prepare(MeshPipelineCache::ShadowPipelineKey {.vertexStride = 12,
+                                                                     .texCoordOffset = 8,
+                                                                     .hasBaseColorTexture = true,
+                                                                     .alphaMode = panda::AlphaMode::Mask}));
+    auto view = panda::RenderView {};
+    view.skybox.emplace();
+    EXPECT_FALSE(cache.prepare(view));
+}
+
+TEST_F(MeshPipelineCacheTest, PreparesOpaqueShadowAndSkyboxPipelines)
+{
+    expectShaderModules(3);
+    expectSuccessfulPipelines(2);
+    auto cache = MeshPipelineCache {device,
+                                    vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)},
+                                    builtinShaderDescriptorSchema()};
+    cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
+                                  .depthFormat = vk::Format::eD32Sfloat,
+                                  .sampleCount = vk::SampleCountFlagBits::e1});
+    const auto draw = panda::MeshDraw {};
+
+    ASSERT_TRUE(cache.prepare(MeshPipelineCache::makeShadowPipelineKey(draw)));
+    EXPECT_NE(cache.getShadowPipeline(draw), vk::Pipeline {});
+
+    auto view = panda::RenderView {};
+    view.skybox.emplace();
+    ASSERT_TRUE(cache.prepare(view));
+    EXPECT_NE(cache.getSkyboxPipeline(), vk::Pipeline {});
+}
+
 TEST_F(MeshPipelineCacheTest, OutputCompatibilityInvalidatesOnlyDependentVariants)
 {
     expectShaderModules(10);
     expectSuccessfulPipelines(6);
-    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}};
+    auto cache = MeshPipelineCache {device,
+                                    vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)},
+                                    builtinShaderDescriptorSchema()};
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});

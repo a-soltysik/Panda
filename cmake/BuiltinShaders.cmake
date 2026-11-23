@@ -71,7 +71,6 @@ function(panda_add_builtin_shaders target)
     target_include_directories(${target} PRIVATE "${PANDA_BUILTIN_SHADER_DIRECTORY}")
 
     if(TARGET panda_static_analysis)
-        string(SHA256 mesh_renderer_analysis_id "${CMAKE_CURRENT_SOURCE_DIR}/vulkan/renderer/MeshRenderer.cpp")
-        add_dependencies(panda_analysis_${mesh_renderer_analysis_id} panda_builtin_shaders)
+        panda_add_static_analysis_dependency(${target} panda_builtin_shaders)
     endif()
 endfunction()

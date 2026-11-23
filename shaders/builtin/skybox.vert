@@ -1,9 +1,5 @@
 #version 450
-#extension GL_GOOGLE_include_directive : require
-
-#include "ShaderInterface.inc"
-
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) uniform FrameData
+layout(set = 0, binding = 0) uniform FrameData
 {
     mat4 viewProjection;
     vec4 cameraPosition;

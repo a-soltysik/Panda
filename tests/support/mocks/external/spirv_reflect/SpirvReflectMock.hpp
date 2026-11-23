@@ -24,6 +24,18 @@ public:
                 enumerateEntryPointPushConstantBlocks,
                 (const SpvReflectShaderModule*, const char*, std::uint32_t*, SpvReflectBlockVariable**),
                 ());
+    MOCK_METHOD(SpvReflectResult,
+                enumerateEntryPointInputVariables,
+                (const SpvReflectShaderModule*, const char*, std::uint32_t*, SpvReflectInterfaceVariable**),
+                ());
+    MOCK_METHOD(SpvReflectResult,
+                enumerateEntryPointOutputVariables,
+                (const SpvReflectShaderModule*, const char*, std::uint32_t*, SpvReflectInterfaceVariable**),
+                ());
+    MOCK_METHOD(SpvReflectResult,
+                enumerateSpecializationConstants,
+                (const SpvReflectShaderModule*, std::uint32_t*, SpvReflectSpecializationConstant**),
+                ());
     // NOLINTEND(modernize-use-trailing-return-type)
 };
 }

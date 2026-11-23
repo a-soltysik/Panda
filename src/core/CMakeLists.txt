@@ -40,6 +40,10 @@ panda_add_component(panda_core
         vulkan/presentation/ToneMappingPass.cpp
         vulkan/presentation/WindowPresentation.cpp
         vulkan/renderer/FrameBindings.cpp
+        vulkan/renderer/DescriptorSets.cpp
+        vulkan/renderer/FrameBuffers.cpp
+        vulkan/renderer/FrameDescriptors.cpp
+        vulkan/renderer/MaterialTextureBindings.cpp
         vulkan/renderer/MeshRenderer.cpp
         vulkan/renderer/MeshPipelineCache.cpp
         vulkan/renderer/ShaderReflection.cpp
@@ -141,6 +145,10 @@ panda_add_component(panda_core
         vulkan/resources/OffscreenTargetResource.hpp
         vulkan/renderer/MeshRenderer.hpp
         vulkan/renderer/FrameBindings.hpp
+        vulkan/renderer/DescriptorSets.hpp
+        vulkan/renderer/FrameBuffers.hpp
+        vulkan/renderer/FrameDescriptors.hpp
+        vulkan/renderer/MaterialTextureBindings.hpp
         vulkan/renderer/MaterialTextureSlots.hpp
         vulkan/renderer/MeshPipelineCache.hpp
         vulkan/renderer/ShaderReflection.hpp
@@ -150,7 +158,10 @@ panda_add_component(panda_core
         vulkan/renderer/RenderViewValidation.hpp
         vulkan/renderer/ShadowView.hpp
     LIBRARIES PUBLIC panda_base Vulkan::Headers glm::glm
-             PRIVATE Vulkan::Vulkan spirv-reflect-static)
+             PRIVATE Vulkan::Vulkan)
+# Tests with the SPIRV-Reflect stub must not link the real archive.
+target_link_libraries(panda_core PRIVATE
+    "$<$<NOT:$<IN_LIST:spirv-reflect-static,$<TARGET_PROPERTY:PANDA_TEST_REPLACEMENTS>>>:spirv-reflect-static>")
 target_include_directories(panda_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 add_library(panda_core_internal INTERFACE)
 set_target_properties(panda_core_internal PROPERTIES FOLDER "Panda/Internal")

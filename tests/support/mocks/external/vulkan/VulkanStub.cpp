@@ -501,6 +501,28 @@ VKAPI_ATTR void VKAPI_CALL vkCmdEndRendering(VkCommandBuffer commandBuffer)
     panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdEndRendering(commandBuffer);
 }
 
+VKAPI_ATTR void VKAPI_CALL vkCmdBindPipeline(VkCommandBuffer commandBuffer,
+                                             VkPipelineBindPoint pipelineBindPoint,
+                                             VkPipeline pipeline)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdBindPipeline(commandBuffer,
+                                                                                        pipelineBindPoint,
+                                                                                        pipeline);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdDraw(VkCommandBuffer commandBuffer,
+                                     std::uint32_t vertexCount,
+                                     std::uint32_t instanceCount,
+                                     std::uint32_t firstVertex,
+                                     std::uint32_t firstInstance)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdDraw(commandBuffer,
+                                                                                vertexCount,
+                                                                                instanceCount,
+                                                                                firstVertex,
+                                                                                firstInstance);
+}
+
 VKAPI_ATTR void VKAPI_CALL vkCmdSetViewport(VkCommandBuffer commandBuffer,
                                             std::uint32_t firstViewport,
                                             std::uint32_t viewportCount,
@@ -978,6 +1000,8 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkResetCommandPool",                             .function = genericVulkanProc(&vkResetCommandPool)           },
     EntryPoint {.name = "vkAcquireNextImageKHR",                          .function = genericVulkanProc(&vkAcquireNextImageKHR)        },
     EntryPoint {.name = "vkBeginCommandBuffer",                           .function = genericVulkanProc(&vkBeginCommandBuffer)         },
+    EntryPoint {.name = "vkCmdBindPipeline",                              .function = genericVulkanProc(&vkCmdBindPipeline)            },
+    EntryPoint {.name = "vkCmdDraw",                                      .function = genericVulkanProc(&vkCmdDraw)                    },
     EntryPoint {.name = "vkCmdPipelineBarrier2",                          .function = genericVulkanProc(&vkCmdPipelineBarrier2)        },
     EntryPoint {.name = "vkCmdResetQueryPool",                            .function = genericVulkanProc(&vkCmdResetQueryPool)          },
     EntryPoint {.name = "vkCmdWriteTimestamp2",                           .function = genericVulkanProc(&vkCmdWriteTimestamp2)         },
