@@ -41,6 +41,9 @@
 #include "panda/core/TextureResourceMock.hpp"
 #include "presentation/FrameExecution.hpp"
 #include "presentation/ToneMappingPass.hpp"
+#include "renderer/DescriptorSets.hpp"
+#include "renderer/FrameBuffers.hpp"
+#include "renderer/MaterialTextureBindings.hpp"
 #include "renderer/MeshRenderer.hpp"
 #include "renderer/ShaderData.hpp"
 #include "resources/BufferResource.hpp"
@@ -54,8 +57,10 @@ constexpr auto allSampleCounts = static_cast<VkSampleCountFlags>(VK_SAMPLE_COUNT
 
 using panda::core::vulkan::presentation::FrameExecution;
 using panda::core::vulkan::renderer::FrameBindings;
+using panda::core::vulkan::renderer::FrameBuffers;
 using panda::core::vulkan::renderer::LightRecord;
 using panda::core::vulkan::renderer::MaterialRecord;
+using panda::core::vulkan::renderer::MaterialTextureBindings;
 using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::BufferResource;
 using panda::test::fakeHandle;
@@ -1051,6 +1056,112 @@ TEST_F(FrameBindingsTest, RejectsMaterialCountBeyondStorageBufferLimit)
     EXPECT_EQ(updated.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
+TEST_F(FrameBindingsTest, FrameBuffersRejectStorageBufferLimitViolations)
+{
+    auto limits = vk::PhysicalDeviceLimits {};
+    limits.maxStorageBufferRange = 0;
+    limits.minUniformBufferOffsetAlignment = 256;
+
+    auto lightBuffers = FrameBuffers {device, *pool, limits, 1};
+    auto litView = makeView(0);
+    litView.lights.emplace_back(panda::DirectionalLight {});
+    const auto tooManyLights = lightBuffers.update(0, litView, {});
+    ASSERT_FALSE(tooManyLights);
+    EXPECT_EQ(tooManyLights.error().code, panda::ErrorCode::ResourceExhausted);
+
+    limits.maxStorageBufferRange = static_cast<std::uint32_t>(
+        std::max({sizeof(MaterialRecord), sizeof(LightRecord), sizeof(panda::core::vulkan::renderer::ShadowRecord)}));
+    auto materialBuffers = FrameBuffers {device, *pool, limits, 1};
+    ASSERT_TRUE(materialBuffers.initializeFrameBuffers());
+    const auto tooManyMaterials = materialBuffers.update(0, makeView(2), {});
+    ASSERT_FALSE(tooManyMaterials);
+    EXPECT_EQ(tooManyMaterials.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_NE(tooManyMaterials.error().message.find("material storage buffer limits"), std::string::npos);
+}
+
+TEST_F(FrameBindingsTest, RejectsDescriptorPoolSizeOverflowBeforeCallingVulkan)
+{
+    EXPECT_CALL(vulkan, vkCreateDescriptorPool(_, _, _, _)).Times(0);
+
+    const auto tooManySets = panda::core::vulkan::renderer::createDescriptorSets(
+        device,
+        {},
+        {},
+        static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 1U);
+    ASSERT_FALSE(tooManySets);
+    EXPECT_EQ(tooManySets.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_NE(tooManySets.error().message.find("Descriptor set count"), std::string::npos);
+
+    const auto multipliedOverflow =
+        vk::DescriptorSetLayoutBinding {.binding = 0,
+                                        .descriptorType = vk::DescriptorType::eUniformBuffer,
+                                        .descriptorCount = 2,
+                                        .stageFlags = vk::ShaderStageFlagBits::eVertex};
+    const auto tooManyDescriptors =
+        panda::core::vulkan::renderer::createDescriptorSets(device,
+                                                            {},
+                                                            std::span {&multipliedOverflow, std::size_t {1}},
+                                                            std::numeric_limits<std::uint32_t>::max());
+    ASSERT_FALSE(tooManyDescriptors);
+    EXPECT_EQ(tooManyDescriptors.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_NE(tooManyDescriptors.error().message.find("Descriptor pool size"), std::string::npos);
+
+    const auto aggregateOverflow = std::array {
+        vk::DescriptorSetLayoutBinding {.binding = 0,
+                                        .descriptorType = vk::DescriptorType::eUniformBuffer,
+                                        .descriptorCount = (std::numeric_limits<std::uint32_t>::max() / 2U) + 1U,
+                                        .stageFlags = vk::ShaderStageFlagBits::eVertex},
+        vk::DescriptorSetLayoutBinding {.binding = 1,
+                                        .descriptorType = vk::DescriptorType::eUniformBuffer,
+                                        .descriptorCount = (std::numeric_limits<std::uint32_t>::max() / 2U) + 1U,
+                                        .stageFlags = vk::ShaderStageFlagBits::eVertex}
+    };
+    const auto tooLargePool = panda::core::vulkan::renderer::createDescriptorSets(device, {}, aggregateOverflow, 1);
+    ASSERT_FALSE(tooLargePool);
+    EXPECT_EQ(tooLargePool.error().code, panda::ErrorCode::ResourceExhausted);
+    EXPECT_NE(tooLargePool.error().message.find("Descriptor pool size"), std::string::npos);
+}
+
+TEST_F(FrameBindingsTest, RejectsBuiltInShaderSetsBeyondDeviceLimit)
+{
+    auto limits = vk::PhysicalDeviceLimits {};
+    limits.maxBoundDescriptorSets = 1;
+    EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(_, _, _, _)).Times(0);
+
+    auto descriptors = panda::core::vulkan::renderer::FrameDescriptors {device};
+    const auto initialized = descriptors.initialize(limits, 1);
+
+    ASSERT_FALSE(initialized);
+    EXPECT_EQ(initialized.error().code, panda::ErrorCode::Unsupported);
+    EXPECT_EQ(initialized.error().message, "Built-in shader descriptor sets exceed device limits");
+}
+
+TEST_F(FrameBindingsTest, RejectsZeroDescriptorSetLimit)
+{
+    auto limits = vk::PhysicalDeviceLimits {};
+    limits.maxBoundDescriptorSets = 0;
+    EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(_, _, _, _)).Times(0);
+
+    auto descriptors = panda::core::vulkan::renderer::FrameDescriptors {device};
+    const auto initialized = descriptors.initialize(limits, 1);
+
+    ASSERT_FALSE(initialized);
+    EXPECT_EQ(initialized.error().code, panda::ErrorCode::Unsupported);
+    EXPECT_EQ(initialized.error().message, "Built-in shader descriptor sets exceed device limits");
+}
+
+TEST_F(FrameBindingsTest, MaterialTextureInitializationPropagatesSamplerFailure)
+{
+    EXPECT_CALL(vulkan, vkCreateSampler(deviceHandle, NotNull(), _, NotNull()))
+        .WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory)));
+
+    auto textureBindings = MaterialTextureBindings {device, physical, maxSamplerAnisotropy, nullptr};
+    const auto initialized = textureBindings.initialize({}, {}, 1);
+
+    ASSERT_FALSE(initialized);
+    EXPECT_EQ(initialized.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
 TEST_F(FrameBindingsTest, PropagatesInvalidShadowViewAndUniformWriteFailures)
 {
     auto bindings = createBindings();
@@ -1066,6 +1177,24 @@ TEST_F(FrameBindingsTest, PropagatesInvalidShadowViewAndUniformWriteFailures)
     const auto failedWrite = (*bindings)->updateFrame(0, makeView(0), {});
     ASSERT_FALSE(failedWrite);
     EXPECT_EQ(failedWrite.error().code, panda::ErrorCode::ResourceExhausted);
+}
+
+TEST_F(FrameBindingsTest, PropagatesShadowRecordWriteFailure)
+{
+    auto bindings = createBindings();
+    ASSERT_TRUE(bindings);
+    auto view = makeView(0);
+    view.lights.emplace_back(panda::DirectionalLight {.shadow = panda::ShadowSettings {}});
+    EXPECT_CALL(buffers, writeMapped(_, 0, _))
+        .Times(3)
+        .WillOnce(Return(panda::Result<void> {}))
+        .WillOnce(Return(panda::Result<void> {}))
+        .WillOnce(Return(bufferFailure()));
+
+    const auto updated = (*bindings)->updateFrame(0, view, {});
+
+    ASSERT_FALSE(updated);
+    EXPECT_EQ(updated.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
 TEST_F(FrameBindingsTest, PropagatesMaterialWriteFailures)

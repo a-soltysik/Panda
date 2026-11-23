@@ -164,7 +164,13 @@ panda_add_test(panda_unit_render_attachments unit
     MOCKS PandaTest::VulkanMock PandaTest::TextureResourceMock)
 
 panda_add_test(panda_unit_shader_reflection unit
+    VULKAN_INTERNAL
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core" "${PROJECT_SOURCE_DIR}/src/core/vulkan"
+                       "${PROJECT_BINARY_DIR}/src/core/generated" "${PROJECT_SOURCE_DIR}/include/core"
     SOURCES ShaderReflection.cpp "${PROJECT_SOURCE_DIR}/src/core/vulkan/renderer/ShaderReflection.cpp"
-    LIBRARIES panda_base
-    MOCKS PandaTest::SpirvReflectMock)
+            "${PROJECT_SOURCE_DIR}/src/core/vulkan/presentation/ToneMappingPass.cpp"
+            "${PROJECT_SOURCE_DIR}/src/core/vulkan/renderer/DescriptorSets.cpp"
+            "${PROJECT_SOURCE_DIR}/src/core/vulkan/VulkanError.cpp"
+    LIBRARIES panda_base PandaTest::Support glm::glm-header-only
+    MOCKS PandaTest::SpirvReflectMock PandaTest::VulkanMock)
+add_dependencies(panda_unit_shader_reflection panda_builtin_shaders)

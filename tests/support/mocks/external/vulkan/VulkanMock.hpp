@@ -287,6 +287,8 @@ public:
 
     MOCK_METHOD(VkResult, vkBeginCommandBuffer, (VkCommandBuffer, const VkCommandBufferBeginInfo*), ());
 
+    MOCK_METHOD(void, vkCmdBindPipeline, (VkCommandBuffer, VkPipelineBindPoint, VkPipeline), ());
+    MOCK_METHOD(void, vkCmdDraw, (VkCommandBuffer, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t), ());
     MOCK_METHOD(void, vkCmdPipelineBarrier2, (VkCommandBuffer, const VkDependencyInfo*), ());
     MOCK_METHOD(void, vkCmdResetQueryPool, (VkCommandBuffer, VkQueryPool, std::uint32_t, std::uint32_t), ());
     MOCK_METHOD(void, vkCmdWriteTimestamp2, (VkCommandBuffer, VkPipelineStageFlags2, VkQueryPool, std::uint32_t), ());

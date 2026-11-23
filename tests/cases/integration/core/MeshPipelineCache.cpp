@@ -312,6 +312,46 @@ TEST_F(MeshPipelineCacheTest, PropagatesSkyboxShaderModuleCreationFailures)
     EXPECT_FALSE(cache.prepare(view));
 }
 
+TEST_F(MeshPipelineCacheTest, RejectsIncompatibleDescriptorSchemasBeforeCreatingPipelines)
+{
+    EXPECT_CALL(vulkan, vkCreateShaderModule(_, _, _, _)).Times(0);
+    EXPECT_CALL(vulkan, vkCreateGraphicsPipelines(_, _, _, _, _, _)).Times(0);
+    auto cache = MeshPipelineCache {device, vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)}, {}};
+    cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
+                                  .depthFormat = vk::Format::eD32Sfloat,
+                                  .sampleCount = vk::SampleCountFlagBits::e1});
+
+    EXPECT_FALSE(cache.prepare(MeshPipelineCache::MeshPipelineKey {.vertexStride = 12}));
+    EXPECT_FALSE(cache.prepare(MeshPipelineCache::ShadowPipelineKey {.vertexStride = 12,
+                                                                     .texCoordOffset = 8,
+                                                                     .hasBaseColorTexture = true,
+                                                                     .alphaMode = panda::AlphaMode::Mask}));
+    auto view = panda::RenderView {};
+    view.skybox.emplace();
+    EXPECT_FALSE(cache.prepare(view));
+}
+
+TEST_F(MeshPipelineCacheTest, PreparesOpaqueShadowAndSkyboxPipelines)
+{
+    expectShaderModules(3);
+    expectSuccessfulPipelines(2);
+    auto cache = MeshPipelineCache {device,
+                                    vk::PipelineLayout {fakeHandle<VkPipelineLayout>(90)},
+                                    builtinShaderDescriptorSchema()};
+    cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
+                                  .depthFormat = vk::Format::eD32Sfloat,
+                                  .sampleCount = vk::SampleCountFlagBits::e1});
+    const auto draw = panda::MeshDraw {};
+
+    ASSERT_TRUE(cache.prepare(MeshPipelineCache::makeShadowPipelineKey(draw)));
+    EXPECT_NE(cache.getShadowPipeline(draw), vk::Pipeline {});
+
+    auto view = panda::RenderView {};
+    view.skybox.emplace();
+    ASSERT_TRUE(cache.prepare(view));
+    EXPECT_NE(cache.getSkyboxPipeline(), vk::Pipeline {});
+}
+
 TEST_F(MeshPipelineCacheTest, OutputCompatibilityInvalidatesOnlyDependentVariants)
 {
     expectShaderModules(10);
