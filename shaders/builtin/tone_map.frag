@@ -1,9 +1,5 @@
 #version 450
-#extension GL_GOOGLE_include_directive : require
-
-#include "ShaderInterface.inc"
-
-layout(constant_id = PANDA_OUTPUT_SRGB_SPECIALIZATION_ID) const uint outputIsSrgb = 1u;
+layout(constant_id = 0) const uint outputIsSrgb = 1u;
 layout(set = 0, binding = 0) uniform sampler2D hdrColor;
 layout(location = 0) in vec2 textureCoordinates;
 layout(location = 0) out vec4 fragmentColor;

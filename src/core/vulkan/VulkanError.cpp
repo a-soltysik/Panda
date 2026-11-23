@@ -4,8 +4,13 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
+#include "VulkanError.hpp"
+
+#include <cstdint>
+#include <expected>
 #include <panda/vulkan/Error.hpp>
 #include <source_location>
+#include <span>
 #include <string>
 #include <utility>
 #include <vulkan/vulkan_to_string.hpp>
@@ -126,5 +131,35 @@ auto makeVulkanError(vk::Result result, std::source_location source) -> Error
                      errorMessage(code, result),
                      NativeError {.api = "Vulkan", .code = std::to_underlying(result)},
                      source);
+}
+}
+
+namespace panda::core::vulkan::detail
+{
+auto createShaderModule(const vk::raii::Device& device,
+                        std::span<const std::uint32_t> words,
+                        std::source_location source) -> std::expected<vk::raii::ShaderModule, Error>
+{
+    const auto info = vk::ShaderModuleCreateInfo {.codeSize = words.size_bytes(), .pCode = words.data()};
+    const auto module = (*device).createShaderModule(info, nullptr, *device.getDispatcher());
+    if (module.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {::panda::makeVulkanError(module.result, source)};
+    }
+    return std::expected<vk::raii::ShaderModule, Error> {std::in_place,
+                                                         device,
+                                                         static_cast<vk::ShaderModule::CType>(module.value)};
+}
+
+auto createVulkanSampler(const vk::raii::Device& device,
+                         const vk::SamplerCreateInfo& createInfo,
+                         std::source_location source) -> std::expected<vk::raii::Sampler, Error>
+{
+    const auto created = static_cast<vk::Device>(device).createSampler(createInfo);
+    if (created.result != vk::Result::eSuccess)
+    {
+        return std::unexpected {::panda::makeVulkanError(created.result, source)};
+    }
+    return std::expected<vk::raii::Sampler, Error> {std::in_place, device, created.value};
 }
 }

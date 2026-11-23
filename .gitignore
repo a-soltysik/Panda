@@ -18,3 +18,4 @@ compile_commands.json
 
 # Local Python tooling cache
 __pycache__/
+graphify-out

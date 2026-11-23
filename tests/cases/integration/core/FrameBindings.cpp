@@ -114,6 +114,7 @@ protected:
                 properties->limits.maxStorageBufferRange = 4096;
                 properties->limits.maxDescriptorSetStorageBuffers = 4;
                 properties->limits.maxPerStageDescriptorStorageBuffers = 4;
+                properties->limits.maxBoundDescriptorSets = 4;
                 properties->limits.minUniformBufferOffsetAlignment = 256;
                 properties->limits.framebufferColorSampleCounts = allSampleCounts;
                 properties->limits.framebufferDepthSampleCounts = allSampleCounts;
@@ -295,9 +296,9 @@ protected:
             });
     }
 
-    auto createToneMappingPass()
+    auto createToneMappingPass(std::uint32_t maxBoundDescriptorSets = 4)
     {
-        return panda::core::vulkan::presentation::ToneMappingPass::create(device);
+        return panda::core::vulkan::presentation::ToneMappingPass::create(device, maxBoundDescriptorSets);
     }
 
     void expectToneMappingShaders(std::size_t count)
@@ -515,6 +516,16 @@ TEST_F(FrameBindingsTest, ToneMappingInitializationPropagatesVulkanFailures)
     EXPECT_EQ(pass.error().code, panda::ErrorCode::ResourceExhausted);
 }
 
+TEST_F(FrameBindingsTest, ToneMappingRejectsDescriptorSetBeforeCreatingLayouts)
+{
+    EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(_, _, _, _)).Times(0);
+
+    const auto pass = createToneMappingPass(0);
+
+    ASSERT_FALSE(pass);
+    EXPECT_EQ(pass.error().code, panda::ErrorCode::Unsupported);
+}
+
 TEST_F(FrameBindingsTest, ToneMappingPipelinePropagatesShaderAndPipelineFailures)
 {
     auto pass = createToneMappingPass();
@@ -679,7 +690,7 @@ TEST_F(FrameBindingsTest, FrameExecutionPropagatesResizeAndRecordingFailures)
 TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors)
 {
     auto created = createBindings();
-    ASSERT_TRUE(created);
+    ASSERT_TRUE(created) << created.error().message;
     auto bindings = std::move(*created);
     auto view = makeView(1);
     auto& material = view.meshes.front().material;
@@ -1029,6 +1040,7 @@ TEST_F(FrameBindingsTest, RejectsMaterialCountBeyondStorageBufferLimit)
             properties->limits.maxStorageBufferRange = static_cast<std::uint32_t>(sizeof(MaterialRecord));
             properties->limits.maxDescriptorSetStorageBuffers = 4;
             properties->limits.maxPerStageDescriptorStorageBuffers = 4;
+            properties->limits.maxBoundDescriptorSets = 4;
         });
     auto bindings = createBindings(1);
     ASSERT_TRUE(bindings);

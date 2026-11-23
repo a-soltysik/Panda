@@ -3,23 +3,21 @@
 #include <array>
 #include <cstdint>
 #include <panda/rendering/RenderView.hpp>
-
-#include "renderer/ShaderInterface.inc"
+#include <string_view>
 
 namespace panda::core::vulkan::renderer
 {
 struct MaterialTextureSlot
 {
-    std::uint32_t binding;
+    std::string_view shaderName;
     Texture Material::* texture;
 };
 
 inline constexpr auto materialTextureSlots = std::array {
-    MaterialTextureSlot {.binding = PANDA_TEXTURE_BASE_COLOR_BINDING,         .texture = &Material::baseColorTexture},
-    MaterialTextureSlot {.binding = PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING,
-                         .texture = &Material::metallicRoughnessTexture                                             },
-    MaterialTextureSlot {.binding = PANDA_TEXTURE_EMISSIVE_BINDING,           .texture = &Material::emissiveTexture },
-    MaterialTextureSlot {.binding = PANDA_TEXTURE_NORMAL_BINDING,             .texture = &Material::normalTexture   },
-    MaterialTextureSlot {.binding = PANDA_TEXTURE_OCCLUSION_BINDING,          .texture = &Material::occlusionTexture}
+    MaterialTextureSlot {.shaderName = "baseColorMap",         .texture = &Material::baseColorTexture        },
+    MaterialTextureSlot {.shaderName = "metallicRoughnessMap", .texture = &Material::metallicRoughnessTexture},
+    MaterialTextureSlot {.shaderName = "emissiveMap",          .texture = &Material::emissiveTexture         },
+    MaterialTextureSlot {.shaderName = "normalMap",            .texture = &Material::normalTexture           },
+    MaterialTextureSlot {.shaderName = "occlusionMap",         .texture = &Material::occlusionTexture        }
 };
 }

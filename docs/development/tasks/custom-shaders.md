@@ -54,29 +54,32 @@ is linked privately through its upstream static-library CMake option. A private
 adapter checks the `main` stage and returns owning descriptor, block-member and
 push-constant metadata. Mock-backed unit tests cover API failures and metadata
 copying without linking the SPIRV-Reflect library; integration tests use compiled
-GLSL and the real library to verify `std140` offsets. Image dimension/sample type
-and capability checks remain. The adapter is not yet connected to program or
-pipeline creation, so the GLSL single-source layout rule and removal of duplicate
-binding macros remain unimplemented. Runtime programs, layout rejection,
-resource bindings, shadow variants, pipeline warmup/cache and transactional reload
-remain. Procedural instancing and its sphere-impostor rendering and scale
-measurements also remain.
+GLSL and the real library to verify `std140` offsets. Built-in graphics programs
+use reflected descriptor set and binding numbers, vertex input locations, and
+specialization IDs. `ShaderInterface.inc` shares the light-type tags.
+Frame descriptor layout creation, frame buffer updates, and material texture
+bindings have separate owners. The renderer coordinates them through
+`FrameBindings`.
+
+Application programs, resource bindings, image dimension and sample type
+checks, capability checks, explicit shadow variants, pipeline warmup and
+transactional reload remain. Procedural instancing and its sphere impostor
+rendering and scale measurements also remain.
 
 ## Verification
 
-Windows passed the `msvc-quality` build, interface-header and format checks,
-`clang-cuda-analysis-windows`, and the `msvc-fast` build and full CTest suite
-(740 total: 735 passed, 5 skipped). Linux passed the matching `gcc-quality`,
-interface-header, format and `clang-cuda-analysis` checks, plus the `gcc-fast`
-build and full CTest suite (740 total: 732 passed, 8 skipped). CUDA analysis on
-both platforms reported that the installed CUDA version is newer than Clang's
-partially supported 12.9. The project-maintenance checker found no structural
-errors in 90 Markdown files and the task queue; `docs-checks` validated 43
-Mermaid diagrams in 94 files, and `gcc-docs` passed.
+The Windows MSVC 14.51 and Vulkan SDK 1.4.341.1 `msvc-quality` build passed,
+including clang-tidy and cppcheck. Public-header isolation, formatting and the
+Clang CUDA-analysis preset passed. The full `msvc-fast` build and
+`ctest --preset msvc-fast` run passed 754 tests; 5 were skipped because of
+environment-specific output and memory-type requirements.
 
-These checks do not create a custom Vulkan pipeline or verify custom shader
-rendering on a GPU. Reflected layouts are not yet consumed by program creation,
-so GLSL is not yet the implemented single source for descriptor bindings and
-vertex locations. Runtime programs, layout rejection, resource bindings, shadow
-variants, pipeline warmup/cache, transactional reload and procedural-instancing
-checks remain.
+The Linux `gcc-quality` build, public-header isolation, formatting and Clang
+CUDA-analysis preset passed. The full `gcc-fast` build and `ctest --preset gcc-fast`
+run passed 754 tests; 8 were skipped because of CUDA and memory-type availability.
+`gcc-docs` generated the API documentation. The Python maintenance checker found
+no structural errors in 90 Markdown files, and `docs-checks` validated 43 diagrams.
+The coverage preset was not run for this verification.
+
+The tests do not visually verify application-supplied shaders on physical GPU
+hardware.

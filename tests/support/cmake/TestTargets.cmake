@@ -40,6 +40,7 @@ function(panda_add_test target level)
         # Direct OBJECT dependencies supply definitions before static archives are searched.
         target_link_libraries(${target} PRIVATE ${mock})
     endforeach()
+    set_property(TARGET ${target} PROPERTY PANDA_TEST_REPLACEMENTS "${replacements}")
     if(TEST_VULKAN_INTERNAL)
         panda_configure_vulkan_internal(${target})
     endif()

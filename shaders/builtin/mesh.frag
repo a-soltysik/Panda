@@ -3,9 +3,9 @@
 
 #include "ShaderInterface.inc"
 
-layout(constant_id = PANDA_MESH_ALPHA_MODE_SPECIALIZATION_ID) const uint alphaMode = 0u;
+layout(constant_id = 1) const uint alphaMode = 0u;
 
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) uniform FrameData
+layout(set = 0, binding = 0) uniform FrameData
 {
     mat4 viewProjection;
     vec4 cameraPosition;
@@ -13,20 +13,20 @@ layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_UNIFORM_BINDING) 
     uvec4 lightInfo;
 } frameData;
 
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SHADOW_MAP_BINDING) uniform sampler2DArray shadowMap;
+layout(set = 0, binding = 1) uniform sampler2DArray shadowMap;
 #ifdef HAS_ENVIRONMENT
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_DIFFUSE_ENVIRONMENT_BINDING) uniform samplerCube
+layout(set = 0, binding = 6) uniform samplerCube
     diffuseIrradianceMap;
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SPECULAR_ENVIRONMENT_BINDING) uniform samplerCube
+layout(set = 0, binding = 7) uniform samplerCube
     specularRadianceMap;
 #endif
-layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_BASE_COLOR_BINDING) uniform sampler2D baseColorMap;
-layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_METALLIC_ROUGHNESS_BINDING) uniform sampler2D
+layout(set = 1, binding = 0) uniform sampler2D baseColorMap;
+layout(set = 1, binding = 1) uniform sampler2D
     metallicRoughnessMap;
-layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_EMISSIVE_BINDING) uniform sampler2D emissiveMap;
-layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_OCCLUSION_BINDING) uniform sampler2D occlusionMap;
+layout(set = 1, binding = 2) uniform sampler2D emissiveMap;
+layout(set = 1, binding = 4) uniform sampler2D occlusionMap;
 #ifdef HAS_NORMAL_MAP
-layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_NORMAL_BINDING) uniform sampler2D normalMap;
+layout(set = 1, binding = 3) uniform sampler2D normalMap;
 #endif
 struct MaterialRecord
 {
@@ -44,7 +44,7 @@ struct MaterialRecord
     vec2 padding;
 };
 
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_MATERIAL_DATA_BINDING, std430) readonly buffer MaterialData
+layout(set = 0, binding = 2, std430) readonly buffer MaterialData
 {
     MaterialRecord records[];
 } materialData;
@@ -60,7 +60,7 @@ struct LightRecord
     uint shadowViewCount;
 };
 
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_LIGHT_DATA_BINDING, std430) readonly buffer LightData
+layout(set = 0, binding = 3, std430) readonly buffer LightData
 {
     LightRecord records[];
 } lightData;
@@ -72,20 +72,20 @@ struct ShadowRecord
     vec4 shadowParameters;
 };
 
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_SHADOW_DATA_BINDING, std430) readonly buffer ShadowData
+layout(set = 0, binding = 4, std430) readonly buffer ShadowData
 {
     ShadowRecord records[];
 } shadowData;
 
-layout(location = PANDA_MESH_VARYING_WORLD_POSITION_LOCATION) in vec3 worldPosition;
-layout(location = PANDA_MESH_VARYING_WORLD_NORMAL_LOCATION) in vec3 worldNormal;
-layout(location = PANDA_MESH_VARYING_BASE_COLOR_LOCATION) in vec4 baseColor;
-layout(location = PANDA_MESH_VARYING_MATERIAL_INDEX_LOCATION) flat in uint materialIndex;
-layout(location = PANDA_MESH_VARYING_TEXTURE_COORDINATES_LOCATION) in vec2 textureCoordinates;
+layout(location = 0) in vec3 worldPosition;
+layout(location = 1) in vec3 worldNormal;
+layout(location = 2) in vec4 baseColor;
+layout(location = 3) flat in uint materialIndex;
+layout(location = 4) in vec2 textureCoordinates;
 #ifdef HAS_NORMAL_MAP
-layout(location = PANDA_MESH_VARYING_WORLD_TANGENT_LOCATION) in vec4 worldTangent;
+layout(location = 5) in vec4 worldTangent;
 #endif
-layout(location = PANDA_MESH_FRAGMENT_COLOR_LOCATION) out vec4 fragmentColor;
+layout(location = 0) out vec4 fragmentColor;
 
 const float pi = 3.14159265359;
 const vec3 dielectricF0 = vec3(0.04);

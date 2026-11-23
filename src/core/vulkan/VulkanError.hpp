@@ -6,6 +6,7 @@
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/vulkan/Error.hpp>
 #include <source_location>
+#include <span>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -16,6 +17,16 @@ namespace panda::core::vulkan::detail
 {
 
 using ::panda::makeVulkanError;
+
+[[nodiscard]] auto createShaderModule(const vk::raii::Device& device,
+                                      std::span<const std::uint32_t> words,
+                                      std::source_location source = std::source_location::current())
+    -> std::expected<vk::raii::ShaderModule, Error>;
+
+[[nodiscard]] auto createVulkanSampler(const vk::raii::Device& device,
+                                       const vk::SamplerCreateInfo& createInfo,
+                                       std::source_location source = std::source_location::current())
+    -> std::expected<vk::raii::Sampler, Error>;
 
 // Hpp's nonthrowing RAII factories wrap the output even on failure. Vulkan does
 // not guarantee that failed output is a valid owned object; detach it before

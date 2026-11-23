@@ -49,11 +49,18 @@ panda_add_test(panda_integration_texture_resource integration
     MOCKS PandaTest::VulkanMock)
 
 panda_add_test(panda_integration_shader_resources integration
-    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core"
-    SOURCES ShaderResources.cpp ShaderReflection.cpp
-    LIBRARIES Panda::Panda)
+    VULKAN_INTERNAL
+    INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core" "${PROJECT_SOURCE_DIR}/src/core/vulkan/resources"
+                         "${PROJECT_BINARY_DIR}/src/core/generated"
+    SOURCES ShaderResources.cpp ShaderReflection.cpp FrameBindings.cpp MeshPipelineCache.cpp
+    LIBRARIES Panda::Panda PandaTest::Support
+    MOCKS PandaTest::VulkanMock PandaTest::BufferResourceMock PandaTest::TextureResourceMock
+          PandaTest::SubmissionQueueMock)
+panda_add_static_analysis_dependency(panda_integration_shader_resources panda_builtin_shaders)
+add_dependencies(panda_integration_shader_resources panda_builtin_shaders)
 panda_add_shaders(panda_integration_shader_resources
     NAMESPACE test::shader
     SOURCES fixtures/shaders/basic.vert fixtures/shaders/basic.frag
+            fixtures/shaders/descriptor_array.frag fixtures/shaders/component.frag
             fixtures/shaders/left/marker.vert fixtures/shaders/right/marker.vert
     INCLUDE_DIRECTORIES fixtures/shaders)

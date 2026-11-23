@@ -108,13 +108,5 @@ static_assert(offsetof(MaterialRecord, emissiveAndNormalScale) == 32);
 static_assert(offsetof(MaterialRecord, hasOcclusionTexture) == 48);
 static_assert(offsetof(MaterialRecord, occlusionStrength) == 52);
 static_assert(offsetof(MaterialRecord, padding) == 56);
-static_assert(static_cast<std::uint32_t>(VertexAttributeSemantic::Position) ==
-              PANDA_VERTEX_ATTRIBUTE_POSITION_LOCATION);
-static_assert(static_cast<std::uint32_t>(VertexAttributeSemantic::Normal) == PANDA_VERTEX_ATTRIBUTE_NORMAL_LOCATION);
-static_assert(static_cast<std::uint32_t>(VertexAttributeSemantic::TexCoord0) ==
-              PANDA_VERTEX_ATTRIBUTE_TEX_COORD_0_LOCATION);
-static_assert(static_cast<std::uint32_t>(VertexAttributeSemantic::Tangent) == PANDA_VERTEX_ATTRIBUTE_TANGENT_LOCATION);
-static_assert(static_cast<std::uint32_t>(VertexAttributeSemantic::Color) == PANDA_VERTEX_ATTRIBUTE_COLOR_LOCATION);
-static_assert(PANDA_MESH_FRAGMENT_COLOR_LOCATION == 0);
 // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 }

@@ -5,9 +5,11 @@
 #include <vulkan/vulkan.hpp>
 // clang-format on
 
+#include <array>
 #include <compare>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <map>
 #include <optional>
 #include <panda/base/Error.hpp>
@@ -15,8 +17,16 @@
 #include <span>
 #include <vector>
 
+#include "renderer/ShaderReflection.hpp"
+
 namespace panda::core::vulkan::renderer
 {
+struct ShadowShaderModules
+{
+    vk::raii::ShaderModule vertex {nullptr};
+    std::optional<vk::raii::ShaderModule> fragment;
+};
+
 class MeshPipelineCache final
 {
 public:
@@ -60,7 +70,9 @@ public:
         vk::SampleCountFlagBits sampleCount {vk::SampleCountFlagBits::e1};
     };
 
-    MeshPipelineCache(const vk::raii::Device& device, vk::PipelineLayout pipelineLayout);
+    MeshPipelineCache(const vk::raii::Device& device,
+                      vk::PipelineLayout pipelineLayout,
+                      std::span<const ShaderDescriptor> shaderDescriptorSchema);
 
     [[nodiscard]] static auto makeMeshPipelineKey(const MeshDraw& draw, bool hasEnvironment = false) -> MeshPipelineKey;
     [[nodiscard]] static auto makeShadowPipelineKey(const MeshDraw& draw) -> ShadowPipelineKey;
@@ -74,21 +86,36 @@ public:
 
 private:
     [[nodiscard]] auto prepareSkybox() -> std::expected<void, Error>;
-    [[nodiscard]] auto createSkyboxPipeline() const -> std::expected<vk::raii::Pipeline, Error>;
+    [[nodiscard]] auto createSkyboxPipeline() -> std::expected<vk::raii::Pipeline, Error>;
     [[nodiscard]] auto createSkyboxPipelineWithModules(vk::ShaderModule vertex, vk::ShaderModule fragment) const
         -> std::expected<vk::raii::Pipeline, Error>;
-    [[nodiscard]] auto createPipeline(const MeshPipelineKey& key) const -> std::expected<vk::raii::Pipeline, Error>;
+    [[nodiscard]] auto createPipeline(const MeshPipelineKey& key) -> std::expected<vk::raii::Pipeline, Error>;
     [[nodiscard]] auto createMeshPipeline(const MeshPipelineKey& key,
-                                          vk::ShaderModule vertex,
-                                          vk::ShaderModule fragment) const -> std::expected<vk::raii::Pipeline, Error>;
-    [[nodiscard]] auto createShadowPipeline(const ShadowPipelineKey& key) const
+                                          const std::array<vk::ShaderModule, 2>& modules,
+                                          std::span<const vk::VertexInputAttributeDescription> attributes,
+                                          std::uint32_t alphaModeSpecializationId) const
         -> std::expected<vk::raii::Pipeline, Error>;
+    [[nodiscard]] auto createShadowPipeline(const ShadowPipelineKey& key) -> std::expected<vk::raii::Pipeline, Error>;
+    [[nodiscard]] auto createShadowPipelineWithModules(const ShadowPipelineKey& key,
+                                                       const ShadowShaderModules& modules,
+                                                       std::span<const vk::VertexInputAttributeDescription> attributes,
+                                                       std::uint32_t specializationId) const
+        -> Result<vk::raii::Pipeline>;
+    [[nodiscard]] auto meshShaderLayout(const MeshPipelineKey& key)
+        -> Result<std::reference_wrapper<const ShaderProgramLayout>>;
+    [[nodiscard]] auto shadowShaderLayout(const ShadowPipelineKey& key)
+        -> Result<std::reference_wrapper<const ShaderProgramLayout>>;
+    [[nodiscard]] auto skyboxShaderLayout() -> Result<std::reference_wrapper<const ShaderProgramLayout>>;
     [[nodiscard]] auto prepareDraw(const MeshDraw& draw, bool hasEnvironment) -> std::expected<void, Error>;
-    [[nodiscard]] static auto makeVertexAttributeDescriptions(const MeshPipelineKey& key)
-        -> std::vector<vk::VertexInputAttributeDescription>;
-
+    [[nodiscard]] static auto makeVertexAttributeDescriptions(const MeshPipelineKey& key,
+                                                              std::span<const ShaderInterfaceVariable> vertexInputs)
+        -> Result<std::vector<vk::VertexInputAttributeDescription>>;
     const vk::raii::Device& _device;
     vk::PipelineLayout _pipelineLayout;
+    std::vector<ShaderDescriptor> _shaderDescriptorSchema;
+    std::map<std::array<bool, 5>, ShaderProgramLayout> _meshShaderLayouts;
+    std::map<std::array<bool, 3>, ShaderProgramLayout> _shadowShaderLayouts;
+    std::optional<ShaderProgramLayout> _skyboxShaderLayout;
     OutputCompatibility _outputCompatibility;
     std::map<MeshPipelineKey, vk::raii::Pipeline> _pipelines;
     std::map<ShadowPipelineKey, vk::raii::Pipeline> _shadowPipelines;

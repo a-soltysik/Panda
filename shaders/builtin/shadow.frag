@@ -1,9 +1,5 @@
 #version 450
-#extension GL_GOOGLE_include_directive : require
-
-#include "ShaderInterface.inc"
-
-layout(constant_id = PANDA_SHADOW_ALPHA_MODE_SPECIALIZATION_ID) const uint alphaMode = 0u;
+layout(constant_id = 0) const uint alphaMode = 0u;
 
 struct MaterialRecord
 {
@@ -15,22 +11,22 @@ struct MaterialRecord
     uint hasBaseColorTexture;
     uint hasMetallicRoughnessTexture;
     uint hasEmissiveTexture;
-    vec4 emissive;
+    vec4 emissiveAndNormalScale;
     uint hasOcclusionTexture;
     float occlusionStrength;
     vec2 padding;
 };
 
-layout(set = PANDA_FRAME_DESCRIPTOR_SET, binding = PANDA_FRAME_MATERIAL_DATA_BINDING, std430) readonly buffer MaterialData
+layout(set = 0, binding = 2, std430) readonly buffer MaterialData
 {
     MaterialRecord records[];
 } materialData;
 
-layout(location = PANDA_SHADOW_VARYING_ALPHA_LOCATION) in float vertexAlpha;
-layout(location = PANDA_SHADOW_VARYING_MATERIAL_INDEX_LOCATION) flat in uint materialIndex;
+layout(location = 0) in float vertexAlpha;
+layout(location = 1) flat in uint materialIndex;
 #ifdef HAS_BASE_COLOR_TEXTURE
-layout(set = PANDA_TEXTURE_DESCRIPTOR_SET, binding = PANDA_TEXTURE_BASE_COLOR_BINDING) uniform sampler2D baseColorMap;
-layout(location = PANDA_SHADOW_VARYING_TEXTURE_COORDINATES_LOCATION) in vec2 textureCoordinates;
+layout(set = 1, binding = 0) uniform sampler2D baseColorMap;
+layout(location = 2) in vec2 textureCoordinates;
 #endif
 
 void main()
