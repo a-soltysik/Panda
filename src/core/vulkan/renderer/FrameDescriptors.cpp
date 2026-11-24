@@ -105,6 +105,7 @@ struct ReflectedDescriptorInterface
     std::uint32_t count {};
     ShaderDescriptorKind kind {ShaderDescriptorKind::Other};
     vk::ShaderStageFlags stages;
+    std::optional<ShaderSampledImage> sampledImage;
 };
 
 struct BuiltinShaderBindings
@@ -397,7 +398,8 @@ using BindingNames = std::map<std::pair<std::uint32_t, std::uint32_t>, std::stri
 auto sameBinding(const ReflectedDescriptorInterface& current, const ShaderProgramDescriptor& descriptor) -> bool
 {
     return current.set == descriptor.set && current.binding == descriptor.binding &&
-           current.count == descriptor.count && current.kind == descriptor.kind;
+           current.count == descriptor.count && current.kind == descriptor.kind &&
+           current.sampledImage == descriptor.sampledImage;
 }
 
 auto descriptorStages(const ShaderProgramDescriptor& descriptor) -> vk::ShaderStageFlags
@@ -410,6 +412,43 @@ auto descriptorStages(const ShaderProgramDescriptor& descriptor) -> vk::ShaderSt
                            });
 }
 
+auto validateBuiltinBindingName(BindingNames& bindingNames,
+                                const ShaderProgramDescriptor& descriptor,
+                                std::string_view name) -> Result<void>
+{
+    const auto [bindingName, inserted] =
+        bindingNames.try_emplace(std::pair {descriptor.set, descriptor.binding}, std::string {name});
+    if (!inserted && bindingName->second != name)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                          std::format("Built-in shaders assign different names to set {}, "
+                                                      "binding {}",
+                                                      descriptor.set,
+                                                      descriptor.binding))};
+    }
+    return {};
+}
+
+auto getOrAddBuiltinDescriptor(ReflectedDescriptors& descriptors,
+                               const ShaderProgramDescriptor& descriptor,
+                               std::string_view name) -> Result<ReflectedDescriptorInterface*>
+{
+    const auto [entry, inserted] =
+        descriptors.try_emplace(std::string {name},
+                                ReflectedDescriptorInterface {.set = descriptor.set,
+                                                              .binding = descriptor.binding,
+                                                              .count = descriptor.count,
+                                                              .kind = descriptor.kind,
+                                                              .stages = {},
+                                                              .sampledImage = descriptor.sampledImage});
+    if (!inserted && !sameBinding(entry->second, descriptor))
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                          std::format("Built-in shaders disagree about descriptor '{}'", name))};
+    }
+    return &entry->second;
+}
+
 auto addDescriptor(ReflectedDescriptors& descriptors,
                    BindingNames& bindingNames,
                    const ShaderProgramDescriptor& descriptor) -> Result<void>
@@ -420,28 +459,16 @@ auto addDescriptor(ReflectedDescriptors& descriptors,
             makeError(ErrorCode::InvalidArgument, "Built-in shader descriptor must have one reflected name")};
     }
     const auto& name = descriptor.names.front();
-    const auto [bindingName, newBinding] =
-        bindingNames.try_emplace(std::pair {descriptor.set, descriptor.binding}, name);
-    if (!newBinding && bindingName->second != name)
+    if (auto valid = validateBuiltinBindingName(bindingNames, descriptor, name); !valid)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument,
-                                          std::format("Built-in shaders assign different names to set {}, "
-                                                      "binding {}",
-                                                      descriptor.set,
-                                                      descriptor.binding))};
+        return valid;
     }
-    const auto [entry, inserted] = descriptors.try_emplace(name,
-                                                           ReflectedDescriptorInterface {.set = descriptor.set,
-                                                                                         .binding = descriptor.binding,
-                                                                                         .count = descriptor.count,
-                                                                                         .kind = descriptor.kind,
-                                                                                         .stages = {}});
-    if (!inserted && !sameBinding(entry->second, descriptor))
+    auto entry = getOrAddBuiltinDescriptor(descriptors, descriptor, name);
+    if (!entry)
     {
-        return std::unexpected {makeError(ErrorCode::InvalidArgument,
-                                          std::format("Built-in shaders disagree about descriptor '{}'", name))};
+        return std::unexpected {std::move(entry.error())};
     }
-    entry->second.stages |= descriptorStages(descriptor);
+    (*entry)->stages |= descriptorStages(descriptor);
     return {};
 }
 
@@ -594,7 +621,8 @@ auto makeBuiltinShaderBindings(const ReflectedDescriptors& descriptors, BuiltinS
                                                  .count = descriptor.count,
                                                  .kind = descriptor.kind,
                                                  .arrayDimensions = {},
-                                                 .members = {}});
+                                                 .members = {},
+                                                 .sampledImage = descriptor.sampledImage});
     }
     return {};
 }
@@ -641,6 +669,147 @@ auto builtinShaderBindings(BuiltinShaderBindings& result) -> Result<void>
     });
 }
 
+auto isRendererSet(const BuiltinShaderBindings& bindings, std::uint32_t set) -> bool
+{
+    return set == bindings.frameSet || set == bindings.textureSet;
+}
+
+auto findDescriptor(const ShaderProgramLayout& program, std::uint32_t set, std::uint32_t binding)
+    -> const ShaderProgramDescriptor*
+{
+    const auto found = std::ranges::find_if(program.descriptors, [&](const auto& descriptor) {
+        return descriptor.set == set && descriptor.binding == binding;
+    });
+    return found != program.descriptors.end() ? &*found : nullptr;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion) Compare finite reflected member trees.
+auto sameBlockMemberLayout(const ShaderBlockMember& first, const ShaderBlockMember& second) -> bool
+{
+    return first.offset == second.offset && first.size == second.size && first.arrayStride == second.arrayStride &&
+           first.type == second.type && std::ranges::equal(first.members, second.members, sameBlockMemberLayout);
+}
+
+auto sameStageBlockLayout(const ShaderProgramDescriptor::StageLayout& first,
+                          const ShaderProgramDescriptor::StageLayout& second) -> bool
+{
+    return first.blockSize == second.blockSize &&
+           std::ranges::equal(first.members, second.members, sameBlockMemberLayout);
+}
+
+auto validateRendererDescriptor(const BuiltinShaderBindings& bindings, const ShaderProgramDescriptor& descriptor)
+    -> Result<void>
+{
+    const auto expected = std::ranges::find_if(bindings.shaderDescriptorSchema, [&](const auto& entry) {
+        return entry.set == descriptor.set && entry.binding == descriptor.binding;
+    });
+    if (expected == bindings.shaderDescriptorSchema.end() || expected->kind != descriptor.kind ||
+        expected->count != descriptor.count || expected->sampledImage != descriptor.sampledImage ||
+        descriptor.names.size() != 1 || descriptor.names.front() != expected->name)
+    {
+        return std::unexpected {makeError(
+            ErrorCode::InvalidArgument,
+            std::format("Incompatible renderer descriptor at set {}, binding {}", descriptor.set, descriptor.binding))};
+    }
+    const auto allowedStages = bindings.descriptors.at(expected->name).layout.stageFlags;
+    const auto requestedStages = descriptorStages(descriptor);
+    if ((requestedStages & allowedStages) != requestedStages)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument,
+                      std::format("Unsupported stage access for renderer descriptor '{}'", expected->name))};
+    }
+    return validateBuiltinShaderDescriptor(descriptor);
+}
+
+auto validateCustomDrawConstants(const ShaderProgramLayout& variant) -> Result<void>
+{
+    auto drawBlock = std::optional<ShaderPushConstantBlock> {};
+    auto stages = vk::ShaderStageFlags {};
+    if (auto valid = collectBuiltinPushConstantStages(variant, drawConstantMembers(), drawBlock, stages); !valid)
+    {
+        return valid;
+    }
+    if (stages & vk::ShaderStageFlagBits::eFragment)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Renderer draw constants are available in vertex stages")};
+    }
+    return {};
+}
+
+auto validateCustomApplicationDescriptor(const BuiltinShaderBindings& bindings,
+                                         const ShaderProgramDescriptor& descriptor) -> Result<void>
+{
+    if (descriptor.set < std::max(bindings.frameSet, bindings.textureSet))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Application descriptor uses a reserved renderer set")};
+    }
+    const auto& stages = descriptor.stageLayouts;
+    if (std::ranges::any_of(stages, [&](const auto& stage) {
+            return !sameStageBlockLayout(stages.front(), stage);
+        }))
+    {
+        return std::unexpected {makeError(
+            ErrorCode::InvalidArgument,
+            std::format("Conflicting block layouts at set {}, binding {}", descriptor.set, descriptor.binding))};
+    }
+    return {};
+}
+
+auto validateCustomDescriptor(const BuiltinShaderBindings& bindings, const ShaderProgramDescriptor& descriptor)
+    -> Result<void>
+{
+    if (isRendererSet(bindings, descriptor.set))
+    {
+        return validateRendererDescriptor(bindings, descriptor);
+    }
+    return validateCustomApplicationDescriptor(bindings, descriptor);
+}
+
+auto validateCustomVariant(const BuiltinShaderBindings& bindings, const ShaderProgramLayout& variant) -> Result<void>
+{
+    for (const auto& descriptor : variant.descriptors)
+    {
+        if (auto valid = validateCustomDescriptor(bindings, descriptor); !valid)
+        {
+            return valid;
+        }
+    }
+    return validateCustomDrawConstants(variant);
+}
+
+struct ShaderVariantLayouts
+{
+    const ShaderProgramLayout& camera;
+    const ShaderProgramLayout& shadow;
+};
+
+auto validateShadowApplicationBindings(const BuiltinShaderBindings& bindings, ShaderVariantLayouts variants)
+    -> Result<void>
+{
+    for (const auto& descriptor : variants.shadow.descriptors)
+    {
+        if (isRendererSet(bindings, descriptor.set))
+        {
+            continue;
+        }
+        const auto* expected = findDescriptor(variants.camera, descriptor.set, descriptor.binding);
+        if (expected == nullptr || expected->kind != descriptor.kind || expected->count != descriptor.count ||
+            expected->sampledImage != descriptor.sampledImage ||
+            !sameStageBlockLayout(expected->stageLayouts.front(), descriptor.stageLayouts.front()))
+        {
+            return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                              std::format("Shadow application binding at set {}, binding {} has no "
+                                                          "matching camera layout",
+                                                          descriptor.set,
+                                                          descriptor.binding))};
+        }
+    }
+    return {};
+}
+
 auto descriptorBindingsForSet(const std::map<std::string, ReflectedDescriptorBinding, std::less<>>& descriptors,
                               std::uint32_t set) -> std::vector<vk::DescriptorSetLayoutBinding>
 {
@@ -672,8 +841,31 @@ auto createDescriptorSetLayout(const vk::raii::Device& device, std::span<const v
 
 }
 
+auto validateCustomShaderLayouts(const ShaderProgramLayout& camera, const ShaderProgramLayout* shadow) -> Result<void>
+{
+    auto bindings = BuiltinShaderBindings {};
+    if (auto reflected = builtinShaderBindings(bindings); !reflected)
+    {
+        return reflected;
+    }
+    auto valid = validateCustomVariant(bindings, camera);
+    if (!valid)
+    {
+        auto& error = valid.error();
+        return std::unexpected {makeError(error.code, std::move(error.message), std::move(error.native), error.source)};
+    }
+    if (shadow == nullptr)
+    {
+        return {};
+    }
+    return validateCustomVariant(bindings, *shadow).and_then([&] {
+        return validateShadowApplicationBindings(bindings, {.camera = camera, .shadow = *shadow});
+    });
+}
+
 auto FrameDescriptors::initialize(const vk::PhysicalDeviceLimits& limits, std::size_t frames) -> Result<void>
 {
+    _limits = limits;
     return reflectShaderBindings(limits.maxBoundDescriptorSets)
         .and_then([this] {
             return createLayout(_frameDescriptorSetIndex).transform([this](auto layout) {
@@ -769,16 +961,42 @@ auto FrameDescriptors::descriptorSetLayouts() -> Result<std::vector<vk::Descript
 
 auto FrameDescriptors::initializePipelineLayout() -> Result<void>
 {
-    return descriptorSetLayouts().and_then([this](const auto& layouts) -> Result<void> {
-        const auto layoutInfo =
-            vk::PipelineLayoutCreateInfo {.setLayoutCount = static_cast<std::uint32_t>(layouts.size()),
-                                          .pSetLayouts = layouts.data(),
-                                          .pushConstantRangeCount = 1,
-                                          .pPushConstantRanges = &_pushConstantRange};
-        return checkedCreation(_device.createPipelineLayout(layoutInfo)).transform([this](auto layout) {
+    return descriptorSetLayouts().and_then([this](auto layouts) -> Result<void> {
+        _pipelineSetLayouts = std::move(layouts);
+        return createApplicationPipelineLayout({}).transform([this](auto layout) {
             _pipelineLayout = std::move(layout);
         });
     });
+}
+
+auto FrameDescriptors::createApplicationPipelineLayout(std::span<const vk::DescriptorSetLayout> application) const
+    -> Result<vk::raii::PipelineLayout>
+{
+    auto layouts = _pipelineSetLayouts;
+    layouts.insert(layouts.end(), application.begin(), application.end());
+    const auto info = vk::PipelineLayoutCreateInfo {.setLayoutCount = static_cast<std::uint32_t>(layouts.size()),
+                                                    .pSetLayouts = layouts.data(),
+                                                    .pushConstantRangeCount = 1,
+                                                    .pPushConstantRanges = &_pushConstantRange};
+    return checkedCreation(_device.createPipelineLayout(info));
+}
+
+auto FrameDescriptors::getApplicationSetIndex() const noexcept -> std::uint32_t
+{
+    return static_cast<std::uint32_t>(_pipelineSetLayouts.size());
+}
+
+auto FrameDescriptors::getLimits() const noexcept -> const vk::PhysicalDeviceLimits&
+{
+    return _limits;
+}
+
+auto FrameDescriptors::getLayoutBindings() const -> std::vector<vk::DescriptorSetLayoutBinding>
+{
+    auto bindings = descriptorBindingsForSet(_shaderBindings, _frameDescriptorSetIndex);
+    const auto textures = materialTextureBindings();
+    bindings.insert(bindings.end(), textures.begin(), textures.end());
+    return bindings;
 }
 
 auto FrameDescriptors::initializeShadowSampler() -> std::expected<void, Error>

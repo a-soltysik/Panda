@@ -11,6 +11,8 @@ extern "C" {
 auto spvReflectCreateShaderModule(std::size_t size, const void* code, SpvReflectShaderModule* module)
     -> SpvReflectResult
 {
+    module->capabilities = nullptr;
+    module->capability_count = 0;
     return panda::test::ScopedMock<panda::test::SpirvReflectMock>::getActiveMock().createShaderModule(size,
                                                                                                       code,
                                                                                                       module);

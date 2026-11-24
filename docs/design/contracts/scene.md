@@ -214,7 +214,7 @@ integration example. CPU tests establish algebra/lifecycle, not visual GPU corre
 An application submits its particle visualization as a
 [procedural instanced draw](rendering.md#procedural-instanced-draws). It can use
 an ordinary scene node as the visualization's transform anchor. The application
-owns the draw, buffers, bounds and shader layouts.
+owns the draw, buffers and shader layouts.
 
 The domain and particles are distinct objects. Moving or rotating a physical domain
 does not automatically parent or teleport the particles. The application solver

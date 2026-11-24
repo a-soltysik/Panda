@@ -107,9 +107,10 @@ void renderSequence(const panda::Engine& context, const panda::Mesh& cube)
                       "Create the camera");
     auto view = panda::RenderView {.camera = camera,
                                    .lights = {panda::DirectionalLight {}},
-                                   .meshes = {panda::MeshDraw {.mesh = cube}},
+                                   .meshes = {panda::MeshDraw {.mesh = cube, .shaderResources = {}}},
                                    .environment = {},
-                                   .skybox = {}};
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
     const auto& renderer = context.getOffscreenRenderer();
     for (auto frameIndex = std::size_t {}; frameIndex < frameCount; ++frameIndex)
     {
@@ -248,11 +249,16 @@ auto createFilteringView(const TextureFilteringScene& scene) -> panda::RenderVie
                           .farPlane = 250.0F
     }),
                       "Create the texture filtering comparison camera");
-    auto draw = panda::MeshDraw {.mesh = scene.plane};
+    auto draw = panda::MeshDraw {.mesh = scene.plane, .shaderResources = {}};
     draw.material.model = panda::MaterialModel::Unlit;
     draw.material.baseColorTexture = scene.stripes;
     draw.material.renderFace = panda::RenderFace::Both;
-    auto view = panda::RenderView {.camera = camera, .lights = {}, .meshes = {draw}, .environment = {}, .skybox = {}};
+    auto view = panda::RenderView {.camera = camera,
+                                   .lights = {},
+                                   .meshes = {draw},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
     view.requestedSampleCount = panda::SampleCount::Four;
     return view;
 }

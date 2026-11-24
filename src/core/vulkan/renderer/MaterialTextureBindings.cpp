@@ -110,6 +110,12 @@ auto MaterialTextureBindings::getSet(std::size_t index, std::size_t drawIndex) c
     return *_frames.at(index).descriptors.sets.at(drawIndex);
 }
 
+auto MaterialTextureBindings::getTextureSampler(std::size_t frameIndex, const Texture& texture)
+    -> std::expected<vk::Sampler, Error>
+{
+    return getTextureSampler(_frames.at(frameIndex), texture);
+}
+
 auto MaterialTextureBindings::initialize(vk::DescriptorSetLayout layout,
                                          std::vector<vk::DescriptorSetLayoutBinding> bindings,
                                          std::size_t frameCount) -> std::expected<void, Error>

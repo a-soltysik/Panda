@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <panda/base/Error.hpp>
+#include <panda/rendering/ShaderProgram.hpp>
 #include <span>
 #include <string>
 #include <string_view>
@@ -10,11 +11,7 @@
 
 namespace panda::core::vulkan::renderer
 {
-enum class ShaderStage : std::uint8_t
-{
-    Vertex,
-    Fragment
-};
+using panda::ShaderStage;
 
 enum class ShaderDescriptorKind : std::uint8_t
 {
@@ -25,6 +22,20 @@ enum class ShaderDescriptorKind : std::uint8_t
 };
 
 // NOLINTBEGIN(misc-no-recursion) This models a finite reflected block tree by value.
+struct ShaderBlockType
+{
+    std::uint32_t flags {};
+    std::uint32_t scalarWidth {};
+    std::uint32_t scalarSignedness {};
+    std::uint32_t vectorComponents {};
+    std::uint32_t matrixColumns {};
+    std::uint32_t matrixRows {};
+    std::uint32_t matrixStride {};
+    bool rowMajor {};
+    std::vector<std::uint32_t> arrayDimensions;
+    friend auto operator==(const ShaderBlockType&, const ShaderBlockType&) -> bool = default;
+};
+
 struct ShaderBlockMember
 {
     std::string name;
@@ -32,6 +43,7 @@ struct ShaderBlockMember
     std::uint32_t size {};
     std::uint32_t arrayStride {};
     std::vector<ShaderBlockMember> members;
+    ShaderBlockType type {};
     friend auto operator==(const ShaderBlockMember&, const ShaderBlockMember&) -> bool = default;
 };
 // NOLINTEND(misc-no-recursion)
@@ -61,6 +73,24 @@ struct ShaderSpecializationConstant
     friend auto operator==(const ShaderSpecializationConstant&, const ShaderSpecializationConstant&) -> bool = default;
 };
 
+enum class ShaderImageDimension : std::uint8_t
+{
+    TwoDimensional,
+    ThreeDimensional,
+    Cube
+};
+
+struct ShaderSampledImage
+{
+    ShaderImageDimension dimension {ShaderImageDimension::TwoDimensional};
+    ShaderInterfaceFormat sampleType {ShaderInterfaceFormat::Float};
+    // OpTypeImage Depth is 0 for non-depth, 1 for depth, and 2 if unspecified.
+    std::uint32_t depth {};
+    bool arrayed {};
+    bool multisampled {};
+    friend auto operator==(const ShaderSampledImage&, const ShaderSampledImage&) -> bool = default;
+};
+
 struct ShaderDescriptor
 {
     std::string name;
@@ -71,6 +101,7 @@ struct ShaderDescriptor
     std::vector<std::uint32_t> arrayDimensions;
     std::uint32_t blockSize {};
     std::vector<ShaderBlockMember> members;
+    std::optional<ShaderSampledImage> sampledImage;
 };
 
 struct ShaderPushConstantBlock
@@ -106,6 +137,7 @@ struct ShaderProgramDescriptor
 
     std::vector<StageLayout> stageLayouts;
     std::vector<std::string> names;
+    std::optional<ShaderSampledImage> sampledImage;
 };
 
 struct ShaderProgramPushConstantBlock

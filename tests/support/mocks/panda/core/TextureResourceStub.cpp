@@ -150,6 +150,11 @@ auto TextureResource::getNativeView() const -> vk::ImageView
     return test::ScopedMock<test::TextureResourceMock>::getActiveMock().getNativeView(*this);
 }
 
+auto TextureResource::isUploaded() const -> bool
+{
+    return test::ScopedMock<test::TextureResourceMock>::getActiveMock().isUploaded(*this);
+}
+
 auto TextureResource::getNativeArrayView() const -> vk::ImageView
 {
     return getNativeView();

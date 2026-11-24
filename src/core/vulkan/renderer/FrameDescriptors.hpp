@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <panda/rendering/RenderView.hpp>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -13,6 +14,9 @@
 namespace panda::core::vulkan::renderer
 {
 struct FrameBufferDescriptors;
+
+[[nodiscard]] auto validateCustomShaderLayouts(const ShaderProgramLayout& camera, const ShaderProgramLayout* shadow)
+    -> Result<void>;
 
 struct ReflectedDescriptorBinding
 {
@@ -29,6 +33,11 @@ public:
     [[nodiscard]] auto initializeShadowSampler() -> Result<void>;
     [[nodiscard]] auto initializeEnvironmentSampler() -> Result<void>;
     [[nodiscard]] auto getPipelineLayout() const noexcept -> vk::PipelineLayout;
+    [[nodiscard]] auto createApplicationPipelineLayout(std::span<const vk::DescriptorSetLayout> application) const
+        -> Result<vk::raii::PipelineLayout>;
+    [[nodiscard]] auto getApplicationSetIndex() const noexcept -> std::uint32_t;
+    [[nodiscard]] auto getLimits() const noexcept -> const vk::PhysicalDeviceLimits&;
+    [[nodiscard]] auto getLayoutBindings() const -> std::vector<vk::DescriptorSetLayoutBinding>;
     [[nodiscard]] auto getFrameDescriptorSetIndex() const noexcept -> std::uint32_t;
     [[nodiscard]] auto getTextureDescriptorSetIndex() const noexcept -> std::uint32_t;
     [[nodiscard]] auto getFrameDescriptorSet(std::size_t index) const -> vk::DescriptorSet;
@@ -54,6 +63,8 @@ private:
     vk::raii::DescriptorSetLayout _descriptorSetLayout {nullptr};
     vk::raii::DescriptorSetLayout _textureDescriptorSetLayout {nullptr};
     std::vector<vk::raii::DescriptorSetLayout> _emptyDescriptorSetLayouts;
+    std::vector<vk::DescriptorSetLayout> _pipelineSetLayouts;
+    vk::PhysicalDeviceLimits _limits {};
     vk::raii::PipelineLayout _pipelineLayout {nullptr};
     std::map<std::string, ReflectedDescriptorBinding, std::less<>> _shaderBindings;
     std::vector<ShaderDescriptor> _shaderDescriptorSchema;

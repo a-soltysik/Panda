@@ -1,14 +1,14 @@
 # Automated benchmark specification
 
-Accepted benchmark specification. The smoke executable is implemented; full profiles
-remain planned, and timing budgets remain provisional until measured on the reference
-system.
+Accepted benchmark specification. The smoke and render-only `gpu-particles`
+profiles are implemented; the full reference profiles remain planned, and timing
+budgets remain provisional until measured on the reference system.
 
 ## Execution model
 
 Provide a standalone `panda-bench`, enabled with `PANDA_BUILD_BENCHMARKS=ON` and
 disabled by default. It requires `PANDA_BUILD_TOOLS=ON` for its window. The smoke
-profile is implemented; reference profiles remain planned. Profiles select settings
+profiles are implemented; reference profiles remain planned. Profiles select settings
 at runtime; changing window extent, duration, workload size, or output directory
 must not require recompilation.
 
@@ -34,6 +34,16 @@ The JSON records both requested light counts and uses `renderStaticColoredScene`
 its workload name. This remains a fixed-view smoke workload, not a representative
 scene benchmark. With a zero-second warmup, the first measured frame may include
 first-use renderer or pipeline setup.
+
+The implemented `gpu-particles` profile accepts `--particle-count` values 10,000,
+100,000 or 1,000,000. It uses the screen-space custom particle shaders from the example
+and the same deterministic packed position/velocity records. Buffer creation and
+upload happen before warmup; one run
+measures one selected instance count through the normal window renderer. It records
+`renderGpuParticles` and the requested count in
+`panda-bench-gpu-particles.json`. The profile does not include the smoke scene's
+mesh draws, lights or shadows. The more extensive `cloud-v1` sphere simulation,
+depth and update checks and CUDA cases below remain planned.
 
 For a positive light count, the Engine budget is `max(defaultMaxLights, count)`; the
 current default budget is 64. The benchmark prepares `RenderView` once before timing,

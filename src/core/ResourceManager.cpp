@@ -2,6 +2,7 @@
 #include "vulkan/VulkanHpp.hpp" // IWYU pragma: keep
 // clang-format on
 
+#include <atomic>
 #include <cstdint>
 #include <expected>
 #include <limits>
@@ -10,6 +11,7 @@
 #include <panda/base/Error.hpp>
 #include <panda/geometry/Geometry.hpp>
 #include <panda/geometry/VertexLayout.hpp>
+#include <panda/rendering/ShaderProgram.hpp>
 #include <panda/resources/Buffer.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
@@ -21,6 +23,7 @@
 #include <variant>
 #include <vector>
 
+#include "vulkan/renderer/ShaderProgramState.hpp"
 #include "vulkan/resources/BufferResource.hpp"
 #include "vulkan/resources/MeshResource.hpp"
 #include "vulkan/resources/OffscreenTargetResource.hpp"
@@ -111,5 +114,34 @@ auto ResourceManager::createMeshFromGeometry(const Geometry& geometry) const -> 
                        .vertexStride = standardMeshVertexStrideBytes,
                        .indices = indexDescription,
                        .attributes = std::ranges::to<std::vector<VertexAttribute>>(standardMeshVertexAttributes)});
+}
+
+auto ResourceManager::createShaderProgram(const ProgramDesc& description) const -> Result<ShaderProgram>
+{
+    return ShaderProgram::create(_device, description);
+}
+
+auto ResourceManager::reloadShaderProgram(const ShaderProgram& program, const ProgramDesc& description) const
+    -> Result<void>
+{
+    const auto current = program.snapshot();
+    if (!current || current->device != &_device)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Shader program belongs to another Engine")};
+    }
+    return ShaderProgram::create(_device, description).and_then([&](const auto& replacement) -> Result<void> {
+        const auto next = replacement.snapshot();
+        if (current->vertexInput != next->vertexInput ||
+            !core::vulkan::renderer::sameShaderProgramInterface(current->camera,
+                                                                current->shadow,
+                                                                next->camera,
+                                                                next->shadow))
+        {
+            return std::unexpected {
+                makeError(ErrorCode::InvalidArgument, "Shader program reload changes its reflected interface")};
+        }
+        program._identity->current.store(next, std::memory_order_release);
+        return {};
+    });
 }
 }

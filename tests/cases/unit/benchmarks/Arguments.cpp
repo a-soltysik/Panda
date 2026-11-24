@@ -36,6 +36,7 @@ TEST(BenchmarkArguments, SuppliesTheSmokeDefaults)
     EXPECT_EQ(options->windowHeight, 720U);
     EXPECT_EQ(options->lightCount, panda_bench::defaultSmokeLightCount);
     EXPECT_EQ(options->shadowedLightCount, panda_bench::defaultSmokeShadowedLightCount);
+    EXPECT_EQ(options->particleCount, panda_bench::defaultParticleCount);
     EXPECT_EQ(options->presentationMode, panda::EngineOptions::PresentationMode::Fifo);
     EXPECT_EQ(options->textureFilteringPreset, panda::TextureFilteringPreset::Anisotropic8x);
     EXPECT_EQ(options->warmupDuration, std::chrono::seconds {1});
@@ -113,6 +114,19 @@ TEST(BenchmarkArguments, ReadsRuntimeSettings)
     EXPECT_EQ(options->runCount, 3U);
 }
 
+TEST(BenchmarkArguments, AcceptsTheParticleWorkloadSizes)
+{
+    for (const auto particleCount : std::array {10'000U, 100'000U, 1'000'000U})
+    {
+        const auto options =
+            parse({"panda-bench", "--profile", "gpu-particles", "--particle-count", std::to_string(particleCount)});
+
+        ASSERT_TRUE(options);
+        EXPECT_EQ(options->profile, "gpu-particles");
+        EXPECT_EQ(options->particleCount, particleCount);
+    }
+}
+
 TEST(BenchmarkArguments, HandlesHelp)
 {
     const auto options = parse({"panda-bench", "--help"});
@@ -126,6 +140,7 @@ TEST(BenchmarkArguments, GeneratesHelpForRegisteredOptions)
     const auto help = panda_bench::usage();
 
     EXPECT_NE(help.find("--profile"), std::string::npos);
+    EXPECT_NE(help.find("--particle-count"), std::string::npos);
     EXPECT_NE(help.find("--output"), std::string::npos);
     EXPECT_NE(help.find("--width"), std::string::npos);
     EXPECT_NE(help.find("--height"), std::string::npos);
@@ -158,12 +173,23 @@ TEST(BenchmarkArguments, RejectsUnsupportedProfile)
     const auto options = parse({"panda-bench", "--profile", "reference-1080p"});
 
     ASSERT_FALSE(options);
-    EXPECT_NE(options.error().find("Only the smoke profile is implemented"), std::string::npos);
+    EXPECT_EQ(options.error(), "Profile must be smoke or gpu-particles");
+}
+
+TEST(BenchmarkArguments, RejectsParticleCountsOutsideTheFixtureSizes)
+{
+    const auto options = parse({"panda-bench", "--profile", "gpu-particles", "--particle-count", "20000"});
+
+    ASSERT_FALSE(options);
+    EXPECT_EQ(options.error(), "--particle-count must be 10000, 100000 or 1000000");
+    EXPECT_FALSE(parse({"panda-bench", "--particle-count", "100000"}));
+    EXPECT_FALSE(parse({"panda-bench", "--profile", "gpu-particles", "--lights", "1"}));
 }
 
 TEST(BenchmarkArguments, RejectsMissingAndUnknownValues)
 {
     EXPECT_FALSE(parse({"panda-bench", "--profile"}));
+    EXPECT_FALSE(parse({"panda-bench", "--particle-count"}));
     EXPECT_FALSE(parse({"panda-bench", "--output"}));
     EXPECT_FALSE(parse({"panda-bench", "--width"}));
     EXPECT_FALSE(parse({"panda-bench", "--height"}));

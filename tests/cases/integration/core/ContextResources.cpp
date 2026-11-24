@@ -23,16 +23,19 @@
 #include <panda/geometry/Geometry.hpp>
 #include <panda/rendering/PerformanceManager.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/ShaderProgram.hpp>
 #include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Buffer.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
 #include <panda/resources/PixelFormat.hpp>
+#include <panda/resources/ResourceManager.hpp>
 #include <panda/resources/Texture.hpp>
 #include <panda/submission/UploadBatch.hpp>
 #include <span>
 #include <string>
 #include <string_view>
+#include <test/program/ShaderResources.hpp>
 #include <utility>
 #include <vector>
 
@@ -54,6 +57,12 @@ using testing::Return;
 
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
 constexpr auto exhausted = static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory);
+
+auto shaderCode(std::string_view key, panda::ShaderStage stage) -> panda::ShaderCode
+{
+    const auto resource = panda::expect(test::program::findShader(key), "Shader program test fixture is missing");
+    return {.words = resource.words, .stage = stage, .label = resource.key};
+}
 
 auto invalidMemoryIntent() -> panda::BufferMemory
 {
@@ -966,6 +975,81 @@ TEST_F(ContextResourcesIntegration, EmptyBufferAndInvalidDescriptionsNeverCreate
         {.size = 1, .usage = std::bit_cast<::panda::BufferUsage>(std::uint8_t {0x80})});
     ASSERT_FALSE(unsupported);
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
+}
+
+TEST_F(ContextResourcesIntegration, CreatesProgramWithAnExplicitShadowUsingFewerBindings)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    const auto engine = panda::Engine::create();
+    ASSERT_TRUE(engine);
+    const auto vertex = shaderCode("fixtures/shaders/program_camera.vert", panda::ShaderStage::Vertex);
+    const auto temporaryWords = std::vector<std::uint32_t>(vertex.words.begin(), vertex.words.end());
+    const auto program = engine->getResourceManager().createShaderProgram({
+        .vertex = {.words = temporaryWords,                                       .stage = vertex.stage,       .label = vertex.label},
+        .fragment = shaderCode("fixtures/shaders/program_camera.frag", panda::ShaderStage::Fragment),
+        .vertexInput = panda::ShaderVertexInput::Procedural,
+        .shadow = panda::ShaderShadowStages {
+                   .vertex = shaderCode("fixtures/shaders/readonly_storage.vert", panda::ShaderStage::Vertex),
+                   .fragment = std::nullopt                                                                                         }
+    });
+
+    ASSERT_TRUE(program) << program.error().message;
+}
+
+TEST_F(ContextResourcesIntegration, RejectsShadowAbiReloadAndKeepsThePublishedRevision)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    const auto engine = panda::Engine::create();
+    ASSERT_TRUE(engine);
+    auto description = panda::ProgramDesc {
+        .vertex = shaderCode("fixtures/shaders/readonly_storage.vert", panda::ShaderStage::Vertex),
+        .fragment = shaderCode("fixtures/shaders/program_camera.frag", panda::ShaderStage::Fragment),
+        .vertexInput = panda::ShaderVertexInput::Procedural,
+        .shadow = panda::ShaderShadowStages {
+                                             .vertex = shaderCode("fixtures/shaders/readonly_storage.vert", panda::ShaderStage::Vertex),
+                                             .fragment = std::nullopt}
+    };
+    const auto program = engine->getResourceManager().createShaderProgram(description);
+    ASSERT_TRUE(program) << program.error().message;
+
+    description.shadow = panda::ShaderShadowStages {
+        .vertex = shaderCode("fixtures/shaders/program_shadow_empty.vert", panda::ShaderStage::Vertex),
+        .fragment = std::nullopt};
+    const auto rejected = engine->getResourceManager().reloadShaderProgram(*program, description);
+    ASSERT_FALSE(rejected);
+    EXPECT_EQ(rejected.error().code, panda::ErrorCode::InvalidArgument);
+
+    description.shadow = panda::ShaderShadowStages {
+        .vertex = shaderCode("fixtures/shaders/readonly_storage.vert", panda::ShaderStage::Vertex),
+        .fragment = std::nullopt};
+    const auto retained = engine->getResourceManager().reloadShaderProgram(*program, description);
+    ASSERT_TRUE(retained) << retained.error().message;
+}
+
+TEST_F(ContextResourcesIntegration, RejectsShadowBindingsWithDifferentLayoutsOrNoCameraBinding)
+{
+    expectHeadless();
+    expectParentsDestroyed(true, false);
+    const auto engine = panda::Engine::create();
+    ASSERT_TRUE(engine);
+    const auto camera = shaderCode("fixtures/shaders/readonly_storage.vert", panda::ShaderStage::Vertex);
+    const auto fragment = shaderCode("fixtures/shaders/program_camera.frag", panda::ShaderStage::Fragment);
+    for (const auto* key :
+         std::array {"fixtures/shaders/program_wrong_shadow.vert", "fixtures/shaders/program_camera.vert"})
+    {
+        SCOPED_TRACE(key);
+        const auto program = engine->getResourceManager().createShaderProgram({
+            .vertex = camera,
+            .fragment = fragment,
+            .vertexInput = panda::ShaderVertexInput::Procedural,
+            .shadow = panda::ShaderShadowStages {.vertex = shaderCode(key, panda::ShaderStage::Vertex),
+                                                 .fragment = std::nullopt}
+        });
+        ASSERT_FALSE(program);
+        EXPECT_NE(program.error().message.find("has no matching camera layout"), std::string::npos);
+    }
 }
 
 TEST_F(ContextResourcesIntegration, EmptyAndInvalidTexturesNeverCreateNativeImages)

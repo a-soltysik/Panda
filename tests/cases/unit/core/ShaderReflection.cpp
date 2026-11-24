@@ -8,6 +8,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <include/spirv/unified1/spirv.h>
 #include <spirv_reflect.h>
 
 #include <algorithm>
@@ -15,9 +16,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <panda/base/Error.hpp>
+#include <panda/rendering/ShaderProgram.hpp>
 #include <span>
 #include <string>
 #include <tuple>
@@ -131,15 +132,26 @@ constexpr auto descriptorCases = std::array {
 };
 using DescriptorBindings = std::array<SpvReflectDescriptorBinding, descriptorCases.size()>;
 
-auto makeDescriptorBindings(SpvReflectBlockVariable& member) -> DescriptorBindings
+auto makeSampledImageType() -> SpvReflectTypeDescription
+{
+    auto type = SpvReflectTypeDescription {};
+    type.type_flags = SPV_REFLECT_TYPE_FLAG_FLOAT;
+    type.traits.numeric.scalar.width = 32;
+    return type;
+}
+
+auto makeDescriptorBindings(SpvReflectBlockVariable& member, SpvReflectTypeDescription& imageType) -> DescriptorBindings
 {
     auto bindings = DescriptorBindings {};
-    std::ranges::transform(descriptorCases, bindings.begin(), [&member](const auto& descriptorCase) {
+    std::ranges::transform(descriptorCases, bindings.begin(), [&member, &imageType](const auto& descriptorCase) {
         auto binding = SpvReflectDescriptorBinding {};
         binding.set = descriptorCase.set;
         binding.binding = descriptorCase.set + 1U;
         binding.count = 1;
         binding.descriptor_type = descriptorCase.type;
+        binding.decoration_flags = SPV_REFLECT_DECORATION_NON_WRITABLE;
+        binding.image.dim = SpvDim2D;
+        binding.type_description = &imageType;
         binding.block.size = 16;
         binding.block.member_count = 1;
         binding.block.members = &member;
@@ -313,6 +325,8 @@ protected:
         descriptor.binding = 0;
         descriptor.count = 1;
         descriptor.descriptor_type = SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptor.image.dim = SpvDim2D;
+        descriptor.type_description = &imageType;
         specialization = SpvReflectSpecializationConstant {};
         specialization.name = "outputIsSrgb";
         specialization.constant_id = 7;
@@ -502,6 +516,7 @@ protected:
     std::uintptr_t nextHandle {10};
     SpvReflectEntryPoint entryPoint {makeEntryPoint(SPV_REFLECT_SHADER_STAGE_VERTEX_BIT)};
     SpvReflectDescriptorBinding descriptor {};
+    SpvReflectTypeDescription imageType {makeSampledImageType()};
     SpvReflectSpecializationConstant specialization {};
     std::size_t moduleIndex {};
 };
@@ -649,7 +664,8 @@ TEST_F(ShaderReflectionUnitTest, CopiesDescriptorKindsAndUnnamedMembers)
     auto member = SpvReflectBlockVariable {};
     member.offset = 12;
     member.size = 8;
-    auto bindings = makeDescriptorBindings(member);
+    auto imageType = makeSampledImageType();
+    auto bindings = makeDescriptorBindings(member, imageType);
 
     expectModuleCreated();
     expectEntryPoint(SPV_REFLECT_SHADER_STAGE_VERTEX_BIT);
@@ -683,7 +699,8 @@ TEST_F(ShaderReflectionUnitTest, CopiesDescriptorKindsAndUnnamedMembers)
 TEST_F(ShaderReflectionUnitTest, PreservesArrayDimensionsAndRejectsSingleElementDescriptorArrays)
 {
     auto member = SpvReflectBlockVariable {};
-    auto bindings = makeDescriptorBindings(member);
+    auto imageType = makeSampledImageType();
+    auto bindings = makeDescriptorBindings(member, imageType);
     bindings.front().array.dims_count = 1;
     bindings.front().array.dims[0] = 1;
 
@@ -847,7 +864,8 @@ TEST(ShaderProgramLayout, CombinesMatchingDescriptorsAndPushConstantStages)
                                            .kind = ShaderDescriptorKind::UniformBuffer,
                                            .arrayDimensions = {},
                                            .blockSize = 16,
-                                           .members = {member}}},
+                                           .members = {member},
+                                           .sampledImage = {}}},
                           .pushConstantBlocks = {{.offset = 0, .size = 16, .members = {member}}},
                           .inputs = {{.name = "position", .location = 0, .format = ShaderInterfaceFormat::Float3}},
                           .outputs = {{.name = "tint", .location = 1, .format = ShaderInterfaceFormat::Float4}},
@@ -861,7 +879,8 @@ TEST(ShaderProgramLayout, CombinesMatchingDescriptorsAndPushConstantStages)
                                            .kind = ShaderDescriptorKind::UniformBuffer,
                                            .arrayDimensions = {},
                                            .blockSize = 16,
-                                           .members = {member}}},
+                                           .members = {member},
+                                           .sampledImage = {}}},
                           .pushConstantBlocks = {},
                           .inputs = {{.name = "tint", .location = 1, .format = ShaderInterfaceFormat::Float4}},
                           .outputs = {},
@@ -892,7 +911,8 @@ TEST(ShaderProgramLayout, RejectsIncompatibleDescriptorsBeforePipelineCreation)
                                                            .kind = ShaderDescriptorKind::UniformBuffer,
                                                            .arrayDimensions = {},
                                                            .blockSize = 16,
-                                                           .members = {}}},
+                                                           .members = {},
+                                                           .sampledImage = {}}},
                                           .pushConstantBlocks = {},
                                           .inputs = {},
                                           .outputs = {},
@@ -905,7 +925,8 @@ TEST(ShaderProgramLayout, RejectsIncompatibleDescriptorsBeforePipelineCreation)
                                                              .kind = ShaderDescriptorKind::StorageBuffer,
                                                              .arrayDimensions = {},
                                                              .blockSize = 16,
-                                                             .members = {}}},
+                                                             .members = {},
+                                                             .sampledImage = {}}},
                                             .pushConstantBlocks = {},
                                             .inputs = {},
                                             .outputs = {},
@@ -961,7 +982,8 @@ TEST(ShaderProgramLayout, RejectsDescriptorVariantOutsideSharedLayout)
                           .kind = ShaderDescriptorKind::CombinedImageSampler,
                           .arrayDimensions = {},
                           .blockSize = 0,
-                          .members = {}}
+                          .members = {},
+                          .sampledImage = {}}
     };
     auto program = ShaderProgramLayout {};
     program.descriptors.push_back({.set = 1,
@@ -969,7 +991,8 @@ TEST(ShaderProgramLayout, RejectsDescriptorVariantOutsideSharedLayout)
                                    .count = 1,
                                    .kind = ShaderDescriptorKind::CombinedImageSampler,
                                    .stageLayouts = {},
-                                   .names = {"baseColorMap"}});
+                                   .names = {"baseColorMap"},
+                                   .sampledImage = {}});
 
     const auto result = validateShaderProgramDescriptors(program, expected, "shader variant");
 
@@ -1010,7 +1033,8 @@ TEST(ShaderProgramLayout, RejectsUnsupportedDescriptorsAndDuplicateStages)
                                                                 .kind = ShaderDescriptorKind::Other,
                                                                 .arrayDimensions = {},
                                                                 .blockSize = 0,
-                                                                .members = {}}},
+                                                                .members = {},
+                                                                .sampledImage = {}}},
                                                .pushConstantBlocks = {},
                                                .inputs = {},
                                                .outputs = {},
@@ -1291,7 +1315,8 @@ TEST(ShaderBlockLayout, RejectsIncompleteNestedBlocksAndUnnamedDescriptors)
                                    .count = 1,
                                    .kind = ShaderDescriptorKind::UniformBuffer,
                                    .stageLayouts = {},
-                                   .names = {}});
+                                   .names = {},
+                                   .sampledImage = {}});
     const auto descriptor = validateShaderProgramDescriptors(program, std::span<const ShaderDescriptor> {}, "unnamed");
     ASSERT_FALSE(descriptor);
     EXPECT_NE(descriptor.error().message.find("unnamed descriptor"), std::string::npos);

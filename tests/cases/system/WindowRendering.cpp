@@ -295,8 +295,9 @@ void expectInvalidEmissiveMap(const panda::Engine& context,
                                    .lights = {panda::DirectionalLight {}},
                                    .meshes = {},
                                    .environment = {},
-                                   .skybox = {}};
-    auto draw = panda::MeshDraw {.mesh = mesh};
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
+    auto draw = panda::MeshDraw {.mesh = mesh, .shaderResources = {}};
     draw.material.emissiveTexture = texture;
     draw.material.emissive = {1.0F, 1.0F, 1.0F};
     view.meshes.push_back(draw);
@@ -316,8 +317,9 @@ void expectInvalidNormalMap(const panda::Engine& context,
                                    .lights = {panda::DirectionalLight {}},
                                    .meshes = {},
                                    .environment = {},
-                                   .skybox = {}};
-    auto draw = panda::MeshDraw {.mesh = mesh};
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
+    auto draw = panda::MeshDraw {.mesh = mesh, .shaderResources = {}};
     draw.material.model = model;
     draw.material.normalTexture = texture;
     view.meshes.push_back(draw);
@@ -337,8 +339,9 @@ void expectInvalidOcclusionMap(const panda::Engine& context,
                                    .lights = {panda::DirectionalLight {}},
                                    .meshes = {},
                                    .environment = {},
-                                   .skybox = {}};
-    auto draw = panda::MeshDraw {.mesh = mesh};
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
+    auto draw = panda::MeshDraw {.mesh = mesh, .shaderResources = {}};
     draw.material.model = model;
     draw.material.occlusionTexture = texture;
     view.meshes.push_back(draw);
@@ -621,7 +624,7 @@ auto makeFaceDraws(const SceneMeshes& meshes) -> std::vector<panda::MeshDraw>
     return {
         frontFaceOnly,
         bothFaces,
-        panda::MeshDraw {.mesh = meshes.cube, .modelMatrix = reflectedModel},
+        panda::MeshDraw {.mesh = meshes.cube, .modelMatrix = reflectedModel, .shaderResources = {}},
         reflectedBackFaceOnly
     };
 }
@@ -663,8 +666,11 @@ auto makeCubeAndGroundView(glm::uvec2 extent, const SceneMeshes& meshes) -> pand
     view.camera = *camera;
     view.lights.emplace_back();
     view.meshes = {
-        panda::MeshDraw {.mesh = meshes.ground, .modelMatrix = groundTransform, .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
-        panda::MeshDraw {.mesh = meshes.cube}
+        panda::MeshDraw {.mesh = meshes.ground,
+                         .modelMatrix = groundTransform,
+                         .tint = {0.65F, 0.67F, 0.7F, 1.0F},
+                         .shaderResources = {}},
+        panda::MeshDraw {.mesh = meshes.cube, .shaderResources = {}}
     };
     auto blendDraws = makeBlendDraws(meshes);
     view.meshes.insert(view.meshes.end(), blendDraws.begin(), blendDraws.end());
@@ -935,7 +941,12 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
     const auto camera = makeTestCamera(renderExtent);
     ASSERT_TRUE(camera.has_value()) << camera.error().message;
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    auto view = panda::RenderView {.camera = *camera,
+                                   .lights = {},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
     const auto skybox = panda::test::createSkyboxFixture(context);
     if (!skybox && skybox.error().code == panda::ErrorCode::Unsupported)
     {
@@ -943,7 +954,7 @@ TEST(WindowRenderingSystem, CapturesPresentedViewIntoOffscreenTarget)
     }
     ASSERT_TRUE(skybox.has_value()) << skybox.error().message;
     view.skybox = *skybox;
-    auto draw = panda::MeshDraw {.mesh = *mesh};
+    auto draw = panda::MeshDraw {.mesh = *mesh, .shaderResources = {}};
     draw.material.model = panda::MaterialModel::Unlit;
     draw.material.renderFace = panda::RenderFace::Both;
     draw.material.baseColor = {0.0F, 1.0F, 0.0F, 0.5F};
@@ -1072,8 +1083,13 @@ TEST(HeadlessRendererSystem, RendersUnlitMeshWithZeroLightBudget)
     ASSERT_TRUE(finishSceneMeshUpload(context, *batch));
     const auto camera = makeTestCamera(renderExtent);
     ASSERT_TRUE(camera.has_value()) << camera.error().message;
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
-    auto draw = panda::MeshDraw {.mesh = *mesh};
+    auto view = panda::RenderView {.camera = *camera,
+                                   .lights = {},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
+    auto draw = panda::MeshDraw {.mesh = *mesh, .shaderResources = {}};
     draw.material.model = panda::MaterialModel::Unlit;
     view.meshes.push_back(draw);
 
@@ -1162,8 +1178,9 @@ TEST(HeadlessRendererSystem, RetainsTextureAfterApplicationReleasesItUntilFrameC
                                        .lights = {panda::DirectionalLight {}},
                                        .meshes = {},
                                        .environment = {},
-                                       .skybox = {}};
-        auto draw = panda::MeshDraw {.mesh = meshes->cube};
+                                       .skybox = {},
+                                       .proceduralDraws = {}};
+        auto draw = panda::MeshDraw {.mesh = meshes->cube, .shaderResources = {}};
         draw.material.normalTexture = *texture;
         view.meshes.push_back(draw);
 
@@ -1278,15 +1295,15 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
         metallicRoughnessDraw.material.metallic = 0.75F;
         metallicRoughnessDraw.material.roughness = 0.8F;
         view->meshes.push_back(metallicRoughnessDraw);
-        auto occlusionDraw = panda::MeshDraw {.mesh = meshes->cube};
+        auto occlusionDraw = panda::MeshDraw {.mesh = meshes->cube, .shaderResources = {}};
         occlusionDraw.material.occlusionTexture = meshes->metallicRoughnessMap;
         occlusionDraw.material.occlusionStrength = 0.75F;
         view->meshes.push_back(occlusionDraw);
-        auto litEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube};
+        auto litEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube, .shaderResources = {}};
         litEmissiveDraw.material.emissiveTexture = meshes->baseColorMap;
         litEmissiveDraw.material.emissive = {1.0F, 0.8F, 0.3F};
         view->meshes.push_back(litEmissiveDraw);
-        auto unlitEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube};
+        auto unlitEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube, .shaderResources = {}};
         unlitEmissiveDraw.material.model = panda::MaterialModel::Unlit;
         unlitEmissiveDraw.material.emissiveTexture = meshes->baseColorMap;
         unlitEmissiveDraw.material.emissive = {1.0F, 0.8F, 0.3F};
@@ -1295,7 +1312,8 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
                                                 .lights = {panda::DirectionalLight {}},
                                                 .meshes = {},
                                                 .environment = {},
-                                                .skybox = {}};
+                                                .skybox = {},
+                                                .proceduralDraws = {}};
         auto missingUvDraw = panda::MeshDraw {};
         missingUvDraw.mesh = meshes->triangle;
         missingUvDraw.material.model = panda::MaterialModel::Unlit;
@@ -1323,7 +1341,8 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
                                                   .lights = {panda::DirectionalLight {}},
                                                   .meshes = {},
                                                   .environment = {},
-                                                  .skybox = {}};
+                                                  .skybox = {},
+                                                  .proceduralDraws = {}};
         auto missingUvMrDraw = panda::MeshDraw {};
         missingUvMrDraw.mesh = *uvlessLitMesh;
         missingUvMrDraw.material.metallicRoughnessTexture = meshes->metallicRoughnessMap;
@@ -1336,7 +1355,8 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
                                               .lights = {panda::DirectionalLight {}},
                                               .meshes = {},
                                               .environment = {},
-                                              .skybox = {}};
+                                              .skybox = {},
+                                              .proceduralDraws = {}};
         auto unlitMrDraw = panda::MeshDraw {};
         unlitMrDraw.mesh = meshes->cube;
         unlitMrDraw.material.model = panda::MaterialModel::Unlit;
@@ -1364,7 +1384,8 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
                                                 .lights = {panda::DirectionalLight {}},
                                                 .meshes = {},
                                                 .environment = {},
-                                                .skybox = {}};
+                                                .skybox = {},
+                                                .proceduralDraws = {}};
         auto linearBaseColorDraw = panda::MeshDraw {};
         linearBaseColorDraw.mesh = meshes->cube;
         linearBaseColorDraw.material.baseColorTexture = *linearMap;
@@ -1383,7 +1404,8 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
                                              .lights = {panda::DirectionalLight {}},
                                              .meshes = {},
                                              .environment = {},
-                                             .skybox = {}};
+                                             .skybox = {},
+                                             .proceduralDraws = {}};
         auto srgbMrDraw = panda::MeshDraw {};
         srgbMrDraw.mesh = meshes->cube;
         srgbMrDraw.material.metallicRoughnessTexture = *srgbMetallicRoughnessMap;
@@ -1403,7 +1425,8 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
                                                     .lights = {panda::DirectionalLight {}},
                                                     .meshes = {},
                                                     .environment = {},
-                                                    .skybox = {}};
+                                                    .skybox = {},
+                                                    .proceduralDraws = {}};
         auto unuploadedBaseColorDraw = panda::MeshDraw {};
         unuploadedBaseColorDraw.mesh = meshes->cube;
         unuploadedBaseColorDraw.material.baseColorTexture = *unuploadedMap;
@@ -1423,7 +1446,8 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
                                                    .lights = {panda::DirectionalLight {}},
                                                    .meshes = {},
                                                    .environment = {},
-                                                   .skybox = {}};
+                                                   .skybox = {},
+                                                   .proceduralDraws = {}};
         auto unuploadedMrDraw = panda::MeshDraw {};
         unuploadedMrDraw.mesh = meshes->cube;
         unuploadedMrDraw.material.metallicRoughnessTexture = *unuploadedMrMap;
@@ -1436,8 +1460,9 @@ TEST(HeadlessRendererSystem, RendersBlendedAndMaskedAlphaFaceModesAndReflectedMe
                                                        .lights = {panda::DirectionalLight {}},
                                                        .meshes = {},
                                                        .environment = {},
-                                                       .skybox = {}};
-        auto negativeEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube};
+                                                       .skybox = {},
+                                                       .proceduralDraws = {}};
+        auto negativeEmissiveDraw = panda::MeshDraw {.mesh = meshes->cube, .shaderResources = {}};
         negativeEmissiveDraw.material.emissive = {-1.0F, 0.0F, 0.0F};
         negativeEmissiveView.meshes.push_back(negativeEmissiveDraw);
         const auto negativeEmissiveResult = context.getOffscreenRenderer().render(negativeEmissiveView, *target);

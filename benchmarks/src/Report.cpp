@@ -22,8 +22,7 @@ namespace panda_bench
 namespace
 {
 using Json = nlohmann::json;
-constexpr auto benchmarkReportSchemaVersion = 9U;
-constexpr auto smokeProfileVersion = 7U;
+constexpr auto benchmarkReportSchemaVersion = 10U;
 
 auto presentationModeName(panda::EngineOptions::PresentationMode mode) -> std::string
 {
@@ -113,7 +112,7 @@ auto runJson(const RunReport& run) -> Json
 
 auto settingsJson(const Report& report) -> Json
 {
-    return Json {
+    auto settings = Json {
         {"requestedWindowExtent",
          Json {{"width", report.requestedWindowWidth}, {"height", report.requestedWindowHeight}}              },
         {"requestedLightCount",             report.requestedLightCount                                        },
@@ -130,6 +129,11 @@ auto settingsJson(const Report& report) -> Json
          std::chrono::duration_cast<std::chrono::nanoseconds>(report.requestedMeasurement).count()            },
         {"requestedRuns",                   report.requestedRuns                                              }
     };
+    if (report.requestedParticleCount)
+    {
+        settings.emplace("requestedParticleCount", *report.requestedParticleCount);
+    }
+    return settings;
 }
 
 auto environmentJson(const Report& report) -> Json
@@ -169,14 +173,14 @@ auto serialize(const Report& report) -> std::string
     auto runs = Json::array();
     std::ranges::transform(report.runs, std::back_inserter(runs), runJson);
     return Json {
-               {"schemaVersion", benchmarkReportSchemaVersion                                         },
-               {"profile",       Json {{"name", "smoke"}, {"version", smokeProfileVersion}}           },
-               {"workload",      "renderStaticColoredScene"                                           },
-               {"code",          Json {{"revision", report.revision}}                                 },
-               {"environment",   environmentJson(report)                                              },
-               {"settings",      settingsJson(report)                                                 },
-               {"runs",          std::move(runs)                                                      },
-               {"outcome",       Json {{"status", report.outcome}, {"message", report.outcomeMessage}}}
+               {"schemaVersion", benchmarkReportSchemaVersion                                           },
+               {"profile",       Json {{"name", report.profileName}, {"version", report.profileVersion}}},
+               {"workload",      report.workloadName                                                    },
+               {"code",          Json {{"revision", report.revision}}                                   },
+               {"environment",   environmentJson(report)                                                },
+               {"settings",      settingsJson(report)                                                   },
+               {"runs",          std::move(runs)                                                        },
+               {"outcome",       Json {{"status", report.outcome}, {"message", report.outcomeMessage}}  }
     }
                .dump(2) +
            "\n";

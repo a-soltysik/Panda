@@ -4,7 +4,11 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
+#include <panda/base/Error.hpp>
+#include <panda/rendering/ShaderProgram.hpp>
 #include <span>
+#include <string>
 #include <test/shader/ShaderResources.hpp>
 #include <vector>
 
@@ -14,6 +18,7 @@ using panda::core::vulkan::renderer::buildShaderProgramLayout;
 using panda::core::vulkan::renderer::reflectGraphicsProgram;
 using panda::core::vulkan::renderer::reflectShader;
 using panda::core::vulkan::renderer::ShaderDescriptorKind;
+using panda::core::vulkan::renderer::ShaderImageDimension;
 using panda::core::vulkan::renderer::ShaderInterfaceFormat;
 using panda::core::vulkan::renderer::ShaderStage;
 using panda::core::vulkan::renderer::specializationConstantId;
@@ -109,4 +114,58 @@ TEST(ShaderReflection, RejectsNonzeroInterfaceComponents)
 
     ASSERT_FALSE(reflection);
     EXPECT_NE(reflection.error().message.find("component"), std::string::npos);
+}
+
+TEST(ShaderReflection, RequiresReadOnlyStorageInEveryProgramStage)
+{
+    const auto vertex = test::shader::findShader("fixtures/shaders/readonly_storage.vert");
+    const auto fragment = test::shader::findShader("fixtures/shaders/mixed_storage.frag");
+    ASSERT_TRUE(vertex);
+    ASSERT_TRUE(fragment);
+
+    const auto vertexOnly = reflectGraphicsProgram(vertex->words, std::nullopt, "read-only storage");
+    ASSERT_TRUE(vertexOnly) << vertexOnly.error().message;
+    ASSERT_EQ(vertexOnly->descriptors.size(), 1U);
+    EXPECT_EQ(vertexOnly->descriptors.front().kind, ShaderDescriptorKind::StorageBuffer);
+
+    const auto graphics = reflectGraphicsProgram(vertex->words, fragment->words, "mixed storage");
+    ASSERT_FALSE(graphics);
+    EXPECT_NE(graphics.error().message.find("mixed storage fragment"), std::string::npos);
+    EXPECT_NE(graphics.error().message.find("writable storage buffer at set 2, binding 3"), std::string::npos);
+}
+
+TEST(ShaderReflection, RejectsCapabilitiesThatRequireDisabledDeviceFeatures)
+{
+    const auto vertex = test::shader::findShader("fixtures/shaders/int64.vert");
+    ASSERT_TRUE(vertex);
+
+    const auto program = reflectGraphicsProgram(vertex->words, std::nullopt, "64-bit arithmetic");
+
+    ASSERT_FALSE(program);
+    EXPECT_EQ(program.error().code, panda::ErrorCode::Unsupported);
+    EXPECT_NE(program.error().message.find("64-bit arithmetic vertex"), std::string::npos);
+    EXPECT_NE(program.error().message.find("unsupported SPIR-V capability"), std::string::npos);
+}
+
+TEST(ShaderReflection, RejectsConflictingSampledImageDimensionsAndTypes)
+{
+    const auto vertex = test::shader::findShader("fixtures/shaders/sampled_image.vert");
+    ASSERT_TRUE(vertex);
+    const auto layout = reflectGraphicsProgram(vertex->words, std::nullopt, "sampled 2D float image");
+    ASSERT_TRUE(layout) << layout.error().message;
+    ASSERT_EQ(layout->descriptors.size(), 1U);
+    const auto& image = layout->descriptors.front().sampledImage;
+    ASSERT_TRUE(image);
+    EXPECT_EQ(image->dimension, ShaderImageDimension::TwoDimensional);
+    EXPECT_EQ(image->sampleType, ShaderInterfaceFormat::Float);
+
+    for (const auto* key : std::array {"fixtures/shaders/sampled_cube.frag", "fixtures/shaders/sampled_integer.frag"})
+    {
+        SCOPED_TRACE(key);
+        const auto fragment = test::shader::findShader(key);
+        ASSERT_TRUE(fragment);
+        const auto program = reflectGraphicsProgram(vertex->words, fragment->words, "incompatible sampled images");
+        ASSERT_FALSE(program);
+        EXPECT_NE(program.error().message.find("conflicting descriptors at set 2, binding 3"), std::string::npos);
+    }
 }

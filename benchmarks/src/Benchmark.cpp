@@ -34,10 +34,30 @@ namespace panda_bench
 {
 namespace
 {
+constexpr auto gpuParticleProfileVersion = std::uint32_t {1};
+
+auto makeProfileReport(const Options& options) -> Report
+{
+    auto report = Report {};
+    report.profileName = options.profile;
+    if (options.profile == "gpu-particles")
+    {
+        report.profileVersion = gpuParticleProfileVersion;
+        report.workloadName = "renderGpuParticles";
+        report.requestedParticleCount = options.particleCount;
+    }
+    else
+    {
+        report.requestedLightCount = options.lightCount;
+        report.requestedShadowedLightCount = options.shadowedLightCount;
+    }
+    return report;
+}
+
 auto makeReport(const Options& options) -> Report
 {
     const auto hostInfo = panda::getHostInfo();
-    auto report = Report {};
+    auto report = makeProfileReport(options);
     report.revision = revision;
     report.operatingSystem = PANDA_BENCH_OS;
     report.compiler = PANDA_BENCH_COMPILER;
@@ -45,8 +65,6 @@ auto makeReport(const Options& options) -> Report
     report.cpuModel = hostInfo.cpuModel;
     report.requestedWindowWidth = options.windowWidth;
     report.requestedWindowHeight = options.windowHeight;
-    report.requestedLightCount = options.lightCount;
-    report.requestedShadowedLightCount = options.shadowedLightCount;
     report.requestedPresentationMode = options.presentationMode;
     report.requestedSampleCount = options.sampleCount;
     report.requestedTextureFilteringPreset = options.textureFilteringPreset;
@@ -143,7 +161,7 @@ auto runBenchmark(const Options& options) -> int
         return EXIT_FAILURE;
     }
     const auto runsSucceeded = executeRuns(options, report);
-    const auto outputPath = writeReport(options.outputDirectory / "panda-bench-smoke.json", report);
+    const auto outputPath = writeReport(options.outputDirectory / ("panda-bench-" + options.profile + ".json"), report);
     if (!outputPath)
     {
         std::println(stderr, "{}", outputPath.error());

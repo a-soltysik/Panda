@@ -25,6 +25,7 @@
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/PixelFormat.hpp>
 #include <panda/resources/Texture.hpp>
+#include <span>
 #include <variant>
 
 #include "Math.hpp"
@@ -93,7 +94,8 @@ auto validateMeshDraw(const MeshDraw& draw, const resources::MemoryPool& pool) -
             makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Engine")};
     }
     if (!hasAttribute(draw.mesh, VertexAttributeSemantic::Position) ||
-        (draw.material.model == MaterialModel::Lit && !hasAttribute(draw.mesh, VertexAttributeSemantic::Normal)))
+        (draw.material.model == MaterialModel::Lit && !draw.material.shaderProgram.isValid() &&
+         !hasAttribute(draw.mesh, VertexAttributeSemantic::Normal)))
     {
         return std::unexpected {
             makeError(ErrorCode::InvalidArgument, "Mesh draw requires a compatible vertex layout from this Engine")};
@@ -391,6 +393,32 @@ auto validateSkybox(const std::optional<Texture>& skybox, const resources::Memor
     return {};
 }
 
+auto validateMeshDrawData(std::span<const MeshDraw> draws) -> Result<void>
+{
+    if (std::ranges::any_of(draws, [](const auto& draw) {
+            return !isRenderableModel(draw.modelMatrix) || !isFinite(draw.tint) || draw.tint.r < 0.0F ||
+                   draw.tint.g < 0.0F || draw.tint.b < 0.0F || draw.tint.a < 0.0F || !isValidMaterial(draw.material);
+        }))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Mesh draw contains invalid transform or material")};
+    }
+    return {};
+}
+
+auto validateProceduralDrawData(std::span<const ProceduralDraw> draws) -> Result<void>
+{
+    if (std::ranges::any_of(draws, [](const auto& draw) {
+            return !isRenderableModel(draw.modelMatrix) || !isFinite(draw.tint) || draw.tint.r < 0.0F ||
+                   draw.tint.g < 0.0F || draw.tint.b < 0.0F || draw.tint.a < 0.0F;
+        }))
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Procedural draw contains invalid transform or tint")};
+    }
+    return {};
+}
+
 }
 
 auto validateRenderViewData(const RenderView& view) -> Result<void>
@@ -408,15 +436,11 @@ auto validateRenderViewData(const RenderView& view) -> Result<void>
             return result;
         }
     }
-    if (std::ranges::any_of(view.meshes, [](const auto& draw) {
-            return !isRenderableModel(draw.modelMatrix) || !isFinite(draw.tint) || draw.tint.r < 0.0F ||
-                   draw.tint.g < 0.0F || draw.tint.b < 0.0F || draw.tint.a < 0.0F || !isValidMaterial(draw.material);
-        }))
+    if (auto valid = validateMeshDrawData(view.meshes); !valid)
     {
-        return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Mesh draw contains invalid transform or material")};
+        return valid;
     }
-    return {};
+    return validateProceduralDrawData(view.proceduralDraws);
 }
 
 auto validateRenderViewLightCount(const RenderView& view, std::uint32_t maxLights) -> Result<void>

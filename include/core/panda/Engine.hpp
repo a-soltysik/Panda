@@ -44,8 +44,8 @@ struct EngineFeatures
 /// threads. A borrowed WindowSurface and its native window must outlive a
 /// window-enabled Engine; window calls follow that surface's thread requirements.
 /// Borrowed service references keep their address when Engine moves, but must not
-/// outlive the moved-to Engine. Engine outlives every Buffer, Texture, Mesh and
-/// OffscreenTarget owner created from it, including copied handles.
+/// outlive the moved-to Engine. Engine outlives every Buffer, Texture, Mesh,
+/// OffscreenTarget and ShaderProgram owner created from it, including copied handles.
 class Engine final
 {
 public:

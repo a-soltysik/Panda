@@ -26,6 +26,11 @@ panda_add_test(panda_integration_context_resources integration
     HEADERS "${PROJECT_SOURCE_DIR}/tests/support/mocks/panda/core/WindowSurfaceMock.hpp"
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock PandaTest::SwapchainGenerationMock)
+panda_add_shaders(panda_integration_context_resources
+    NAMESPACE test::program
+    SOURCES fixtures/shaders/program_camera.vert fixtures/shaders/program_camera.frag
+            fixtures/shaders/readonly_storage.vert fixtures/shaders/program_wrong_shadow.vert
+            fixtures/shaders/program_shadow_empty.vert)
 
 panda_add_test(panda_integration_memory_block integration
     VULKAN_INTERNAL
@@ -62,5 +67,9 @@ panda_add_shaders(panda_integration_shader_resources
     NAMESPACE test::shader
     SOURCES fixtures/shaders/basic.vert fixtures/shaders/basic.frag
             fixtures/shaders/descriptor_array.frag fixtures/shaders/component.frag
+            fixtures/shaders/readonly_storage.vert fixtures/shaders/mixed_storage.frag
+            fixtures/shaders/int64.vert
+            fixtures/shaders/sampled_image.vert fixtures/shaders/sampled_cube.frag
+            fixtures/shaders/sampled_integer.frag
             fixtures/shaders/left/marker.vert fixtures/shaders/right/marker.vert
     INCLUDE_DIRECTORIES fixtures/shaders)

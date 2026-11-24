@@ -1,5 +1,6 @@
 #include "renderer/ShaderReflection.hpp"
 
+#include <include/spirv/unified1/spirv.h>
 #include <spirv_reflect.h>
 
 #include <algorithm>
@@ -26,6 +27,9 @@ namespace
 {
 constexpr auto spirvMagic = std::uint32_t {0x07230203U};
 constexpr auto spirvHeaderWordCount = std::size_t {5};
+// Capabilities used by the graphics path that require no optional device features.
+constexpr auto graphicsCapabilities =
+    std::array {SpvCapabilityMatrix, SpvCapabilityShader, SpvCapabilityImageQuery, SpvCapabilityDerivativeControl};
 
 class ShaderModule final
 {
@@ -61,6 +65,21 @@ auto reflectError(std::string_view label, SpvReflectResult result) -> Error
     return makeError(code,
                      std::format("SPIRV-Reflect could not inspect shader '{}'", label),
                      NativeError {.api = "SPIRV-Reflect", .code = static_cast<std::int64_t>(result)});
+}
+
+auto validateCapabilities(const SpvReflectShaderModule& module, std::string_view label) -> Result<void>
+{
+    for (const auto& capability : std::span {module.capabilities, module.capability_count})
+    {
+        if (std::ranges::find(graphicsCapabilities, capability.value) == graphicsCapabilities.end())
+        {
+            return std::unexpected {makeError(ErrorCode::Unsupported,
+                                              std::format("Shader '{}': unsupported SPIR-V capability {}",
+                                                          label,
+                                                          std::to_underlying(capability.value)))};
+        }
+    }
+    return {};
 }
 
 auto matchesStage(SpvReflectShaderStageFlagBits actual, ShaderStage expected) -> bool
@@ -99,6 +118,23 @@ auto descriptorKind(SpvReflectDescriptorType type) -> ShaderDescriptorKind
     return ShaderDescriptorKind::Other;
 }
 
+auto reflectBlockType(const SpvReflectBlockVariable& member) -> ShaderBlockType
+{
+    const auto& numeric = member.numeric;
+    const auto* description = member.type_description;
+    const auto& array = description == nullptr ? member.array : description->traits.array;
+    const auto dimensions = std::span {array.dims}.first(array.dims_count);
+    return {.flags = description == nullptr ? 0U : description->type_flags,
+            .scalarWidth = numeric.scalar.width,
+            .scalarSignedness = numeric.scalar.signedness,
+            .vectorComponents = numeric.vector.component_count,
+            .matrixColumns = numeric.matrix.column_count,
+            .matrixRows = numeric.matrix.row_count,
+            .matrixStride = numeric.matrix.stride,
+            .rowMajor = (member.decoration_flags & static_cast<std::uint32_t>(SPV_REFLECT_DECORATION_ROW_MAJOR)) != 0U,
+            .arrayDimensions = std::vector(dimensions.begin(), dimensions.end())};
+}
+
 // NOLINTNEXTLINE(misc-no-recursion) SPIR-V block members form a finite tree.
 auto reflectMembers(const SpvReflectBlockVariable& block) -> std::vector<ShaderBlockMember>
 {
@@ -115,23 +151,89 @@ auto reflectMembers(const SpvReflectBlockVariable& block) -> std::vector<ShaderB
                            .offset = member.offset,
                            .size = member.size,
                            .arrayStride = arrayStride,
-                           .members = reflectMembers(member)});
+                           .members = reflectMembers(member),
+                           .type = reflectBlockType(member)});
     }
     return members;
 }
 
-auto reflectDescriptor(const SpvReflectDescriptorBinding& binding) -> ShaderDescriptor
+auto imageDimension(SpvDim dimension) -> std::optional<ShaderImageDimension>
 {
-    return {.name = binding.name != nullptr ? binding.name : "",
-            .set = binding.set,
-            .binding = binding.binding,
-            .count = binding.count,
-            .kind = descriptorKind(binding.descriptor_type),
-            .arrayDimensions =
-                std::vector<std::uint32_t>(std::span {binding.array.dims}.first(binding.array.dims_count).begin(),
-                                           std::span {binding.array.dims}.first(binding.array.dims_count).end()),
-            .blockSize = binding.block.size,
-            .members = reflectMembers(binding.block)};
+    switch (std::to_underlying(dimension))
+    {
+    case std::to_underlying(SpvDim2D):
+        return ShaderImageDimension::TwoDimensional;
+    case std::to_underlying(SpvDim3D):
+        return ShaderImageDimension::ThreeDimensional;
+    case std::to_underlying(SpvDimCube):
+        return ShaderImageDimension::Cube;
+    default:
+        return std::nullopt;
+    }
+}
+
+auto imageSampleType(const SpvReflectTypeDescription* type) -> std::optional<ShaderInterfaceFormat>
+{
+    constexpr auto sampleWidth = std::uint32_t {32};
+    if (type == nullptr || type->traits.numeric.scalar.width != sampleWidth)
+    {
+        return std::nullopt;
+    }
+    if ((type->type_flags & static_cast<std::uint32_t>(SPV_REFLECT_TYPE_FLAG_FLOAT)) != 0U)
+    {
+        return ShaderInterfaceFormat::Float;
+    }
+    if ((type->type_flags & static_cast<std::uint32_t>(SPV_REFLECT_TYPE_FLAG_INT)) != 0U)
+    {
+        return type->traits.numeric.scalar.signedness == 0U ? ShaderInterfaceFormat::UnsignedInteger
+                                                            : ShaderInterfaceFormat::SignedInteger;
+    }
+    return std::nullopt;
+}
+
+auto reflectSampledImage(const SpvReflectDescriptorBinding& binding) -> std::optional<ShaderSampledImage>
+{
+    const auto dimension = imageDimension(binding.image.dim);
+    const auto sampleType = imageSampleType(binding.type_description);
+    if (!dimension || !sampleType)
+    {
+        return std::nullopt;
+    }
+    return ShaderSampledImage {.dimension = *dimension,
+                               .sampleType = *sampleType,
+                               .depth = binding.image.depth,
+                               .arrayed = binding.image.arrayed != 0U,
+                               .multisampled = binding.image.ms != 0U};
+}
+
+auto reflectDescriptor(const SpvReflectDescriptorBinding& binding, std::string_view label) -> Result<ShaderDescriptor>
+{
+    const auto kind = descriptorKind(binding.descriptor_type);
+    // The block's flag can be set even when only one member is non-writable.
+    if (kind == ShaderDescriptorKind::StorageBuffer &&
+        (binding.decoration_flags & static_cast<std::uint32_t>(SPV_REFLECT_DECORATION_NON_WRITABLE)) == 0U)
+    {
+        return std::unexpected {shaderError(
+            label,
+            std::format("uses a writable storage buffer at set {}, binding {}", binding.set, binding.binding))};
+    }
+    const auto image = kind == ShaderDescriptorKind::CombinedImageSampler ? reflectSampledImage(binding) : std::nullopt;
+    if (kind == ShaderDescriptorKind::CombinedImageSampler && !image)
+    {
+        return std::unexpected {shaderError(
+            label,
+            std::format("uses an unsupported sampled image at set {}, binding {}", binding.set, binding.binding))};
+    }
+    const auto dimensions = std::span {binding.array.dims}.first(binding.array.dims_count);
+    return ShaderDescriptor {.name = binding.name != nullptr ? binding.name : "",
+                             .set = binding.set,
+                             .binding = binding.binding,
+                             .count = binding.count,
+                             .kind = kind,
+                             .arrayDimensions = std::vector<std::uint32_t>(dimensions.begin(), dimensions.end()),
+                             .blockSize = binding.block.size,
+                             .members = reflectMembers(binding.block),
+                             .sampledImage = image};
 }
 
 auto reflectPushConstant(const SpvReflectBlockVariable& block, std::string_view label)
@@ -230,7 +332,7 @@ auto reflectInterfaceVariables(const SpvReflectShaderModule& module, std::string
 
 auto sameDescriptorBinding(const ShaderProgramDescriptor& current, const ShaderDescriptor& next) -> bool
 {
-    return current.count == next.count && current.kind == next.kind;
+    return current.count == next.count && current.kind == next.kind && current.sampledImage == next.sampledImage;
 }
 
 auto hasDuplicateLocations(std::span<const ShaderInterfaceVariable> variables) -> bool
@@ -285,9 +387,15 @@ auto reflectDescriptors(const SpvReflectShaderModule& module, std::string_view l
 
     auto descriptors = std::vector<ShaderDescriptor> {};
     descriptors.reserve(bindings->size());
-    std::ranges::transform(*bindings, std::back_inserter(descriptors), [](const auto* binding) {
-        return reflectDescriptor(*binding);
-    });
+    for (const auto* binding : *bindings)
+    {
+        auto descriptor = reflectDescriptor(*binding, label);
+        if (!descriptor)
+        {
+            return std::unexpected {descriptor.error()};
+        }
+        descriptors.push_back(std::move(*descriptor));
+    }
     return descriptors;
 }
 
@@ -416,7 +524,9 @@ auto reflectShader(std::span<const std::uint32_t> words, ShaderStage expectedSta
     }
 
     const auto moduleGuard = ShaderModule {module};
-    return reflectModule(module, expectedStage, diagnosticLabel);
+    return validateCapabilities(module, diagnosticLabel).and_then([&] {
+        return reflectModule(module, expectedStage, diagnosticLabel);
+    });
 }
 
 auto reflectGraphicsProgram(std::span<const std::uint32_t> vertexWords,
@@ -485,10 +595,9 @@ auto addSpecialization(std::vector<ShaderProgramSpecializationConstant>& special
     return {};
 }
 
-auto addDescriptor(ProgramDescriptors& descriptors,
-                   const ShaderDescriptor& descriptor,
-                   ShaderStage stage,
-                   std::string_view diagnosticLabel) -> Result<void>
+auto getOrAddProgramDescriptor(ProgramDescriptors& descriptors,
+                               const ShaderDescriptor& descriptor,
+                               std::string_view diagnosticLabel) -> Result<ShaderProgramDescriptor*>
 {
     if (descriptor.count != 1 || !descriptor.arrayDimensions.empty() || descriptor.kind == ShaderDescriptorKind::Other)
     {
@@ -497,25 +606,39 @@ auto addDescriptor(ProgramDescriptors& descriptors,
             std::format("uses an unsupported descriptor at set {}, binding {}", descriptor.set, descriptor.binding))};
     }
     const auto key = std::pair {descriptor.set, descriptor.binding};
-    const auto [entry, inserted] = descriptors.try_emplace(key,
-                                                           ShaderProgramDescriptor {.set = descriptor.set,
-                                                                                    .binding = descriptor.binding,
-                                                                                    .count = descriptor.count,
-                                                                                    .kind = descriptor.kind,
-                                                                                    .stageLayouts = {},
-                                                                                    .names = {}});
+    const auto [entry, inserted] =
+        descriptors.try_emplace(key,
+                                ShaderProgramDescriptor {.set = descriptor.set,
+                                                         .binding = descriptor.binding,
+                                                         .count = descriptor.count,
+                                                         .kind = descriptor.kind,
+                                                         .stageLayouts = {},
+                                                         .names = {},
+                                                         .sampledImage = descriptor.sampledImage});
     if (!inserted && !sameDescriptorBinding(entry->second, descriptor))
     {
         return std::unexpected {shaderError(
             diagnosticLabel,
             std::format("has conflicting descriptors at set {}, binding {}", descriptor.set, descriptor.binding))};
     }
-    entry->second.stageLayouts.push_back(
-        {.stage = stage, .blockSize = descriptor.blockSize, .members = descriptor.members});
-    if (!descriptor.name.empty() &&
-        std::ranges::find(entry->second.names, descriptor.name) == entry->second.names.end())
+    return &entry->second;
+}
+
+auto addDescriptor(ProgramDescriptors& descriptors,
+                   const ShaderDescriptor& descriptor,
+                   ShaderStage stage,
+                   std::string_view diagnosticLabel) -> Result<void>
+{
+    auto entry = getOrAddProgramDescriptor(descriptors, descriptor, diagnosticLabel);
+    if (!entry)
     {
-        entry->second.names.push_back(descriptor.name);
+        return std::unexpected {std::move(entry.error())};
+    }
+    (*entry)->stageLayouts.push_back(
+        {.stage = stage, .blockSize = descriptor.blockSize, .members = descriptor.members});
+    if (!descriptor.name.empty() && std::ranges::find((*entry)->names, descriptor.name) == (*entry)->names.end())
+    {
+        (*entry)->names.push_back(descriptor.name);
     }
     return {};
 }

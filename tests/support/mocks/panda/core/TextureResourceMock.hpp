@@ -40,6 +40,7 @@ public:
     MOCK_METHOD(vk::ImageUsageFlags, getUsage, (const panda::detail::TextureResource&), (const));
     MOCK_METHOD(vk::Image, getNative, (const panda::detail::TextureResource&), (const));
     MOCK_METHOD(vk::ImageView, getNativeView, (const panda::detail::TextureResource&), (const));
+    MOCK_METHOD(bool, isUploaded, (const panda::detail::TextureResource&), (const));
     MOCK_METHOD(bool,
                 belongsTo,
                 (const panda::detail::TextureResource&, const panda::core::vulkan::resources::MemoryPool&),

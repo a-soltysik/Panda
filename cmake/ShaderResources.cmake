@@ -1,5 +1,5 @@
 function(panda_add_shaders target)
-    cmake_parse_arguments(SHADERS "" "NAMESPACE" "SOURCES;INCLUDE_DIRECTORIES" ${ARGN})
+    cmake_parse_arguments(SHADERS "" "NAMESPACE;SOURCE_ROOT" "SOURCES;INCLUDE_DIRECTORIES" ${ARGN})
     if(SHADERS_UNPARSED_ARGUMENTS OR SHADERS_KEYWORDS_MISSING_VALUES OR NOT SHADERS_NAMESPACE OR NOT SHADERS_SOURCES)
         message(FATAL_ERROR "Invalid shader resources for ${target}")
     endif()
@@ -8,6 +8,16 @@ function(panda_add_shaders target)
     endif()
     if(NOT SHADERS_NAMESPACE MATCHES "^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$")
         message(FATAL_ERROR "Invalid C++ shader namespace: ${SHADERS_NAMESPACE}")
+    endif()
+
+    if(SHADERS_SOURCE_ROOT)
+        get_filename_component(shader_source_root "${SHADERS_SOURCE_ROOT}" ABSOLUTE
+                               BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    else()
+        set(shader_source_root "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+    if(NOT IS_DIRECTORY "${shader_source_root}")
+        message(FATAL_ERROR "Shader source root does not exist: ${shader_source_root}")
     endif()
 
     get_property(shader_namespaces TARGET "${target}" PROPERTY PANDA_SHADER_NAMESPACES)
@@ -48,16 +58,16 @@ function(panda_add_shaders target)
         if(IS_ABSOLUTE "${shader}")
             set(absolute_source "${shader}")
         else()
-            get_filename_component(absolute_source "${shader}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+            get_filename_component(absolute_source "${shader}" ABSOLUTE BASE_DIR "${shader_source_root}")
         endif()
         if(NOT EXISTS "${absolute_source}")
             message(FATAL_ERROR "Shader source does not exist: ${absolute_source}")
         endif()
         cmake_path(NORMAL_PATH absolute_source OUTPUT_VARIABLE normalized_source)
-        cmake_path(RELATIVE_PATH normalized_source BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        cmake_path(RELATIVE_PATH normalized_source BASE_DIRECTORY "${shader_source_root}"
                    OUTPUT_VARIABLE shader_key)
         if(shader_key MATCHES "^\\.\\.(/|$)" OR IS_ABSOLUTE "${shader_key}")
-            message(FATAL_ERROR "Shader source must be inside ${CMAKE_CURRENT_SOURCE_DIR}: ${absolute_source}")
+            message(FATAL_ERROR "Shader source must be inside ${shader_source_root}: ${absolute_source}")
         endif()
         if(shader_key MATCHES "[;\r\n]" OR NOT shader_key MATCHES "\\.(vert|frag)$")
             message(FATAL_ERROR "Shader key must be a relative .vert or .frag path: ${shader_key}")
@@ -73,7 +83,7 @@ function(panda_add_shaders target)
         add_custom_command(
             OUTPUT "${shader_spirv}"
             COMMAND "${CMAKE_COMMAND}" -E make_directory "${shader_output_directory}"
-            COMMAND "${PANDA_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 ${shader_include_arguments}
+            COMMAND "${PANDA_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 --target-spv=spv1.3 ${shader_include_arguments}
                     -MD -MF "${shader_depfile}" -MT "${shader_spirv}" "${normalized_source}" -o "${shader_spirv}"
             COMMAND "${PANDA_SPIRV_VAL_EXECUTABLE}" --target-env vulkan1.3 "${shader_spirv}"
             DEPENDS "${normalized_source}"

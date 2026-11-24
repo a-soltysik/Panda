@@ -34,6 +34,7 @@
 #include <utility>
 #include <vector>
 
+#include "ParticleScene.hpp"
 #include "SmokeRunBackend.hpp"
 #include "panda_bench/Arguments.hpp"
 #include "panda_bench/Report.hpp"
@@ -255,7 +256,8 @@ void appendDraw(panda::RenderView& view, const panda::Mesh& mesh, glm::mat4 tran
     auto material = panda::Material {};
     material.baseColor = baseColor;
     material.roughness = 0.72F;
-    view.meshes.push_back({.mesh = mesh, .modelMatrix = transform, .material = std::move(material)});
+    view.meshes.push_back(
+        {.mesh = mesh, .modelMatrix = transform, .material = std::move(material), .shaderResources = {}});
 }
 
 auto createSceneMeshes(const panda::Engine& context) -> std::expected<SceneMeshes, Failure>
@@ -418,7 +420,7 @@ auto VulkanSmokeRunBackend::waitForLastFrame(std::chrono::nanoseconds timeout) -
 
 void VulkanSmokeRunBackend::teardown()
 {
-    _view.meshes.clear();
+    _view = {};
     _engine.reset();
     _window.reset();
     _lastCompletion = {};
@@ -522,6 +524,28 @@ auto VulkanSmokeRunBackend::createStaticScene(glm::uvec2 extent, const Options& 
     {
         return std::unexpected {failFromPanda(filtering.error())};
     }
+    if (options.profile == "gpu-particles")
+    {
+        return createParticleView(extent, options);
+    }
+    return createSmokeScene(extent, options);
+}
+
+auto VulkanSmokeRunBackend::createParticleView(glm::uvec2 extent, const Options& options)
+    -> std::expected<void, Failure>
+{
+    auto particleScene = createParticleScene(checkedEngine(), extent, options.particleCount);
+    if (!particleScene)
+    {
+        return std::unexpected {particleScene.error()};
+    }
+    _view = std::move(*particleScene);
+    _view.requestedSampleCount = options.sampleCount;
+    return {};
+}
+
+auto VulkanSmokeRunBackend::createSmokeScene(glm::uvec2 extent, const Options& options) -> std::expected<void, Failure>
+{
     auto view = panda::RenderView {};
     view.requestedSampleCount = options.sampleCount;
     if (const auto camera = configureSceneCamera(view, extent); !camera)
