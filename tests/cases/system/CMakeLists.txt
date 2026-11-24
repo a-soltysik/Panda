@@ -21,6 +21,14 @@ if(TARGET Panda::Panda)
         SOURCES OffscreenRendering.cpp
         HEADERS "${PROJECT_SOURCE_DIR}/tests/support/EnvironmentLighting.hpp"
         LIBRARIES Panda::Panda PandaTest::LogCapture)
+    panda_add_shaders(panda_system_offscreen_rendering
+        NAMESPACE test::application_shader
+        SOURCES fixtures/shaders/application_resources.vert fixtures/shaders/application_resources.frag
+                fixtures/shaders/application_shadow.vert fixtures/shaders/procedural_resources.vert
+                fixtures/shaders/procedural_resources.frag fixtures/shaders/procedural_resources_shadow.vert
+                fixtures/shaders/application_texture.vert fixtures/shaders/application_texture.frag
+                fixtures/shaders/application_texture_reloaded.frag
+                fixtures/shaders/application_texture_incompatible.frag)
 
     panda_add_test(panda_system_buffer system
         SOURCES Buffer.cpp

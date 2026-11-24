@@ -35,6 +35,8 @@ private:
     [[nodiscard]] auto checkPerformanceCapabilities() -> std::expected<void, Failure>;
     [[nodiscard]] auto captureEnvironment() -> std::expected<SmokeRunEnvironment, Failure>;
     [[nodiscard]] auto createStaticScene(glm::uvec2 extent, const Options& options) -> std::expected<void, Failure>;
+    [[nodiscard]] auto createParticleView(glm::uvec2 extent, const Options& options) -> std::expected<void, Failure>;
+    [[nodiscard]] auto createSmokeScene(glm::uvec2 extent, const Options& options) -> std::expected<void, Failure>;
 
     std::optional<panda::tools::Window> _window;
     std::optional<panda::Engine> _engine;

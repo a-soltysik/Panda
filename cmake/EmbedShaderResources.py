@@ -1,6 +1,8 @@
 import argparse
+import os
 import pathlib
 import struct
+import tempfile
 
 
 def read_words(path):
@@ -24,6 +26,29 @@ def cpp_string_literal(value):
         else:
             escaped.append(f"\\{byte:03o}")
     return '"' + "".join(escaped) + '"'
+
+
+def replace_header(temporary, destination):
+    try:
+        temporary.replace(destination)
+        return
+    except PermissionError:
+        if os.name != "nt" or not destination.is_file():
+            raise
+
+    # Windows permits renaming this mapped header even when it refuses to overwrite it.
+    previous = temporary.with_suffix(".retired")
+    destination.rename(previous)
+    try:
+        temporary.replace(destination)
+    except OSError:
+        previous.rename(destination)
+        raise
+    try:
+        previous.unlink()
+    except PermissionError:
+        # The IDE can keep the old mapping alive after publication.
+        pass
 
 
 def main():
@@ -67,8 +92,16 @@ def main():
         generated = generated.replace(placeholder, value)
 
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    with arguments.output.open("w", encoding="utf-8", newline="\n") as output:
-        output.write(generated)
+    # An IDE may have mapped the previous header. Publish the complete replacement without truncating it.
+    with tempfile.NamedTemporaryFile(dir=arguments.output.parent, suffix=".tmp", delete=False) as stream:
+        temporary = pathlib.Path(stream.name)
+        try:
+            stream.write(generated.encode("utf-8"))
+            stream.close()
+            replace_header(temporary, arguments.output)
+        finally:
+            stream.close()
+            temporary.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

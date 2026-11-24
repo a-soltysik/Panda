@@ -49,12 +49,15 @@ public:
     ~FrameBindings();
 
     [[nodiscard]] auto getPipelineLayout() const noexcept -> vk::PipelineLayout;
+    [[nodiscard]] auto getFrameDescriptors() const noexcept -> const FrameDescriptors&;
     [[nodiscard]] auto getFrameDescriptorSetIndex() const noexcept -> std::uint32_t;
     [[nodiscard]] auto getTextureDescriptorSetIndex() const noexcept -> std::uint32_t;
     [[nodiscard]] auto getFrameDescriptorSet(std::size_t frameIndex) const -> vk::DescriptorSet;
     [[nodiscard]] auto getShaderDescriptorSchema() const noexcept -> const std::vector<ShaderDescriptor>&;
     [[nodiscard]] auto getTextureDescriptorSet(std::size_t frameIndex, std::size_t drawIndex) const
         -> vk::DescriptorSet;
+    [[nodiscard]] auto getTextureSampler(std::size_t frameIndex, const Texture& texture)
+        -> std::expected<vk::Sampler, Error>;
     [[nodiscard]] auto getShadowAtlasPlan(std::size_t frameIndex) const noexcept -> const ShadowAtlasPlan&;
     [[nodiscard]] auto getShadowViewOffset(std::size_t frameIndex, std::uint32_t shadowViewIndex) const
         -> std::uint32_t;

@@ -54,7 +54,7 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
 
     const auto json = nlohmann::json::parse(panda_bench::serialize(report));
 
-    EXPECT_EQ(json.at("schemaVersion"), 9);
+    EXPECT_EQ(json.at("schemaVersion"), 10);
     EXPECT_EQ(json.at("profile").at("name"), "smoke");
     EXPECT_EQ(json.at("profile").at("version"), 7);
     EXPECT_EQ(json.at("workload"), "renderStaticColoredScene");
@@ -88,6 +88,22 @@ TEST(BenchmarkReport, SerializesSchemaMetadataAndPerFrameCpuAndGpuStatistics)
     EXPECT_EQ(json.at("runs").at(0).at("frameSamples").at(0).at("cpuFrameDurationNanoseconds"), 150);
     EXPECT_EQ(json.at("runs").at(0).at("frameSamples").at(0).at("gpuExecutionDurationNanoseconds"), 100);
     EXPECT_EQ(json.at("outcome").at("status"), "complete");
+}
+
+TEST(BenchmarkReport, RecordsTheParticleWorkloadAndRequestedCount)
+{
+    auto report = panda_bench::Report {};
+    report.profileName = "gpu-particles";
+    report.profileVersion = 1;
+    report.workloadName = "renderGpuParticles";
+    report.requestedParticleCount = 100'000;
+
+    const auto json = nlohmann::json::parse(panda_bench::serialize(report));
+
+    EXPECT_EQ(json.at("profile").at("name"), "gpu-particles");
+    EXPECT_EQ(json.at("profile").at("version"), 1);
+    EXPECT_EQ(json.at("workload"), "renderGpuParticles");
+    EXPECT_EQ(json.at("settings").at("requestedParticleCount"), 100'000);
 }
 
 TEST(BenchmarkReport, OmitsEnvironmentValuesThatWereNotCollected)

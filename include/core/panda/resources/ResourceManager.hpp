@@ -4,6 +4,7 @@
 /// Engine-owned creation of ordinary GPU resources.
 
 #include <panda/base/Error.hpp>
+#include <panda/rendering/ShaderProgram.hpp>
 #include <panda/resources/Buffer.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
@@ -64,6 +65,18 @@ public:
     /// @return A shared mesh owner or a validation/allocation/backend error.
     /// Empty indices create a non-indexed mesh.
     [[nodiscard]] auto createMeshFromGeometry(const Geometry& geometry) const -> Result<Mesh>;
+
+    /// @brief Validates and copies the camera and optional shadow stages into an Engine-bound program.
+    /// @return A shared program owner or an error that identifies the incompatible stage or binding.
+    /// May allocate host memory. Submits no work and creates no Vulkan pipelines.
+    [[nodiscard]] auto createShaderProgram(const ProgramDesc& description) const -> Result<ShaderProgram>;
+
+    /// @brief Replaces a program's shared revision when the reflected camera and shadow ABI is unchanged.
+    /// Copies of the handle observe the new revision; renderers lazily prepare matching pipelines before recording.
+    /// A validation or interface error leaves the current revision unchanged. Call at an update boundary while
+    /// Engine operations are serialized.
+    [[nodiscard]] auto reloadShaderProgram(const ShaderProgram& program, const ProgramDesc& description) const
+        -> Result<void>;
 
 private:
     friend class Engine;

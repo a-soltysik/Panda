@@ -50,7 +50,7 @@ struct MeshInstance
     Mesh mesh;
     /// Nonnegative finite linear RGBA tint.
     glm::vec4 tint {1.0F};
-    /// Built-in renderer material copied into snapshots; renderer validation checks material textures.
+    /// Material copied into snapshots. Its shader selection applies only to this mesh instance.
     Material material {};
 };
 

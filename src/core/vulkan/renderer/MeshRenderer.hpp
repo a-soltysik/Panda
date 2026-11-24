@@ -16,6 +16,7 @@
 #include <panda/rendering/TextureFilteringPreset.hpp>
 #include <vector>
 
+#include "renderer/ApplicationShaderBindings.hpp"
 #include "renderer/FrameBindings.hpp"
 #include "renderer/MeshPipelineCache.hpp"
 #include "renderer/RenderAttachments.hpp"
@@ -106,6 +107,8 @@ private:
                           const RenderView& view,
                           std::size_t shadowViewIndex);
     void recordColorPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
+    void recordMeshColorDraws(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
+    void recordProceduralColorDraws(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view);
     void recordBlendedDraws(vk::CommandBuffer command, std::size_t frameIndex, bool hasEnvironment);
     void recordAttachments(vk::CommandBuffer command, vk::ImageView outputView, std::size_t frameIndex) const;
     static void recordShadowAttachment(vk::CommandBuffer command, vk::ImageView depthView);
@@ -115,7 +118,19 @@ private:
                                 std::size_t frameIndex,
                                 const MeshDraw& draw,
                                 DrawPass pass) const;
+    void bindApplicationDrawResources(vk::CommandBuffer command,
+                                      std::size_t frameIndex,
+                                      const MeshDraw& draw,
+                                      DrawPass pass) const;
     void recordDraw(vk::CommandBuffer command, std::size_t frameIndex, const MeshDraw& draw, DrawPass pass) const;
+    void recordProceduralDraw(vk::CommandBuffer command,
+                              std::size_t frameIndex,
+                              const ProceduralDraw& draw,
+                              std::size_t applicationDrawIndex) const;
+    void recordProceduralShadowDraw(vk::CommandBuffer command,
+                                    std::size_t frameIndex,
+                                    const ProceduralDraw& draw,
+                                    std::size_t applicationDrawIndex) const;
     static void recordMeshDraw(vk::CommandBuffer command,
                                const ::panda::detail::MeshResource& mesh,
                                std::uint32_t materialIndex);
@@ -128,6 +143,7 @@ private:
     std::shared_ptr<TextureFilteringPreset> _textureFilteringPreset;
     std::unique_ptr<RenderAttachments> _attachments;
     std::unique_ptr<FrameBindings> _bindings;
+    std::optional<ApplicationShaderBindings> _applicationBindings;
     std::optional<MeshPipelineCache> _pipelineCache;
     std::vector<BlendDraw> _blendDraws;
 };

@@ -37,7 +37,7 @@ enum class BufferUsage : std::uint8_t
     TransferSource = 1U << 0U,
     /// Buffer may be a transfer destination.
     TransferDestination = 1U << 1U,
-    /// Buffer may be used as storage by an external compute API.
+    /// Buffer may be used as storage by graphics shaders or an external compute API.
     Storage = 1U << 2U,
 };
 

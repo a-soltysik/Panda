@@ -556,7 +556,9 @@ auto WindowPresentation::submitFrame(std::size_t slotIndex,
         return handleSubmitFailure(selection, submitted.error());
     }
     const auto completion = *submitted;
-    _execution->markSubmitted(slotIndex, completion, !view.meshes.empty() || view.skybox.has_value());
+    _execution->markSubmitted(slotIndex,
+                              completion,
+                              !view.meshes.empty() || !view.proceduralDraws.empty() || view.skybox.has_value());
     image.initialized = true;
     _nextSlot = (_nextSlot + 1) % _acquireSemaphores.size();
     return completion;

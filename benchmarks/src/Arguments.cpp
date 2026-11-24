@@ -22,6 +22,7 @@ namespace
 constexpr auto maximumWarmupDuration = std::chrono::hours {1};
 constexpr auto maximumMeasurementDuration = std::chrono::hours {24};
 constexpr auto maximumRunCount = std::int64_t {100};
+constexpr auto particleCounts = std::array {10'000U, 100'000U, 1'000'000U};
 constexpr auto unspecifiedShadowedLightCount = std::numeric_limits<std::int64_t>::min();
 constexpr auto textureFilteringPresets = std::array<std::pair<std::string_view, panda::TextureFilteringPreset>, 7> {
     {
@@ -41,6 +42,7 @@ struct ParsingState
     std::string outputDirectory {"results"};
     std::int64_t lightCount {defaultSmokeLightCount};
     std::int64_t shadowedLightCount {unspecifiedShadowedLightCount};
+    std::int64_t particleCount {defaultParticleCount};
     std::int64_t warmupSeconds {1};
     std::int64_t measurementSeconds {3};
     std::int64_t runCount {1};
@@ -62,7 +64,7 @@ void addTextureFilteringOption(argparse::ArgumentParser& parser, ParsingState& s
 void addProfileOptions(argparse::ArgumentParser& parser, ParsingState& state)
 {
     parser.add_argument("--profile")
-        .help("Workload profile; currently smoke only")
+        .help("Workload profile: smoke or gpu-particles")
         .default_value(std::string {"smoke"})
         .nargs(1)
         .required()
@@ -88,16 +90,26 @@ void addProfileOptions(argparse::ArgumentParser& parser, ParsingState& state)
     addTextureFilteringOption(parser, state);
 }
 
+void addParticleCountOption(argparse::ArgumentParser& parser, ParsingState& state)
+{
+    parser.add_argument("--particle-count")
+        .help("Particle count for gpu-particles: 10000, 100000 or 1000000")
+        .default_value(std::int64_t {defaultParticleCount})
+        .nargs(1)
+        .required()
+        .store_into(state.particleCount);
+}
+
 void addLightingOptions(argparse::ArgumentParser& parser, ParsingState& state)
 {
     parser.add_argument("--lights")
-        .help("Total lighting workload size (0 to 1000; one directional and the rest point lights)")
+        .help("Smoke profile: total lights (0 to 1000; one directional and the rest point lights)")
         .default_value(std::int64_t {defaultSmokeLightCount})
         .nargs(1)
         .required()
         .store_into(state.lightCount);
     parser.add_argument("--shadowed-lights")
-        .help("Number of lights that cast shadows (0 to --lights; defaults to min(--lights, 65))")
+        .help("Smoke profile: shadowed lights (0 to --lights; defaults to min(--lights, 65))")
         .default_value(unspecifiedShadowedLightCount)
         .nargs(1)
         .required()
@@ -146,6 +158,7 @@ void addOptions(argparse::ArgumentParser& parser, ParsingState& state)
 {
     parser.add_argument("-h", "--help").help("Print this help message").flag().store_into(state.options.showHelp);
     addProfileOptions(parser, state);
+    addParticleCountOption(parser, state);
     addLightingOptions(parser, state);
     addWindowOptions(parser, state);
     addTimingOptions(parser, state);
@@ -246,11 +259,37 @@ auto parseTextureFilteringPreset(std::string_view preset) -> std::expected<panda
     return std::unexpected {"--texture-filter must be nearest, bilinear, trilinear or anisotropic-2x/4x/8x/16x"};
 }
 
+auto validateProfileOptions(const ParsingState& state) -> std::expected<void, std::string>
+{
+    if (state.options.profile != "smoke" && state.options.profile != "gpu-particles")
+    {
+        return std::unexpected {"Profile must be smoke or gpu-particles"};
+    }
+    const auto isParticleProfile = state.options.profile == "gpu-particles";
+    if (!isParticleProfile && std::cmp_not_equal(state.particleCount, defaultParticleCount))
+    {
+        return std::unexpected {"--particle-count is only valid with --profile gpu-particles"};
+    }
+    if (isParticleProfile && (std::cmp_not_equal(state.lightCount, defaultSmokeLightCount) ||
+                              (state.shadowedLightCount != unspecifiedShadowedLightCount &&
+                               std::cmp_not_equal(state.shadowedLightCount, defaultSmokeShadowedLightCount))))
+    {
+        return std::unexpected {"--lights and --shadowed-lights are only valid with --profile smoke"};
+    }
+    if (isParticleProfile && !std::ranges::any_of(particleCounts, [&state](std::uint32_t count) {
+            return std::cmp_equal(state.particleCount, count);
+        }))
+    {
+        return std::unexpected {"--particle-count must be 10000, 100000 or 1000000"};
+    }
+    return {};
+}
+
 auto validateProfileAndPresentationMode(ParsingState& state) -> std::expected<void, std::string>
 {
-    if (state.options.profile != "smoke")
+    if (const auto profile = validateProfileOptions(state); !profile)
     {
-        return std::unexpected {"Only the smoke profile is implemented"};
+        return profile;
     }
     const auto presentationMode = parsePresentationMode(state.presentationMode);
     if (!presentationMode)
@@ -318,6 +357,7 @@ auto parseArguments(int argumentCount, char** arguments) -> std::expected<Option
 
     state.options.outputDirectory = state.outputDirectory;
     state.options.lightCount = static_cast<std::uint32_t>(state.lightCount);
+    state.options.particleCount = static_cast<std::uint32_t>(state.particleCount);
     state.options.warmupDuration = std::chrono::seconds {state.warmupSeconds};
     state.options.measurementDuration = std::chrono::seconds {state.measurementSeconds};
     state.options.runCount = static_cast<std::size_t>(state.runCount);

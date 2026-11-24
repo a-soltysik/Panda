@@ -165,7 +165,7 @@ TEST(RenderViewValidation, AcceptsLargeOrthographicProjection)
 TEST(RenderViewValidation, RejectsSingularModel)
 {
     auto view = RenderView {};
-    view.meshes.push_back({.mesh = {}, .modelMatrix = glm::mat4 {0.0F}});
+    view.meshes.push_back({.mesh = {}, .modelMatrix = glm::mat4 {0.0F}, .shaderResources = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
 
@@ -193,13 +193,13 @@ TEST(RenderViewValidation, RejectsNonAffineAndNonInvertibleModels)
     auto view = RenderView {};
     auto model = glm::mat4 {1.0F};
     model[0][3] = 1.0F;
-    view.meshes.push_back({.mesh = {}, .modelMatrix = model});
+    view.meshes.push_back({.mesh = {}, .modelMatrix = model, .shaderResources = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view.meshes.clear();
     model = glm::mat4 {1.0F};
     model[0][0] = 1.0e-40F;
-    view.meshes.push_back({.mesh = {}, .modelMatrix = model});
+    view.meshes.push_back({.mesh = {}, .modelMatrix = model, .shaderResources = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
 

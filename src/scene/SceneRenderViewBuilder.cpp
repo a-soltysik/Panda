@@ -142,7 +142,8 @@ auto SceneRenderViewBuilder::appendRenderObject(std::size_t index, RenderView& v
         view.meshes.push_back({.mesh = slot.mesh->mesh,
                                .modelMatrix = slot.worldMatrix,
                                .tint = slot.mesh->tint,
-                               .material = slot.mesh->material});
+                               .material = slot.mesh->material,
+                               .shaderResources = {}});
     }
     return appendLight(index, view);
 }

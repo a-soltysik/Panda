@@ -14,20 +14,25 @@
 #include <functional>
 #include <glm/ext/matrix_float3x3.hpp>
 #include <glm/matrix.hpp>
+#include <memory>
 #include <optional>
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/diagnostics/Logger.hpp>
 #include <panda/geometry/VertexLayout.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/ShaderProgram.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <ranges>
 #include <span>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "BuiltinShaders.hpp"
 #include "VulkanError.hpp"
+#include "renderer/ApplicationShaderBindings.hpp"
+#include "renderer/ShaderProgramState.hpp"
 #include "renderer/ShaderReflection.hpp"
 #include "resources/MeshResource.hpp"
 
@@ -96,6 +101,40 @@ auto usesTextureCoordinates(const Material& material, bool hasNormalMap) -> bool
 auto vertexAttributeOffset(const VertexAttribute* attribute) -> std::uint32_t
 {
     return attribute != nullptr ? attribute->offset : 0U;
+}
+
+auto shadowAttributeOffset(const VertexAttribute* attribute, bool used) -> std::uint32_t
+{
+    return used ? vertexAttributeOffset(attribute) : 0U;
+}
+
+auto hasCustomShadow(const auto& program) -> bool
+{
+    return program && std::get_if<ProgramVariant>(&program->shadow) != nullptr;
+}
+
+auto hasShadowPass(std::span<const Light> lights) -> bool
+{
+    return std::ranges::any_of(lights, [](const auto& light) {
+        return std::visit(
+            [](const auto& value) {
+                return value.shadow.has_value();
+            },
+            light);
+    });
+}
+
+auto makeColorPipelineRendering(const MeshPipelineCache::OutputCompatibility& compatibility)
+    -> vk::PipelineRenderingCreateInfo
+{
+    return {.colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &compatibility.colorFormat,
+            .depthAttachmentFormat = compatibility.depthFormat};
+}
+
+auto makePipelineMultisampling(vk::SampleCountFlagBits sampleCount) -> vk::PipelineMultisampleStateCreateInfo
+{
+    return {.rasterizationSamples = sampleCount};
 }
 
 constexpr auto shaderAttributeName(VertexAttributeSemantic semantic) -> std::string_view
@@ -245,13 +284,19 @@ struct VertexAttributeSource
 };
 
 auto collectVertexAttributes(std::span<const ShaderInterfaceVariable> inputs,
-                             std::span<const VertexAttributeSource> sources)
-    -> Result<std::vector<vk::VertexInputAttributeDescription>>
+                             std::span<const VertexAttributeSource> sources,
+                             bool onlyReflected = false) -> Result<std::vector<vk::VertexInputAttributeDescription>>
 {
     auto attributes = std::vector<vk::VertexInputAttributeDescription> {};
     attributes.reserve(sources.size());
     for (const auto& source : sources | std::views::filter(&VertexAttributeSource::enabled))
     {
+        if (onlyReflected &&
+            std::ranges::find(inputs, shaderAttributeName(source.semantic), &ShaderInterfaceVariable::name) ==
+                inputs.end())
+        {
+            continue;
+        }
         auto attribute = makeVertexAttributeDescription(inputs, source.semantic, source.format, source.offset);
         if (!attribute)
         {
@@ -285,6 +330,24 @@ auto shadowVertexAttributes(const MeshPipelineCache::ShadowPipelineKey& key,
                                .enabled = key.hasColor}
     };
     return collectVertexAttributes(inputs, sources);
+}
+
+auto customShadowMeshKey(const MeshPipelineCache::ShadowPipelineKey& key) -> MeshPipelineCache::MeshPipelineKey
+{
+    return {.lit = key.hasNormal,
+            .hasColor = key.hasColor,
+            .hasTextureCoordinates = key.hasTextureCoordinates,
+            .hasNormalMap = key.hasTangent,
+            .vertexStride = key.vertexStride,
+            .positionOffset = key.positionOffset,
+            .normalOffset = key.normalOffset,
+            .texCoordOffset = key.texCoordOffset,
+            .tangentOffset = key.tangentOffset,
+            .colorOffset = key.colorOffset,
+            .renderFace = key.renderFace,
+            .mirrored = key.mirrored,
+            .customProgramRevision = key.customProgramRevision,
+            .customProgram = key.customProgram};
 }
 
 auto meshVertexShaderWords(const MeshPipelineCache::MeshPipelineKey& key) -> std::span<const std::uint32_t>
@@ -391,6 +454,24 @@ auto createShadowShaderModules(const vk::raii::Device& device,
     });
 }
 
+auto customShadowStages(const ShadowShaderModules& modules)
+    -> std::pair<std::array<vk::PipelineShaderStageCreateInfo, 2>, std::uint32_t>
+{
+    auto stages = std::array {
+        vk::PipelineShaderStageCreateInfo {.stage = vk::ShaderStageFlagBits::eVertex,
+                                           .module = *modules.vertex,
+                                           .pName = "main"},
+        vk::PipelineShaderStageCreateInfo {}
+    };
+    auto stageCount = std::uint32_t {1};
+    if (modules.fragment)
+    {
+        stages.at(1) = {.stage = vk::ShaderStageFlagBits::eFragment, .module = **modules.fragment, .pName = "main"};
+        ++stageCount;
+    }
+    return {stages, stageCount};
+}
+
 auto meshFragmentShaderWords(const MeshPipelineCache::MeshPipelineKey& key) -> std::span<const std::uint32_t>
 {
     if (key.hasEnvironment)
@@ -433,9 +514,11 @@ auto cachedShaderProgram(Cache& cache, const Key& key, const ShaderProgramReques
 
 MeshPipelineCache::MeshPipelineCache(const vk::raii::Device& device,
                                      vk::PipelineLayout pipelineLayout,
-                                     std::span<const ShaderDescriptor> shaderDescriptorSchema)
+                                     std::span<const ShaderDescriptor> shaderDescriptorSchema,
+                                     const ApplicationShaderBindings* applicationBindings)
     : _device {device},
       _pipelineLayout {pipelineLayout},
+      _applicationBindings {applicationBindings},
       _shaderDescriptorSchema {shaderDescriptorSchema.begin(), shaderDescriptorSchema.end()}
 {
 }
@@ -489,18 +572,19 @@ auto MeshPipelineCache::skyboxShaderLayout() -> Result<std::reference_wrapper<co
 
 auto MeshPipelineCache::makeMeshPipelineKey(const MeshDraw& draw, bool hasEnvironment) -> MeshPipelineKey
 {
+    const auto program = draw.material.shaderProgram.snapshot();
     const auto lit = draw.material.model == MaterialModel::Lit;
     const auto* position = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Position);
-    const auto* normal = lit ? findVertexAttribute(draw.mesh, VertexAttributeSemantic::Normal) : nullptr;
+    const auto* normal = lit || program ? findVertexAttribute(draw.mesh, VertexAttributeSemantic::Normal) : nullptr;
     const auto* color = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Color);
     const auto hasUv = hasVertexAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0);
     const auto hasTangentAttribute = hasVertexAttribute(draw.mesh, VertexAttributeSemantic::Tangent);
-    const auto hasNormalMap = usesNormalMap(draw, hasUv, hasTangentAttribute);
-    const auto hasTextureCoordinates = usesTextureCoordinates(draw.material, hasNormalMap);
+    const auto hasNormalMap = program ? hasTangentAttribute : usesNormalMap(draw, hasUv, hasTangentAttribute);
+    const auto hasTextureCoordinates = program ? hasUv : usesTextureCoordinates(draw.material, hasNormalMap);
     const auto* texCoord =
         hasTextureCoordinates ? findVertexAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0) : nullptr;
     const auto* tangent = hasNormalMap ? findVertexAttribute(draw.mesh, VertexAttributeSemantic::Tangent) : nullptr;
-    return {.lit = lit,
+    return {.lit = program ? normal != nullptr : lit,
             .hasColor = color != nullptr,
             .hasTextureCoordinates = hasTextureCoordinates,
             .hasNormalMap = hasNormalMap,
@@ -513,26 +597,60 @@ auto MeshPipelineCache::makeMeshPipelineKey(const MeshDraw& draw, bool hasEnviro
             .renderFace = draw.material.renderFace,
             .alphaMode = draw.material.alphaMode,
             .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F,
-            .hasEnvironment = lit && hasEnvironment};
+            .hasEnvironment = !program && lit && hasEnvironment,
+            .customProgramRevision = program ? program->revision : 0,
+            .customProgram = program};
+}
+
+auto MeshPipelineCache::makeProceduralPipelineKey(const ProceduralDraw& draw) -> MeshPipelineKey
+{
+    const auto program = draw.shaderProgram.snapshot();
+    return {.renderFace = RenderFace::Both,
+            .procedural = true,
+            .customProgramRevision = program ? program->revision : 0,
+            .customProgram = program};
 }
 
 auto MeshPipelineCache::makeShadowPipelineKey(const MeshDraw& draw) -> ShadowPipelineKey
 {
+    auto customProgram = draw.material.shaderProgram.snapshot();
+    if (!hasCustomShadow(customProgram))
+    {
+        customProgram.reset();
+    }
     const auto* position = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Position);
+    const auto* normal = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Normal);
     const auto* texCoord = findVertexAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0);
+    const auto* tangent = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Tangent);
     const auto* color = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Color);
-    const auto hasColor = draw.material.alphaMode == AlphaMode::Mask && color != nullptr;
+    const auto hasColor = color != nullptr && (customProgram != nullptr || draw.material.alphaMode == AlphaMode::Mask);
     const auto hasBaseColorTexture =
         draw.material.alphaMode == AlphaMode::Mask && draw.material.baseColorTexture.isValid();
     return {.vertexStride = draw.mesh.getVertexStride(),
-            .positionOffset = position != nullptr ? position->offset : 0U,
-            .texCoordOffset = hasBaseColorTexture && texCoord != nullptr ? texCoord->offset : 0U,
-            .colorOffset = hasColor ? color->offset : 0U,
+            .positionOffset = vertexAttributeOffset(position),
+            .texCoordOffset = shadowAttributeOffset(texCoord, hasBaseColorTexture),
+            .colorOffset = shadowAttributeOffset(color, hasColor),
             .hasColor = hasColor,
             .hasBaseColorTexture = hasBaseColorTexture,
             .renderFace = draw.material.renderFace,
             .alphaMode = draw.material.alphaMode,
-            .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F};
+            .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F,
+            .hasNormal = customProgram != nullptr && normal != nullptr,
+            .hasTangent = customProgram != nullptr && tangent != nullptr,
+            .hasTextureCoordinates = customProgram != nullptr && texCoord != nullptr,
+            .normalOffset = shadowAttributeOffset(normal, customProgram != nullptr),
+            .tangentOffset = shadowAttributeOffset(tangent, customProgram != nullptr),
+            .customProgramRevision = customProgram ? customProgram->revision : 0,
+            .customProgram = customProgram};
+}
+
+auto MeshPipelineCache::makeShadowPipelineKey(const ProceduralDraw& draw) -> ShadowPipelineKey
+{
+    const auto program = draw.shaderProgram.snapshot();
+    return {.renderFace = RenderFace::Both,
+            .procedural = true,
+            .customProgramRevision = program ? program->revision : 0,
+            .customProgram = program};
 }
 
 void MeshPipelineCache::setOutputCompatibility(OutputCompatibility compatibility)
@@ -560,9 +678,35 @@ auto MeshPipelineCache::prepare(const RenderView& view) -> std::expected<void, E
             return prepared;
         }
     }
+    const auto shadows = hasShadowPass(view.lights);
+    if (auto prepared = prepareMeshDraws(view, shadows); !prepared)
+    {
+        return prepared;
+    }
+    return prepareProceduralDraws(view, shadows);
+}
+
+auto MeshPipelineCache::prepareMeshDraws(const RenderView& view, bool hasShadowPass) -> Result<void>
+{
     for (const auto& draw : view.meshes)
     {
-        if (const auto prepared = prepareDraw(draw, view.environment.has_value()); !prepared)
+        if (const auto prepared = prepareDraw(draw, view.environment.has_value(), hasShadowPass); !prepared)
+        {
+            return prepared;
+        }
+    }
+    return {};
+}
+
+auto MeshPipelineCache::prepareProceduralDraws(const RenderView& view, bool hasShadowPass) -> Result<void>
+{
+    for (const auto& draw : view.proceduralDraws)
+    {
+        if (draw.vertexCount == 0 || draw.instanceCount == 0)
+        {
+            continue;
+        }
+        if (const auto prepared = prepareProceduralDraw(draw, hasShadowPass); !prepared)
         {
             return prepared;
         }
@@ -585,7 +729,23 @@ auto MeshPipelineCache::prepareSkybox() -> std::expected<void, Error>
     return {};
 }
 
-auto MeshPipelineCache::prepareDraw(const MeshDraw& draw, bool hasEnvironment) -> std::expected<void, Error>
+auto MeshPipelineCache::prepareDraw(const MeshDraw& draw, bool hasEnvironment, bool hasShadowPass) -> Result<void>
+{
+    if (draw.material.shaderProgram.isValid())
+    {
+        return prepareCustomDraw(draw, hasShadowPass);
+    }
+    warnMissingNormalMapInputs(draw);
+    return prepare(makeMeshPipelineKey(draw, hasEnvironment)).and_then([&] {
+        if (draw.material.alphaMode == AlphaMode::Blend)
+        {
+            return Result<void> {};
+        }
+        return prepare(makeShadowPipelineKey(draw));
+    });
+}
+
+void MeshPipelineCache::warnMissingNormalMapInputs(const MeshDraw& draw)
 {
     if (draw.material.model == MaterialModel::Lit && draw.material.normalTexture.isValid())
     {
@@ -602,12 +762,68 @@ auto MeshPipelineCache::prepareDraw(const MeshDraw& draw, bool hasEnvironment) -
             _warnedMissingNormalMapTangent = true;
         }
     }
-    if (const auto prepared = prepare(makeMeshPipelineKey(draw, hasEnvironment)); !prepared)
+}
+
+auto MeshPipelineCache::prepareCustomDraw(const MeshDraw& draw, bool hasShadowPass) -> Result<void>
+{
+    const auto camera = makeMeshPipelineKey(draw);
+    const auto& program = camera.customProgram;
+    if (!program || program->device != &_device || program->vertexInput != ShaderVertexInput::StandardMesh)
     {
-        return prepared;
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Mesh draw needs a standard mesh shader program from this Engine")};
     }
-    return draw.material.alphaMode == AlphaMode::Blend ? std::expected<void, Error> {}
-                                                       : prepare(makeShadowPipelineKey(draw));
+    return prepare(camera).and_then([&] {
+        return prepareCustomShadowDraw(draw, camera, hasShadowPass);
+    });
+}
+
+auto MeshPipelineCache::prepareCustomShadowDraw(const MeshDraw& draw, const MeshPipelineKey& camera, bool hasShadowPass)
+    -> Result<void>
+{
+    if (!hasShadowPass || draw.material.alphaMode == AlphaMode::Blend)
+    {
+        return {};
+    }
+    const auto& program = camera.customProgram;
+    const auto* explicitShadow = std::get_if<ProgramVariant>(&program->shadow);
+    if (explicitShadow != nullptr)
+    {
+        return prepare(makeShadowPipelineKey(draw));
+    }
+    const auto* mode = std::get_if<ShaderShadowMode>(&program->shadow);
+    if (mode == nullptr)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::Unsupported, "Explicit shader shadows are unavailable for mesh draws")};
+    }
+    if (*mode == ShaderShadowMode::None)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Custom mesh draw has no shadow variant")};
+    }
+    return prepare(makeShadowPipelineKey(draw));
+}
+
+auto MeshPipelineCache::prepareProceduralDraw(const ProceduralDraw& draw, bool hasShadowPass) -> Result<void>
+{
+    const auto program = draw.shaderProgram.snapshot();
+    if (!program || program->device != &_device || program->vertexInput != ShaderVertexInput::Procedural)
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                          "Procedural draw needs a procedural shader program from this Engine")};
+    }
+    if (hasShadowPass)
+    {
+        if (std::get_if<ProgramVariant>(&program->shadow) == nullptr)
+        {
+            return std::unexpected {
+                makeError(ErrorCode::InvalidArgument, "Procedural draw has no explicit shadow variant")};
+        }
+        return prepare(makeProceduralPipelineKey(draw)).and_then([&] {
+            return prepare(makeShadowPipelineKey(draw));
+        });
+    }
+    return prepare(makeProceduralPipelineKey(draw));
 }
 
 auto MeshPipelineCache::prepare(const MeshPipelineKey& key) -> std::expected<void, Error>
@@ -621,7 +837,9 @@ auto MeshPipelineCache::prepare(const MeshPipelineKey& key) -> std::expected<voi
     {
         return std::unexpected {pipeline.error()};
     }
-    _pipelines.emplace(key, std::move(*pipeline));
+    auto cacheKey = key;
+    cacheKey.customProgram.reset();
+    _pipelines.emplace(std::move(cacheKey), std::move(*pipeline));
     return {};
 }
 
@@ -636,7 +854,9 @@ auto MeshPipelineCache::prepare(const ShadowPipelineKey& key) -> std::expected<v
     {
         return std::unexpected {pipeline.error()};
     }
-    _shadowPipelines.emplace(key, std::move(*pipeline));
+    auto cacheKey = key;
+    cacheKey.customProgram.reset();
+    _shadowPipelines.emplace(std::move(cacheKey), std::move(*pipeline));
     return {};
 }
 
@@ -645,7 +865,17 @@ auto MeshPipelineCache::getPipeline(const MeshDraw& draw, bool hasEnvironment) c
     return *_pipelines.at(makeMeshPipelineKey(draw, hasEnvironment));
 }
 
+auto MeshPipelineCache::getPipeline(const ProceduralDraw& draw) const -> vk::Pipeline
+{
+    return *_pipelines.at(makeProceduralPipelineKey(draw));
+}
+
 auto MeshPipelineCache::getShadowPipeline(const MeshDraw& draw) const -> vk::Pipeline
+{
+    return *_shadowPipelines.at(makeShadowPipelineKey(draw));
+}
+
+auto MeshPipelineCache::getShadowPipeline(const ProceduralDraw& draw) const -> vk::Pipeline
 {
     return *_shadowPipelines.at(makeShadowPipelineKey(draw));
 }
@@ -681,10 +911,19 @@ auto MeshPipelineCache::makeVertexAttributeDescriptions(const MeshPipelineKey& k
                                .offset = key.colorOffset,
                                .enabled = key.hasColor}
     };
-    return collectVertexAttributes(vertexInputs, sources);
+    return collectVertexAttributes(vertexInputs, sources, key.customProgram != nullptr);
 }
 
 auto MeshPipelineCache::createPipeline(const MeshPipelineKey& key) -> std::expected<vk::raii::Pipeline, Error>
+{
+    if (key.customProgram)
+    {
+        return createCustomPipeline(key);
+    }
+    return createBuiltinPipeline(key);
+}
+
+auto MeshPipelineCache::createBuiltinPipeline(const MeshPipelineKey& key) -> std::expected<vk::raii::Pipeline, Error>
 {
     const auto vertexWords = meshVertexShaderWords(key);
     const auto fragmentWords = meshFragmentShaderWords(key);
@@ -711,29 +950,46 @@ auto MeshPipelineCache::createPipeline(const MeshPipelineKey& key) -> std::expec
     });
 }
 
+auto MeshPipelineCache::createCustomPipeline(const MeshPipelineKey& key) const -> Result<vk::raii::Pipeline>
+{
+    const auto& camera = key.customProgram->camera;
+    const auto attributes =
+        key.procedural
+            ? Result<std::vector<vk::VertexInputAttributeDescription>> {std::in_place,
+                                                                        std::vector<
+                                                                            vk::VertexInputAttributeDescription> {}}
+            : makeVertexAttributeDescriptions(key, camera.layout.vertexInputs);
+    return attributes.and_then([&](auto descriptions) {
+        return createShadowShaderModules(_device,
+                                         camera.vertex.words,
+                                         std::span<const std::uint32_t> {camera.fragment->words})
+            .and_then([&](auto modules) {
+                return createMeshPipeline(key, {*modules.vertex, **modules.fragment}, descriptions, std::nullopt);
+            });
+    });
+}
+
 auto MeshPipelineCache::createMeshPipeline(const MeshPipelineKey& key,
                                            const std::array<vk::ShaderModule, 2>& modules,
                                            std::span<const vk::VertexInputAttributeDescription> attributes,
-                                           std::uint32_t alphaModeSpecializationId) const
+                                           std::optional<std::uint32_t> alphaModeSpecializationId) const
     -> std::expected<vk::raii::Pipeline, Error>
 {
     const auto binding = vk::VertexInputBindingDescription {.binding = meshVertexBufferBinding,
                                                             .stride = key.vertexStride,
                                                             .inputRate = vk::VertexInputRate::eVertex};
-    const auto vertexInput = makeVertexInputState(binding, attributes);
+    const auto vertexInput =
+        key.procedural ? vk::PipelineVertexInputStateCreateInfo {} : makeVertexInputState(binding, attributes);
     const auto specializationData = FragmentSpecializationData {.alphaMode = static_cast<std::uint32_t>(key.alphaMode)};
-    const auto specializationEntry = makeFragmentSpecializationEntry(alphaModeSpecializationId);
+    const auto specializationEntry = makeFragmentSpecializationEntry(alphaModeSpecializationId.value_or(0));
     const auto specialization = vk::SpecializationInfo {.mapEntryCount = 1,
                                                         .pMapEntries = &specializationEntry,
                                                         .dataSize = sizeof(specializationData),
                                                         .pData = &specializationData};
-    const auto stages = makeShaderStages(modules.front(), modules.back(), specialization);
-    const auto colorOutput = _outputCompatibility.colorFormat;
-    const auto rendering = vk::PipelineRenderingCreateInfo {.colorAttachmentCount = 1,
-                                                            .pColorAttachmentFormats = &colorOutput,
-                                                            .depthAttachmentFormat = _outputCompatibility.depthFormat};
-    const auto multisampling =
-        vk::PipelineMultisampleStateCreateInfo {.rasterizationSamples = _outputCompatibility.sampleCount};
+    const auto stages = alphaModeSpecializationId ? makeShaderStages(modules.front(), modules.back(), specialization)
+                                                  : makeShaderStages(modules.front(), modules.back());
+    const auto rendering = makeColorPipelineRendering(_outputCompatibility);
+    const auto multisampling = makePipelineMultisampling(_outputCompatibility.sampleCount);
     const auto state =
         GraphicsPipelineState {.stages = stages,
                                .rendering = rendering,
@@ -742,7 +998,9 @@ auto MeshPipelineCache::createMeshPipeline(const MeshPipelineKey& key,
                                .depthStencil = key.alphaMode == AlphaMode::Blend ? blendDepthStencil : depthStencil,
                                .colorBlend = key.alphaMode == AlphaMode::Blend ? alphaBlend : opaqueBlend,
                                .vertexInput = vertexInput,
-                               .layout = _pipelineLayout};
+                               .layout = key.customProgram && _applicationBindings != nullptr
+                                             ? _applicationBindings->getPipelineLayout(key.customProgram)
+                                             : _pipelineLayout};
     const auto createInfo = makeGraphicsPipelineCreateInfo(state);
     return checkedCreation(_device.createGraphicsPipeline(nullptr, createInfo));
 }
@@ -765,12 +1023,8 @@ auto MeshPipelineCache::createSkyboxPipelineWithModules(vk::ShaderModule vertex,
     -> std::expected<vk::raii::Pipeline, Error>
 {
     const auto stages = makeShaderStages(vertex, fragment);
-    const auto colorOutput = _outputCompatibility.colorFormat;
-    const auto rendering = vk::PipelineRenderingCreateInfo {.colorAttachmentCount = 1,
-                                                            .pColorAttachmentFormats = &colorOutput,
-                                                            .depthAttachmentFormat = _outputCompatibility.depthFormat};
-    const auto multisampling =
-        vk::PipelineMultisampleStateCreateInfo {.rasterizationSamples = _outputCompatibility.sampleCount};
+    const auto rendering = makeColorPipelineRendering(_outputCompatibility);
+    const auto multisampling = makePipelineMultisampling(_outputCompatibility.sampleCount);
     static constexpr auto depth = vk::PipelineDepthStencilStateCreateInfo {.depthTestEnable = vk::False,
                                                                            .depthWriteEnable = vk::False,
                                                                            .depthCompareOp = vk::CompareOp::eAlways};
@@ -794,6 +1048,10 @@ auto MeshPipelineCache::createSkyboxPipelineWithModules(vk::ShaderModule vertex,
 
 auto MeshPipelineCache::createShadowPipeline(const ShadowPipelineKey& key) -> std::expected<vk::raii::Pipeline, Error>
 {
+    if (key.customProgram)
+    {
+        return createCustomShadowPipeline(key);
+    }
     const auto vertexWords = shadowVertexShaderWords(key.hasColor, key.hasBaseColorTexture);
     const auto fragmentWords = shadowFragmentShaderWords(key.alphaMode == AlphaMode::Mask, key.hasBaseColorTexture);
     auto programLayout = shadowShaderLayout(key);
@@ -815,6 +1073,60 @@ auto MeshPipelineCache::createShadowPipeline(const ShadowPipelineKey& key) -> st
             return createShadowPipelineWithModules(key, modules, *attributes, specializationId);
         });
     });
+}
+
+auto MeshPipelineCache::createCustomShadowPipeline(const ShadowPipelineKey& key) const -> Result<vk::raii::Pipeline>
+{
+    const auto* shadow = std::get_if<ProgramVariant>(&key.customProgram->shadow);
+    if (shadow == nullptr)
+    {
+        return std::unexpected {
+            makeError(ErrorCode::InvalidArgument, "Custom shadow pipeline has no explicit variant")};
+    }
+    const auto fragmentWords =
+        shadow->fragment ? std::optional<std::span<const std::uint32_t>> {shadow->fragment->words} : std::nullopt;
+    return createCustomMeshShadowAttributes(key, shadow->layout.vertexInputs).and_then([&](auto attributes) {
+        return createShadowShaderModules(_device, shadow->vertex.words, fragmentWords).and_then([&](auto modules) {
+            return createCustomShadowPipelineWithModules(key, attributes, modules);
+        });
+    });
+}
+
+auto MeshPipelineCache::createCustomMeshShadowAttributes(const ShadowPipelineKey& key,
+                                                         std::span<const ShaderInterfaceVariable> vertexInputs)
+    -> Result<std::vector<vk::VertexInputAttributeDescription>>
+{
+    if (key.procedural)
+    {
+        return std::vector<vk::VertexInputAttributeDescription> {};
+    }
+    return makeVertexAttributeDescriptions(customShadowMeshKey(key), vertexInputs);
+}
+
+auto MeshPipelineCache::createCustomShadowPipelineWithModules(
+    const ShadowPipelineKey& key,
+    std::span<const vk::VertexInputAttributeDescription> attributes,
+    const ShadowShaderModules& modules) const -> Result<vk::raii::Pipeline>
+{
+    const auto [stages, stageCount] = customShadowStages(modules);
+    const auto rendering = vk::PipelineRenderingCreateInfo {.depthAttachmentFormat = _outputCompatibility.depthFormat};
+    const auto binding = vk::VertexInputBindingDescription {.binding = meshVertexBufferBinding,
+                                                            .stride = key.vertexStride,
+                                                            .inputRate = vk::VertexInputRate::eVertex};
+    const auto vertexInput =
+        key.procedural ? vk::PipelineVertexInputStateCreateInfo {} : makeVertexInputState(binding, attributes);
+    const auto layout =
+        _applicationBindings != nullptr ? _applicationBindings->getPipelineLayout(key.customProgram) : _pipelineLayout;
+    const auto state = GraphicsPipelineState {.stages = std::span {stages}.first(stageCount),
+                                              .rendering = rendering,
+                                              .multisampling = multisample,
+                                              .rasterization = makeRasterizationState(key.renderFace, key.mirrored),
+                                              .depthStencil = depthStencil,
+                                              .colorBlend = noColorBlend,
+                                              .vertexInput = vertexInput,
+                                              .layout = layout};
+    const auto createInfo = makeGraphicsPipelineCreateInfo(state);
+    return checkedCreation(_device.createGraphicsPipeline(nullptr, createInfo));
 }
 
 auto MeshPipelineCache::createShadowPipelineWithModules(const ShadowPipelineKey& key,

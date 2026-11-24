@@ -19,7 +19,12 @@ the Engine that created it.
    `glm::uvec2` extent in pixels (x is width, y is height). The current target
    format is RGBA8 sRGB.
 2. **Build and upload the view.** The application supplies camera, lights, an
-   optional skybox and mesh draws. A skybox is an uploaded, sampled square linear
+   optional skybox, mesh draws and procedural draws. A procedural draw uses a
+   same-Engine camera program with procedural vertex input; it supplies explicit
+   vertex and instance counts and named shader resources.
+   Those resources may include read-only storage-buffer slices indexed by the
+   shader. When a light casts shadows, the program supplies explicit shadow
+   stages. A zero count skips that draw. A skybox is an uploaded, sampled square linear
    `Rgba16Float` cubemap from the same Engine. Required mesh and texture data must be uploaded; see
    [UC Upload a complete mesh payload into a batch](upload-mesh-payload.md) and
    [UC Upload texture contents or regions](upload-texture.md).
@@ -27,7 +32,7 @@ the Engine that created it.
    `Engine::getOffscreenRenderer().render(view, target)`. `OffscreenRenderer`
    validates the view and target, collects completed uploads, then lazily initializes
    `OffscreenRenderBackend` before recording the built-in rendering path. It
-   prepares the shared HDR renderer and SDR output pipeline for mesh draws or a skybox,
+   prepares the shared HDR renderer and SDR output pipeline for mesh or procedural draws or a skybox,
    retains the target and view resources,
    then submits the command buffer on
    the Engine queue. Success returns `FrameResult::Status::Rendered`, a
@@ -48,32 +53,32 @@ sequenceDiagram
     participant E as FrameExecution
     participant Q as SubmissionQueue
     participant V as Vulkan
-    A->>M: Step 1 - createOffscreenTarget(extent)
-    M-->>A: OffscreenTarget
-    A->>A: Step 2 - build and upload view
-    A->>R: Step 3 - render(view, target)
-    R->>R: Validate view and target
-    R->>U: Collect completed upload packets
-    U-->>R: Collection result
-    R->>R: Reject material maps or skybox without a submitted upload
-    R->>O: Initialize lazily and submit offscreen frame
-    O->>E: Prepare HDR attachments and target-format output pipeline when needed
-    O->>E: Retain target and view resources and record content
-    alt No meshes and no skybox
-        E->>V: Transition target and clear to the transformed solid background
-    else Skybox or mesh draws
-        Note over E,V: UC Render a view through the shared HDR path writes SDR pixels to the target
+    A ->> M: Step 1 - createOffscreenTarget(extent)
+    M -->> A: OffscreenTarget
+    A ->> A: Step 2 - build and upload view
+    A ->> R: Step 3 - render(view, target)
+    R ->> R: Validate view and target
+    R ->> U: Collect completed upload packets
+    U -->> R: Collection result
+    R ->> R: Reject material maps or skybox without a submitted upload
+    R ->> O: Initialize lazily and submit offscreen frame
+    O ->> E: Prepare HDR attachments and target-format output pipeline when needed
+    O ->> E: Retain target and view resources and record content
+    alt No mesh draws, procedural draws and no skybox
+        E ->> V: Transition target and clear to the transformed solid background
+    else Skybox, mesh or procedural draws
+        Note over E, V: UC Render a view through the shared HDR path writes SDR pixels to the target
     end
-    O->>Q: Submit command buffer
-    Q-->>O: CompletionPoint
-    O-->>R: FrameResult::Rendered
-    R-->>A: FrameResult
-    A->>R: Step 4 - readPixels(target, completion)
-    R->>R: Validate target ownership and render state
-    R->>O: Copy target to host-visible buffer
-    O->>Q: Submit copy and wait for completion
-    Q-->>O: Copy completed
-    O-->>A: ImageReadback
+    O ->> Q: Submit command buffer
+    Q -->> O: CompletionPoint
+    O -->> R: FrameResult::Rendered
+    R -->> A: FrameResult
+    A ->> R: Step 4 - readPixels(target, completion)
+    R ->> R: Validate target ownership and render state
+    R ->> O: Copy target to host-visible buffer
+    O ->> Q: Submit copy and wait for completion
+    Q -->> O: Copy completed
+    O -->> A: ImageReadback
 ```
 
 ## Notes
@@ -107,13 +112,13 @@ view](render-view.md).
 
 ## Variants and errors
 
-| Condition | Result and next action |
-| --- | --- |
-| Target extent is zero | Return `InvalidArgument`; create a nonzero target. |
-| Device does not support the fixed RGBA8 sRGB target usage | Return `Unsupported`; use a compatible device. |
-| Target or view resource belongs to another Engine | Return `InvalidArgument` before submission; create or upload it on the owning Engine. |
+| Condition                                                    | Result and next action                                                                                          |
+|--------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| Target extent is zero                                        | Return `InvalidArgument`; create a nonzero target.                                                              |
+| Device does not support the fixed RGBA8 sRGB target usage    | Return `Unsupported`; use a compatible device.                                                                  |
+| Target or view resource belongs to another Engine            | Return `InvalidArgument` before submission; create or upload it on the owning Engine.                           |
 | Target has not been rendered, or completion is stale/foreign | `readPixels()` returns `InvalidArgument`; render to this target and pass a point that covers its latest render. |
-| GPU submission, allocation or readback wait fails | Return the backend error; no pixels are returned. |
+| GPU submission, allocation or readback wait fails            | Return the backend error; no pixels are returned.                                                               |
 
 ## Related information
 

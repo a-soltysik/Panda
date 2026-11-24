@@ -23,13 +23,20 @@
 #include <panda/rendering/Camera.hpp>
 #include <panda/rendering/FrameResult.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/ShaderProgram.hpp>
+#include <panda/rendering/ShaderResources.hpp>
 #include <panda/rendering/TextureFilteringPreset.hpp>
+#include <panda/resources/Buffer.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/OffscreenTarget.hpp>
 #include <panda/resources/PixelFormat.hpp>
 #include <panda/resources/Texture.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
+#include <span>
+#include <string_view>
+#include <test/application_shader/ShaderResources.hpp>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -84,7 +91,7 @@ auto makeBlendDraw(const panda::Mesh& mesh, float z, glm::vec4 color) -> panda::
 {
     auto transform = glm::mat4 {1.0F};
     transform[3].z = z;
-    auto draw = panda::MeshDraw {.mesh = mesh, .modelMatrix = transform};
+    auto draw = panda::MeshDraw {.mesh = mesh, .modelMatrix = transform, .shaderResources = {}};
     draw.material.model = panda::MaterialModel::Unlit;
     draw.material.baseColor = color;
     draw.material.renderFace = panda::RenderFace::Both;
@@ -107,7 +114,12 @@ auto makeBlendView(const panda::Mesh& mesh, bool reverse) -> panda::Result<panda
     {
         return std::unexpected {camera.error()};
     }
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    auto view = panda::RenderView {.camera = *camera,
+                                   .lights = {},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
     const auto red = makeBlendDraw(mesh, 0.0F, {0.8F, 0.0F, 0.0F, 0.5F});
     const auto blue = makeBlendDraw(mesh, 0.25F, {0.0F, 0.0F, 0.7F, 0.5F});
     view.meshes = reverse ? std::vector {blue, red} : std::vector {red, blue};
@@ -170,11 +182,16 @@ auto makeTexturedView(const panda::Mesh& mesh, const panda::Texture& texture) ->
     {
         return std::unexpected {camera.error()};
     }
-    auto draw = panda::MeshDraw {.mesh = mesh};
+    auto draw = panda::MeshDraw {.mesh = mesh, .shaderResources = {}};
     draw.material.model = panda::MaterialModel::Unlit;
     draw.material.renderFace = panda::RenderFace::Both;
     draw.material.baseColorTexture = texture;
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    auto view = panda::RenderView {.camera = *camera,
+                                   .lights = {},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
     view.requestedSampleCount = panda::SampleCount::One;
     view.meshes.push_back(std::move(draw));
     return view;
@@ -293,7 +310,7 @@ auto renderSpecularEnvironment(const panda::OffscreenRenderer& renderer,
                                const panda::Texture& specular,
                                const panda::Mesh& sphere) -> panda::Result<panda::ImageReadback>
 {
-    auto draw = panda::MeshDraw {.mesh = sphere};
+    auto draw = panda::MeshDraw {.mesh = sphere, .shaderResources = {}};
     draw.material.model = panda::MaterialModel::Lit;
     draw.material.renderFace = panda::RenderFace::Both;
     draw.material.metallic = 1.0F;
@@ -302,7 +319,8 @@ auto renderSpecularEnvironment(const panda::OffscreenRenderer& renderer,
                                    .lights = {},
                                    .meshes = {std::move(draw)},
                                    .environment = {},
-                                   .skybox = {}};
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
     view.environment = panda::EnvironmentLighting {.diffuseIrradiance = diffuse, .specularRadiance = specular};
     view.requestedSampleCount = panda::SampleCount::One;
     const auto frame = renderer.render(view, target);
@@ -396,6 +414,439 @@ protected:
     panda::test::ProcessSinkRegistration capture {records};
     std::optional<panda::Engine> context;
 };
+
+auto resourceProgram(const panda::Engine& engine) -> panda::Result<panda::ShaderProgram>
+{
+    const auto vertex =
+        panda::expect(test::application_shader::findShader("fixtures/shaders/application_resources.vert"),
+                      "Find test vertex shader");
+    const auto fragment =
+        panda::expect(test::application_shader::findShader("fixtures/shaders/application_resources.frag"),
+                      "Find test fragment shader");
+    return engine.getResourceManager().createShaderProgram({
+        .vertex = {.words = vertex.words,   .stage = panda::ShaderStage::Vertex,   .label = vertex.key  },
+        .fragment = {.words = fragment.words, .stage = panda::ShaderStage::Fragment, .label = fragment.key},
+        .vertexInput = panda::ShaderVertexInput::StandardMesh,
+        .shadow = panda::ShaderShadowMode::None
+    });
+}
+
+auto applicationTextureDescription(std::string_view fragmentKey) -> panda::ProgramDesc
+{
+    const auto vertex = panda::expect(test::application_shader::findShader("fixtures/shaders/application_texture.vert"),
+                                      "Find application texture vertex shader");
+    const auto fragment =
+        panda::expect(test::application_shader::findShader(fragmentKey), "Find application texture fragment shader");
+    return {
+        .vertex = {.words = vertex.words,   .stage = panda::ShaderStage::Vertex,   .label = vertex.key  },
+        .fragment = {.words = fragment.words, .stage = panda::ShaderStage::Fragment, .label = fragment.key},
+        .vertexInput = panda::ShaderVertexInput::StandardMesh,
+        .shadow = panda::ShaderShadowMode::None
+    };
+}
+
+auto applicationTextureProgram(const panda::Engine& engine) -> panda::Result<panda::ShaderProgram>
+{
+    return engine.getResourceManager().createShaderProgram(
+        applicationTextureDescription("fixtures/shaders/application_texture.frag"));
+}
+
+auto createApplicationTexture(const panda::Engine& engine, std::array<std::uint8_t, 4> pixel)
+    -> panda::Result<panda::Texture>
+{
+    auto texture = engine.getResourceManager().createTexture({
+        .extent = {1, 1},
+        .format = panda::PixelFormat::Rgba8Unorm,
+        .usage = panda::TextureUsage::Sampled | panda::TextureUsage::TransferDestination
+    });
+    if (!texture)
+    {
+        return std::unexpected {texture.error()};
+    }
+    auto upload = engine.getSubmissionManager().createUploadBatch();
+    if (!upload)
+    {
+        return std::unexpected {upload.error()};
+    }
+    if (const auto written = upload->write(*texture, std::as_bytes(std::span {pixel})); !written)
+    {
+        return std::unexpected {written.error()};
+    }
+    if (const auto submitted = upload->submit(); !submitted)
+    {
+        return std::unexpected {submitted.error()};
+    }
+    return std::move(*texture);
+}
+
+auto applicationTextureResources(const panda::Texture& texture) -> panda::ShaderResources
+{
+    return panda::ShaderResources {
+        std::vector {panda::ShaderResourceBinding {.name = "applicationImage", .resource = texture}}};
+}
+
+auto explicitShadowResourceProgram(const panda::Engine& engine) -> panda::Result<panda::ShaderProgram>
+{
+    const auto vertex =
+        panda::expect(test::application_shader::findShader("fixtures/shaders/application_resources.vert"),
+                      "Find test vertex shader");
+    const auto fragment =
+        panda::expect(test::application_shader::findShader("fixtures/shaders/application_resources.frag"),
+                      "Find test fragment shader");
+    const auto shadow = panda::expect(test::application_shader::findShader("fixtures/shaders/application_shadow.vert"),
+                                      "Find explicit shadow shader");
+    return engine.getResourceManager().createShaderProgram({
+        .vertex = {.words = vertex.words, .stage = panda::ShaderStage::Vertex, .label = vertex.key},
+        .fragment = {.words = fragment.words, .stage = panda::ShaderStage::Fragment, .label = fragment.key},
+        .vertexInput = panda::ShaderVertexInput::StandardMesh,
+        .shadow = panda::ShaderShadowStages {
+                   .vertex = {.words = shadow.words, .stage = panda::ShaderStage::Vertex, .label = shadow.key},
+                   .fragment = std::nullopt}
+    });
+}
+
+auto storageValue(const panda::Engine& engine, float value) -> panda::Buffer
+{
+    const auto payload = std::array {value, 0.0F, 0.0F, 0.0F};
+    const auto buffer = panda::expect(
+        engine.getResourceManager().createBuffer(
+            {.size = sizeof(payload), .usage = panda::BufferUsage::Storage | panda::BufferUsage::TransferDestination}),
+        "Create test storage buffer");
+    auto upload = panda::expect(engine.getSubmissionManager().createUploadBatch(), "Create storage upload");
+    panda::expect(upload.write(buffer, 0, std::as_bytes(std::span {payload})), "Upload test storage value");
+    std::ignore = panda::expect(upload.submit(), "Submit storage upload");
+    return buffer;
+}
+
+auto resourceBindings(const panda::Engine& engine) -> panda::ShaderResources
+{
+    const auto values = std::array {0.9F, 0.0F, 0.0F, 0.0F};
+    const auto bytes = std::as_bytes(std::span {values});
+    return panda::ShaderResources {
+        std::vector {
+                     panda::ShaderResourceBinding {
+                .name = "secondValues",
+                .resource = panda::ShaderBufferRange {.buffer = storageValue(engine, 0.2F), .size = sizeof(values)}},
+                     panda::ShaderResourceBinding {
+                .name = "params",
+                .resource = panda::ShaderUniformBlock {.bytes = {bytes.begin(), bytes.end()}}},
+                     panda::ShaderResourceBinding {
+                .name = "firstValues",
+                .resource = panda::ShaderBufferRange {.buffer = storageValue(engine, 0.5F), .size = sizeof(values)}}}
+    };
+}
+
+auto proceduralProgram(const panda::Engine& engine) -> panda::Result<panda::ShaderProgram>
+{
+    const auto vertex =
+        panda::expect(test::application_shader::findShader("fixtures/shaders/procedural_resources.vert"),
+                      "Find procedural vertex shader");
+    const auto fragment =
+        panda::expect(test::application_shader::findShader("fixtures/shaders/procedural_resources.frag"),
+                      "Find procedural fragment shader");
+    const auto shadow =
+        panda::expect(test::application_shader::findShader("fixtures/shaders/procedural_resources_shadow.vert"),
+                      "Find procedural shadow shader");
+    return engine.getResourceManager().createShaderProgram({
+        .vertex = {.words = vertex.words, .stage = panda::ShaderStage::Vertex, .label = vertex.key},
+        .fragment = {.words = fragment.words, .stage = panda::ShaderStage::Fragment, .label = fragment.key},
+        .vertexInput = panda::ShaderVertexInput::Procedural,
+        .shadow = panda::ShaderShadowStages {
+                   .vertex = {.words = shadow.words, .stage = panda::ShaderStage::Vertex, .label = shadow.key},
+                   .fragment = std::nullopt}
+    });
+}
+
+auto proceduralColorResources(const panda::Engine& engine) -> panda::Result<panda::ShaderResources>
+{
+    const auto colors = std::array {
+        glm::vec4 {0.8F,  0.02F, 0.01F, 1.0F},
+        glm::vec4 {0.01F, 0.02F, 0.8F,  1.0F}
+    };
+    auto buffer = engine.getResourceManager().createBuffer(
+        {.size = sizeof(colors), .usage = panda::BufferUsage::Storage | panda::BufferUsage::TransferDestination});
+    if (!buffer)
+    {
+        return std::unexpected {buffer.error()};
+    }
+    auto upload = engine.getSubmissionManager().createUploadBatch();
+    if (!upload)
+    {
+        return std::unexpected {upload.error()};
+    }
+    if (const auto written = upload->write(*buffer, 0, std::as_bytes(std::span {colors})); !written)
+    {
+        return std::unexpected {written.error()};
+    }
+    if (const auto submitted = upload->submit(); !submitted)
+    {
+        return std::unexpected {submitted.error()};
+    }
+    return panda::ShaderResources {std::vector {panda::ShaderResourceBinding {
+        .name = "instanceColors",
+        .resource = panda::ShaderBufferRange {.buffer = std::move(*buffer), .size = sizeof(colors)}}}};
+}
+
+auto renderApplicationTexture(const panda::Engine& engine,
+                              const panda::OffscreenTarget& target,
+                              panda::RenderView& view,
+                              panda::Texture& texture) -> panda::Result<std::array<std::uint8_t, 4>>
+{
+    view.meshes.front().material.shaderResources = applicationTextureResources(texture);
+    const auto& renderer = engine.getOffscreenRenderer();
+    auto frame = renderer.render(view, target);
+    if (!frame)
+    {
+        return std::unexpected {frame.error()};
+    }
+    view.meshes.front().material.shaderResources = {};
+    texture.reset();
+    return renderer.readPixels(target, frame->completion).transform([](const auto& pixels) {
+        return centerPixel(pixels);
+    });
+}
+}
+
+TEST_F(OffscreenRenderBackendSystem, BindsNamedUniformAndStorageBuffersAcrossSets)
+{
+    auto& engine = activeEngine();
+    const auto program = resourceProgram(engine);
+    ASSERT_TRUE(program) << program.error().message;
+    const auto mesh = createBlendQuad(engine);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    auto target = engine.getResourceManager().createOffscreenTarget({
+        .extent = {24, 24}
+    });
+    ASSERT_TRUE(target) << target.error().message;
+    auto draw = panda::MeshDraw {.mesh = *mesh, .shaderResources = {}};
+    draw.material.shaderProgram = *program;
+    draw.material.renderFace = panda::RenderFace::Both;
+    draw.material.shaderResources = resourceBindings(engine);
+    auto view = panda::RenderView {.camera = {},
+                                   .lights = {},
+                                   .meshes = {std::move(draw)},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
+    const auto& renderer = engine.getOffscreenRenderer();
+    view.meshes.front().shaderResources = panda::ShaderResources {};
+    const auto missing = renderer.render(view, *target);
+    ASSERT_FALSE(missing);
+    EXPECT_EQ(missing.error().code, panda::ErrorCode::InvalidArgument);
+    view.meshes.front().shaderResources.reset();
+    const auto frame = renderer.render(view, *target);
+    ASSERT_TRUE(frame) << frame.error().message;
+    view.meshes.clear();
+    const auto readback = renderer.readPixels(*target, frame->completion);
+    ASSERT_TRUE(readback) << readback.error().message;
+    const auto pixel = centerPixel(*readback);
+    EXPECT_GT(pixel.at(0), pixel.at(1));
+    EXPECT_GT(pixel.at(1), pixel.at(2));
+    EXPECT_GT(pixel.at(2), 50U);
+}
+
+TEST_F(OffscreenRenderBackendSystem, BindsAndRetainsNamedSampledTextures)
+{
+    auto& engine = activeEngine();
+    const auto program = applicationTextureProgram(engine);
+    ASSERT_TRUE(program) << program.error().message;
+    const auto mesh = createBlendQuad(engine);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    const auto target = engine.getResourceManager().createOffscreenTarget({
+        .extent = {24, 24}
+    });
+    ASSERT_TRUE(target) << target.error().message;
+    auto draw = panda::MeshDraw {.mesh = *mesh, .shaderResources = {}};
+    draw.material.shaderProgram = *program;
+    draw.material.renderFace = panda::RenderFace::Both;
+    auto view = panda::RenderView {.camera = {},
+                                   .lights = {},
+                                   .meshes = {std::move(draw)},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
+    auto missingUpload = engine.getResourceManager().createTexture({
+        .extent = {1, 1},
+        .format = panda::PixelFormat::Rgba8Unorm,
+        .usage = panda::TextureUsage::Sampled | panda::TextureUsage::TransferDestination
+    });
+    ASSERT_TRUE(missingUpload) << missingUpload.error().message;
+    view.meshes.front().material.shaderResources = applicationTextureResources(*missingUpload);
+    const auto rejected = engine.getOffscreenRenderer().render(view, *target);
+    ASSERT_FALSE(rejected);
+    EXPECT_EQ(rejected.error().code, panda::ErrorCode::InvalidArgument);
+
+    auto redTexture = createApplicationTexture(engine, {255, 8, 4, 255});
+    ASSERT_TRUE(redTexture) << redTexture.error().message;
+    const auto red = renderApplicationTexture(engine, *target, view, *redTexture);
+    ASSERT_TRUE(red) << red.error().message;
+    auto blueTexture = createApplicationTexture(engine, {4, 8, 255, 255});
+    ASSERT_TRUE(blueTexture) << blueTexture.error().message;
+    const auto blue = renderApplicationTexture(engine, *target, view, *blueTexture);
+    ASSERT_TRUE(blue) << blue.error().message;
+    EXPECT_GT(red->at(0), red->at(2));
+    EXPECT_GT(blue->at(2), blue->at(0));
+}
+
+TEST_F(OffscreenRenderBackendSystem, ReloadsShaderProgramCopiesAndKeepsLastRevisionOnAbiMismatch)
+{
+    auto& engine = activeEngine();
+    auto program = applicationTextureProgram(engine);
+    ASSERT_TRUE(program) << program.error().message;
+    const auto programCopy = *program;
+    const auto mesh = createBlendQuad(engine);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    const auto target = engine.getResourceManager().createOffscreenTarget({
+        .extent = {24, 24}
+    });
+    ASSERT_TRUE(target) << target.error().message;
+    auto draw = panda::MeshDraw {.mesh = *mesh, .shaderResources = {}};
+    draw.material.shaderProgram = programCopy;
+    draw.material.renderFace = panda::RenderFace::Both;
+    auto view = panda::RenderView {.camera = {},
+                                   .lights = {},
+                                   .meshes = {std::move(draw)},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
+
+    const auto reload = engine.getResourceManager().reloadShaderProgram(
+        *program,
+        applicationTextureDescription("fixtures/shaders/application_texture_reloaded.frag"));
+    ASSERT_TRUE(reload) << reload.error().message;
+
+    auto redTexture = createApplicationTexture(engine, {255, 8, 4, 255});
+    ASSERT_TRUE(redTexture) << redTexture.error().message;
+    const auto reloaded = renderApplicationTexture(engine, *target, view, *redTexture);
+    ASSERT_TRUE(reloaded) << reloaded.error().message;
+    EXPECT_GT(reloaded->at(2), reloaded->at(0));
+
+    const auto incompatible = engine.getResourceManager().reloadShaderProgram(
+        *program,
+        applicationTextureDescription("fixtures/shaders/application_texture_incompatible.frag"));
+    ASSERT_FALSE(incompatible);
+    EXPECT_EQ(incompatible.error().code, panda::ErrorCode::InvalidArgument);
+
+    auto retainedTexture = createApplicationTexture(engine, {255, 8, 4, 255});
+    ASSERT_TRUE(retainedTexture) << retainedTexture.error().message;
+    const auto retained = renderApplicationTexture(engine, *target, view, *retainedTexture);
+    ASSERT_TRUE(retained) << retained.error().message;
+    EXPECT_GT(retained->at(2), retained->at(0));
+}
+
+TEST_F(OffscreenRenderBackendSystem, RejectsForeignProgramAndMissingShadowVariant)
+{
+    auto& engine = activeEngine();
+    auto otherEngine = panda::Engine::create();
+    ASSERT_TRUE(otherEngine) << otherEngine.error().message;
+    const auto foreignProgram = applicationTextureProgram(*otherEngine);
+    ASSERT_TRUE(foreignProgram) << foreignProgram.error().message;
+    const auto mesh = createBlendQuad(engine);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    const auto target = engine.getResourceManager().createOffscreenTarget({
+        .extent = {24, 24}
+    });
+    ASSERT_TRUE(target) << target.error().message;
+
+    auto view = panda::RenderView {.camera = {},
+                                   .lights = {},
+                                   .meshes = {panda::MeshDraw {.mesh = *mesh, .shaderResources = {}}},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
+    view.meshes.front().material.shaderProgram = *foreignProgram;
+    const auto foreignResult = engine.getOffscreenRenderer().render(view, *target);
+    ASSERT_FALSE(foreignResult);
+    EXPECT_EQ(foreignResult.error().code, panda::ErrorCode::InvalidArgument);
+
+    const auto localProgram = applicationTextureProgram(engine);
+    ASSERT_TRUE(localProgram) << localProgram.error().message;
+    view.meshes.front().material.shaderProgram = *localProgram;
+    view.lights.emplace_back(panda::DirectionalLight {.shadow = panda::ShadowSettings {}});
+    const auto missingShadow = engine.getOffscreenRenderer().render(view, *target);
+    ASSERT_FALSE(missingShadow);
+    EXPECT_EQ(missingShadow.error().code, panda::ErrorCode::InvalidArgument);
+}
+
+TEST_F(OffscreenRenderBackendSystem, UsesExplicitShadowVariantWithCameraApplicationResources)
+{
+    auto& engine = activeEngine();
+    const auto program = explicitShadowResourceProgram(engine);
+    ASSERT_TRUE(program) << program.error().message;
+    const auto mesh = createBlendQuad(engine);
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    const auto target = engine.getResourceManager().createOffscreenTarget({
+        .extent = {24, 24}
+    });
+    ASSERT_TRUE(target) << target.error().message;
+    const auto camera = makeSkyboxCamera({0.0F, 0.0F, 3.0F}, {});
+    ASSERT_TRUE(camera) << camera.error().message;
+
+    auto draw = panda::MeshDraw {.mesh = *mesh, .shaderResources = {}};
+    draw.material.shaderProgram = *program;
+    draw.material.renderFace = panda::RenderFace::Both;
+    draw.material.shaderResources = resourceBindings(engine);
+    auto view = panda::RenderView {.camera = *camera,
+                                   .lights = {panda::DirectionalLight {.shadow = panda::ShadowSettings {}}},
+                                   .meshes = {std::move(draw)},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
+    view.requestedSampleCount = panda::SampleCount::One;
+
+    const auto frame = engine.getOffscreenRenderer().render(view, *target);
+    ASSERT_TRUE(frame) << frame.error().message;
+    view.meshes.clear();
+    const auto readback = engine.getOffscreenRenderer().readPixels(*target, frame->completion);
+    ASSERT_TRUE(readback) << readback.error().message;
+    const auto pixel = centerPixel(*readback);
+    EXPECT_GT(pixel.at(0), pixel.at(1));
+    EXPECT_GT(pixel.at(1), pixel.at(2));
+}
+
+TEST_F(OffscreenRenderBackendSystem, DrawsProceduralInstancesFromNamedStorageBuffer)
+{
+    auto& engine = activeEngine();
+    const auto program = proceduralProgram(engine);
+    ASSERT_TRUE(program) << program.error().message;
+    const auto resources = proceduralColorResources(engine);
+    ASSERT_TRUE(resources) << resources.error().message;
+    const auto target = engine.getResourceManager().createOffscreenTarget({
+        .extent = {24, 24}
+    });
+    ASSERT_TRUE(target) << target.error().message;
+    const auto camera = makeSkyboxCamera({0.0F, 0.0F, 3.0F}, {});
+    ASSERT_TRUE(camera) << camera.error().message;
+
+    auto view = panda::RenderView {
+        .camera = *camera,
+        .lights = {panda::DirectionalLight {.shadow = panda::ShadowSettings {}}},
+        .meshes = {},
+        .environment = {},
+        .skybox = {},
+        .proceduralDraws = {
+            {.shaderProgram = *program, .shaderResources = *resources, .vertexCount = 3, .instanceCount = 2}}};
+    const auto& renderer = engine.getOffscreenRenderer();
+    const auto frame = renderer.render(view, *target);
+    ASSERT_TRUE(frame) << frame.error().message;
+    view.proceduralDraws.clear();
+    const auto readback = renderer.readPixels(*target, frame->completion);
+    ASSERT_TRUE(readback) << readback.error().message;
+    const auto pixelAt = [&readback](std::uint32_t x, std::uint32_t y) {
+        const auto offset = ((static_cast<std::size_t>(y) * readback->extent.x) + x) * 4;
+        return std::span<const std::uint8_t> {readback->rgba}.subspan(offset, 4);
+    };
+    const auto left = pixelAt(6, 12);
+    const auto right = pixelAt(18, 12);
+    EXPECT_GT(left[0], 100U);
+    EXPECT_LT(left[2], 50U);
+    EXPECT_GT(right[2], 100U);
+    EXPECT_LT(right[0], 50U);
+
+    view.proceduralDraws.push_back(
+        {.shaderProgram = *program, .shaderResources = {}, .vertexCount = 3, .instanceCount = 0});
+    const auto emptyFrame = renderer.render(view, *target);
+    ASSERT_TRUE(emptyFrame) << emptyFrame.error().message;
 }
 
 TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)
@@ -726,7 +1177,12 @@ TEST_F(OffscreenRenderBackendSystem, AppliesDiffuseAndRoughnessFilteredEnvironme
         .farPlane = 20.0F
     });
     ASSERT_TRUE(camera) << camera.error().message;
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    auto view = panda::RenderView {.camera = *camera,
+                                   .lights = {},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
     view.environment = *environment;
     view.requestedSampleCount = panda::SampleCount::One;
     const auto& renderer = activeEngine().getOffscreenRenderer();
@@ -734,7 +1190,7 @@ TEST_F(OffscreenRenderBackendSystem, AppliesDiffuseAndRoughnessFilteredEnvironme
                                     float metallic,
                                     float roughness) -> panda::Result<panda::ImageReadback> {
         view.environment = lighting;
-        auto draw = panda::MeshDraw {.mesh = *sphere};
+        auto draw = panda::MeshDraw {.mesh = *sphere, .shaderResources = {}};
         draw.material.model = panda::MaterialModel::Lit;
         draw.material.renderFace = panda::RenderFace::Both;
         draw.material.metallic = metallic;
@@ -772,8 +1228,12 @@ TEST_F(OffscreenRenderBackendSystem, AppliesDiffuseAndRoughnessFilteredEnvironme
     ASSERT_TRUE(sampleCountsDiffer) << sampleCountsDiffer.error().message;
     EXPECT_TRUE(*sampleCountsDiffer);
 
-    auto incomplete =
-        panda::RenderView {.camera = *camera, .lights = {}, .meshes = view.meshes, .environment = {}, .skybox = {}};
+    auto incomplete = panda::RenderView {.camera = *camera,
+                                         .lights = {},
+                                         .meshes = view.meshes,
+                                         .environment = {},
+                                         .skybox = {},
+                                         .proceduralDraws = {}};
     incomplete.environment = panda::EnvironmentLighting {.diffuseIrradiance = environment->diffuseIrradiance,
                                                          .specularRadiance = environment->diffuseIrradiance};
     const auto incompatible = renderer.render(incomplete, *target);
@@ -788,8 +1248,12 @@ TEST_F(OffscreenRenderBackendSystem, AppliesDiffuseAndRoughnessFilteredEnvironme
         .type = panda::TextureType::CubeMap
     });
     ASSERT_TRUE(unuploaded) << unuploaded.error().message;
-    auto unuploadedSkyboxView =
-        panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    auto unuploadedSkyboxView = panda::RenderView {.camera = *camera,
+                                                   .lights = {},
+                                                   .meshes = {},
+                                                   .environment = {},
+                                                   .skybox = {},
+                                                   .proceduralDraws = {}};
     unuploadedSkyboxView.skybox = *unuploaded;
     const auto unuploadedSkyboxFrame = renderer.render(unuploadedSkyboxView, *target);
     ASSERT_FALSE(unuploadedSkyboxFrame);
@@ -811,8 +1275,12 @@ TEST_F(OffscreenRenderBackendSystem, AppliesDiffuseAndRoughnessFilteredEnvironme
     const auto combinedPixels = renderMaterial(*environment, 0.0F, 0.5F);
     ASSERT_TRUE(combinedPixels) << combinedPixels.error().message;
     EXPECT_EQ(centerPixel(*combinedPixels), dielectric);
-    auto backgroundView =
-        panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    auto backgroundView = panda::RenderView {.camera = *camera,
+                                             .lights = {},
+                                             .meshes = {},
+                                             .environment = {},
+                                             .skybox = {},
+                                             .proceduralDraws = {}};
     backgroundView.skybox = *skybox;
     const auto backgroundPixels = renderOffscreenPixels(renderer, backgroundView, *target);
     ASSERT_TRUE(backgroundPixels) << backgroundPixels.error().message;
@@ -849,7 +1317,12 @@ TEST_F(OffscreenRenderBackendSystem, RendersSkyboxAndSolidBackgroundForEmptyView
     ASSERT_TRUE(skybox) << skybox.error().message;
     const auto camera = makeSkyboxCamera({0.0F, 0.0F, 3.0F}, {});
     ASSERT_TRUE(camera) << camera.error().message;
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    auto view = panda::RenderView {.camera = *camera,
+                                   .lights = {},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
     view.skybox = *skybox;
     const auto& renderer = activeEngine().getOffscreenRenderer();
     const auto frame = renderer.render(view, *target);
@@ -888,7 +1361,12 @@ TEST_F(OffscreenRenderBackendSystem, SkyboxUsesCameraRotationButIgnoresTranslati
     ASSERT_TRUE(skybox) << skybox.error().message;
     const auto camera = makeSkyboxCamera({0.0F, 0.0F, 3.0F}, {});
     ASSERT_TRUE(camera) << camera.error().message;
-    auto view = panda::RenderView {.camera = *camera, .lights = {}, .meshes = {}, .environment = {}, .skybox = {}};
+    auto view = panda::RenderView {.camera = *camera,
+                                   .lights = {},
+                                   .meshes = {},
+                                   .environment = {},
+                                   .skybox = {},
+                                   .proceduralDraws = {}};
     view.skybox = *skybox;
     const auto& renderer = activeEngine().getOffscreenRenderer();
     const auto original = renderOffscreenPixels(renderer, view, *target);

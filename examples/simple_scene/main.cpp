@@ -221,10 +221,20 @@ auto makeNormalMapDemoDraw(const SceneMeshes& meshes) -> panda::MeshDraw
                                              .position = {2.0F, 0.0F, 0.0F}
     }),
                                          "Create normal-mapped cube transform");
-    auto draw = panda::MeshDraw {.mesh = meshes.cube, .modelMatrix = transform};
+    auto draw = panda::MeshDraw {.mesh = meshes.cube, .modelMatrix = transform, .shaderResources = {}};
     draw.material.baseColor = {0.55F, 0.55F, 0.55F, 1.0F};
     draw.material.normalTexture = meshes.normalMap;
     draw.material.occlusionTexture = meshes.occlusionMap;
+    return draw;
+}
+
+auto makeTexturedCubeDraw(const SceneMeshes& meshes) -> panda::MeshDraw
+{
+    auto draw = panda::MeshDraw {.mesh = meshes.cube, .shaderResources = {}};
+    draw.material.baseColorTexture = meshes.baseColorMap;
+    draw.material.metallicRoughnessTexture = meshes.metallicRoughnessMap;
+    draw.material.emissiveTexture = meshes.emissiveMap;
+    draw.material.emissive = {1.0F, 0.8F, 0.3F};
     return draw;
 }
 
@@ -239,24 +249,22 @@ auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
                                                      .position = {-1.3F, -0.49F, 0.0F}
     }),
                                                  "Create triangle transform");
-    auto triangleDraw = panda::MeshDraw {.mesh = meshes.triangle, .modelMatrix = triangleTransform};
+    auto triangleDraw =
+        panda::MeshDraw {.mesh = meshes.triangle, .modelMatrix = triangleTransform, .shaderResources = {}};
     triangleDraw.material.model = panda::MaterialModel::Unlit;
-    auto cubeDraw = panda::MeshDraw {};
-    cubeDraw.mesh = meshes.cube;
-    cubeDraw.material.baseColorTexture = meshes.baseColorMap;
-    cubeDraw.material.metallicRoughnessTexture = meshes.metallicRoughnessMap;
-    cubeDraw.material.emissiveTexture = meshes.emissiveMap;
-    cubeDraw.material.emissive = {1.0F, 0.8F, 0.3F};
+    const auto cubeDraw = makeTexturedCubeDraw(meshes);
     return panda::RenderView {
         .camera = {},
         .lights = {panda::DirectionalLight {.direction = {-0.55F, -0.6F, -0.58F}, .shadow = panda::ShadowSettings {}}},
         .meshes = {panda::MeshDraw {.mesh = meshes.ground,
                                     .modelMatrix = groundTransform,
-                                    .tint = {0.65F, 0.67F, 0.7F, 1.0F}},
+                                    .tint = {0.65F, 0.67F, 0.7F, 1.0F},
+                                    .shaderResources = {}},
                    cubeDraw, makeNormalMapDemoDraw(meshes),
                    triangleDraw},
         .environment = {},
-        .skybox = {}
+        .skybox = {},
+        .proceduralDraws = {}
     };
 }
 

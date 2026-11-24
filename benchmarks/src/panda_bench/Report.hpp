@@ -14,6 +14,8 @@
 
 namespace panda_bench
 {
+inline constexpr std::uint32_t defaultSmokeProfileVersion {7};
+
 struct RunReport
 {
     std::uint32_t runIndex {0};
@@ -42,6 +44,9 @@ struct DriverReport
 
 struct Report
 {
+    std::string profileName {"smoke"};
+    std::uint32_t profileVersion {defaultSmokeProfileVersion};
+    std::string workloadName {"renderStaticColoredScene"};
     std::string revision;
     std::string operatingSystem;
     std::string compiler;
@@ -54,6 +59,7 @@ struct Report
     std::uint32_t requestedWindowHeight {0};
     std::uint32_t requestedLightCount {0};
     std::uint32_t requestedShadowedLightCount {0};
+    std::optional<std::uint32_t> requestedParticleCount;
     panda::EngineOptions::PresentationMode requestedPresentationMode {panda::EngineOptions::PresentationMode::Fifo};
     panda::SampleCount requestedSampleCount {panda::SampleCount::Four};
     panda::TextureFilteringPreset requestedTextureFilteringPreset {panda::TextureFilteringPreset::Anisotropic8x};

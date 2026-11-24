@@ -16,6 +16,8 @@ panda_add_component(panda_core
         EnvironmentMap.cpp
         OffscreenTarget.cpp
         ResourceManager.cpp
+        ShaderProgram.cpp
+        ShaderResources.cpp
         OffscreenRenderer.cpp
         SubmissionManager.cpp
         WindowRenderer.cpp
@@ -43,6 +45,7 @@ panda_add_component(panda_core
         vulkan/renderer/DescriptorSets.cpp
         vulkan/renderer/FrameBuffers.cpp
         vulkan/renderer/FrameDescriptors.cpp
+        vulkan/renderer/ApplicationShaderBindings.cpp
         vulkan/renderer/MaterialTextureBindings.cpp
         vulkan/renderer/MeshRenderer.cpp
         vulkan/renderer/MeshPipelineCache.cpp
@@ -104,6 +107,8 @@ panda_add_component(panda_core
         panda/rendering/WindowRenderer.hpp
         panda/rendering/RenderView.hpp
         panda/rendering/SampleCount.hpp
+        panda/rendering/ShaderProgram.hpp
+        panda/rendering/ShaderResources.hpp
     PRIVATE_HEADERS
         EnvironmentMapFilter.hpp
         Math.hpp
@@ -148,10 +153,12 @@ panda_add_component(panda_core
         vulkan/renderer/DescriptorSets.hpp
         vulkan/renderer/FrameBuffers.hpp
         vulkan/renderer/FrameDescriptors.hpp
+        vulkan/renderer/ApplicationShaderBindings.hpp
         vulkan/renderer/MaterialTextureBindings.hpp
         vulkan/renderer/MaterialTextureSlots.hpp
         vulkan/renderer/MeshPipelineCache.hpp
         vulkan/renderer/ShaderReflection.hpp
+        vulkan/renderer/ShaderProgramState.hpp
         vulkan/renderer/RenderAttachments.hpp
         vulkan/renderer/ShadowAtlas.hpp
         vulkan/renderer/ShaderData.hpp

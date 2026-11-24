@@ -85,7 +85,8 @@ auto builtinShaderDescriptorSchema() -> std::vector<ShaderDescriptor>
                                  .count = 1,
                                  .kind = entry.kind,
                                  .arrayDimensions = {},
-                                 .members = {}};
+                                 .members = {},
+                                 .sampledImage = {}};
     });
     return schema;
 }
@@ -147,7 +148,8 @@ protected:
 
 TEST_F(MeshPipelineCacheTest, MeshKeysSeparateLayoutAndPipelineState)
 {
-    const auto baseMeshKey = MeshPipelineCache::MeshPipelineKey {.vertexStride = 32, .positionOffset = 0};
+    const auto baseMeshKey =
+        MeshPipelineCache::MeshPipelineKey {.vertexStride = 32, .positionOffset = 0, .customProgram = {}};
     auto otherMeshKey = baseMeshKey;
     otherMeshKey.vertexStride = 36;
     EXPECT_NE(baseMeshKey, otherMeshKey);
@@ -197,7 +199,8 @@ TEST_F(MeshPipelineCacheTest, ShadowKeyDistinguishesTexturedMaskVariant)
                                                                           .positionOffset = 0,
                                                                           .texCoordOffset = 16,
                                                                           .hasBaseColorTexture = true,
-                                                                          .alphaMode = panda::AlphaMode::Mask};
+                                                                          .alphaMode = panda::AlphaMode::Mask,
+                                                                          .customProgram = {}};
     auto untexturedMaskShadow = texturedMaskShadow;
     untexturedMaskShadow.hasBaseColorTexture = false;
     untexturedMaskShadow.texCoordOffset = 0;
@@ -218,7 +221,8 @@ TEST_F(MeshPipelineCacheTest, PreparesSeparateTexturedAndUntexturedMaskShadowVar
                                                                           .positionOffset = 0,
                                                                           .texCoordOffset = 16,
                                                                           .hasBaseColorTexture = true,
-                                                                          .alphaMode = panda::AlphaMode::Mask};
+                                                                          .alphaMode = panda::AlphaMode::Mask,
+                                                                          .customProgram = {}};
     auto untexturedMaskShadow = texturedMaskShadow;
     untexturedMaskShadow.hasBaseColorTexture = false;
     untexturedMaskShadow.texCoordOffset = 0;
@@ -280,7 +284,7 @@ TEST_F(MeshPipelineCacheTest, FailedCreationCanBeRetriedWithoutPublishingAnInval
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
-    const auto key = MeshPipelineCache::MeshPipelineKey {.lit = false, .vertexStride = 12};
+    const auto key = MeshPipelineCache::MeshPipelineKey {.lit = false, .vertexStride = 12, .customProgram = {}};
     EXPECT_FALSE(cache.prepare(key));
     EXPECT_TRUE(cache.prepare(key));
 }
@@ -321,11 +325,12 @@ TEST_F(MeshPipelineCacheTest, RejectsIncompatibleDescriptorSchemasBeforeCreating
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
 
-    EXPECT_FALSE(cache.prepare(MeshPipelineCache::MeshPipelineKey {.vertexStride = 12}));
+    EXPECT_FALSE(cache.prepare(MeshPipelineCache::MeshPipelineKey {.vertexStride = 12, .customProgram = {}}));
     EXPECT_FALSE(cache.prepare(MeshPipelineCache::ShadowPipelineKey {.vertexStride = 12,
                                                                      .texCoordOffset = 8,
                                                                      .hasBaseColorTexture = true,
-                                                                     .alphaMode = panda::AlphaMode::Mask}));
+                                                                     .alphaMode = panda::AlphaMode::Mask,
+                                                                     .customProgram = {}}));
     auto view = panda::RenderView {};
     view.skybox.emplace();
     EXPECT_FALSE(cache.prepare(view));
@@ -362,8 +367,8 @@ TEST_F(MeshPipelineCacheTest, OutputCompatibilityInvalidatesOnlyDependentVariant
     cache.setOutputCompatibility({.colorFormat = vk::Format::eB8G8R8A8Srgb,
                                   .depthFormat = vk::Format::eD32Sfloat,
                                   .sampleCount = vk::SampleCountFlagBits::e1});
-    const auto meshKey = MeshPipelineCache::MeshPipelineKey {.lit = false, .vertexStride = 12};
-    const auto shadowKey = MeshPipelineCache::ShadowPipelineKey {.vertexStride = 12};
+    const auto meshKey = MeshPipelineCache::MeshPipelineKey {.lit = false, .vertexStride = 12, .customProgram = {}};
+    const auto shadowKey = MeshPipelineCache::ShadowPipelineKey {.vertexStride = 12, .customProgram = {}};
 
     ASSERT_TRUE(cache.prepare(meshKey));
     ASSERT_TRUE(cache.prepare(shadowKey));

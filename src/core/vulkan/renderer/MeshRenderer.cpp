@@ -25,6 +25,7 @@
 #include <panda/rendering/SampleCount.hpp>
 #include <panda/rendering/TextureFilteringPreset.hpp>
 #include <panda/resources/Mesh.hpp>
+#include <ranges>
 #include <utility>
 #include <vector>
 
@@ -39,17 +40,22 @@ namespace panda::core::vulkan::renderer
 {
 namespace
 {
-auto makeDrawConstants(const MeshDraw& draw) -> DrawConstants
+auto makeDrawConstants(const glm::mat4& modelMatrix, const glm::vec4& tint) -> DrawConstants
 {
-    const auto normalMatrix = glm::transpose(glm::inverse(glm::mat3 {draw.modelMatrix}));
+    const auto normalMatrix = glm::transpose(glm::inverse(glm::mat3 {modelMatrix}));
     const auto constants = DrawConstants {
-        .modelMatrix = draw.modelMatrix,
+        .modelMatrix = modelMatrix,
         .normalColumns = {glm::vec4 {glm::column(normalMatrix, 0), 0.0F},
                           glm::vec4 {glm::column(normalMatrix, 1), 0.0F},
                           glm::vec4 {glm::column(normalMatrix, 2), 0.0F}},
-        .tint = draw.tint * draw.material.baseColor
+        .tint = tint
     };
     return constants;
+}
+
+auto makeDrawConstants(const MeshDraw& draw) -> DrawConstants
+{
+    return makeDrawConstants(draw.modelMatrix, draw.tint * draw.material.baseColor);
 }
 
 auto cameraDepthForMesh(const glm::mat4& viewProjection, const glm::mat4& modelMatrix) -> float
@@ -189,7 +195,11 @@ auto MeshRenderer::initializeBindingsAndPipeline() -> std::expected<void, Error>
         return std::unexpected {bindings.error()};
     }
     _bindings = std::move(*bindings);
-    _pipelineCache.emplace(_device, _bindings->getPipelineLayout(), _bindings->getShaderDescriptorSchema());
+    _applicationBindings.emplace(_device, *_bindings, _pool, _frameCount);
+    _pipelineCache.emplace(_device,
+                           _bindings->getPipelineLayout(),
+                           _bindings->getShaderDescriptorSchema(),
+                           &*_applicationBindings);
     const auto& description = _attachments->getOutputDescription();
     pipelineCache().setOutputCompatibility({.colorFormat = description.colorFormat,
                                             .depthFormat = description.depthFormat,
@@ -231,6 +241,9 @@ auto MeshRenderer::updateFrame(std::size_t frameIndex, const RenderView& view) -
                                                        _attachments->getShadowView(frameIndex),
                                                        _attachments->getShadowLayerView(frameIndex, 0))
                               : std::expected<void, Error> {};
+        })
+        .and_then([&] {
+            return _applicationBindings->prepare(frameIndex, view);
         })
         .and_then([&] {
             return pipelineCache().prepare(view);
@@ -319,6 +332,13 @@ void MeshRenderer::recordShadowView(vk::CommandBuffer command,
         }
         ++materialIndex;
     }
+    for (const auto& [index, draw] : std::views::enumerate(view.proceduralDraws))
+    {
+        if (draw.vertexCount != 0 && draw.instanceCount != 0)
+        {
+            recordProceduralShadowDraw(command, frameIndex, draw, view.meshes.size() + static_cast<std::size_t>(index));
+        }
+    }
 }
 
 void MeshRenderer::recordColorPass(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view)
@@ -330,6 +350,14 @@ void MeshRenderer::recordColorPass(vk::CommandBuffer command, std::size_t frameI
         command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipelineCache().getSkyboxPipeline());
         command.draw(3, 1, 0, 0);
     }
+    recordMeshColorDraws(command, frameIndex, view);
+    recordProceduralColorDraws(command, frameIndex, view);
+    recordBlendedDraws(command, frameIndex, view.environment.has_value());
+    command.endRendering();
+}
+
+void MeshRenderer::recordMeshColorDraws(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view)
+{
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
     {
@@ -350,8 +378,17 @@ void MeshRenderer::recordColorPass(vk::CommandBuffer command, std::size_t frameI
         }
         ++materialIndex;
     }
-    recordBlendedDraws(command, frameIndex, view.environment.has_value());
-    command.endRendering();
+}
+
+void MeshRenderer::recordProceduralColorDraws(vk::CommandBuffer command, std::size_t frameIndex, const RenderView& view)
+{
+    for (const auto& [index, draw] : std::views::enumerate(view.proceduralDraws))
+    {
+        if (draw.vertexCount != 0 && draw.instanceCount != 0)
+        {
+            recordProceduralDraw(command, frameIndex, draw, view.meshes.size() + static_cast<std::size_t>(index));
+        }
+    }
 }
 
 void MeshRenderer::recordBlendedDraws(vk::CommandBuffer command, std::size_t frameIndex, bool hasEnvironment)
@@ -451,6 +488,7 @@ void MeshRenderer::recordDraw(vk::CommandBuffer command,
         command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipelineCache().getPipeline(draw, pass.hasEnvironment));
     }
     bindTextureDescriptors(command, frameIndex, draw, pass);
+    bindApplicationDrawResources(command, frameIndex, draw, pass);
     const auto constants = makeDrawConstants(draw);
     command.pushConstants(_bindings->getPipelineLayout(),
                           vk::ShaderStageFlagBits::eVertex,
@@ -462,6 +500,61 @@ void MeshRenderer::recordDraw(vk::CommandBuffer command,
     static constexpr auto vertexOffset = vk::DeviceSize {};
     command.bindVertexBuffers(0, 1, &vertexBuffer, &vertexOffset);
     recordMeshDraw(command, mesh, pass.materialIndex);
+}
+
+void MeshRenderer::bindApplicationDrawResources(vk::CommandBuffer command,
+                                                std::size_t frameIndex,
+                                                const MeshDraw& draw,
+                                                DrawPass pass) const
+{
+    if (draw.material.shaderProgram.isValid())
+    {
+        const auto& bindings = panda::expect(_applicationBindings, "Custom shader bindings are unavailable");
+        if (pass.shadowPass)
+        {
+            bindings.bindForShadow(command,
+                                   {.frameIndex = frameIndex, .drawIndex = pass.materialIndex},
+                                   draw.material.shaderProgram);
+        }
+        else
+        {
+            bindings.bind(command, {.frameIndex = frameIndex, .drawIndex = pass.materialIndex});
+        }
+    }
+}
+
+void MeshRenderer::recordProceduralDraw(vk::CommandBuffer command,
+                                        std::size_t frameIndex,
+                                        const ProceduralDraw& draw,
+                                        std::size_t applicationDrawIndex) const
+{
+    command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipelineCache().getPipeline(draw));
+    panda::expect(_applicationBindings, "Custom shader bindings are unavailable")
+        .bind(command, {.frameIndex = frameIndex, .drawIndex = applicationDrawIndex});
+    const auto constants = makeDrawConstants(draw.modelMatrix, draw.tint);
+    command.pushConstants(_bindings->getPipelineLayout(),
+                          vk::ShaderStageFlagBits::eVertex,
+                          0,
+                          sizeof(constants),
+                          &constants);
+    command.draw(draw.vertexCount, draw.instanceCount, 0, 0);
+}
+
+void MeshRenderer::recordProceduralShadowDraw(vk::CommandBuffer command,
+                                              std::size_t frameIndex,
+                                              const ProceduralDraw& draw,
+                                              std::size_t applicationDrawIndex) const
+{
+    command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipelineCache().getShadowPipeline(draw));
+    panda::expect(_applicationBindings, "Custom shader bindings are unavailable")
+        .bindForShadow(command, {.frameIndex = frameIndex, .drawIndex = applicationDrawIndex}, draw.shaderProgram);
+    const auto constants = makeDrawConstants(draw.modelMatrix, draw.tint);
+    command.pushConstants(_bindings->getPipelineLayout(),
+                          vk::ShaderStageFlagBits::eVertex,
+                          0,
+                          sizeof(constants),
+                          &constants);
+    command.draw(draw.vertexCount, draw.instanceCount, 0, 0);
 }
 
 void MeshRenderer::bindTextureDescriptors(vk::CommandBuffer command,

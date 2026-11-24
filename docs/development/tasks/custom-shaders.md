@@ -4,8 +4,8 @@ Order, dependencies and status: [plan](../PLAN.md).
 
 ## Scope
 
-Build validated embedded GLSL, reflected application resource bindings, explicit shadow variants,
-warmup/cache and transactional reload. Let applications submit procedural
+Build validated embedded GLSL, application resources addressed by reflected GLSL instance names, explicit shadow variants,
+pre-record pipeline caching and transactional reload. Let applications submit procedural
 instanced draws directly with a custom program, explicit vertex and instance
 counts and GPU buffer bindings.
 
@@ -31,12 +31,15 @@ replacement and cache behavior.
   build and validate their C++ layouts from reflection, removing their duplicate
   macros from `ShaderInterface.inc`. Retain shared definitions only for values
   that SPIR-V reflection cannot recover, such as light-type tags.
-- Provide a runnable graphics-only example with application-owned opaque
-  sphere impostor shaders, a uniform buffer and instance storage buffers.
-  Compare sphere depth with a mesh reference in the camera and all shadow
-  view types, including the off-axis, near-plane and inside cases. Verify
-  uniform scaling of the visualization and independence from the domain pose.
-- Check 10,000, 100,000 and 1,000,000 instances. Each valid batch produces
+- Keep the `gpu_particles` example focused on passing one CPU scalar and one
+  instance storage buffer to a custom fragment shader; color each particle from
+  its GPU velocity. The uniform also carries the target aspect ratio for circular
+  screen-space sprites. The example renders a fixed 10,000-particle image and does
+  not collect timing samples.
+- Demonstrate a custom mesh shader casting a shadow in a separate
+  `custom_shader_shadows` example, with a built-in Lit surface receiving it.
+- Measure 10,000, 100,000 and 1,000,000 particle instances in `panda-bench`.
+  Each valid batch produces
   one draw per applicable pass and no per-instance CPU object or per-frame
   CPU copy of instance data.
   Verify zero-count behavior, changing bindings and retention through GPU
@@ -56,30 +59,89 @@ push-constant metadata. Mock-backed unit tests cover API failures and metadata
 copying without linking the SPIRV-Reflect library; integration tests use compiled
 GLSL and the real library to verify `std140` offsets. Built-in graphics programs
 use reflected descriptor set and binding numbers, vertex input locations, and
-specialization IDs. `ShaderInterface.inc` shares the light-type tags.
+specialization IDs. Graphics reflection rejects storage buffers unless each
+stage that uses them declares the whole binding read-only. It accepts the
+baseline graphics SPIR-V capabilities and rejects capabilities outside that set.
+Shared sampled-image bindings must agree on image dimension, scalar sample type,
+depth, arrayness and multisampling across stages.
+`ShaderInterface.inc` shares the light-type tags.
 Frame descriptor layout creation, frame buffer updates, and material texture
 bindings have separate owners. The renderer coordinates them through
 `FrameBindings`.
 
-Application programs, resource bindings, image dimension and sample type
-checks, capability checks, explicit shadow variants, pipeline warmup and
-transactional reload remain. Procedural instancing and its sphere impostor
-rendering and scale measurements also remain.
+`ResourceManager::createShaderProgram` validates and owns the camera stages
+and any explicit shadow stages. It checks shared application bindings by
+reflected slot, verifies their block and texture layouts, and takes the renderer
+bindings from built-in shader reflection. `Material::shaderProgram` selects a
+same-Engine program for an individual standard mesh draw. The camera pipeline
+uses the renderer descriptor layout and the program's reflected vertex inputs.
+The [custom shader example](../../../examples/custom_shaders/README.md) renders
+a cube with a procedural gyroid pattern alongside a built-in Lit cube in one
+offscreen view. Two frames update `params.elapsedSeconds` in a named uniform block that
+the fragment shader reads to rotate the pattern. A `ShaderResources` snapshot
+can supply multiple CPU uniform blocks and read-only GPU buffer ranges. Panda
+resolves names and builds the layout from the reflected descriptor numbers.
+`RenderView::proceduralDraws` also supports instanced draws with
+procedural vertex input, explicit vertex and instance counts, standard draw
+constants, and the same named uniform/storage bindings. The offscreen system
+test generates two colored triangles from vertex and instance IDs, reads their
+colors from an application storage buffer, and checks the result after releasing
+the view. Zero counts skip descriptor preparation and the draw command. Explicit
+shadow variants now work for standard meshes and procedural draws. A shadow
+variant may use a subset of camera application bindings; the frame descriptor
+layout merges their reflected shader-stage visibility. GPU tests check both
+paths with the Khronos validation layer. Application buffer owners stay in the
+frame slot through completion.
+
+Named uniform blocks, read-only storage ranges and sampled 2D/cube textures can
+share one resource snapshot. Sampled textures must be uploaded same-Engine
+float images; arrays, depth images and multisampled images are unsupported.
+Their sampler uses the Engine filtering preset and the texture's address mode
+and mip count. `ResourceManager::reloadShaderProgram` publishes only a validated
+revision with the same camera and shadow ABI. The renderer prepares each needed
+pipeline before recording the next frame, and a pipeline creation error is
+returned from render without rolling back the published revision. There is no
+separate public warmup API.
+`examples/gpu_particles` draws screen-space circles with a custom fragment shader.
+Each packed instance record contains position and velocity; one uniform scalar
+sets the maximum speed for the color ramp. The same uniform vector carries the
+target aspect ratio so sprites remain circular. The example writes one
+10,000-instance image to `gpu_particles.png` and contains no timing loop. `panda-bench` reuses its
+two shader files for GPU measurements at 10,000, 100,000 and 1,000,000 instances.
+`examples/custom_shader_shadows` separately shows a custom-shader mesh casting a
+shadow onto a built-in Lit floor.
 
 ## Verification
 
-The Windows MSVC 14.51 and Vulkan SDK 1.4.341.1 `msvc-quality` build passed,
-including clang-tidy and cppcheck. Public-header isolation, formatting and the
-Clang CUDA-analysis preset passed. The full `msvc-fast` build and
-`ctest --preset msvc-fast` run passed 754 tests; 5 were skipped because of
-environment-specific output and memory-type requirements.
+- Windows with MSVC 14.51 built `msvc-quality` and `msvc-fast`; its full CTest
+  run had 795 cases, 790 passed and 5 skipped for output-device and noncoherent
+  memory availability. Ubuntu under WSL with GCC 16.0.1 built `gcc-quality` and
+  `gcc-fast`; its 795-case CTest run had 787 passed and 8 skipped for CUDA and
+  memory-type availability.
+- Both quality builds passed public-header isolation and formatting checks.
+  Windows and Linux CUDA host/device analysis passed; Clang reported that the
+  installed CUDA version is newer than its latest partially supported version,
+  12.9. Ccache was enabled on both platforms.
+- Windows ran `gpu_particles` and `custom_shader_shadows` on Vulkan. Their
+  output images were inspected: particles are aspect-corrected circles, and the
+  shadow is visible beside the custom mesh without floor self-shadowing. A
+  Release `panda-bench` run used immediate presentation, 1280x720, one second of
+  warmup and three seconds of measurement for each particle count. All three
+  runs completed and exited cleanly after teardown on an NVIDIA GeForce RTX
+  4070 Ti with MSVC 19.51:
 
-The Linux `gcc-quality` build, public-header isolation, formatting and Clang
-CUDA-analysis preset passed. The full `gcc-fast` build and `ctest --preset gcc-fast`
-run passed 754 tests; 8 were skipped because of CUDA and memory-type availability.
-`gcc-docs` generated the API documentation. The Python maintenance checker found
-no structural errors in 90 Markdown files, and `docs-checks` validated 43 diagrams.
-The coverage preset was not run for this verification.
-
-The tests do not visually verify application-supplied shaders on physical GPU
-hardware.
+  | Instances | Frame samples | CPU p50 / p95 (µs) | GPU p50 / p95 (µs) |
+  |----------:|--------------:|-------------------:|-------------------:|
+  | 10,000    |        13,843 | 105.6 / 821.2      | 56.224 / 72.992    |
+  | 100,000   |        10,547 | 118.8 / 1,301.7    | 115.872 / 907.456  |
+  | 1,000,000 |         2,364 | 861.4 / 3,486.9    | 863.488 / 3,436.992 |
+- The offscreen system test checked one uniform and two storage buffers across
+  sets, missing bindings, readback after dropping the draw, a foreign-Engine
+  program and a missing shadow variant. Earlier `custom_shaders` validation-layer
+  runs produced two PNGs on both platforms.
+- The CLion development profile regenerated `ShaderResources.hpp` with the
+  existing output open after the generator learned to publish a replacement.
+- The Python maintenance checker found no structural errors in 92 Markdown
+  files and the task queue. `docs-checks` validated 45 Mermaid diagrams in 99
+  files, and `gcc-docs` generated the public API documentation. The coverage
+  preset remains unverified for these changes.

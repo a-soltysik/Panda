@@ -22,6 +22,8 @@ public:
     [[nodiscard]] auto write(std::size_t frameIndex, const RenderView& view, vk::ImageView textureFallbackView)
         -> Result<void>;
     [[nodiscard]] auto getSet(std::size_t index, std::size_t drawIndex) const -> vk::DescriptorSet;
+    [[nodiscard]] auto getTextureSampler(std::size_t frameIndex, const Texture& texture)
+        -> std::expected<vk::Sampler, Error>;
     [[nodiscard]] auto getEffectiveAnisotropy(TextureFilteringPreset preset) const noexcept -> float;
 
 private:

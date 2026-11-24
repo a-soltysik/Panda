@@ -8,6 +8,8 @@ add_executable(panda-bench
     src/SmokeRun.cpp
     src/SmokeRun.hpp
     src/SmokeRunBackend.hpp
+    src/ParticleScene.cpp
+    src/ParticleScene.hpp
     src/VulkanSmokeRunBackend.cpp
     src/VulkanSmokeRunBackend.hpp
     src/panda_bench/Arguments.hpp
@@ -46,8 +48,13 @@ panda_configure_target(panda-bench
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Benchmark.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/SmokeRun.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/SmokeRunBackend.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ParticleScene.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/VulkanSmokeRunBackend.hpp"
 )
+panda_add_shaders(panda-bench
+    NAMESPACE demo::particle_shader
+    SOURCE_ROOT "${PROJECT_SOURCE_DIR}/examples/gpu_particles"
+    SOURCES particle.vert particle.frag)
 if(TARGET panda_static_analysis)
     add_dependencies(panda_static_analysis panda_bench_revision)
 endif()

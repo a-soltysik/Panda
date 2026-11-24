@@ -17,6 +17,7 @@ inline constexpr std::uint32_t defaultSmokeWindowHeight {720};
 inline constexpr std::uint32_t defaultSmokeLightCount {65};
 inline constexpr std::uint32_t defaultSmokeShadowedLightCount {65};
 inline constexpr std::uint32_t maximumSmokeLightCount {1000};
+inline constexpr std::uint32_t defaultParticleCount {10'000};
 
 struct Options
 {
@@ -26,6 +27,7 @@ struct Options
     std::uint32_t windowHeight {defaultSmokeWindowHeight};
     std::uint32_t lightCount {defaultSmokeLightCount};
     std::uint32_t shadowedLightCount {defaultSmokeShadowedLightCount};
+    std::uint32_t particleCount {defaultParticleCount};
     panda::EngineOptions::PresentationMode presentationMode {panda::EngineOptions::PresentationMode::Fifo};
     panda::SampleCount sampleCount {panda::SampleCount::Four};
     panda::TextureFilteringPreset textureFilteringPreset {panda::TextureFilteringPreset::Anisotropic8x};

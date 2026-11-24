@@ -188,12 +188,11 @@ Submit batches, not a draw call per instance. GPU particle data can be represent
 rendered with procedurally generated quads. Do not require CPU entity updates or CPU copies proportional to particle
 count.
 
-The accepted visual baseline is lit opaque sphere impostors, with the sphere surface used for camera and shadow depth.
-Silhouette limitations, the data layout and shadow variant are defined below, including near-plane projection edge
-cases.
+The `gpu_particles` example uses simple screen-space circles colored by GPU velocity. The planned `cloud-v1` workload
+uses lit opaque sphere impostors, with the sphere surface used for camera and shadow depth. Its silhouette limitations,
+data layout and shadow variant are defined below, including near-plane projection edge cases.
 
-GPU-only renderables provide conservative bounds, such as the simulation domain. Changing count, buffers, or bounds
-follows the resource publication rules.
+Changing a GPU-only renderable's count or buffers follows the resource publication rules.
 
 ## Custom shaders and compilation
 
@@ -202,8 +201,8 @@ required surface-function hook, shader DSL, or graph. Using an arbitrary shader 
 lighting or shadows.
 
 Compile GLSL to SPIR-V during the build through a Panda CMake helper. Driver-specific pipeline creation still happens
-for the actual device at runtime; warmup and a validated pipeline cache reduce disruption. A shipped application does
-not need a runtime GLSL compiler unless it explicitly enables an appropriate development feature.
+for the actual device at runtime. A shipped application does not need a runtime GLSL compiler unless it explicitly
+enables an appropriate development feature.
 
 Optional development hot reload compiles and validates a replacement before publication. Failure keeps the last valid
 program. Changed descriptor/block layouts must not reinterpret old material or buffer memory silently.
@@ -247,27 +246,37 @@ They are not functions inserted into generated shader source.
 Keep Panda-owned frame, material and draw data separate from application-owned
 shader resources. Application resources initially support individual
 uniform-buffer, read-only storage-buffer, and combined sampled-texture bindings
-in vertex/fragment stages. Bindings are numeric and checked against reflection,
-including image dimension/sample type. Defer descriptor arrays, bindless
+in vertex/fragment stages. C++ selects application resources by GLSL descriptor
+instance name. Panda resolves each name to its reflected set and binding and
+rejects missing, duplicate, or ambiguous names. Preserve descriptor names in
+SPIR-V. GLSL assigns application sets after the renderer sets. Defer descriptor arrays, bindless
 resources, storage-image writes and fragment-buffer writes from this convenience
 path. Native compute keeps its independent Vulkan layout and operations. Reject
 unsupported SPIR-V capabilities/descriptors instead of enabling features
 silently.
 
-A resource snapshot copies uniform bytes at creation and holds owning
-Buffer/Texture handles for GPU resources. Buffer slices have checked
-offset/range/usage/alignment; all resources must belong to the program's
-context. The renderer includes these declared reads in the
-[compute protocol](compute.md), including custom shadow reads. Shader writes are
-not permitted in this draw path. Read-only binding does not prevent a preceding
-native compute stage from writing the buffer under the accepted compute
-protocol.
+A resource snapshot owns a copy of uniform bytes and retains owning GPU handles.
+Buffer slices have checked offset, range, usage, alignment, and Engine ownership.
+The application orders its producers before the draw using the
+[compute protocol](compute.md). A buffer released to an external backend must
+be reacquired before graphics reads. Declare the entire shader storage buffer
+`readonly` in every stage that uses it. The application bounds accesses to
+runtime arrays.
 
 An application defines its own C++ parameter struct and matching GLSL block,
-uploads explicit bytes, and tests offsets/size. No automatic C++ reflection or
-parameter GUI is implied. The renderer validates concrete standard block layouts
-against the implemented shader interface rather than assuming public
-GLM/Transform storage.
+supplies explicit bytes, and tests offsets and padding. Panda checks the byte
+count against reflection. Per-member C++ layout remains the application's
+responsibility. The renderer separately validates its own standard block layouts.
+
+The camera mesh and procedural draw paths support multiple named uniform blocks,
+storage-buffer ranges, and combined sampled 2D/cube textures in one draw. Sampled
+textures must be uploaded same-Engine float images; arrays, depth images and
+multisampled images are unsupported. Their samplers follow the Engine filtering
+preset and each texture's address mode and mip count. The renderer creates Vulkan
+descriptor layouts from reflection and retains prepared buffers, textures and
+descriptor sets in the frame slot until GPU completion. Explicit shadow variants
+may use a layout-compatible subset of camera application bindings; their shader
+stage visibility is merged into the frame descriptor layout.
 
 One snapshot can be shared by many materials/draws. An explicit per-renderable
 override allows different application buffers without cloning a material for
@@ -280,9 +289,11 @@ contract. Camera passes require vertex and fragment entry points named `main`.
 Shadow selection is one of None, StandardMesh, or Explicit (vertex, optional
 fragment). StandardMesh is an application assertion that undeformed mesh
 positions and the standard material mask are correct; it is never inferred from
-arbitrary shader code. Explicit variants share the program's resource interface,
-and provide their own deformation/discard. Requesting shadow casting with None
-is a preflight error, not an invisible fallback. Built-ins supply their own
+arbitrary shader code. Explicit variants provide their own deformation/discard.
+They may use a subset of the camera program's application bindings. Each shared
+binding must use the same descriptor type and data layout. Member names in
+application blocks are diagnostic. Requesting shadow casting with None returns
+a preflight error. Built-ins supply their own
 matching variants. This is two pass variants, not a new general pass/plugin
 framework.
 
@@ -305,31 +316,43 @@ shader binaries. The supported production route is validated build output, not
 arbitrary downloaded code.
 
 SPIR-V creation at build time does not remove device-specific pipeline
-compilation. Offer explicit warmup for the scene's known program/state
-combinations, and report pipelines first created after warmup. Development
-first-use creation may still occur; benchmarks exclude warmup and flag
-steady-state pipeline creation. Cache persistence and exact pipeline keys are
-specified in the first-version renderer contract below.
+compilation. Before recording a frame, the renderer prepares the pipeline
+variants required by that frame and caches them for reuse. The first frame that
+needs a variant may include pipeline creation time. A pipeline error returns
+from rendering before frame submission. There is no separate public warmup API.
+Cache persistence and exact pipeline keys are specified in the first-version
+renderer contract below.
 
-Hot reload is explicit tooling: compile, validate, reflect, prepare replacement
-pipelines, then publish the whole camera/shadow revision at an update boundary.
-Failure keeps the old revision; old GPU uses retain it until completion. A
-changed set/block/vertex/push-constant interface is rejected for live
-replacement and requires explicit program/material/resource recreation. Resource
+`ResourceManager::reloadShaderProgram` accepts already compiled SPIR-V, reflects
+and validates a complete camera/shadow candidate, and compares its interface
+with the current revision. It publishes the new immutable revision atomically
+only when the vertex contract and reflected interfaces match. Copies of the
+program handle observe the same current revision. The operation is performed at
+an application update boundary while Engine operations are serialized. A failed
+validation or interface comparison leaves the old revision published.
+
+Pipeline creation is renderer-specific and remains lazy: each renderer prepares
+the new revision's pipeline before recording the next frame that uses it. A
+pipeline creation error is returned by that render call and does not roll back
+the already published shader revision. Old Vulkan pipelines stay owned by the
+renderer cache, so submitted work may finish safely. A changed set, binding,
+block, vertex, push-constant, specialization-constant, or shadow interface is
+rejected for live replacement and requires a new program identity. Resource
 meaning cannot be inferred from equal byte sizes; the application remains
 responsible for semantic compatibility. No implicit migration of old parameter
 bytes is allowed.
 
 ### Procedural instanced draws
 
-A procedural draw specifies the custom program, bound resources, vertex and
-instance counts, and a conservative bound for culling. The application supplies
+A procedural draw specifies the custom program, bound resources, and vertex and
+instance counts. The application supplies
 the vertex generation, storage-buffer layouts and any per-instance parameters.
 It can bind same-Engine buffers produced by Vulkan or an external compute backend
 through the existing resource and handoff contracts. No mesh binding is required.
 
-Submit one instanced draw per visible batch in each applicable camera or shadow
-pass. A zero count emits no draw. Count and binding changes take effect at frame
+Panda does not cull whole renderables against camera or shadow view bounds. Submit
+one instanced draw per batch in each applicable camera or shadow pass. A zero
+count emits no draw. Count and binding changes take effect at frame
 boundaries after validation; submitted frames retain the previous resources until
 completion. Validate the reflected interface, buffer ownership, slice range and
 alignment. The application must keep its count within the capacity of shader-indexed
@@ -338,21 +361,23 @@ The initial count is CPU-supplied; indirect counts are outside v1.
 
 ### Reference sphere impostor shaders
 
-The application example and the cloud benchmark use an opaque sphere impostor
-with six procedurally generated vertices per instance. Their shared fixture uses
+The planned `cloud-v1` benchmark uses an opaque sphere impostor with six
+procedurally generated vertices per instance. Its fixture uses
 std430 arrays of 16-byte float records: center XYZ and radius, plus optional linear
 RGBA in a separate array. Missing color is white. The application validates counts
 against the streams, supplies finite centers and nonnegative finite radii, and
 uses zero radius to disable a slot. The demo supports translation, rotation and
 positive uniform scale for the visualization, independently of the simulation domain.
 
-The camera and explicit shadow shaders use conservative quads and ray/sphere
-intersections. Discard misses and write the projected hit depth. Use the hit
-position and normal for lighting and shadow lookup. The sphere surface determines
-occlusion in all views, including all six point-light faces. Avoid forcing early
-fragment tests that bypass shader depth. Measure its depth cost and include
-enlarged silhouette captures. The baseline uses normal fragment shading frequency;
-MSAA does not guarantee sample-shaded analytic edges. See
+The camera and explicit shadow shaders compute a conservative clip-space rectangle
+for each sphere and use ray/sphere intersections. A sphere crossing the near clip
+plane or clip-space eye plane uses the full viewport rectangle. Reject misses and
+write the projected hit depth. Use the hit position and normal for lighting and
+shadow lookup. The sphere surface determines occlusion in all views, including all
+six point-light faces. Do not force early fragment tests that bypass shader depth.
+Measure its depth cost and include enlarged silhouette captures. The baseline uses
+normal fragment shading frequency; MSAA does not guarantee sample-shaded analytic
+edges. See
 [reference projection](#reference-sphere-projection-and-tests).
 
 ## First-version renderer contract

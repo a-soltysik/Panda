@@ -14,6 +14,7 @@
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/rendering/RenderView.hpp>
 #include <panda/rendering/TextureFilteringPreset.hpp>
+#include <panda/resources/Texture.hpp>
 #include <utility>
 #include <vector>
 
@@ -117,9 +118,20 @@ auto FrameBindings::getShaderDescriptorSchema() const noexcept -> const std::vec
     return _descriptors.getShaderDescriptorSchema();
 }
 
+auto FrameBindings::getFrameDescriptors() const noexcept -> const FrameDescriptors&
+{
+    return _descriptors;
+}
+
 auto FrameBindings::getTextureDescriptorSet(std::size_t frameIndex, std::size_t drawIndex) const -> vk::DescriptorSet
 {
     return _textures.getSet(frameIndex, drawIndex);
+}
+
+auto FrameBindings::getTextureSampler(std::size_t frameIndex, const Texture& texture)
+    -> std::expected<vk::Sampler, Error>
+{
+    return _textures.getTextureSampler(frameIndex, texture);
 }
 
 auto FrameBindings::getShadowAtlasPlan(std::size_t frameIndex) const noexcept -> const ShadowAtlasPlan&

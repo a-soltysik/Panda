@@ -10,6 +10,8 @@
 #include <numbers>
 #include <optional>
 #include <panda/rendering/SampleCount.hpp>  // IWYU pragma: export
+#include <panda/rendering/ShaderProgram.hpp>
+#include <panda/rendering/ShaderResources.hpp>
 #include <panda/resources/Mesh.hpp>
 #include <panda/resources/Texture.hpp>
 #include <variant>
@@ -48,7 +50,7 @@ enum class AlphaMode : std::uint8_t
     Blend
 };
 
-/// @brief Built-in material values shared by mesh draws.
+/// @brief Program selection and material values shared by mesh draws.
 struct Material
 {
     /// Direct GGX lighting or tone-mapped base color without lighting.
@@ -88,6 +90,11 @@ struct Material
     Texture occlusionTexture;
     /// Finite multiplier for the occlusion map's effect, clamped to [0,1] when uploaded; defaults to full strength.
     float occlusionStrength {1.0F};
+    /// Valid programs replace the camera stages for this mesh. Draws require a same-Engine standard-mesh program.
+    /// This path supports renderer bindings. Choose StandardMesh when rendering opaque draws into a shadow map.
+    ShaderProgram shaderProgram;
+    /// Default named application bindings for the custom camera program.
+    ShaderResources shaderResources;
 };
 
 /// @brief Camera data for one rendered view.
@@ -187,19 +194,39 @@ struct MeshDraw
     glm::mat4 modelMatrix {1.0F};
     /// Linear RGBA per-draw modulation multiplied by material and vertex color.
     glm::vec4 tint {1.0F, 1.0F, 1.0F, 1.0F};
-    /// Built-in material parameters for this mesh.
+    /// Material values and program selection for this mesh.
     Material material {};
+    /// Optional replacement for the material's entire application binding snapshot for this draw.
+    std::optional<ShaderResources> shaderResources;
+};
+
+/// @brief One custom draw generated from vertex and instance IDs.
+struct ProceduralDraw
+{
+    /// Program created with `ShaderVertexInput::Procedural`; explicit shadow stages are required when it casts shadows.
+    ShaderProgram shaderProgram;
+    /// Application resources used by its camera and shadow shaders and retained through submission.
+    ShaderResources shaderResources;
+    /// Object-to-world transform supplied through Panda's standard draw constants.
+    glm::mat4 modelMatrix {1.0F};
+    /// Linear RGBA modulation supplied through Panda's standard draw constants.
+    glm::vec4 tint {1.0F, 1.0F, 1.0F, 1.0F};
+    /// Vertex count passed directly to `vkCmdDraw`; zero skips this draw.
+    std::uint32_t vertexCount {};
+    /// Instance count passed directly to `vkCmdDraw`; zero skips this draw.
+    std::uint32_t instanceCount {};
 };
 
 /// @brief Transient application-owned inputs for one renderer frame.
-/// The renderer copies draw values and retains mesh, texture, environment and skybox handles through GPU completion.
+/// The renderer copies draw values and retains mesh, texture, environment, skybox and shader resource handles through
+/// GPU completion.
 struct RenderView
 {
     /// Camera used for mesh projection, view-dependent lighting and skybox orientation.
     RenderCamera camera;
     /// Ordered lights used by Lit materials. Each light casts a shadow only when its `shadow` settings are present.
     std::vector<Light> lights;
-    /// Draws to render; an empty list presents only the configured background.
+    /// Meshes to render; with no mesh, procedural or skybox draw the background is presented.
     std::vector<MeshDraw> meshes;
     /// Requested MSAA for mesh draws. Panda uses the highest supported count at or below this request.
     /// Changing the effective configuration may allocate and wait for prior submissions of this renderer.
@@ -208,5 +235,7 @@ struct RenderView
     std::optional<EnvironmentLighting> environment;
     /// Optional uploaded linear HDR cubemap drawn as the background, independent of environment lighting.
     std::optional<Texture> skybox;
+    /// Custom GPU-driven draws; their shaders read application buffers using vertex/instance IDs.
+    std::vector<ProceduralDraw> proceduralDraws;
 };
 }

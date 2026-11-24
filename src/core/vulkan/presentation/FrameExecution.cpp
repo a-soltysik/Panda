@@ -222,7 +222,7 @@ auto FrameExecution::recordViewContent(std::size_t index,
                                        const RenderView& view,
                                        const FrameOutput* additionalOutput) -> std::expected<void, Error>
 {
-    if (view.meshes.empty() && !view.skybox)
+    if (view.meshes.empty() && view.proceduralDraws.empty() && !view.skybox)
     {
         recordClearRendering(_slots.at(index).command, output);
         if (additionalOutput != nullptr)
@@ -266,11 +266,12 @@ auto FrameExecution::prepareOutput(vk::Extent2D extent,
                                    const RenderView& view,
                                    std::optional<vk::Format> additionalOutputFormat) -> Result<void>
 {
-    if (view.meshes.empty() && !view.skybox)
+    if (view.meshes.empty() && view.proceduralDraws.empty() && !view.skybox)
     {
         return {};
     }
-    const auto requestedSampleCount = view.meshes.empty() ? SampleCount::One : view.requestedSampleCount;
+    const auto requestedSampleCount =
+        view.meshes.empty() && view.proceduralDraws.empty() ? SampleCount::One : view.requestedSampleCount;
     if (const auto renderer = prepareRenderer(extent, requestedSampleCount); !renderer)
     {
         return renderer;
@@ -443,12 +444,13 @@ auto FrameExecution::isGpuTimestampSamplingEnabled() const noexcept -> bool
 
 auto FrameExecution::getSampleCount(const RenderView& view) const noexcept -> SampleCount
 {
-    return view.meshes.empty() ? SampleCount::One : mapSampleCount(_renderer->getSampleCount());
+    return view.meshes.empty() && view.proceduralDraws.empty() ? SampleCount::One
+                                                               : mapSampleCount(_renderer->getSampleCount());
 }
 
 auto FrameExecution::getEffectiveAnisotropy(const RenderView& view) const noexcept -> float
 {
-    return view.meshes.empty() || !_textureFilteringPreset
+    return (view.meshes.empty() && view.proceduralDraws.empty()) || !_textureFilteringPreset
                ? 1.0F
                : _renderer->getEffectiveAnisotropy(*_textureFilteringPreset);
 }
