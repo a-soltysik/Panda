@@ -4,10 +4,23 @@
 /// Shared ownership of fixed-size 2D images and cubemaps.
 
 #include <bit>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <glm/vec2.hpp>
 #include <memory>
 #include <panda/resources/PixelFormat.hpp>
+
+namespace panda
+{
+class Texture;
+}
+
+namespace std
+{
+template <>
+struct hash<panda::Texture>;
+}
 
 namespace panda
 {
@@ -99,6 +112,8 @@ public:
     ~Texture();
     /// @brief Reports whether this handle retains an image.
     [[nodiscard]] auto isValid() const noexcept -> bool;
+    /// @brief Compares whether two handles retain the same image resource.
+    [[nodiscard]] auto operator==(const Texture& other) const noexcept -> bool;
     /// @brief Returns the image extent in texels (x is width, y is height), or zero for an empty handle.
     [[nodiscard]] auto getExtent() const noexcept -> glm::uvec2;
     /// @brief Returns the selected format, or Undefined for an empty handle.
@@ -115,6 +130,7 @@ public:
 private:
     friend class ResourceManager;
     friend class detail::TextureResource;
+    friend struct std::hash<panda::Texture>;
     explicit Texture(std::shared_ptr<detail::TextureResource> resource);
     std::shared_ptr<detail::TextureResource> _resource;
 };
@@ -139,4 +155,17 @@ constexpr auto operator|=(TextureUsage& left, TextureUsage right) noexcept -> Te
     left = left | right;
     return left;
 }
+}
+
+namespace std
+{
+template <>
+/// @brief Hashes Texture handles for unordered containers.
+struct hash<panda::Texture>
+{
+    /// @brief Computes a hash consistent with Texture equality.
+    /// @param texture Texture handle to hash.
+    /// @return Hash value for the handle's resource identity.
+    [[nodiscard]] auto operator()(const panda::Texture& texture) const noexcept -> std::size_t;
+};
 }

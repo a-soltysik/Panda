@@ -172,7 +172,7 @@ TEST_F(MeshPipelineCacheTest, MaterialValuesOutsidePipelineStateDoNotChangeKeys)
     auto draw = panda::MeshDraw {};
     const auto meshKey = MeshPipelineCache::makeMeshPipelineKey(draw);
     const auto shadowKey = MeshPipelineCache::makeShadowPipelineKey(draw);
-    draw.tint = {0.1F, 0.4F, 0.8F, 0.5F};
+    draw.instances.front().tint = {0.1F, 0.4F, 0.8F, 0.5F};
     draw.material.baseColor = {0.8F, 0.2F, 0.6F, 0.7F};
     draw.material.metallic = 0.7F;
     draw.material.roughness = 0.2F;
@@ -189,8 +189,23 @@ TEST_F(MeshPipelineCacheTest, MeshKeyTracksModelAndMirroredWinding)
     draw.material.model = panda::MaterialModel::Unlit;
     EXPECT_NE(litKey, MeshPipelineCache::makeMeshPipelineKey(draw));
     draw.material.model = panda::MaterialModel::Lit;
-    draw.modelMatrix = glm::scale(glm::mat4 {1.0F}, glm::vec3 {-1.0F, 1.0F, 1.0F});
+    draw.instances.front().modelMatrix = glm::scale(glm::mat4 {1.0F}, glm::vec3 {-1.0F, 1.0F, 1.0F});
     EXPECT_NE(litKey, MeshPipelineCache::makeMeshPipelineKey(draw));
+}
+
+TEST_F(MeshPipelineCacheTest, BuiltInDrawUsesInstancePipelineForSingleOrMultipleInstances)
+{
+    auto draw = panda::MeshDraw {};
+    EXPECT_TRUE(MeshPipelineCache::makeMeshPipelineKey(draw).instanced);
+    EXPECT_TRUE(MeshPipelineCache::makeShadowPipelineKey(draw).instanced);
+
+    draw.instances.push_back(panda::MeshInstance {});
+    EXPECT_TRUE(MeshPipelineCache::makeMeshPipelineKey(draw).instanced);
+    EXPECT_TRUE(MeshPipelineCache::makeShadowPipelineKey(draw).instanced);
+
+    draw.instances.clear();
+    EXPECT_FALSE(MeshPipelineCache::makeMeshPipelineKey(draw).instanced);
+    EXPECT_FALSE(MeshPipelineCache::makeShadowPipelineKey(draw).instanced);
 }
 
 TEST_F(MeshPipelineCacheTest, ShadowKeyDistinguishesTexturedMaskVariant)

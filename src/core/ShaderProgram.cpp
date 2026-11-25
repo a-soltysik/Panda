@@ -192,12 +192,12 @@ auto ShaderProgram::create(const vk::raii::Device& device, const ProgramDesc& de
 ShaderProgram::ShaderProgram(std::shared_ptr<const State> state)
     : _identity {std::make_shared<Identity>()}
 {
-    _identity->current.store(std::move(state), std::memory_order_release);
+    _identity->current = std::move(state);
 }
 
 auto ShaderProgram::snapshot() const -> std::shared_ptr<const State>
 {
-    return _identity ? _identity->current.load(std::memory_order_acquire) : nullptr;
+    return _identity ? _identity->current : nullptr;
 }
 
 auto ShaderProgram::isValid() const noexcept -> bool

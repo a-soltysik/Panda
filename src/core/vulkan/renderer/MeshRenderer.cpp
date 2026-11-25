@@ -55,7 +55,8 @@ auto makeDrawConstants(const glm::mat4& modelMatrix, const glm::vec4& tint) -> D
 
 auto makeDrawConstants(const MeshDraw& draw) -> DrawConstants
 {
-    return makeDrawConstants(draw.modelMatrix, draw.tint * draw.material.baseColor);
+    const auto& instance = draw.instances.front();
+    return makeDrawConstants(instance.modelMatrix, instance.tint * draw.material.baseColor);
 }
 
 auto cameraDepthForMesh(const glm::mat4& viewProjection, const glm::mat4& modelMatrix) -> float
@@ -326,9 +327,12 @@ void MeshRenderer::recordShadowView(vk::CommandBuffer command,
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
     {
-        if (draw.material.alphaMode != AlphaMode::Blend)
+        if (!draw.instances.empty() && draw.material.alphaMode != AlphaMode::Blend)
         {
-            recordDraw(command, frameIndex, draw, {.shadowPass = true, .materialIndex = materialIndex});
+            recordDraw(command,
+                       frameIndex,
+                       draw,
+                       {.shadowPass = true, .materialIndex = materialIndex, .drawIndex = materialIndex});
         }
         ++materialIndex;
     }
@@ -361,20 +365,29 @@ void MeshRenderer::recordMeshColorDraws(vk::CommandBuffer command, std::size_t f
     auto materialIndex = std::uint32_t {};
     for (const auto& draw : view.meshes)
     {
+        if (draw.instances.empty())
+        {
+            ++materialIndex;
+            continue;
+        }
         if (draw.material.alphaMode == AlphaMode::Blend)
         {
             // shortcut: sort by mesh origin; intersecting meshes need finer sorting.
-            _blendDraws.push_back({.draw = &draw,
-                                   .materialIndex = materialIndex,
-                                   .cameraDepth = cameraDepthForMesh(view.camera.viewProjection, draw.modelMatrix)});
+            _blendDraws.push_back(
+                {.draw = &draw,
+                 .materialIndex = materialIndex,
+                 .cameraDepth = cameraDepthForMesh(view.camera.viewProjection, draw.instances.front().modelMatrix),
+                 .drawIndex = materialIndex});
         }
         else
         {
-            recordDraw(
-                command,
-                frameIndex,
-                draw,
-                {.shadowPass = false, .materialIndex = materialIndex, .hasEnvironment = view.environment.has_value()});
+            recordDraw(command,
+                       frameIndex,
+                       draw,
+                       {.shadowPass = false,
+                        .materialIndex = materialIndex,
+                        .hasEnvironment = view.environment.has_value(),
+                        .drawIndex = materialIndex});
         }
         ++materialIndex;
     }
@@ -401,7 +414,9 @@ void MeshRenderer::recordBlendedDraws(vk::CommandBuffer command, std::size_t fra
         recordDraw(command,
                    frameIndex,
                    *blendDraw.draw,
-                   {.materialIndex = blendDraw.materialIndex, .hasEnvironment = hasEnvironment});
+                   {.materialIndex = blendDraw.materialIndex,
+                    .hasEnvironment = hasEnvironment,
+                    .drawIndex = blendDraw.drawIndex});
     }
     _blendDraws.clear();
 }
@@ -477,35 +492,57 @@ void MeshRenderer::bindFrameDescriptorSet(vk::CommandBuffer command, FrameDescri
 void MeshRenderer::recordDraw(vk::CommandBuffer command,
                               std::size_t frameIndex,
                               const MeshDraw& draw,
-                              DrawPass pass) const
+                              const DrawPass& pass) const
 {
-    if (pass.shadowPass)
-    {
-        command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipelineCache().getShadowPipeline(draw));
-    }
-    else
-    {
-        command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipelineCache().getPipeline(draw, pass.hasEnvironment));
-    }
+    const auto pipeline = pass.shadowPass ? pipelineCache().getShadowPipeline(draw)
+                                          : pipelineCache().getPipeline(draw, pass.hasEnvironment);
+    command.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
     bindTextureDescriptors(command, frameIndex, draw, pass);
     bindApplicationDrawResources(command, frameIndex, draw, pass);
+    if (draw.material.shaderProgram.isValid())
+    {
+        recordCustomShaderMeshDraw(command, draw, pass);
+        return;
+    }
+    recordInstancedMeshDraw(command, frameIndex, draw, pass);
+}
+
+void MeshRenderer::recordCustomShaderMeshDraw(vk::CommandBuffer command,
+                                              const MeshDraw& draw,
+                                              const DrawPass& pass) const
+{
+    const auto& mesh = *::panda::detail::MeshResource::getResource(draw.mesh);
+    const auto vertexBuffer = mesh.getVertexBuffer()->getNative();
+    static constexpr auto vertexOffset = vk::DeviceSize {};
     const auto constants = makeDrawConstants(draw);
     command.pushConstants(_bindings->getPipelineLayout(),
                           vk::ShaderStageFlagBits::eVertex,
                           0,
                           sizeof(constants),
                           &constants);
+    command.bindVertexBuffers(0, 1, &vertexBuffer, &vertexOffset);
+    recordMeshDraw(command, mesh, 1, pass.materialIndex);
+}
+
+void MeshRenderer::recordInstancedMeshDraw(vk::CommandBuffer command,
+                                           std::size_t frameIndex,
+                                           const MeshDraw& draw,
+                                           const DrawPass& pass) const
+{
     const auto& mesh = *::panda::detail::MeshResource::getResource(draw.mesh);
     const auto vertexBuffer = mesh.getVertexBuffer()->getNative();
     static constexpr auto vertexOffset = vk::DeviceSize {};
-    command.bindVertexBuffers(0, 1, &vertexBuffer, &vertexOffset);
-    recordMeshDraw(command, mesh, pass.materialIndex);
+    const auto instanceBuffer = _bindings->getMeshInstanceBuffer(frameIndex);
+    const auto buffers = std::array {vertexBuffer, instanceBuffer};
+    const auto offsets = std::array {vertexOffset, _bindings->getMeshInstanceOffset(frameIndex, pass.drawIndex)};
+    command.bindVertexBuffers(0, static_cast<std::uint32_t>(buffers.size()), buffers.data(), offsets.data());
+    recordMeshDraw(command, mesh, static_cast<std::uint32_t>(draw.instances.size()), 0);
 }
 
 void MeshRenderer::bindApplicationDrawResources(vk::CommandBuffer command,
                                                 std::size_t frameIndex,
                                                 const MeshDraw& draw,
-                                                DrawPass pass) const
+                                                const DrawPass& pass) const
 {
     if (draw.material.shaderProgram.isValid())
     {
@@ -560,7 +597,7 @@ void MeshRenderer::recordProceduralShadowDraw(vk::CommandBuffer command,
 void MeshRenderer::bindTextureDescriptors(vk::CommandBuffer command,
                                           std::size_t frameIndex,
                                           const MeshDraw& draw,
-                                          DrawPass pass) const
+                                          const DrawPass& pass) const
 {
     if (!pass.shadowPass || (draw.material.alphaMode == AlphaMode::Mask && draw.material.baseColorTexture.isValid()))
     {
@@ -577,7 +614,8 @@ void MeshRenderer::bindTextureDescriptors(vk::CommandBuffer command,
 
 void MeshRenderer::recordMeshDraw(vk::CommandBuffer command,
                                   const ::panda::detail::MeshResource& mesh,
-                                  std::uint32_t materialIndex)
+                                  std::uint32_t instanceCount,
+                                  std::uint32_t firstInstance)
 {
     const auto& indices = mesh.getLayout().getIndices();
     if (indices)
@@ -585,10 +623,10 @@ void MeshRenderer::recordMeshDraw(vk::CommandBuffer command,
         const auto nativeType =
             indices->type == MeshIndexType::UInt16 ? vk::IndexType::eUint16 : vk::IndexType::eUint32;
         command.bindIndexBuffer(mesh.getIndexBuffer()->getNative(), 0, nativeType);
-        command.drawIndexed(indices->count, 1, 0, 0, materialIndex);
+        command.drawIndexed(indices->count, instanceCount, 0, 0, firstInstance);
         return;
     }
-    command.draw(mesh.getLayout().getVertexCount(), 1, 0, materialIndex);
+    command.draw(mesh.getLayout().getVertexCount(), instanceCount, 0, firstInstance);
 }
 
 void MeshRenderer::markSubmitted(std::size_t frameIndex) noexcept

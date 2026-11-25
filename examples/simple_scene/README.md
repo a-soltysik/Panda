@@ -4,7 +4,9 @@
 geometry helper, then creates a compact position-and-color triangle with
 `ResourceManager::createMesh(MeshDesc)`. One upload batch initializes all three meshes,
 the cube's optional 2x2 sRGB base-color and emissive maps, and neutral 1x1 linear
-metallic-roughness map. A second draw of the same cube uses a neutral gray material,
+metallic-roughness map. One draw contains two copies of the textured cube, each
+with its own transform and tint; Panda submits them together in the camera and
+shadow passes. A second draw of the same cube uses a neutral gray material,
 a 4x4 linear normal map with alternating tangent-space directions, and a linear
 occlusion map with a dark center patch. Its striped lighting shows the normal map;
 the patch reduces only ambient light and does not alter direct light or the cube's

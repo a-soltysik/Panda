@@ -27,8 +27,10 @@ swapchain synchronization. A returned
    respectively. All maps must be from the same Engine and need a submitted upload.
    Base-color, metallic-roughness, emissive and occlusion maps require TexCoord0; a
    normal map is ignored with a warning if TexCoord0 or Tangent is missing.
-3. Camera, light, transform, tint and material values are finite and valid for the
-   built-in renderer. A zero-sized framebuffer is allowed and returns `Suspended`.
+3. Camera, light, every instance transform and tint, and material values are finite
+   and valid for the built-in renderer. Instances in one draw have the same
+   determinant sign; custom mesh programs accept one instance per draw. A
+   zero-sized framebuffer is allowed and returns `Suspended`.
 4. An optional skybox is an uploaded, sampled square linear `Rgba16Float` cubemap
    created by this Engine.
 5. Each procedural draw uses a same-Engine `ShaderProgram` created for
@@ -43,7 +45,10 @@ swapchain synchronization. A returned
 
 1. **Build the view.** The application supplies a view-projection matrix, camera
    position, zero or more directional, point or spot lights, and zero or more mesh
-   draws with per-mesh materials. Each light opts into shadows by supplying
+   draws with per-draw materials. A draw shares its mesh, material, maps and shader
+   resources across its `MeshInstance` list; each instance supplies a full
+   object-to-world transform and tint. The list defaults to one identity instance,
+   while an empty list emits no draw. Each light opts into shadows by supplying
    `ShadowSettings`; an unset resolution selects the default for that light type.
    Directional lights also select their orthographic coverage; spot and point
    shadow views use the light's existing cone and range. Resolution is the width
@@ -57,8 +62,9 @@ swapchain synchronization. A returned
    with no lights.
    `RenderView::environment` optionally supplies preprocessed diffuse and specular
    cubemaps for Lit materials; `RenderView::skybox` independently selects the
-   visible background. A view built from `Scene` copies its scene-wide settings;
-   the application may still override them per view before rendering.
+   visible background. A view built from `Scene` copies its scene-wide settings
+   and groups compatible built-in opaque and masked mesh objects; scene objects
+   remain separate. The application may still override view settings before rendering.
    Mesh handles are ordinary values; Panda does not create entities or own application
    transforms.
    A mesh material may select a same-Engine `ShaderProgram` with standard mesh
@@ -78,8 +84,8 @@ swapchain synchronization. A returned
    the getter fails through `expect`.
 3. **Validate and collect uploads.** `WindowRenderer` checks matrices, all
    light variants, optional shadow settings, atlas resolutions/capacity, and the
-   configured light budget,
-   tint, material alpha mode, cutoff, and finite normal-map scale and occlusion
+   configured light budget, each instance's transform and tint, same-draw winding,
+   the custom-program single-instance limit, material alpha mode, cutoff, and finite normal-map scale and occlusion
    strength, then verifies each mesh's Engine and required attributes, and checks
    each procedural program, transform and tint. It resolves each procedural draw's
    named shader resources against reflection and validates buffer ownership, usage,
@@ -113,9 +119,13 @@ swapchain synchronization. A returned
    mesh, procedural draw or skybox clears the SDR output to the configured background. Otherwise,
    `FrameExecution` records the shared HDR scene and SDR output pass described by
    [UC Render a view through the shared HDR path](render-hdr-output.md). It updates
-   material, light and shadow records through `FrameBindings`; `MeshRenderer` renders
-   configured shadow maps before the camera view. `MeshPipelineCache` prepares the
-   selected camera program against the mesh's reflected inputs. `ApplicationShaderBindings`
+   material, light, shadow and built-in instance records through `FrameBindings`;
+   `MeshRenderer` renders configured shadow maps before the camera view. Each
+   nonempty built-in mesh draw uses one instanced draw in the camera pass and each
+   applicable shadow view, even when the list has one item. `MeshPipelineCache`
+   prepares the selected camera program against the mesh's reflected inputs and
+   takes instance attribute locations from SPIR-V reflection. Custom mesh programs
+   keep their push-constant path. `ApplicationShaderBindings`
    resolves application resource names, prepares uniform, storage and sampled-image
    descriptors, and retains their resources in the frame slot. The draw binds those descriptors
    for the camera pass. Procedural draws issue `vkCmdDraw(vertexCount,

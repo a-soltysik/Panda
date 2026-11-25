@@ -2,7 +2,9 @@
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 // clang-format on
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <panda/geometry/VertexLayout.hpp>
@@ -29,6 +31,11 @@ Mesh::Mesh(std::shared_ptr<detail::MeshResource> resource)
 auto Mesh::isValid() const noexcept -> bool
 {
     return _resource != nullptr;
+}
+
+auto Mesh::operator==(const Mesh& other) const noexcept -> bool
+{
+    return _resource == other._resource;
 }
 
 auto Mesh::getVertexCount() const noexcept -> std::uint32_t
@@ -70,5 +77,13 @@ auto Mesh::getIndexSize() const noexcept -> std::uint64_t
 void Mesh::reset() noexcept
 {
     _resource.reset();
+}
+}
+
+namespace std
+{
+auto hash<panda::Mesh>::operator()(const panda::Mesh& mesh) const noexcept -> std::size_t
+{
+    return hash<const void*> {}(mesh._resource.get());
 }
 }

@@ -594,12 +594,12 @@ auto makeBlendDraws(const SceneMeshes& meshes) -> std::vector<panda::MeshDraw>
 {
     auto first = panda::MeshDraw {};
     first.mesh = meshes.cube;
-    first.modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.5F});
+    first.instances.front().modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.5F});
     first.material.baseColor = {1.0F, 1.0F, 1.0F, 0.5F};
     first.material.alphaMode = panda::AlphaMode::Blend;
     auto second = panda::MeshDraw {};
     second.mesh = meshes.cube;
-    second.modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.2F});
+    second.instances.front().modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, 0.2F});
     second.material.baseColor = {0.8F, 0.5F, 1.0F, 0.5F};
     second.material.alphaMode = panda::AlphaMode::Blend;
     return {first, second};
@@ -610,21 +610,23 @@ auto makeFaceDraws(const SceneMeshes& meshes) -> std::vector<panda::MeshDraw>
     const auto reflectedModel = glm::scale(glm::mat4 {1.0F}, glm::vec3 {-1.0F, 1.0F, 1.0F});
     auto frontFaceOnly = panda::MeshDraw {};
     frontFaceOnly.mesh = meshes.cube;
-    frontFaceOnly.modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, 0.0F, 0.0F});
+    frontFaceOnly.instances.front().modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, 0.0F, 0.0F});
     frontFaceOnly.material.renderFace = panda::RenderFace::Back;
     auto bothFaces = panda::MeshDraw {};
     bothFaces.mesh = meshes.cube;
-    bothFaces.modelMatrix =
+    bothFaces.instances.front().modelMatrix =
         glm::scale(glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, 0.0F}), glm::vec3 {-1.0F, 1.0F, 1.0F});
     bothFaces.material.renderFace = panda::RenderFace::Both;
     auto reflectedBackFaceOnly = panda::MeshDraw {};
     reflectedBackFaceOnly.mesh = meshes.cube;
-    reflectedBackFaceOnly.modelMatrix = glm::translate(reflectedModel, glm::vec3 {0.0F, 0.0F, -1.5F});
+    reflectedBackFaceOnly.instances.front().modelMatrix = glm::translate(reflectedModel, glm::vec3 {0.0F, 0.0F, -1.5F});
     reflectedBackFaceOnly.material.renderFace = panda::RenderFace::Back;
     return {
         frontFaceOnly,
         bothFaces,
-        panda::MeshDraw {.mesh = meshes.cube, .modelMatrix = reflectedModel, .shaderResources = {}},
+        panda::MeshDraw {.mesh = meshes.cube,
+                         .instances = {panda::MeshInstance {.modelMatrix = reflectedModel}},
+                         .shaderResources = {}},
         reflectedBackFaceOnly
     };
 }
@@ -633,7 +635,7 @@ auto makeTexturedMaskDraw(const SceneMeshes& meshes) -> panda::MeshDraw
 {
     auto draw = panda::MeshDraw {};
     draw.mesh = meshes.cube;
-    draw.modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, -1.5F});
+    draw.instances.front().modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {1.5F, 0.0F, -1.5F});
     draw.material.baseColorTexture = meshes.baseColorMap;
     draw.material.metallicRoughnessTexture = meshes.metallicRoughnessMap;
     draw.material.metallic = 0.75F;
@@ -647,7 +649,7 @@ auto makeUnlitMaskDraw(const SceneMeshes& meshes) -> panda::MeshDraw
 {
     auto draw = panda::MeshDraw {};
     draw.mesh = meshes.triangle;
-    draw.modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, -0.25F, 0.0F});
+    draw.instances.front().modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-1.5F, -0.25F, 0.0F});
     draw.material.model = panda::MaterialModel::Unlit;
     draw.material.alphaMode = panda::AlphaMode::Mask;
     return draw;
@@ -666,9 +668,9 @@ auto makeCubeAndGroundView(glm::uvec2 extent, const SceneMeshes& meshes) -> pand
     view.camera = *camera;
     view.lights.emplace_back();
     view.meshes = {
-        panda::MeshDraw {.mesh = meshes.ground,
-                         .modelMatrix = groundTransform,
-                         .tint = {0.65F, 0.67F, 0.7F, 1.0F},
+        panda::MeshDraw {
+                         .mesh = meshes.ground,
+                         .instances = {panda::MeshInstance {.modelMatrix = groundTransform, .tint = {0.65F, 0.67F, 0.7F, 1.0F}}},
                          .shaderResources = {}},
         panda::MeshDraw {.mesh = meshes.cube, .shaderResources = {}}
     };

@@ -72,8 +72,9 @@ auto createDraw(const panda::Mesh& mesh, glm::vec3 position, glm::vec3 scale, pa
     -> panda::MeshDraw
 {
     return {.mesh = mesh,
-            .modelMatrix = glm::translate(glm::mat4 {1.0F}, position) * glm::scale(glm::mat4 {1.0F}, scale),
             .material = std::move(material),
+            .instances = {panda::MeshInstance {.modelMatrix = glm::translate(glm::mat4 {1.0F}, position) *
+                                                              glm::scale(glm::mat4 {1.0F}, scale)}},
             .shaderResources = {}};
 }
 

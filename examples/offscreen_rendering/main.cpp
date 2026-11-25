@@ -115,7 +115,8 @@ void renderSequence(const panda::Engine& context, const panda::Mesh& cube)
     for (auto frameIndex = std::size_t {}; frameIndex < frameCount; ++frameIndex)
     {
         const auto angle = glm::radians(20.0F * static_cast<float>(frameIndex));
-        view.meshes.front().modelMatrix = glm::rotate(glm::mat4 {1.0F}, angle, glm::vec3 {0.0F, 1.0F, 0.0F});
+        view.meshes.front().instances.front().modelMatrix =
+            glm::rotate(glm::mat4 {1.0F}, angle, glm::vec3 {0.0F, 1.0F, 0.0F});
         const auto frame = panda::expect(renderer.render(view, target), "Render the offscreen frame");
         const auto pixels = panda::expect(renderer.readPixels(target, frame.completion), "Read the rendered pixels");
         writeFrame(frameIndex, pixels);

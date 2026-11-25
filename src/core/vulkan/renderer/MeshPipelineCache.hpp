@@ -43,6 +43,7 @@ public:
         bool hasColor {false};
         bool hasTextureCoordinates {false};
         bool hasNormalMap {false};
+        bool instanced {false};
         std::uint32_t vertexStride {0};
         std::uint32_t positionOffset {0};
         std::uint32_t normalOffset {0};
@@ -63,6 +64,7 @@ public:
                             hasColor,
                             hasTextureCoordinates,
                             hasNormalMap,
+                            instanced,
                             vertexStride,
                             positionOffset,
                             normalOffset,
@@ -96,6 +98,7 @@ public:
         std::uint32_t colorOffset {0};
         bool hasColor {false};
         bool hasBaseColorTexture {false};
+        bool instanced {false};
         RenderFace renderFace {RenderFace::Front};
         AlphaMode alphaMode {AlphaMode::Opaque};
         bool mirrored {false};
@@ -116,6 +119,7 @@ public:
                             colorOffset,
                             hasColor,
                             hasBaseColorTexture,
+                            instanced,
                             renderFace,
                             alphaMode,
                             mirrored,
@@ -214,8 +218,8 @@ private:
     vk::PipelineLayout _pipelineLayout;
     const ApplicationShaderBindings* _applicationBindings;
     std::vector<ShaderDescriptor> _shaderDescriptorSchema;
-    std::map<std::array<bool, 5>, ShaderProgramLayout> _meshShaderLayouts;
-    std::map<std::array<bool, 3>, ShaderProgramLayout> _shadowShaderLayouts;
+    std::map<std::array<bool, 6>, ShaderProgramLayout> _meshShaderLayouts;
+    std::map<std::array<bool, 4>, ShaderProgramLayout> _shadowShaderLayouts;
     std::optional<ShaderProgramLayout> _skyboxShaderLayout;
     OutputCompatibility _outputCompatibility;
     std::map<MeshPipelineKey, vk::raii::Pipeline> _pipelines;

@@ -188,6 +188,22 @@ Submit batches, not a draw call per instance. GPU particle data can be represent
 rendered with procedurally generated quads. Do not require CPU entity updates or CPU copies proportional to particle
 count.
 
+For ordinary meshes, a `MeshDraw` shares its mesh, material, textures and application bindings across its `instances`.
+Each `MeshInstance` supplies a full object-to-world transform and a linear tint. The list defaults to one identity
+instance; an empty list emits no draw. Built-in materials upload instance records once per frame slot and use one
+instanced draw in the camera pass and each applicable shadow view, including for a single instance. Custom mesh
+programs keep their push-constant interface and support one instance per draw. The built-in pipeline obtains vertex
+input locations from SPIR-V reflection; matrix inputs expand to consecutive column attributes. Instances in one draw
+must have the same determinant sign because front-face selection is pipeline state. Mesh, material, bindings, culling
+state and determinant sign therefore define batch boundaries; transform and tint vary per instance. For blended
+materials, instance order is the supplied list order and should be back-to-front; separate draw batches retain the
+existing mesh-origin sort and can still misorder intersecting geometry.
+
+`SceneRenderViewBuilder` groups compatible built-in mesh objects into these batches when it creates a snapshot. The
+scene keeps each object and its transform separate; only the render snapshot combines their mesh draws. Mesh, material
+and determinant sign must match. Custom-program objects and blended objects remain separate so custom push constants
+and the existing per-object transparency sort keep their behavior.
+
 The `gpu_particles` example uses simple screen-space circles colored by GPU velocity. The planned `cloud-v1` workload
 uses lit opaque sphere impostors, with the sphere surface used for camera and shadow depth. Its silhouette limitations,
 data layout and shadow variant are defined below, including near-plane projection edge cases.

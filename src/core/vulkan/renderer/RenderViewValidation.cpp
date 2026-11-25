@@ -17,6 +17,7 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_access.hpp>
 #include <glm/matrix.hpp>
+#include <limits>
 #include <optional>
 #include <panda/base/Error.hpp>
 #include <panda/geometry/VertexLayout.hpp>
@@ -393,15 +394,41 @@ auto validateSkybox(const std::optional<Texture>& skybox, const resources::Memor
     return {};
 }
 
+auto isValidMeshInstance(const MeshInstance& instance) -> bool
+{
+    return isRenderableModel(instance.modelMatrix) && isFinite(instance.tint) && instance.tint.r >= 0.0F &&
+           instance.tint.g >= 0.0F && instance.tint.b >= 0.0F && instance.tint.a >= 0.0F;
+}
+
+auto hasCompatibleInstanceOrientations(std::span<const MeshInstance> instances) -> bool
+{
+    if (instances.empty())
+    {
+        return true;
+    }
+    const auto mirrored = glm::determinant(glm::mat3 {instances.front().modelMatrix}) < 0.0F;
+    return std::ranges::all_of(instances, [mirrored](const auto& instance) {
+        return (glm::determinant(glm::mat3 {instance.modelMatrix}) < 0.0F) == mirrored;
+    });
+}
+
+auto isValidMeshInstanceSet(const MeshDraw& draw) -> bool
+{
+    return draw.instances.size() <= std::numeric_limits<std::uint32_t>::max() &&
+           (draw.instances.size() <= 1 || !draw.material.shaderProgram.isValid()) &&
+           std::ranges::all_of(draw.instances, isValidMeshInstance) &&
+           hasCompatibleInstanceOrientations(draw.instances);
+}
+
 auto validateMeshDrawData(std::span<const MeshDraw> draws) -> Result<void>
 {
-    if (std::ranges::any_of(draws, [](const auto& draw) {
-            return !isRenderableModel(draw.modelMatrix) || !isFinite(draw.tint) || draw.tint.r < 0.0F ||
-                   draw.tint.g < 0.0F || draw.tint.b < 0.0F || draw.tint.a < 0.0F || !isValidMaterial(draw.material);
+    if (std::ranges::any_of(draws, [&](const auto& draw) {
+            return !isValidMaterial(draw.material) || !isValidMeshInstanceSet(draw);
         }))
     {
-        return std::unexpected {
-            makeError(ErrorCode::InvalidArgument, "Mesh draw contains invalid transform or material")};
+        return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                          "Mesh draw contains invalid instance data, incompatible orientations, or "
+                                          "an instanced custom shader")};
     }
     return {};
 }

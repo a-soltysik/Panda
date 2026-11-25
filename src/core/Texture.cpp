@@ -1,4 +1,6 @@
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <glm/ext/vector_uint2.hpp>
 #include <memory>
 #include <panda/resources/PixelFormat.hpp>
@@ -24,6 +26,11 @@ Texture::Texture(std::shared_ptr<detail::TextureResource> resource)
 auto Texture::isValid() const noexcept -> bool
 {
     return _resource != nullptr;
+}
+
+auto Texture::operator==(const Texture& other) const noexcept -> bool
+{
+    return _resource == other._resource;
 }
 
 auto Texture::getExtent() const noexcept -> glm::uvec2
@@ -59,5 +66,13 @@ auto Texture::getMipLevels() const noexcept -> std::uint32_t
 void Texture::reset() noexcept
 {
     _resource.reset();
+}
+}
+
+namespace std
+{
+auto hash<panda::Texture>::operator()(const panda::Texture& texture) const noexcept -> std::size_t
+{
+    return hash<const void*> {}(texture._resource.get());
 }
 }
