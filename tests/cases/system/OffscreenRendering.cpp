@@ -977,10 +977,6 @@ TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrd
     ASSERT_TRUE(skybox) << skybox.error().message;
     firstView->skybox = *skybox;
     const auto firstFrame = activeEngine().getOffscreenRenderer().render(*firstView, target);
-    if (hasUnsupportedError(firstFrame))
-    {
-        GTEST_SKIP() << firstFrame.error().message;
-    }
     ASSERT_TRUE(firstFrame) << firstFrame.error().message;
     EXPECT_EQ(firstFrame->status, panda::FrameResult::Status::Rendered);
     EXPECT_TRUE(firstFrame->completion.isValid());

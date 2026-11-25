@@ -130,24 +130,53 @@ protected:
         {
             GTEST_SKIP() << "No Vulkan physical device";
         }
-        physical = std::move(listed.value.front());
-        if (physical.getProperties().apiVersion < vk::ApiVersion13)
+        auto selected = false;
+        for (auto& candidate : listed.value)
         {
-            GTEST_SKIP() << "First physical device does not support Vulkan 1.3";
+            if (candidate.getProperties().apiVersion < vk::ApiVersion13)
+            {
+                continue;
+            }
+            const auto families = candidate.getQueueFamilyProperties();
+            const auto found = std::ranges::find_if(families, [](const auto& family) {
+                return family.queueCount != 0;
+            });
+            if (found == families.end() || !hasRequestedCoherence(candidate))
+            {
+                continue;
+            }
+            physical = std::move(candidate);
+            familyIndex = static_cast<std::uint32_t>(std::distance(families.begin(), found));
+            selected = true;
+            break;
         }
-        const auto families = physical.getQueueFamilyProperties();
-        const auto found = std::ranges::find_if(families, [](const auto& family) {
-            return family.queueCount != 0;
-        });
-        ASSERT_NE(found, families.end());
-        const auto family = static_cast<std::uint32_t>(std::distance(families.begin(), found));
+        if (!selected)
+        {
+            GTEST_SKIP() << "No physical device supports Vulkan 1.3, a non-empty queue family, and the requested "
+                            "host memory coherence";
+        }
         static constexpr auto priority = 1.0F;
         const auto queue =
-            vk::DeviceQueueCreateInfo {.queueFamilyIndex = family, .queueCount = 1, .pQueuePriorities = &priority};
+            vk::DeviceQueueCreateInfo {.queueFamilyIndex = familyIndex, .queueCount = 1, .pQueuePriorities = &priority};
         const auto info = vk::DeviceCreateInfo {.queueCreateInfoCount = 1, .pQueueCreateInfos = &queue};
         auto created = panda::core::vulkan::detail::checkedCreation(physical.createDevice(info));
         ASSERT_TRUE(created) << created.error().message;
         device = std::move(*created);
+    }
+
+    static auto hasRequestedCoherence(const vk::raii::PhysicalDevice& candidate) -> bool
+    {
+        const auto properties = candidate.getMemoryProperties();
+        for (auto i = std::uint32_t {0}; i < properties.memoryTypeCount; ++i)
+        {
+            const auto flags = properties.memoryTypes.at(i).propertyFlags;
+            if ((flags & vk::MemoryPropertyFlagBits::eHostVisible) &&
+                static_cast<bool>(flags & vk::MemoryPropertyFlagBits::eHostCoherent) == GetParam())
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     auto findHostMemory(std::uint32_t bits) -> std::optional<std::uint32_t>
@@ -167,6 +196,7 @@ protected:
     }
 
     std::atomic<std::uint32_t> validationErrors {0};
+    std::uint32_t familyIndex {};
     vk::raii::Context loader {vkGetInstanceProcAddr};
     vk::raii::Instance instance {nullptr};
     vk::raii::DebugUtilsMessengerEXT messenger {nullptr};
