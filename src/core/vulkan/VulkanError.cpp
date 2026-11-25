@@ -155,7 +155,7 @@ auto createVulkanSampler(const vk::raii::Device& device,
                          const vk::SamplerCreateInfo& createInfo,
                          std::source_location source) -> std::expected<vk::raii::Sampler, Error>
 {
-    const auto created = static_cast<vk::Device>(device).createSampler(createInfo);
+    const auto created = (*device).createSampler(createInfo, nullptr, *device.getDispatcher());
     if (created.result != vk::Result::eSuccess)
     {
         return std::unexpected {::panda::makeVulkanError(created.result, source)};

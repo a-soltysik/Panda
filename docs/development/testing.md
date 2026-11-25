@@ -51,11 +51,10 @@ and Base without pulling in the engine, `PandaTest::LogCapture` observes the rea
 logger, and `PandaTest::GlfwMock` replaces GLFW when Tools is enabled. Log capture
 is an observer/helper, not a replacement logger. `PandaTest::MockHeaders` exposes mock declarations, including
 `mocks/panda/base/SinkMock.hpp` and `mocks/panda/core/WindowSurfaceMock.hpp`,
-without selecting stub implementations. `PandaTest::VulkanMock` is the shared
-Vulkan boundary for Core unit tests; its stub forwards the entry points used by
-current scenarios to one strict mock and fails on any other Vulkan call used by
-Core. It is configured only when the engine target exists. `Engine`, `DeviceSelection`,
-`WindowPresentation` and the resource unit suites use it without a native window.
+without selecting stub implementations. `PandaTest::VulkanMock` replaces the Vulkan
+loader for selected unit and integration targets. Core omits the loader from
+their link dependencies, so missing Vulkan entry points fail at link time.
+The stub forwards calls to the active strict mock, where unexpected calls fail.
 Base error/logging tests use the internal support target. Math and shape-generator
 tests are Core units and use the public Core target.
 `RangeAllocator` and
@@ -242,9 +241,10 @@ targets not declared through `panda_add_mock`, and duplicate replacement identit
 
 Window unit tests, the example and integration link the same `Panda::Tools`
 archive. Unit tests additionally link GLFW stub objects; integration uses real
-GLFW. The real dependency remains in the link graph with its normal transitive
-system libraries, but members whose definitions are supplied by the stub are not
-extracted. Tests do not rebuild production sources or select another module variant.
+GLFW. Its archive remains in the link graph with its transitive system libraries,
+and the linker uses the stub's definitions before searching the archive. Core
+omits Vulkan and SPIRV-Reflect from the link graph when the executable declares
+their replacements. Tests use the same production module variants.
 
 The replacement unit is a complete production `.cpp`, not an arbitrary subset of
 its symbols. Keep independently replaceable implementations in separate source

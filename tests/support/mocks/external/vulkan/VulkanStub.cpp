@@ -463,6 +463,17 @@ VKAPI_ATTR void VKAPI_CALL vkCmdCopyBufferToImage(VkCommandBuffer commandBuffer,
         .vkCmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
 }
 
+VKAPI_ATTR void VKAPI_CALL vkCmdCopyImageToBuffer(VkCommandBuffer commandBuffer,
+                                                  VkImage srcImage,
+                                                  VkImageLayout srcImageLayout,
+                                                  VkBuffer dstBuffer,
+                                                  std::uint32_t regionCount,
+                                                  const VkBufferImageCopy* regions)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock()
+        .vkCmdCopyImageToBuffer(commandBuffer, srcImage, srcImageLayout, dstBuffer, regionCount, regions);
+}
+
 VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier2(VkCommandBuffer commandBuffer, const VkDependencyInfo* dependencyInfo)
 {
     panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdPipelineBarrier2(commandBuffer,
@@ -510,6 +521,30 @@ VKAPI_ATTR void VKAPI_CALL vkCmdBindPipeline(VkCommandBuffer commandBuffer,
                                                                                         pipeline);
 }
 
+VKAPI_ATTR void VKAPI_CALL vkCmdBindIndexBuffer(VkCommandBuffer commandBuffer,
+                                                VkBuffer buffer,
+                                                VkDeviceSize offset,
+                                                VkIndexType indexType)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdBindIndexBuffer(commandBuffer,
+                                                                                           buffer,
+                                                                                           offset,
+                                                                                           indexType);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdBindVertexBuffers(VkCommandBuffer commandBuffer,
+                                                  std::uint32_t firstBinding,
+                                                  std::uint32_t bindingCount,
+                                                  const VkBuffer* buffers,
+                                                  const VkDeviceSize* offsets)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock().vkCmdBindVertexBuffers(commandBuffer,
+                                                                                             firstBinding,
+                                                                                             bindingCount,
+                                                                                             buffers,
+                                                                                             offsets);
+}
+
 VKAPI_ATTR void VKAPI_CALL vkCmdDraw(VkCommandBuffer commandBuffer,
                                      std::uint32_t vertexCount,
                                      std::uint32_t instanceCount,
@@ -521,6 +556,28 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDraw(VkCommandBuffer commandBuffer,
                                                                                 instanceCount,
                                                                                 firstVertex,
                                                                                 firstInstance);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdDrawIndexed(VkCommandBuffer commandBuffer,
+                                            std::uint32_t indexCount,
+                                            std::uint32_t instanceCount,
+                                            std::uint32_t firstIndex,
+                                            std::int32_t vertexOffset,
+                                            std::uint32_t firstInstance)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock()
+        .vkCmdDrawIndexed(commandBuffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(VkCommandBuffer commandBuffer,
+                                              VkPipelineLayout layout,
+                                              VkShaderStageFlags stageFlags,
+                                              std::uint32_t offset,
+                                              std::uint32_t size,
+                                              const void* values)
+{
+    panda::test::ScopedMock<panda::test::VulkanMock>::getActiveMock()
+        .vkCmdPushConstants(commandBuffer, layout, stageFlags, offset, size, values);
 }
 
 VKAPI_ATTR void VKAPI_CALL vkCmdSetViewport(VkCommandBuffer commandBuffer,
@@ -1001,11 +1058,16 @@ const auto entryPoints = std::array {
     EntryPoint {.name = "vkAcquireNextImageKHR",                          .function = genericVulkanProc(&vkAcquireNextImageKHR)        },
     EntryPoint {.name = "vkBeginCommandBuffer",                           .function = genericVulkanProc(&vkBeginCommandBuffer)         },
     EntryPoint {.name = "vkCmdBindPipeline",                              .function = genericVulkanProc(&vkCmdBindPipeline)            },
+    EntryPoint {.name = "vkCmdBindIndexBuffer",                           .function = genericVulkanProc(&vkCmdBindIndexBuffer)         },
+    EntryPoint {.name = "vkCmdBindVertexBuffers",                         .function = genericVulkanProc(&vkCmdBindVertexBuffers)       },
     EntryPoint {.name = "vkCmdDraw",                                      .function = genericVulkanProc(&vkCmdDraw)                    },
+    EntryPoint {.name = "vkCmdDrawIndexed",                               .function = genericVulkanProc(&vkCmdDrawIndexed)             },
+    EntryPoint {.name = "vkCmdPushConstants",                             .function = genericVulkanProc(&vkCmdPushConstants)           },
     EntryPoint {.name = "vkCmdPipelineBarrier2",                          .function = genericVulkanProc(&vkCmdPipelineBarrier2)        },
     EntryPoint {.name = "vkCmdResetQueryPool",                            .function = genericVulkanProc(&vkCmdResetQueryPool)          },
     EntryPoint {.name = "vkCmdWriteTimestamp2",                           .function = genericVulkanProc(&vkCmdWriteTimestamp2)         },
     EntryPoint {.name = "vkCmdCopyBufferToImage",                         .function = genericVulkanProc(&vkCmdCopyBufferToImage)       },
+    EntryPoint {.name = "vkCmdCopyImageToBuffer",                         .function = genericVulkanProc(&vkCmdCopyImageToBuffer)       },
     EntryPoint {.name = "vkCmdBeginRendering",                            .function = genericVulkanProc(&vkCmdBeginRendering)          },
     EntryPoint {.name = "vkCmdEndRendering",                              .function = genericVulkanProc(&vkCmdEndRendering)            },
     EntryPoint {.name = "vkCmdSetViewport",                               .function = genericVulkanProc(&vkCmdSetViewport)             },
@@ -1068,4 +1130,6 @@ VulkanMock::VulkanMock()
             return resolveEntryPoint(name);
         });
 }
+
+VulkanMock::~VulkanMock() = default;
 }

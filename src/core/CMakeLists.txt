@@ -165,10 +165,10 @@ panda_add_component(panda_core
         vulkan/renderer/ShaderData.hpp
         vulkan/renderer/RenderViewValidation.hpp
         vulkan/renderer/ShadowView.hpp
-    LIBRARIES PUBLIC panda_base Vulkan::Headers glm::glm
-             PRIVATE Vulkan::Vulkan)
-# Tests with the SPIRV-Reflect stub must not link the real archive.
+    LIBRARIES PUBLIC panda_base Vulkan::Headers glm::glm)
+# Let the linker reject missing symbols in tests that replace either dependency.
 target_link_libraries(panda_core PRIVATE
+    "$<$<NOT:$<IN_LIST:Vulkan::Vulkan,$<TARGET_PROPERTY:PANDA_TEST_REPLACEMENTS>>>:Vulkan::Vulkan>"
     "$<$<NOT:$<IN_LIST:spirv-reflect-static,$<TARGET_PROPERTY:PANDA_TEST_REPLACEMENTS>>>:spirv-reflect-static>")
 target_include_directories(panda_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 add_library(panda_core_internal INTERFACE)

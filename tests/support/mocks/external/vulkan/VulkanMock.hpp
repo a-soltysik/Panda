@@ -31,6 +31,11 @@ class VulkanMock
 {
 public:
     VulkanMock();
+    VulkanMock(const VulkanMock&) = delete;
+    VulkanMock(VulkanMock&&) = delete;
+    auto operator=(const VulkanMock&) -> VulkanMock& = delete;
+    auto operator=(VulkanMock&&) -> VulkanMock& = delete;
+    ~VulkanMock();
 
     // gMock cannot generate trailing-return declarations.
     // NOLINTBEGIN(modernize-use-trailing-return-type)
@@ -288,7 +293,20 @@ public:
     MOCK_METHOD(VkResult, vkBeginCommandBuffer, (VkCommandBuffer, const VkCommandBufferBeginInfo*), ());
 
     MOCK_METHOD(void, vkCmdBindPipeline, (VkCommandBuffer, VkPipelineBindPoint, VkPipeline), ());
+    MOCK_METHOD(void, vkCmdBindIndexBuffer, (VkCommandBuffer, VkBuffer, VkDeviceSize, VkIndexType), ());
+    MOCK_METHOD(void,
+                vkCmdBindVertexBuffers,
+                (VkCommandBuffer, std::uint32_t, std::uint32_t, const VkBuffer*, const VkDeviceSize*),
+                ());
     MOCK_METHOD(void, vkCmdDraw, (VkCommandBuffer, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t), ());
+    MOCK_METHOD(void,
+                vkCmdDrawIndexed,
+                (VkCommandBuffer, std::uint32_t, std::uint32_t, std::uint32_t, std::int32_t, std::uint32_t),
+                ());
+    MOCK_METHOD(void,
+                vkCmdPushConstants,
+                (VkCommandBuffer, VkPipelineLayout, VkShaderStageFlags, std::uint32_t, std::uint32_t, const void*),
+                ());
     MOCK_METHOD(void, vkCmdPipelineBarrier2, (VkCommandBuffer, const VkDependencyInfo*), ());
     MOCK_METHOD(void, vkCmdResetQueryPool, (VkCommandBuffer, VkQueryPool, std::uint32_t, std::uint32_t), ());
     MOCK_METHOD(void, vkCmdWriteTimestamp2, (VkCommandBuffer, VkPipelineStageFlags2, VkQueryPool, std::uint32_t), ());
@@ -296,6 +314,10 @@ public:
     MOCK_METHOD(void,
                 vkCmdCopyBufferToImage,
                 (VkCommandBuffer, VkBuffer, VkImage, VkImageLayout, std::uint32_t, const VkBufferImageCopy*),
+                ());
+    MOCK_METHOD(void,
+                vkCmdCopyImageToBuffer,
+                (VkCommandBuffer, VkImage, VkImageLayout, VkBuffer, std::uint32_t, const VkBufferImageCopy*),
                 ());
 
     MOCK_METHOD(void, vkCmdBeginRendering, (VkCommandBuffer, const VkRenderingInfo*), ());
