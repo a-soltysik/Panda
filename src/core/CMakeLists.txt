@@ -4,6 +4,7 @@ panda_add_component(panda_core
     SOURCES
         Panda.cpp
         Camera.cpp
+        Material.cpp
         Math.cpp
         Projection.cpp
         Transform.cpp

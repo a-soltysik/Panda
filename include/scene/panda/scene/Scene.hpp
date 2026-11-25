@@ -233,6 +233,7 @@ public:
     /// @param aspectRatio Finite positive framebuffer width divided by height, supplied each frame.
     /// @return A snapshot retaining its meshes, environment and skybox, or InvalidArgument for a missing camera or invalid pose.
     /// Visible lights retain their optional shadow settings in the returned render snapshot.
+    /// Compatible built-in opaque and masked mesh objects share one draw with per-object instances; blended and custom-program objects remain separate.
     /// WindowRenderer::render() and OffscreenRenderer::render() validate renderer input
     /// and the configured light budget.
     /// Camera/light poses require positive uniform world scale without shear.

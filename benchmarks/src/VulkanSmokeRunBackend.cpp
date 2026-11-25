@@ -256,8 +256,10 @@ void appendDraw(panda::RenderView& view, const panda::Mesh& mesh, glm::mat4 tran
     auto material = panda::Material {};
     material.baseColor = baseColor;
     material.roughness = 0.72F;
-    view.meshes.push_back(
-        {.mesh = mesh, .modelMatrix = transform, .material = std::move(material), .shaderResources = {}});
+    view.meshes.push_back({.mesh = mesh,
+                           .material = std::move(material),
+                           .instances = {panda::MeshInstance {.modelMatrix = transform}},
+                           .shaderResources = {}});
 }
 
 auto createSceneMeshes(const panda::Engine& context) -> std::expected<SceneMeshes, Failure>

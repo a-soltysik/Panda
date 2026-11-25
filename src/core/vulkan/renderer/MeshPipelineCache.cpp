@@ -13,7 +13,9 @@
 #include <expected>
 #include <functional>
 #include <glm/ext/matrix_float3x3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <glm/matrix.hpp>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <panda/diagnostics/Assert.hpp>
@@ -32,6 +34,7 @@
 #include "BuiltinShaders.hpp"
 #include "VulkanError.hpp"
 #include "renderer/ApplicationShaderBindings.hpp"
+#include "renderer/ShaderData.hpp"
 #include "renderer/ShaderProgramState.hpp"
 #include "renderer/ShaderReflection.hpp"
 #include "resources/MeshResource.hpp"
@@ -43,6 +46,7 @@ using detail::checkedCreation;
 namespace
 {
 constexpr auto meshVertexBufferBinding = std::uint32_t {0};
+constexpr auto meshInstanceVertexBufferBinding = std::uint32_t {1};
 constexpr auto dynamicStates = std::array {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
 constexpr auto inputAssembly =
     vk::PipelineInputAssemblyStateCreateInfo {.topology = vk::PrimitiveTopology::eTriangleList};
@@ -283,6 +287,32 @@ struct VertexAttributeSource
     bool enabled = true;
 };
 
+auto meshVertexAttributeSources(const MeshPipelineCache::MeshPipelineKey& key) -> std::array<VertexAttributeSource, 5>
+{
+    using enum VertexAttributeSemantic;
+    return {
+        VertexAttributeSource {.semantic = Position,
+                               .format = vk::Format::eR32G32B32Sfloat,
+                               .offset = key.positionOffset},
+        VertexAttributeSource {.semantic = Normal,
+                               .format = vk::Format::eR32G32B32Sfloat,
+                               .offset = key.normalOffset,
+                               .enabled = key.lit},
+        VertexAttributeSource {.semantic = Tangent,
+                               .format = vk::Format::eR32G32B32A32Sfloat,
+                               .offset = key.tangentOffset,
+                               .enabled = key.hasNormalMap},
+        VertexAttributeSource {.semantic = TexCoord0,
+                               .format = vk::Format::eR32G32Sfloat,
+                               .offset = key.texCoordOffset,
+                               .enabled = key.hasTextureCoordinates},
+        VertexAttributeSource {.semantic = Color,
+                               .format = vk::Format::eR32G32B32A32Sfloat,
+                               .offset = key.colorOffset,
+                               .enabled = key.hasColor}
+    };
+}
+
 auto collectVertexAttributes(std::span<const ShaderInterfaceVariable> inputs,
                              std::span<const VertexAttributeSource> sources,
                              bool onlyReflected = false) -> Result<std::vector<vk::VertexInputAttributeDescription>>
@@ -311,6 +341,125 @@ auto collectVertexAttributes(std::span<const ShaderInterfaceVariable> inputs,
     return attributes;
 }
 
+struct InstanceAttributeSource
+{
+    std::string_view name;
+    vk::Format format;
+    std::uint32_t offset;
+    std::uint32_t matrixColumns {1};
+    bool shadowInput {false};
+};
+
+constexpr auto instanceAttributeSources = std::array {
+    InstanceAttributeSource {.name = "instanceModelMatrix",
+                             .format = vk::Format::eR32G32B32A32Sfloat,
+                             .offset = offsetof(MeshInstanceData, modelMatrix),
+                             .matrixColumns = 4,
+                             .shadowInput = true},
+    InstanceAttributeSource {.name = "instanceNormalColumns",
+                             .format = vk::Format::eR32G32B32A32Sfloat,
+                             .offset = offsetof(MeshInstanceData, normalColumns),
+                             .matrixColumns = 3},
+    InstanceAttributeSource {.name = "instanceTint",
+                             .format = vk::Format::eR32G32B32A32Sfloat,
+                             .offset = offsetof(MeshInstanceData, tint),
+                             .shadowInput = true},
+    InstanceAttributeSource {.name = "instanceMaterialIndex",
+                             .format = vk::Format::eR32Uint,
+                             .offset = offsetof(MeshInstanceData, materialIndex),
+                             .shadowInput = true}
+};
+
+auto isInstanceAttribute(std::string_view name) -> bool
+{
+    return std::ranges::any_of(instanceAttributeSources, [name](const auto& source) {
+        return source.name == name;
+    });
+}
+
+auto meshVertexInputs(std::span<const ShaderInterfaceVariable> inputs) -> std::vector<ShaderInterfaceVariable>
+{
+    auto meshInputs = std::vector<ShaderInterfaceVariable> {};
+    std::ranges::copy_if(inputs, std::back_inserter(meshInputs), [](const auto& input) {
+        return !isInstanceAttribute(input.name);
+    });
+    return meshInputs;
+}
+
+auto isMeshDrawMirrored(const MeshDraw& draw) -> bool
+{
+    return !draw.instances.empty() && glm::determinant(glm::mat3 {draw.instances.front().modelMatrix}) < 0.0F;
+}
+
+auto matchesInstanceAttributeFormat(vk::Format format, ShaderInterfaceFormat reflectedFormat) -> bool
+{
+    if (format == vk::Format::eR32Uint)
+    {
+        return reflectedFormat == ShaderInterfaceFormat::UnsignedInteger;
+    }
+    if (format == vk::Format::eR32Sfloat)
+    {
+        return reflectedFormat == ShaderInterfaceFormat::Float;
+    }
+    return reflectedFormat == ShaderInterfaceFormat::Float4;
+}
+
+auto isCompatibleInstanceInput(const ShaderInterfaceVariable& input, const InstanceAttributeSource& source) -> bool
+{
+    return input.matrixColumns == source.matrixColumns && matchesInstanceAttributeFormat(source.format, input.format);
+}
+
+void appendInstanceAttributeDescriptions(std::vector<vk::VertexInputAttributeDescription>& attributes,
+                                         const ShaderInterfaceVariable& input,
+                                         const InstanceAttributeSource& source)
+{
+    for (auto column = std::uint32_t {}; column < source.matrixColumns; ++column)
+    {
+        attributes.push_back({.location = input.location + column,
+                              .binding = meshInstanceVertexBufferBinding,
+                              .format = source.format,
+                              .offset = source.offset + (column * static_cast<std::uint32_t>(sizeof(glm::vec4)))});
+    }
+}
+
+auto makeInstanceAttributeDescriptions(std::span<const ShaderInterfaceVariable> inputs, bool shadow)
+    -> Result<std::vector<vk::VertexInputAttributeDescription>>
+{
+    auto attributes = std::vector<vk::VertexInputAttributeDescription> {};
+    for (const auto& source : instanceAttributeSources)
+    {
+        if (shadow && !source.shadowInput)
+        {
+            continue;
+        }
+        const auto input = std::ranges::find(inputs, source.name, &ShaderInterfaceVariable::name);
+        if (input == inputs.end())
+        {
+            return std::unexpected {
+                makeError(ErrorCode::InvalidArgument, "Instanced vertex shader is missing an instance input")};
+        }
+        if (!isCompatibleInstanceInput(*input, source))
+        {
+            return std::unexpected {makeError(ErrorCode::InvalidArgument,
+                                              "Instanced vertex shader declares an incompatible instance input")};
+        }
+        appendInstanceAttributeDescriptions(attributes, *input, source);
+    }
+    return attributes;
+}
+
+auto appendInstancedVertexAttributes(std::vector<vk::VertexInputAttributeDescription>& attributes,
+                                     std::span<const ShaderInterfaceVariable> inputs) -> Result<void>
+{
+    auto instanceAttributes = makeInstanceAttributeDescriptions(inputs, false);
+    if (!instanceAttributes)
+    {
+        return std::unexpected {instanceAttributes.error()};
+    }
+    std::ranges::move(*instanceAttributes, std::back_inserter(attributes));
+    return {};
+}
+
 auto shadowVertexAttributes(const MeshPipelineCache::ShadowPipelineKey& key,
                             std::span<const ShaderInterfaceVariable> inputs)
     -> Result<std::vector<vk::VertexInputAttributeDescription>>
@@ -329,7 +478,16 @@ auto shadowVertexAttributes(const MeshPipelineCache::ShadowPipelineKey& key,
                                .offset = key.colorOffset,
                                .enabled = key.hasColor}
     };
-    return collectVertexAttributes(inputs, sources);
+    auto meshInputs = meshVertexInputs(inputs);
+    auto attributes = collectVertexAttributes(meshInputs, sources);
+    if (!attributes || !key.instanced)
+    {
+        return attributes;
+    }
+    return makeInstanceAttributeDescriptions(inputs, true).transform([&](auto instanceAttributes) {
+        std::ranges::move(instanceAttributes, std::back_inserter(*attributes));
+        return std::move(*attributes);
+    });
 }
 
 auto customShadowMeshKey(const MeshPipelineCache::ShadowPipelineKey& key) -> MeshPipelineCache::MeshPipelineKey
@@ -350,48 +508,93 @@ auto customShadowMeshKey(const MeshPipelineCache::ShadowPipelineKey& key) -> Mes
             .customProgram = key.customProgram};
 }
 
+auto meshNormalMapVertexShaderWords(bool hasColor, bool instanced) -> std::span<const std::uint32_t>
+{
+    static constexpr auto variants = std::array {
+        std::array {std::span<const std::uint32_t> {shaders::meshLitPlainNormalVertex},
+                    std::span<const std::uint32_t> {shaders::meshLitPlainNormalInstancedVertex}},
+        std::array {std::span<const std::uint32_t> {shaders::meshLitColorNormalVertex},
+                    std::span<const std::uint32_t> {shaders::meshLitColorNormalInstancedVertex}}
+    };
+    return variants.at(static_cast<std::size_t>(hasColor)).at(static_cast<std::size_t>(instanced));
+}
+
 auto meshVertexShaderWords(const MeshPipelineCache::MeshPipelineKey& key) -> std::span<const std::uint32_t>
 {
     if (key.hasNormalMap)
     {
-        return key.hasColor ? std::span<const std::uint32_t> {shaders::meshLitColorNormalVertex}
-                            : std::span<const std::uint32_t> {shaders::meshLitPlainNormalVertex};
+        return meshNormalMapVertexShaderWords(key.hasColor, key.instanced);
     }
     static constexpr auto variants = std::array {
-        std::span<const std::uint32_t> {shaders::meshUnlitPlainVertex},
-        std::span<const std::uint32_t> {shaders::meshUnlitPlainTextureVertex},
-        std::span<const std::uint32_t> {shaders::meshUnlitColorVertex},
-        std::span<const std::uint32_t> {shaders::meshUnlitColorTextureVertex},
-        std::span<const std::uint32_t> {shaders::meshLitPlainVertex},
-        std::span<const std::uint32_t> {shaders::meshLitPlainTextureVertex},
-        std::span<const std::uint32_t> {shaders::meshLitColorVertex},
-        std::span<const std::uint32_t> {shaders::meshLitColorTextureVertex},
+        std::array {std::span<const std::uint32_t> {shaders::meshUnlitPlainVertex},
+                    std::span<const std::uint32_t> {shaders::meshUnlitPlainInstancedVertex}       },
+        std::array {std::span<const std::uint32_t> {shaders::meshUnlitPlainTextureVertex},
+                    std::span<const std::uint32_t> {shaders::meshUnlitPlainTextureInstancedVertex}},
+        std::array {std::span<const std::uint32_t> {shaders::meshUnlitColorVertex},
+                    std::span<const std::uint32_t> {shaders::meshUnlitColorInstancedVertex}       },
+        std::array {std::span<const std::uint32_t> {shaders::meshUnlitColorTextureVertex},
+                    std::span<const std::uint32_t> {shaders::meshUnlitColorTextureInstancedVertex}},
+        std::array {std::span<const std::uint32_t> {shaders::meshLitPlainVertex},
+                    std::span<const std::uint32_t> {shaders::meshLitPlainInstancedVertex}         },
+        std::array {std::span<const std::uint32_t> {shaders::meshLitPlainTextureVertex},
+                    std::span<const std::uint32_t> {shaders::meshLitPlainTextureInstancedVertex}  },
+        std::array {std::span<const std::uint32_t> {shaders::meshLitColorVertex},
+                    std::span<const std::uint32_t> {shaders::meshLitColorInstancedVertex}         },
+        std::array {std::span<const std::uint32_t> {shaders::meshLitColorTextureVertex},
+                    std::span<const std::uint32_t> {shaders::meshLitColorTextureInstancedVertex}  }
     };
     const auto variantIndex = (static_cast<std::size_t>(key.lit) << 2U) |
                               (static_cast<std::size_t>(key.hasColor) << 1U) |
                               static_cast<std::size_t>(key.hasTextureCoordinates);
+    return variants.at(variantIndex).at(static_cast<std::size_t>(key.instanced));
+}
+
+auto shadowVertexShaderWords(bool hasColor, bool hasTexture, bool instanced) -> std::span<const std::uint32_t>
+{
+    static constexpr auto variants =
+        std::array {std::span<const std::uint32_t> {shaders::shadowVertex},
+                    std::span<const std::uint32_t> {shaders::shadowInstancedVertex},
+                    std::span<const std::uint32_t> {shaders::shadowTextureVertex},
+                    std::span<const std::uint32_t> {shaders::shadowTextureInstancedVertex},
+                    std::span<const std::uint32_t> {shaders::shadowVertexAlphaVertex},
+                    std::span<const std::uint32_t> {shaders::shadowVertexAlphaInstancedVertex},
+                    std::span<const std::uint32_t> {shaders::shadowVertexAlphaTextureVertex},
+                    std::span<const std::uint32_t> {shaders::shadowVertexAlphaTextureInstancedVertex}};
+    const auto variantIndex = (static_cast<std::size_t>(hasColor) << 2U) |
+                              (static_cast<std::size_t>(hasTexture) << 1U) | static_cast<std::size_t>(instanced);
     return variants.at(variantIndex);
 }
 
-auto shadowVertexShaderWords(bool hasColor, bool hasTexture) -> std::span<const std::uint32_t>
-{
-    if (hasColor)
-    {
-        return hasTexture ? std::span<const std::uint32_t> {shaders::shadowVertexAlphaTextureVertex}
-                          : std::span<const std::uint32_t> {shaders::shadowVertexAlphaVertex};
-    }
-    return hasTexture ? std::span<const std::uint32_t> {shaders::shadowTextureVertex}
-                      : std::span<const std::uint32_t> {shaders::shadowVertex};
-}
-
-auto makeVertexInputState(const vk::VertexInputBindingDescription& binding,
+auto makeVertexInputState(std::span<const vk::VertexInputBindingDescription> bindings,
                           std::span<const vk::VertexInputAttributeDescription> attributes)
     -> vk::PipelineVertexInputStateCreateInfo
 {
-    return {.vertexBindingDescriptionCount = 1,
-            .pVertexBindingDescriptions = &binding,
+    return {.vertexBindingDescriptionCount = static_cast<std::uint32_t>(bindings.size()),
+            .pVertexBindingDescriptions = bindings.data(),
             .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size()),
             .pVertexAttributeDescriptions = attributes.data()};
+}
+
+auto meshVertexInputBindings(const MeshPipelineCache::MeshPipelineKey& key)
+    -> std::array<vk::VertexInputBindingDescription, 2>
+{
+    return std::array {
+        vk::VertexInputBindingDescription {.binding = meshVertexBufferBinding,
+                                           .stride = key.vertexStride,
+                                           .inputRate = vk::VertexInputRate::eVertex  },
+        vk::VertexInputBindingDescription {.binding = meshInstanceVertexBufferBinding,
+                                           .stride = static_cast<std::uint32_t>(sizeof(MeshInstanceData)),
+                                           .inputRate = vk::VertexInputRate::eInstance}
+    };
+}
+
+auto meshVertexInputState(const MeshPipelineCache::MeshPipelineKey& key,
+                          const std::array<vk::VertexInputBindingDescription, 2>& bindings,
+                          std::span<const vk::VertexInputAttributeDescription> attributes)
+    -> vk::PipelineVertexInputStateCreateInfo
+{
+    return key.procedural ? vk::PipelineVertexInputStateCreateInfo {}
+                          : makeVertexInputState(std::span {bindings}.first(key.instanced ? 2U : 1U), attributes);
 }
 
 auto makeGraphicsPipelineCreateInfo(const GraphicsPipelineState& state) -> vk::GraphicsPipelineCreateInfo
@@ -526,8 +729,12 @@ MeshPipelineCache::MeshPipelineCache(const vk::raii::Device& device,
 auto MeshPipelineCache::meshShaderLayout(const MeshPipelineKey& key)
     -> Result<std::reference_wrapper<const ShaderProgramLayout>>
 {
-    const auto variant =
-        std::array {key.lit, key.hasColor, key.hasTextureCoordinates, key.hasNormalMap, key.hasEnvironment};
+    const auto variant = std::array {key.lit,
+                                     key.hasColor,
+                                     key.hasTextureCoordinates,
+                                     key.hasNormalMap,
+                                     key.hasEnvironment,
+                                     key.instanced};
     return cachedShaderProgram(_meshShaderLayouts,
                                variant,
                                ShaderProgramRequest {.vertexWords = meshVertexShaderWords(key),
@@ -539,12 +746,13 @@ auto MeshPipelineCache::meshShaderLayout(const MeshPipelineKey& key)
 auto MeshPipelineCache::shadowShaderLayout(const ShadowPipelineKey& key)
     -> Result<std::reference_wrapper<const ShaderProgramLayout>>
 {
-    const auto variant = std::array {key.hasColor, key.hasBaseColorTexture, key.alphaMode == AlphaMode::Mask};
+    const auto variant =
+        std::array {key.hasColor, key.hasBaseColorTexture, key.alphaMode == AlphaMode::Mask, key.instanced};
     return cachedShaderProgram(
         _shadowShaderLayouts,
         variant,
         ShaderProgramRequest {
-            .vertexWords = shadowVertexShaderWords(key.hasColor, key.hasBaseColorTexture),
+            .vertexWords = shadowVertexShaderWords(key.hasColor, key.hasBaseColorTexture, key.instanced),
             .fragmentWords = shadowFragmentShaderWords(key.alphaMode == AlphaMode::Mask, key.hasBaseColorTexture),
             .descriptorSchema = _shaderDescriptorSchema,
             .label = "shadow pipeline"});
@@ -588,6 +796,7 @@ auto MeshPipelineCache::makeMeshPipelineKey(const MeshDraw& draw, bool hasEnviro
             .hasColor = color != nullptr,
             .hasTextureCoordinates = hasTextureCoordinates,
             .hasNormalMap = hasNormalMap,
+            .instanced = !program && !draw.instances.empty(),
             .vertexStride = draw.mesh.getVertexStride(),
             .positionOffset = vertexAttributeOffset(position),
             .normalOffset = vertexAttributeOffset(normal),
@@ -596,7 +805,7 @@ auto MeshPipelineCache::makeMeshPipelineKey(const MeshDraw& draw, bool hasEnviro
             .colorOffset = vertexAttributeOffset(color),
             .renderFace = draw.material.renderFace,
             .alphaMode = draw.material.alphaMode,
-            .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F,
+            .mirrored = isMeshDrawMirrored(draw),
             .hasEnvironment = !program && lit && hasEnvironment,
             .customProgramRevision = program ? program->revision : 0,
             .customProgram = program};
@@ -614,10 +823,7 @@ auto MeshPipelineCache::makeProceduralPipelineKey(const ProceduralDraw& draw) ->
 auto MeshPipelineCache::makeShadowPipelineKey(const MeshDraw& draw) -> ShadowPipelineKey
 {
     auto customProgram = draw.material.shaderProgram.snapshot();
-    if (!hasCustomShadow(customProgram))
-    {
-        customProgram.reset();
-    }
+    customProgram = hasCustomShadow(customProgram) ? customProgram : nullptr;
     const auto* position = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Position);
     const auto* normal = findVertexAttribute(draw.mesh, VertexAttributeSemantic::Normal);
     const auto* texCoord = findVertexAttribute(draw.mesh, VertexAttributeSemantic::TexCoord0);
@@ -632,9 +838,10 @@ auto MeshPipelineCache::makeShadowPipelineKey(const MeshDraw& draw) -> ShadowPip
             .colorOffset = shadowAttributeOffset(color, hasColor),
             .hasColor = hasColor,
             .hasBaseColorTexture = hasBaseColorTexture,
+            .instanced = !draw.material.shaderProgram.isValid() && !draw.instances.empty(),
             .renderFace = draw.material.renderFace,
             .alphaMode = draw.material.alphaMode,
-            .mirrored = glm::determinant(glm::mat3 {draw.modelMatrix}) < 0.0F,
+            .mirrored = isMeshDrawMirrored(draw),
             .hasNormal = customProgram != nullptr && normal != nullptr,
             .hasTangent = customProgram != nullptr && tangent != nullptr,
             .hasTextureCoordinates = customProgram != nullptr && texCoord != nullptr,
@@ -690,6 +897,10 @@ auto MeshPipelineCache::prepareMeshDraws(const RenderView& view, bool hasShadowP
 {
     for (const auto& draw : view.meshes)
     {
+        if (draw.instances.empty())
+        {
+            continue;
+        }
         if (const auto prepared = prepareDraw(draw, view.environment.has_value(), hasShadowPass); !prepared)
         {
             return prepared;
@@ -731,6 +942,10 @@ auto MeshPipelineCache::prepareSkybox() -> std::expected<void, Error>
 
 auto MeshPipelineCache::prepareDraw(const MeshDraw& draw, bool hasEnvironment, bool hasShadowPass) -> Result<void>
 {
+    if (draw.instances.size() > 1 && draw.material.shaderProgram.isValid())
+    {
+        return std::unexpected {makeError(ErrorCode::InvalidArgument, "Custom mesh programs cannot be instanced")};
+    }
     if (draw.material.shaderProgram.isValid())
     {
         return prepareCustomDraw(draw, hasShadowPass);
@@ -889,29 +1104,18 @@ auto MeshPipelineCache::makeVertexAttributeDescriptions(const MeshPipelineKey& k
                                                         std::span<const ShaderInterfaceVariable> vertexInputs)
     -> Result<std::vector<vk::VertexInputAttributeDescription>>
 {
-    using enum VertexAttributeSemantic;
-    const auto sources = std::array {
-        VertexAttributeSource {.semantic = Position,
-                               .format = vk::Format::eR32G32B32Sfloat,
-                               .offset = key.positionOffset},
-        VertexAttributeSource {.semantic = Normal,
-                               .format = vk::Format::eR32G32B32Sfloat,
-                               .offset = key.normalOffset,
-                               .enabled = key.lit},
-        VertexAttributeSource {.semantic = Tangent,
-                               .format = vk::Format::eR32G32B32A32Sfloat,
-                               .offset = key.tangentOffset,
-                               .enabled = key.hasNormalMap},
-        VertexAttributeSource {.semantic = TexCoord0,
-                               .format = vk::Format::eR32G32Sfloat,
-                               .offset = key.texCoordOffset,
-                               .enabled = key.hasTextureCoordinates},
-        VertexAttributeSource {.semantic = Color,
-                               .format = vk::Format::eR32G32B32A32Sfloat,
-                               .offset = key.colorOffset,
-                               .enabled = key.hasColor}
-    };
-    return collectVertexAttributes(vertexInputs, sources, key.customProgram != nullptr);
+    auto attributes = collectVertexAttributes(meshVertexInputs(vertexInputs),
+                                              meshVertexAttributeSources(key),
+                                              key.customProgram != nullptr);
+    if (!attributes || !key.instanced)
+    {
+        return attributes;
+    }
+    if (auto appended = appendInstancedVertexAttributes(*attributes, vertexInputs); !appended)
+    {
+        return std::unexpected {appended.error()};
+    }
+    return attributes;
 }
 
 auto MeshPipelineCache::createPipeline(const MeshPipelineKey& key) -> std::expected<vk::raii::Pipeline, Error>
@@ -975,11 +1179,8 @@ auto MeshPipelineCache::createMeshPipeline(const MeshPipelineKey& key,
                                            std::optional<std::uint32_t> alphaModeSpecializationId) const
     -> std::expected<vk::raii::Pipeline, Error>
 {
-    const auto binding = vk::VertexInputBindingDescription {.binding = meshVertexBufferBinding,
-                                                            .stride = key.vertexStride,
-                                                            .inputRate = vk::VertexInputRate::eVertex};
-    const auto vertexInput =
-        key.procedural ? vk::PipelineVertexInputStateCreateInfo {} : makeVertexInputState(binding, attributes);
+    const auto bindings = meshVertexInputBindings(key);
+    const auto vertexInput = meshVertexInputState(key, bindings, attributes);
     const auto specializationData = FragmentSpecializationData {.alphaMode = static_cast<std::uint32_t>(key.alphaMode)};
     const auto specializationEntry = makeFragmentSpecializationEntry(alphaModeSpecializationId.value_or(0));
     const auto specialization = vk::SpecializationInfo {.mapEntryCount = 1,
@@ -1052,7 +1253,7 @@ auto MeshPipelineCache::createShadowPipeline(const ShadowPipelineKey& key) -> st
     {
         return createCustomShadowPipeline(key);
     }
-    const auto vertexWords = shadowVertexShaderWords(key.hasColor, key.hasBaseColorTexture);
+    const auto vertexWords = shadowVertexShaderWords(key.hasColor, key.hasBaseColorTexture, key.instanced);
     const auto fragmentWords = shadowFragmentShaderWords(key.alphaMode == AlphaMode::Mask, key.hasBaseColorTexture);
     auto programLayout = shadowShaderLayout(key);
     if (!programLayout)
@@ -1113,8 +1314,9 @@ auto MeshPipelineCache::createCustomShadowPipelineWithModules(
     const auto binding = vk::VertexInputBindingDescription {.binding = meshVertexBufferBinding,
                                                             .stride = key.vertexStride,
                                                             .inputRate = vk::VertexInputRate::eVertex};
+    const auto bindings = std::array {binding};
     const auto vertexInput =
-        key.procedural ? vk::PipelineVertexInputStateCreateInfo {} : makeVertexInputState(binding, attributes);
+        key.procedural ? vk::PipelineVertexInputStateCreateInfo {} : makeVertexInputState(bindings, attributes);
     const auto layout =
         _applicationBindings != nullptr ? _applicationBindings->getPipelineLayout(key.customProgram) : _pipelineLayout;
     const auto state = GraphicsPipelineState {.stages = std::span {stages}.first(stageCount),
@@ -1144,10 +1346,15 @@ auto MeshPipelineCache::createShadowPipelineWithModules(const ShadowPipelineKey&
                                                         .pData = &specializationData};
     const auto [stages, stageCount] = makeShadowShaderStages(*modules.vertex, modules.fragment, specialization);
     const auto rendering = vk::PipelineRenderingCreateInfo {.depthAttachmentFormat = _outputCompatibility.depthFormat};
-    const auto binding = vk::VertexInputBindingDescription {.binding = meshVertexBufferBinding,
-                                                            .stride = key.vertexStride,
-                                                            .inputRate = vk::VertexInputRate::eVertex};
-    const auto vertexInput = makeVertexInputState(binding, attributes);
+    const auto bindings = std::array {
+        vk::VertexInputBindingDescription {.binding = meshVertexBufferBinding,
+                                           .stride = key.vertexStride,
+                                           .inputRate = vk::VertexInputRate::eVertex  },
+        vk::VertexInputBindingDescription {.binding = meshInstanceVertexBufferBinding,
+                                           .stride = static_cast<std::uint32_t>(sizeof(MeshInstanceData)),
+                                           .inputRate = vk::VertexInputRate::eInstance}
+    };
+    const auto vertexInput = makeVertexInputState(std::span {bindings}.first(key.instanced ? 2U : 1U), attributes);
     const auto state = GraphicsPipelineState {.stages = std::span {stages}.first(stageCount),
                                               .rendering = rendering,
                                               .multisampling = multisample,

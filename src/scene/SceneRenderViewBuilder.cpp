@@ -1,19 +1,28 @@
 #include "SceneRenderViewBuilder.hpp"
 
+#include <array>
 #include <cstddef>
 #include <expected>
+#include <functional>
+#include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/quaternion_common.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/gtc/matrix_access.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/matrix.hpp>
 #include <panda/base/Error.hpp>
 #include <panda/math/Projection.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/resources/Mesh.hpp>
 #include <panda/scene/Scene.hpp>
+#include <unordered_map>
+#include <utility>
 #include <variant>
+#include <vector>
 
+#include "Hash.hpp"
 #include "Math.hpp"
 #include "Overloaded.hpp"
 #include "SceneState.hpp"
@@ -21,6 +30,7 @@
 
 namespace panda::scene::detail
 {
+using ::panda::detail::combineHash;
 using ::panda::detail::isFinite;
 
 namespace
@@ -53,6 +63,70 @@ auto toRenderLight(const SpotLight& light, glm::vec3 position, glm::vec3 directi
                              .innerConeAngleRadians = light.innerConeAngleRadians,
                              .outerConeAngleRadians = light.outerConeAngleRadians,
                              .shadow = light.shadow};
+}
+
+struct MeshBatchKey
+{
+    const panda::Mesh* mesh;
+    const panda::Material* material;
+    bool mirrored;
+};
+
+struct MeshBatchKeyHash
+{
+    auto operator()(const MeshBatchKey& key) const -> std::size_t
+    {
+        auto seed = std::hash<panda::Mesh> {}(*key.mesh);
+        combineHash(seed, key.material->hashForInstancing());
+        combineHash(seed, key.mirrored);
+        return seed;
+    }
+};
+
+struct MeshBatchKeyEqual
+{
+    auto operator()(const MeshBatchKey& left, const MeshBatchKey& right) const -> bool
+    {
+        return *left.mesh == *right.mesh && left.mirrored == right.mirrored &&
+               left.material->isCompatibleForInstancing(*right.material);
+    }
+};
+
+auto canBatch(const panda::MeshDraw& draw) -> bool
+{
+    return !draw.material.shaderProgram.isValid() && draw.material.alphaMode != panda::AlphaMode::Blend;
+}
+
+auto isMirrored(const panda::MeshDraw& draw) -> bool
+{
+    return glm::determinant(glm::mat3 {draw.instances.front().modelMatrix}) < 0.0F;
+}
+
+void batchMeshDraws(std::vector<panda::MeshDraw>& draws)
+{
+    auto grouped = std::vector<panda::MeshDraw> {};
+    grouped.reserve(draws.size());
+    auto groups = std::unordered_map<MeshBatchKey, std::size_t, MeshBatchKeyHash, MeshBatchKeyEqual> {};
+    for (const auto& draw : draws)
+    {
+        if (!canBatch(draw))
+        {
+            grouped.push_back(draw);
+            continue;
+        }
+        const auto key = MeshBatchKey {.mesh = &draw.mesh, .material = &draw.material, .mirrored = isMirrored(draw)};
+        const auto [group, inserted] = groups.try_emplace(key, grouped.size());
+        if (inserted)
+        {
+            grouped.push_back(draw);
+        }
+        else
+        {
+            grouped.at(group->second).instances.push_back(draw.instances.front());
+        }
+    }
+    groups.clear();
+    draws = std::move(grouped);
 }
 }
 
@@ -139,11 +213,11 @@ auto SceneRenderViewBuilder::appendRenderObject(std::size_t index, RenderView& v
     }
     if (slot.mesh)
     {
-        view.meshes.push_back({.mesh = slot.mesh->mesh,
-                               .modelMatrix = slot.worldMatrix,
-                               .tint = slot.mesh->tint,
-                               .material = slot.mesh->material,
-                               .shaderResources = {}});
+        view.meshes.push_back(
+            {.mesh = slot.mesh->mesh,
+             .material = slot.mesh->material,
+             .instances = {panda::MeshInstance {.modelMatrix = slot.worldMatrix, .tint = slot.mesh->tint}},
+             .shaderResources = {}});
     }
     return appendLight(index, view);
 }
@@ -205,6 +279,7 @@ auto SceneRenderViewBuilder::build(float aspectRatio) -> Result<RenderView>
     {
         return std::unexpected {collected.error()};
     }
+    batchMeshDraws(view.meshes);
     return view;
 }
 }

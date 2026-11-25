@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/ext/vector_uint2.hpp>
@@ -221,7 +222,9 @@ auto makeNormalMapDemoDraw(const SceneMeshes& meshes) -> panda::MeshDraw
                                              .position = {2.0F, 0.0F, 0.0F}
     }),
                                          "Create normal-mapped cube transform");
-    auto draw = panda::MeshDraw {.mesh = meshes.cube, .modelMatrix = transform, .shaderResources = {}};
+    auto draw = panda::MeshDraw {.mesh = meshes.cube,
+                                 .instances = {panda::MeshInstance {.modelMatrix = transform}},
+                                 .shaderResources = {}};
     draw.material.baseColor = {0.55F, 0.55F, 0.55F, 1.0F};
     draw.material.normalTexture = meshes.normalMap;
     draw.material.occlusionTexture = meshes.occlusionMap;
@@ -231,6 +234,11 @@ auto makeNormalMapDemoDraw(const SceneMeshes& meshes) -> panda::MeshDraw
 auto makeTexturedCubeDraw(const SceneMeshes& meshes) -> panda::MeshDraw
 {
     auto draw = panda::MeshDraw {.mesh = meshes.cube, .shaderResources = {}};
+    draw.instances = {
+        panda::MeshInstance {.modelMatrix = glm::translate(glm::mat4 {1.0F}, {-0.65F, 0.0F, 0.0F})},
+        panda::MeshInstance {.modelMatrix = glm::translate(glm::mat4 {1.0F}, {0.65F, 0.0F, 0.0F}),
+                             .tint = {0.72F, 0.9F, 1.0F, 1.0F}}
+    };
     draw.material.baseColorTexture = meshes.baseColorMap;
     draw.material.metallicRoughnessTexture = meshes.metallicRoughnessMap;
     draw.material.emissiveTexture = meshes.emissiveMap;
@@ -249,16 +257,17 @@ auto makeRenderView(const SceneMeshes& meshes) -> panda::RenderView
                                                      .position = {-1.3F, -0.49F, 0.0F}
     }),
                                                  "Create triangle transform");
-    auto triangleDraw =
-        panda::MeshDraw {.mesh = meshes.triangle, .modelMatrix = triangleTransform, .shaderResources = {}};
+    auto triangleDraw = panda::MeshDraw {.mesh = meshes.triangle,
+                                         .instances = {panda::MeshInstance {.modelMatrix = triangleTransform}},
+                                         .shaderResources = {}};
     triangleDraw.material.model = panda::MaterialModel::Unlit;
     const auto cubeDraw = makeTexturedCubeDraw(meshes);
     return panda::RenderView {
         .camera = {},
         .lights = {panda::DirectionalLight {.direction = {-0.55F, -0.6F, -0.58F}, .shadow = panda::ShadowSettings {}}},
         .meshes = {panda::MeshDraw {.mesh = meshes.ground,
-                                    .modelMatrix = groundTransform,
-                                    .tint = {0.65F, 0.67F, 0.7F, 1.0F},
+                                    .instances = {panda::MeshInstance {.modelMatrix = groundTransform,
+                                                                       .tint = {0.65F, 0.67F, 0.7F, 1.0F}}},
                                     .shaderResources = {}},
                    cubeDraw, makeNormalMapDemoDraw(meshes),
                    triangleDraw},

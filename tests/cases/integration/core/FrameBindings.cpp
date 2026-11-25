@@ -61,6 +61,7 @@ using panda::core::vulkan::renderer::FrameBuffers;
 using panda::core::vulkan::renderer::LightRecord;
 using panda::core::vulkan::renderer::MaterialRecord;
 using panda::core::vulkan::renderer::MaterialTextureBindings;
+using panda::core::vulkan::renderer::MeshInstanceData;
 using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::BufferResource;
 using panda::test::fakeHandle;
@@ -709,7 +710,7 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
     material.occlusionStrength = 1.5F;
     auto writes = std::vector<std::vector<std::byte>> {};
     EXPECT_CALL(buffers, writeMapped(_, 0, _))
-        .Times(2)
+        .Times(3)
         .WillRepeatedly([&writes](const BufferResource&, std::uint64_t, std::span<const std::byte> data) {
             writes.emplace_back(data.begin(), data.end());
             return panda::Result<void> {};
@@ -746,8 +747,9 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
     const auto updated = bindings->updateFrame(0, view, shadowView);
 
     ASSERT_TRUE(updated);
-    ASSERT_EQ(writes.size(), 2U);
+    ASSERT_EQ(writes.size(), 3U);
     ASSERT_EQ(writes.at(1).size(), sizeof(MaterialRecord));
+    ASSERT_EQ(writes.at(2).size(), sizeof(MeshInstanceData));
     auto record = MaterialRecord {};
     std::memcpy(&record, writes.at(1).data(), sizeof(record));
     EXPECT_FLOAT_EQ(record.metallic, 1.0F);
@@ -764,6 +766,9 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
     EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.y, 0.4F);
     EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.z, 0.8F);
     EXPECT_FLOAT_EQ(record.emissiveAndNormalScale.w, 3.0F);
+    auto instanceRecord = MeshInstanceData {};
+    std::memcpy(&instanceRecord, writes.at(2).data(), sizeof(instanceRecord));
+    EXPECT_EQ(instanceRecord.materialIndex, 0U);
 }
 
 TEST_F(FrameBindingsTest, CapsAnisotropyAndFallsBackWhenTheFeatureIsUnavailable)
@@ -825,7 +830,7 @@ TEST_F(FrameBindingsTest, WritesAllDirectionalLightsToTheStorageBuffer)
     };
     auto writes = std::vector<std::vector<std::byte>> {};
     EXPECT_CALL(buffers, writeMapped(_, 0, _))
-        .Times(3)
+        .Times(4)
         .WillRepeatedly([&writes](const BufferResource&, std::uint64_t, std::span<const std::byte> data) {
             writes.emplace_back(data.begin(), data.end());
             return panda::Result<void> {};
@@ -834,14 +839,14 @@ TEST_F(FrameBindingsTest, WritesAllDirectionalLightsToTheStorageBuffer)
     const auto updated = bindings->updateFrame(0, view, {});
 
     ASSERT_TRUE(updated);
-    ASSERT_EQ(writes.size(), 3U);
+    ASSERT_EQ(writes.size(), 4U);
     ASSERT_EQ(writes.at(0).size(), sizeof(panda::core::vulkan::renderer::FrameUniform));
-    ASSERT_EQ(writes.at(2).size(), sizeof(LightRecord) * 2U);
+    ASSERT_EQ(writes.at(3).size(), sizeof(LightRecord) * 2U);
     auto uniform = panda::core::vulkan::renderer::FrameUniform {};
     std::memcpy(&uniform, writes.at(0).data(), sizeof(uniform));
     EXPECT_EQ(uniform.lightInfo.x, 2U);
     auto records = std::array<LightRecord, 2> {};
-    std::memcpy(records.data(), writes.at(2).data(), writes.at(2).size());
+    std::memcpy(records.data(), writes.at(3).data(), writes.at(3).size());
     EXPECT_FLOAT_EQ(records.at(0).directionOuterConeCos.y, -1.0F);
     EXPECT_FLOAT_EQ(records.at(0).colorIntensity.y, 0.5F);
     EXPECT_FLOAT_EQ(records.at(0).colorIntensity.w, 3.0F);
@@ -876,7 +881,7 @@ TEST_F(FrameBindingsTest, PacksPointAndSpotLightsWithoutImplicitShadows)
     };
     auto writes = std::vector<std::vector<std::byte>> {};
     EXPECT_CALL(buffers, writeMapped(_, 0, _))
-        .Times(3)
+        .Times(4)
         .WillRepeatedly([&writes](const BufferResource&, std::uint64_t, std::span<const std::byte> data) {
             writes.emplace_back(data.begin(), data.end());
             return panda::Result<void> {};
@@ -885,13 +890,13 @@ TEST_F(FrameBindingsTest, PacksPointAndSpotLightsWithoutImplicitShadows)
     const auto updated = bindings->updateFrame(0, view, {});
 
     ASSERT_TRUE(updated);
-    ASSERT_EQ(writes.size(), 3U);
+    ASSERT_EQ(writes.size(), 4U);
     auto uniform = panda::core::vulkan::renderer::FrameUniform {};
     std::memcpy(&uniform, writes.at(0).data(), sizeof(uniform));
     EXPECT_EQ(uniform.lightInfo.y, 0U);
-    ASSERT_EQ(writes.at(2).size(), sizeof(LightRecord) * 3U);
+    ASSERT_EQ(writes.at(3).size(), sizeof(LightRecord) * 3U);
     auto records = std::array<LightRecord, 3> {};
-    std::memcpy(records.data(), writes.at(2).data(), writes.at(2).size());
+    std::memcpy(records.data(), writes.at(3).data(), writes.at(3).size());
     EXPECT_EQ(records.at(0).type, static_cast<std::uint32_t>(panda::core::vulkan::renderer::ShaderLightType::Point));
     EXPECT_EQ(records.at(0).positionRange, glm::vec4(1.0F, 2.0F, 3.0F, 8.0F));
     EXPECT_FLOAT_EQ(records.at(0).colorIntensity.w, 5.0F);
@@ -1231,7 +1236,7 @@ TEST_F(FrameBindingsTest, UpdatesUnlitViewWithZeroLightBudget)
     view.meshes.front().material.model = panda::MaterialModel::Unlit;
     auto writes = std::vector<std::vector<std::byte>> {};
     EXPECT_CALL(buffers, writeMapped(_, 0, _))
-        .Times(2)
+        .Times(3)
         .WillRepeatedly([&writes](const BufferResource&, std::uint64_t, std::span<const std::byte> data) {
             writes.emplace_back(data.begin(), data.end());
             return panda::Result<void> {};
@@ -1240,7 +1245,7 @@ TEST_F(FrameBindingsTest, UpdatesUnlitViewWithZeroLightBudget)
     const auto updated = (*bindings)->updateFrame(0, view, {});
 
     ASSERT_TRUE(updated);
-    ASSERT_EQ(writes.size(), 2U);
+    ASSERT_EQ(writes.size(), 3U);
     auto uniform = panda::core::vulkan::renderer::FrameUniform {};
     std::memcpy(&uniform, writes.at(0).data(), sizeof(uniform));
     EXPECT_EQ(uniform.lightInfo.x, 0U);

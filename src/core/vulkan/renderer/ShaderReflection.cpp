@@ -288,9 +288,15 @@ auto copyInterfaceVariable(const SpvReflectInterfaceVariable& variable, std::str
     {
         return std::unexpected {shaderError(label, "uses an unsupported interface format")};
     }
+    const auto matrixColumns = std::max(variable.numeric.matrix.column_count, 1U);
+    if (matrixColumns > 1 && variable.numeric.matrix.row_count != 4)
+    {
+        return std::unexpected {shaderError(label, "uses an unsupported matrix interface shape")};
+    }
     return ShaderInterfaceVariable {.name = variable.name != nullptr ? variable.name : "",
                                     .location = variable.location,
-                                    .format = *format};
+                                    .format = *format,
+                                    .matrixColumns = matrixColumns};
 }
 
 auto copyInterfaceVariables(std::span<SpvReflectInterfaceVariable* const> variables, std::string_view label)
@@ -569,7 +575,8 @@ auto validateStageLink(const std::vector<ShaderInterfaceVariable>& vertexOutputs
     for (const auto& input : fragment.inputs)
     {
         const auto output = std::ranges::find(vertexOutputs, input.location, &ShaderInterfaceVariable::location);
-        if (output == vertexOutputs.end() || output->format != input.format)
+        if (output == vertexOutputs.end() || output->format != input.format ||
+            output->matrixColumns != input.matrixColumns)
         {
             return std::unexpected {shaderError(
                 diagnosticLabel,

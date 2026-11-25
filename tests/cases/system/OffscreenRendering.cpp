@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
@@ -33,6 +34,7 @@
 #include <panda/resources/Texture.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
+#include <ranges>
 #include <span>
 #include <string_view>
 #include <test/application_shader/ShaderResources.hpp>
@@ -47,15 +49,8 @@
 
 namespace
 {
-auto createBlendQuad(const panda::Engine& context) -> panda::Result<panda::Mesh>
+auto createUploadedMesh(const panda::Engine& context, const panda::Geometry& geometry) -> panda::Result<panda::Mesh>
 {
-    auto geometry = panda::Geometry {};
-    geometry.vertices = {{.position = {-0.8F, -0.8F, 0.0F}},
-                         {.position = {0.8F, -0.8F, 0.0F}},
-                         {.position = {0.8F, 0.8F, 0.0F}},
-                         {.position = {-0.8F, -0.8F, 0.0F}},
-                         {.position = {0.8F, 0.8F, 0.0F}},
-                         {.position = {-0.8F, 0.8F, 0.0F}}};
     auto mesh = context.getResourceManager().createMeshFromGeometry(geometry);
     if (!mesh)
     {
@@ -82,16 +77,30 @@ auto createBlendQuad(const panda::Engine& context) -> panda::Result<panda::Mesh>
     }
     if (*waited != panda::WaitStatus::Completed)
     {
-        return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Blend quad upload timed out")};
+        return std::unexpected {panda::makeError(panda::ErrorCode::Timeout, "Mesh upload timed out")};
     }
     return mesh;
+}
+
+auto createBlendQuad(const panda::Engine& context) -> panda::Result<panda::Mesh>
+{
+    auto geometry = panda::Geometry {};
+    geometry.vertices = {{.position = {-0.8F, -0.8F, 0.0F}},
+                         {.position = {0.8F, -0.8F, 0.0F}},
+                         {.position = {0.8F, 0.8F, 0.0F}},
+                         {.position = {-0.8F, -0.8F, 0.0F}},
+                         {.position = {0.8F, 0.8F, 0.0F}},
+                         {.position = {-0.8F, 0.8F, 0.0F}}};
+    return createUploadedMesh(context, geometry);
 }
 
 auto makeBlendDraw(const panda::Mesh& mesh, float z, glm::vec4 color) -> panda::MeshDraw
 {
     auto transform = glm::mat4 {1.0F};
     transform[3].z = z;
-    auto draw = panda::MeshDraw {.mesh = mesh, .modelMatrix = transform, .shaderResources = {}};
+    auto draw = panda::MeshDraw {.mesh = mesh,
+                                 .instances = {panda::MeshInstance {.modelMatrix = transform}},
+                                 .shaderResources = {}};
     draw.material.model = panda::MaterialModel::Unlit;
     draw.material.baseColor = color;
     draw.material.renderFace = panda::RenderFace::Both;
@@ -847,6 +856,98 @@ TEST_F(OffscreenRenderBackendSystem, DrawsProceduralInstancesFromNamedStorageBuf
         {.shaderProgram = *program, .shaderResources = {}, .vertexCount = 3, .instanceCount = 0});
     const auto emptyFrame = renderer.render(view, *target);
     ASSERT_TRUE(emptyFrame) << emptyFrame.error().message;
+}
+
+TEST_F(OffscreenRenderBackendSystem, BatchedMeshInstancesMatchSeparateDrawsAndShadows)
+{
+    auto& engine = activeEngine();
+    auto geometry = panda::Geometry {
+        .vertices = {{.position = {-0.8F, -0.8F, 0.0F}, .normal = {0.0F, 0.0F, 1.0F}},
+                     {.position = {0.8F, -0.8F, 0.0F}, .normal = {0.0F, 0.0F, 1.0F}},
+                     {.position = {0.8F, 0.8F, 0.0F}, .normal = {0.0F, 0.0F, 1.0F}},
+                     {.position = {-0.8F, 0.8F, 0.0F}, .normal = {0.0F, 0.0F, 1.0F}}},
+        .indices = std::vector<std::uint16_t> {0, 1, 2, 0, 2, 3}
+    };
+    const auto mesh = createUploadedMesh(engine, geometry);
+    if (hasUnsupportedError(mesh))
+    {
+        GTEST_SKIP() << mesh.error().message;
+    }
+    ASSERT_TRUE(mesh) << mesh.error().message;
+    auto target = engine.getResourceManager().createOffscreenTarget({
+        .extent = {48, 48}
+    });
+    if (hasUnsupportedError(target))
+    {
+        GTEST_SKIP() << target.error().message;
+    }
+    ASSERT_TRUE(target) << target.error().message;
+    const auto camera = makeSkyboxCamera({0.0F, 0.0F, 3.0F}, {0.0F, 0.0F, -0.2F});
+    ASSERT_TRUE(camera) << camera.error().message;
+
+    auto receiver = panda::MeshDraw {.mesh = *mesh, .shaderResources = {}};
+    receiver.instances.front().modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.0F, 0.0F, -0.45F}) *
+                                             glm::scale(glm::mat4 {1.0F}, glm::vec3 {1.8F, 1.8F, 1.0F});
+    receiver.material.baseColor = {0.75F, 0.75F, 0.75F, 1.0F};
+
+    auto batch = panda::MeshDraw {.mesh = *mesh, .shaderResources = {}};
+    batch.material.model = panda::MaterialModel::Unlit;
+    batch.material.renderFace = panda::RenderFace::Both;
+    batch.instances = {
+        panda::MeshInstance {.modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {-0.42F, 0.0F, 0.0F}) *
+                                            glm::scale(glm::mat4 {1.0F}, glm::vec3 {0.28F, 0.28F, 1.0F}),
+                             .tint = {1.0F, 0.0F, 0.0F, 1.0F}},
+        panda::MeshInstance {.modelMatrix = glm::translate(glm::mat4 {1.0F}, glm::vec3 {0.42F, 0.0F, 0.0F}) *
+                                            glm::scale(glm::mat4 {1.0F}, glm::vec3 {0.28F, 0.28F, 1.0F}),
+                             .tint = {0.0F, 1.0F, 0.0F, 1.0F}}
+    };
+    const auto light = panda::DirectionalLight {
+        .direction = {0.45F, 0.0F, -0.89F},
+        .shadow = panda::ShadowSettings {.resolution = 256U}
+    };
+    auto batchView = panda::RenderView {
+        .camera = *camera,
+        .lights = {light},
+        .meshes = {receiver, batch},
+        .environment = {},
+        .skybox = {},
+        .proceduralDraws = {}
+    };
+    const auto& renderer = engine.getOffscreenRenderer();
+    const auto batchedPixels = renderOffscreenPixels(renderer, batchView, *target);
+    ASSERT_TRUE(batchedPixels) << batchedPixels.error().message;
+
+    auto separateView = batchView;
+    separateView.meshes = {receiver};
+    for (const auto& instance : batch.instances)
+    {
+        auto draw = batch;
+        draw.instances = {instance};
+        separateView.meshes.push_back(std::move(draw));
+    }
+    const auto separatePixels = renderOffscreenPixels(renderer, separateView, *target);
+    ASSERT_TRUE(separatePixels) << separatePixels.error().message;
+    EXPECT_EQ(batchedPixels->rgba, separatePixels->rgba);
+
+    const auto redPixels = std::ranges::count_if(std::views::iota(std::size_t {}, batchedPixels->rgba.size() / 4U),
+                                                 [&](const auto pixelIndex) {
+                                                     const auto offset = pixelIndex * 4U;
+                                                     return batchedPixels->rgba.at(offset) > 80U &&
+                                                            batchedPixels->rgba.at(offset + 1U) < 60U;
+                                                 });
+    const auto greenPixels = std::ranges::count_if(std::views::iota(std::size_t {}, batchedPixels->rgba.size() / 4U),
+                                                   [&](const auto pixelIndex) {
+                                                       const auto offset = pixelIndex * 4U;
+                                                       return batchedPixels->rgba.at(offset + 1U) > 80U &&
+                                                              batchedPixels->rgba.at(offset) < 60U;
+                                                   });
+    EXPECT_GT(redPixels, 0U);
+    EXPECT_GT(greenPixels, 0U);
+
+    std::get<panda::DirectionalLight>(batchView.lights.front()).shadow.reset();
+    const auto unshadowedPixels = renderOffscreenPixels(renderer, batchView, *target);
+    ASSERT_TRUE(unshadowedPixels) << unshadowedPixels.error().message;
+    EXPECT_NE(batchedPixels->rgba, unshadowedPixels->rgba);
 }
 
 TEST_F(OffscreenRenderBackendSystem, ReadsBlendedPixelsIndependentOfInputDrawOrder)

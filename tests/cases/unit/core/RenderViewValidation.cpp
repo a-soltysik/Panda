@@ -6,12 +6,14 @@
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <limits>
 #include <panda/base/Error.hpp>
 #include <panda/math/Projection.hpp>
 #include <panda/rendering/RenderView.hpp>
+#include <panda/rendering/ShaderResources.hpp>
 
 namespace
 {
@@ -165,7 +167,8 @@ TEST(RenderViewValidation, AcceptsLargeOrthographicProjection)
 TEST(RenderViewValidation, RejectsSingularModel)
 {
     auto view = RenderView {};
-    view.meshes.push_back({.mesh = {}, .modelMatrix = glm::mat4 {0.0F}, .shaderResources = {}});
+    view.meshes.push_back(
+        {.mesh = {}, .instances = {panda::MeshInstance {.modelMatrix = glm::mat4 {0.0F}}}, .shaderResources = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 }
 
@@ -173,7 +176,7 @@ TEST(RenderViewValidation, RejectsEachNegativeTintChannelAndNonFiniteTint)
 {
     auto view = RenderView {};
     view.meshes.push_back({});
-    auto& tint = view.meshes.back().tint;
+    auto& tint = view.meshes.back().instances.front().tint;
     const auto rejectNegative = [&view](float& component) {
         component = -1.0F;
         EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
@@ -193,14 +196,31 @@ TEST(RenderViewValidation, RejectsNonAffineAndNonInvertibleModels)
     auto view = RenderView {};
     auto model = glm::mat4 {1.0F};
     model[0][3] = 1.0F;
-    view.meshes.push_back({.mesh = {}, .modelMatrix = model, .shaderResources = {}});
+    view.meshes.push_back(
+        {.mesh = {}, .instances = {panda::MeshInstance {.modelMatrix = model}}, .shaderResources = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
 
     view.meshes.clear();
     model = glm::mat4 {1.0F};
     model[0][0] = 1.0e-40F;
-    view.meshes.push_back({.mesh = {}, .modelMatrix = model, .shaderResources = {}});
+    view.meshes.push_back(
+        {.mesh = {}, .instances = {panda::MeshInstance {.modelMatrix = model}}, .shaderResources = {}});
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+}
+
+TEST(RenderViewValidation, AllowsEmptyInstancesAndRequiresOneWindingPerDraw)
+{
+    auto view = RenderView {};
+    view.meshes.emplace_back();
+    view.meshes.front().instances.clear();
+    EXPECT_TRUE(validateRenderViewData(view));
+
+    view.meshes.front().instances = {panda::MeshInstance {}, panda::MeshInstance {}};
+    view.meshes.front().instances.back().modelMatrix[0][0] = -1.0F;
+    EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+
+    view.meshes.front().instances.front().modelMatrix[0][0] = -1.0F;
+    EXPECT_TRUE(validateRenderViewData(view));
 }
 
 TEST(RenderViewValidation, RejectsNonFiniteMaterialValuesAndUnknownModel)
@@ -291,4 +311,20 @@ TEST(RenderViewValidation, ValidatesAlphaModeAndCutoff)
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     material.alphaMode = static_cast<panda::AlphaMode>(255);
     EXPECT_EQ(validateRenderViewData(view).error().code, ErrorCode::InvalidArgument);
+}
+
+TEST(Material, InstancingHashMatchesCompatibilityState)
+{
+    auto first = panda::Material {};
+    auto second = first;
+    first.shaderResources =
+        panda::ShaderResources {{{.name = "first", .resource = panda::ShaderUniformBlock {.bytes = {std::byte {1}}}}}};
+    second.shaderResources =
+        panda::ShaderResources {{{.name = "second", .resource = panda::ShaderUniformBlock {.bytes = {std::byte {2}}}}}};
+
+    EXPECT_TRUE(first.isCompatibleForInstancing(second));
+    EXPECT_EQ(first.hashForInstancing(), second.hashForInstancing());
+
+    second.baseColor.r = 0.5F;
+    EXPECT_FALSE(first.isCompatibleForInstancing(second));
 }

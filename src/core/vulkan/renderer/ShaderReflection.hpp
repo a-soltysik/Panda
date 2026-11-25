@@ -63,6 +63,7 @@ struct ShaderInterfaceVariable
     std::string name;
     std::uint32_t location {};
     ShaderInterfaceFormat format {ShaderInterfaceFormat::Float};
+    std::uint32_t matrixColumns {1};
     friend auto operator==(const ShaderInterfaceVariable&, const ShaderInterfaceVariable&) -> bool = default;
 };
 

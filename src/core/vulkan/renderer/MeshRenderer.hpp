@@ -81,6 +81,7 @@ private:
         const MeshDraw* draw {};
         std::uint32_t materialIndex {};
         float cameraDepth {};
+        std::size_t drawIndex {};
     };
 
     struct DrawPass
@@ -88,6 +89,7 @@ private:
         bool shadowPass {false};
         std::uint32_t materialIndex {};
         bool hasEnvironment {false};
+        std::size_t drawIndex {};
     };
 
     explicit MeshRenderer(const MeshRendererCreateInfo& info);
@@ -117,12 +119,20 @@ private:
     void bindTextureDescriptors(vk::CommandBuffer command,
                                 std::size_t frameIndex,
                                 const MeshDraw& draw,
-                                DrawPass pass) const;
+                                const DrawPass& pass) const;
     void bindApplicationDrawResources(vk::CommandBuffer command,
                                       std::size_t frameIndex,
                                       const MeshDraw& draw,
-                                      DrawPass pass) const;
-    void recordDraw(vk::CommandBuffer command, std::size_t frameIndex, const MeshDraw& draw, DrawPass pass) const;
+                                      const DrawPass& pass) const;
+    void recordDraw(vk::CommandBuffer command,
+                    std::size_t frameIndex,
+                    const MeshDraw& draw,
+                    const DrawPass& pass) const;
+    void recordCustomShaderMeshDraw(vk::CommandBuffer command, const MeshDraw& draw, const DrawPass& pass) const;
+    void recordInstancedMeshDraw(vk::CommandBuffer command,
+                                 std::size_t frameIndex,
+                                 const MeshDraw& draw,
+                                 const DrawPass& pass) const;
     void recordProceduralDraw(vk::CommandBuffer command,
                               std::size_t frameIndex,
                               const ProceduralDraw& draw,
@@ -133,7 +143,8 @@ private:
                                     std::size_t applicationDrawIndex) const;
     static void recordMeshDraw(vk::CommandBuffer command,
                                const ::panda::detail::MeshResource& mesh,
-                               std::uint32_t materialIndex);
+                               std::uint32_t instanceCount,
+                               std::uint32_t firstInstance);
 
     vk::PhysicalDevice _physicalDevice;
     const vk::raii::Device& _device;

@@ -77,12 +77,14 @@ auto createView(const panda::Mesh& cube, const panda::ShaderProgram& gyroid) -> 
         .camera = createCamera(),
         .lights = {panda::DirectionalLight {}},
         .meshes = {{.mesh = cube,
-                    .modelMatrix = glm::translate(glm::mat4 {1.0F}, {-0.78F, 0.0F, 0.0F}) * rotation,
                     .material = gyroidMaterial,
+                    .instances = {panda::MeshInstance {
+                        .modelMatrix = glm::translate(glm::mat4 {1.0F}, {-0.78F, 0.0F, 0.0F}) * rotation}},
                     .shaderResources = {}},
                    {.mesh = cube,
-                    .modelMatrix = glm::translate(glm::mat4 {1.0F}, {0.78F, 0.0F, 0.0F}) * rotation,
                     .material = litMaterial,
+                    .instances = {panda::MeshInstance {
+                        .modelMatrix = glm::translate(glm::mat4 {1.0F}, {0.78F, 0.0F, 0.0F}) * rotation}},
                     .shaderResources = {}}},
         .environment = {},
         .skybox = {},

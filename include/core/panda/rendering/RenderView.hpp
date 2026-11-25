@@ -3,6 +3,7 @@
 /// @file
 /// Application-owned camera, lighting and mesh draw data.
 
+#include <cstddef>
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/vec3.hpp>
@@ -51,6 +52,7 @@ enum class AlphaMode : std::uint8_t
 };
 
 /// @brief Program selection and material values shared by mesh draws.
+// NOLINTBEGIN(misc-non-private-member-variables-in-classes)
 struct Material
 {
     /// Direct GGX lighting or tone-mapped base color without lighting.
@@ -95,7 +97,13 @@ struct Material
     ShaderProgram shaderProgram;
     /// Default named application bindings for the custom camera program.
     ShaderResources shaderResources;
+    /// @brief Compares the built-in material state used to group mesh instances.
+    [[nodiscard]] auto isCompatibleForInstancing(const Material& other) const noexcept -> bool;
+    /// @brief Hashes the built-in material state used to group mesh instances.
+    [[nodiscard]] auto hashForInstancing() const noexcept -> std::size_t;
 };
+
+// NOLINTEND(misc-non-private-member-variables-in-classes)
 
 /// @brief Camera data for one rendered view.
 struct RenderCamera
@@ -104,6 +112,15 @@ struct RenderCamera
     glm::mat4 viewProjection {1.0F};
     /// World-space camera position in meters.
     glm::vec3 position {};
+};
+
+/// @brief One object-to-world transform and tint for a shared mesh draw.
+struct MeshInstance
+{
+    /// Full transform from mesh-local to world space in column-major order.
+    glm::mat4 modelMatrix {1.0F};
+    /// Linear RGBA modulation multiplied by material and vertex color.
+    glm::vec4 tint {1.0F, 1.0F, 1.0F, 1.0F};
 };
 
 /// @brief Shadow quality settings for one light.
@@ -185,17 +202,16 @@ struct EnvironmentLighting
     Texture specularRadiance;
 };
 
-/// @brief One uploaded mesh with an object-to-world transform, linear tint and material.
+/// @brief One uploaded mesh and material shared by its instances.
 struct MeshDraw
 {
     /// Retained GPU mesh with attributes compatible with its material.
     Mesh mesh;
-    /// Full object-to-world transform in column-major order.
-    glm::mat4 modelMatrix {1.0F};
-    /// Linear RGBA per-draw modulation multiplied by material and vertex color.
-    glm::vec4 tint {1.0F, 1.0F, 1.0F, 1.0F};
     /// Material values and program selection for this mesh.
     Material material {};
+    /// Object transforms and tints sharing this mesh, material and bindings. Defaults to one identity instance; an
+    /// empty list emits no draw.
+    std::vector<MeshInstance> instances {MeshInstance {}};
     /// Optional replacement for the material's entire application binding snapshot for this draw.
     std::optional<ShaderResources> shaderResources;
 };

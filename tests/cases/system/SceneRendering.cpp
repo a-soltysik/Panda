@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <glm/ext/matrix_float3x3.hpp>
+#include <glm/matrix.hpp>
 #include <optional>
 #include <panda/Engine.hpp>
 #include <panda/base/Error.hpp>
@@ -72,7 +74,7 @@ TEST_F(SceneRenderingSystem, BuildsHeadlessSnapshotAndRetainsDeletedObjectMesh)
     const auto view = moved.createRenderView(1.5F);
     ASSERT_TRUE(view) << view.error().message;
     ASSERT_EQ(view->meshes.size(), 1);
-    EXPECT_EQ(view->meshes.front().modelMatrix[3].x, 2.0F);
+    EXPECT_EQ(view->meshes.front().instances.front().modelMatrix[3].x, 2.0F);
     EXPECT_FLOAT_EQ(view->meshes.front().material.metallic, 0.75F);
     EXPECT_FLOAT_EQ(view->meshes.front().material.roughness, 0.25F);
     ASSERT_TRUE(moved.destroyEntity(*object));
@@ -81,6 +83,64 @@ TEST_F(SceneRenderingSystem, BuildsHeadlessSnapshotAndRetainsDeletedObjectMesh)
     const auto empty = moved.createRenderView(1.5F);
     ASSERT_TRUE(empty);
     EXPECT_TRUE(empty->meshes.empty());
+}
+
+TEST_F(SceneRenderingSystem, BatchesCompatibleOpaqueObjectsAndKeepsBlendOrdering)
+{
+    auto scene = panda::scene::Scene {};
+    selectCamera(scene);
+    const auto mesh =
+        activeEngine().getResourceManager().createMeshFromGeometry(panda::test::makeTestTriangleGeometry());
+    ASSERT_TRUE(mesh);
+
+    const auto first = scene.createEntity({.name = {}, .transform = {.position = {-1.0F, 0.0F, 0.0F}}});
+    const auto second = scene.createEntity({.name = {}, .transform = {.position = {1.0F, 0.0F, 0.0F}}});
+    const auto differentMaterial = scene.createEntity({});
+    const auto mirrored = scene.createEntity({.name = {}, .transform = {.scale = {-1.0F, 1.0F, 1.0F}}});
+    const auto firstBlend = scene.createEntity({.name = {}, .transform = {.position = {-0.5F, 0.0F, 0.0F}}});
+    const auto secondBlend = scene.createEntity({.name = {}, .transform = {.position = {0.5F, 0.0F, 0.0F}}});
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    ASSERT_TRUE(differentMaterial);
+    ASSERT_TRUE(mirrored);
+    ASSERT_TRUE(firstBlend);
+    ASSERT_TRUE(secondBlend);
+
+    ASSERT_TRUE(scene.setMesh(*first,
+                              panda::scene::MeshInstance {
+                                  .mesh = *mesh,
+                                  .tint = {1.0F, 0.0F, 0.0F, 1.0F}
+    }));
+    ASSERT_TRUE(scene.setMesh(*second,
+                              panda::scene::MeshInstance {
+                                  .mesh = *mesh,
+                                  .tint = {0.0F, 1.0F, 0.0F, 1.0F}
+    }));
+    auto changedMaterial = panda::scene::MeshInstance {.mesh = *mesh};
+    changedMaterial.material.baseColor = {0.5F, 0.5F, 0.5F, 1.0F};
+    ASSERT_TRUE(scene.setMesh(*differentMaterial, changedMaterial));
+    ASSERT_TRUE(scene.setMesh(*mirrored, panda::scene::MeshInstance {.mesh = *mesh}));
+    auto blended = panda::scene::MeshInstance {.mesh = *mesh};
+    blended.material.alphaMode = panda::AlphaMode::Blend;
+    ASSERT_TRUE(scene.setMesh(*firstBlend, blended));
+    ASSERT_TRUE(scene.setMesh(*secondBlend, blended));
+
+    const auto view = scene.createRenderView(1.0F);
+
+    ASSERT_TRUE(view) << view.error().message;
+    ASSERT_EQ(view->meshes.size(), 5U);
+    ASSERT_EQ(view->meshes.at(0).instances.size(), 2U);
+    EXPECT_FLOAT_EQ(view->meshes.at(0).instances.at(0).modelMatrix[3].x, -1.0F);
+    EXPECT_FLOAT_EQ(view->meshes.at(0).instances.at(1).modelMatrix[3].x, 1.0F);
+    EXPECT_EQ(view->meshes.at(0).instances.at(0).tint, (glm::vec4 {1.0F, 0.0F, 0.0F, 1.0F}));
+    EXPECT_EQ(view->meshes.at(0).instances.at(1).tint, (glm::vec4 {0.0F, 1.0F, 0.0F, 1.0F}));
+    EXPECT_EQ(view->meshes.at(1).material.baseColor, (glm::vec4 {0.5F, 0.5F, 0.5F, 1.0F}));
+    EXPECT_EQ(view->meshes.at(2).instances.size(), 1U);
+    EXPECT_LT(glm::determinant(glm::mat3 {view->meshes.at(2).instances.front().modelMatrix}), 0.0F);
+    EXPECT_EQ(view->meshes.at(3).material.alphaMode, panda::AlphaMode::Blend);
+    EXPECT_EQ(view->meshes.at(4).material.alphaMode, panda::AlphaMode::Blend);
+    EXPECT_EQ(view->meshes.at(3).instances.size(), 1U);
+    EXPECT_EQ(view->meshes.at(4).instances.size(), 1U);
 }
 
 TEST_F(SceneRenderingSystem, StartsEmptyAndRendersExplicitlyCreatedCameraAndLight)

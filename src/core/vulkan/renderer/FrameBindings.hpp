@@ -61,6 +61,8 @@ public:
     [[nodiscard]] auto getShadowAtlasPlan(std::size_t frameIndex) const noexcept -> const ShadowAtlasPlan&;
     [[nodiscard]] auto getShadowViewOffset(std::size_t frameIndex, std::uint32_t shadowViewIndex) const
         -> std::uint32_t;
+    [[nodiscard]] auto getMeshInstanceBuffer(std::size_t frameIndex) const -> vk::Buffer;
+    [[nodiscard]] auto getMeshInstanceOffset(std::size_t frameIndex, std::size_t drawIndex) const -> vk::DeviceSize;
     [[nodiscard]] auto getEffectiveAnisotropy(TextureFilteringPreset preset) const noexcept -> float;
     [[nodiscard]] auto updateFrame(std::size_t frameIndex, const RenderView& view, vk::ImageView shadowView)
         -> std::expected<void, Error>;

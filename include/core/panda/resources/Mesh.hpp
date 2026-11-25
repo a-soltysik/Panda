@@ -3,12 +3,25 @@
 /// @file
 /// Shared ownership of vertex and optional index buffers.
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <panda/geometry/VertexLayout.hpp>
 #include <span>
 #include <vector>
+
+namespace panda
+{
+class Mesh;
+}
+
+namespace std
+{
+template <>
+struct hash<panda::Mesh>;
+}
 
 namespace panda
 {
@@ -70,6 +83,8 @@ public:
     ~Mesh();
     /// @brief Reports whether this handle retains a mesh.
     [[nodiscard]] auto isValid() const noexcept -> bool;
+    /// @brief Compares whether two handles retain the same mesh resource.
+    [[nodiscard]] auto operator==(const Mesh& other) const noexcept -> bool;
     /// @brief Returns the vertex count, or zero for an empty handle.
     [[nodiscard]] auto getVertexCount() const noexcept -> std::uint32_t;
     /// @brief Returns the vertex stride in bytes, or zero for an empty handle.
@@ -91,7 +106,21 @@ public:
 private:
     friend class ResourceManager;
     friend class detail::MeshResource;
+    friend struct std::hash<panda::Mesh>;
     explicit Mesh(std::shared_ptr<detail::MeshResource> resource);
     std::shared_ptr<detail::MeshResource> _resource;
+};
+}
+
+namespace std
+{
+template <>
+/// @brief Hashes Mesh handles for unordered containers.
+struct hash<panda::Mesh>
+{
+    /// @brief Computes a hash consistent with Mesh equality.
+    /// @param mesh Mesh handle to hash.
+    /// @return Hash value for the handle's resource identity.
+    [[nodiscard]] auto operator()(const panda::Mesh& mesh) const noexcept -> std::size_t;
 };
 }

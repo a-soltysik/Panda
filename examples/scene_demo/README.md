@@ -11,6 +11,8 @@ from 0 to 1.6 m. Horizontal position, rotation and scale remain fixed. Independe
 the group rotates around Y at 0.3 radians per second. `animateWave()` demonstrates
 per-object animation and `animateGroup()` demonstrates parent animation; their
 transforms compose automatically into the world matrices used by the renderer.
+The seven cubes share one mesh and material, so each snapshot groups them into one draw with seven instances; their
+different transforms and tints remain per-instance.
 
 The scene starts empty. The application explicitly creates its camera and
 directional, point and spot light entities, attaches their components and selects the camera. It

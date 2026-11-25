@@ -146,6 +146,16 @@ auto FrameBindings::getShadowViewOffset(std::size_t frameIndex, std::uint32_t sh
     return _buffers.shadowViewOffset(shadowViewIndex);
 }
 
+auto FrameBindings::getMeshInstanceBuffer(std::size_t frameIndex) const -> vk::Buffer
+{
+    return _buffers.meshInstanceBuffer(frameIndex);
+}
+
+auto FrameBindings::getMeshInstanceOffset(std::size_t frameIndex, std::size_t drawIndex) const -> vk::DeviceSize
+{
+    return _buffers.meshInstanceOffset(frameIndex, drawIndex);
+}
+
 auto FrameBindings::getEffectiveAnisotropy(TextureFilteringPreset preset) const noexcept -> float
 {
     return _textures.getEffectiveAnisotropy(preset);

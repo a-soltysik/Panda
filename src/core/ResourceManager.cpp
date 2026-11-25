@@ -2,7 +2,6 @@
 #include "vulkan/VulkanHpp.hpp" // IWYU pragma: keep
 // clang-format on
 
-#include <atomic>
 #include <cstdint>
 #include <expected>
 #include <limits>
@@ -140,7 +139,7 @@ auto ResourceManager::reloadShaderProgram(const ShaderProgram& program, const Pr
             return std::unexpected {
                 makeError(ErrorCode::InvalidArgument, "Shader program reload changes its reflected interface")};
         }
-        program._identity->current.store(next, std::memory_order_release);
+        program._identity->current = next;
         return {};
     });
 }

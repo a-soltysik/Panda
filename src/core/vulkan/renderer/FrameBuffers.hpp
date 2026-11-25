@@ -43,6 +43,8 @@ public:
     [[nodiscard]] auto initializeFrameBuffers() -> Result<void>;
     [[nodiscard]] auto update(std::size_t index, const RenderView& view, const ShadowAtlasPlan& plan) -> Result<void>;
     [[nodiscard]] auto descriptors(std::size_t index) const -> FrameBufferDescriptors;
+    [[nodiscard]] auto meshInstanceBuffer(std::size_t index) const -> vk::Buffer;
+    [[nodiscard]] auto meshInstanceOffset(std::size_t index, std::size_t drawIndex) const -> vk::DeviceSize;
     [[nodiscard]] auto shadowViewOffset(std::uint32_t index) const noexcept -> std::uint32_t;
 
 private:
@@ -53,10 +55,13 @@ private:
         std::shared_ptr<::panda::detail::BufferResource> lightBuffer;
         std::shared_ptr<::panda::detail::BufferResource> shadowBuffer;
         std::shared_ptr<::panda::detail::BufferResource> shadowViewBuffer;
+        std::shared_ptr<::panda::detail::BufferResource> meshInstanceBuffer;
+        std::vector<vk::DeviceSize> meshInstanceOffsets;
         std::uint64_t materialBufferCapacity {0};
         std::uint64_t lightBufferCapacity {0};
         std::uint64_t shadowBufferCapacity {0};
         std::uint64_t shadowViewBufferCapacity {0};
+        std::uint64_t meshInstanceBufferCapacity {0};
     };
 
     [[nodiscard]] auto initializeFrameBuffersForSlot(FrameResources& frame) -> std::expected<void, Error>;
@@ -69,6 +74,9 @@ private:
     [[nodiscard]] static auto writeFrameUniform(FrameResources& frame, const RenderView& view, std::uint32_t lightCount)
         -> std::expected<void, Error>;
     [[nodiscard]] auto ensureMaterialBuffer(FrameResources& frame, std::size_t drawCount) -> std::expected<void, Error>;
+    [[nodiscard]] auto writeMeshInstanceRecords(FrameResources& frame, const RenderView& view)
+        -> std::expected<void, Error>;
+    [[nodiscard]] auto writeMeshInstanceBuffer(FrameResources& frame) -> std::expected<void, Error>;
     [[nodiscard]] auto ensureLightBuffer(FrameResources& frame, std::size_t lightCount) -> std::expected<void, Error>;
     [[nodiscard]] auto ensureShadowBuffers(FrameResources& frame, std::size_t shadowViewCount)
         -> std::expected<void, Error>;
@@ -88,6 +96,7 @@ private:
     std::uint64_t _shadowViewStride;
     std::vector<FrameResources> _frames;
     std::vector<MaterialRecord> _materialRecords;
+    std::vector<MeshInstanceData> _meshInstanceRecords;
     std::vector<LightRecord> _lightRecords;
 };
 }

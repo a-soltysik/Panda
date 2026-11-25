@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <glm/ext/matrix_float3x4.hpp>
@@ -57,6 +58,15 @@ struct alignas(16) DrawConstants
     glm::vec4 tint;
 };
 
+struct alignas(16) MeshInstanceData
+{
+    glm::mat4 modelMatrix;
+    glm::mat3x4 normalColumns;
+    glm::vec4 tint;
+    std::uint32_t materialIndex {};
+    std::array<std::uint32_t, 3> padding {};
+};
+
 struct alignas(16) MaterialRecord
 {
     float metallic {};
@@ -95,6 +105,10 @@ static_assert(static_cast<std::uint32_t>(ShaderLightType::Spot) == PANDA_LIGHT_T
 static_assert(sizeof(DrawConstants) == 128);
 static_assert(offsetof(DrawConstants, normalColumns) == 64);
 static_assert(offsetof(DrawConstants, tint) == 112);
+static_assert(sizeof(MeshInstanceData) == 144);
+static_assert(offsetof(MeshInstanceData, normalColumns) == 64);
+static_assert(offsetof(MeshInstanceData, tint) == 112);
+static_assert(offsetof(MeshInstanceData, materialIndex) == 128);
 static_assert(offsetof(MaterialRecord, metallic) == 0);
 static_assert(offsetof(MaterialRecord, roughness) == 4);
 static_assert(offsetof(MaterialRecord, isLit) == 8);

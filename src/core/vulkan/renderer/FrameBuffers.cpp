@@ -13,6 +13,8 @@
 #include <expected>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_access.hpp>
+#include <glm/matrix.hpp>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -38,6 +40,20 @@ auto shadowViewStride(std::uint64_t alignment) -> std::uint64_t
     const auto matrixSize = sizeof(glm::mat4);
     const auto effectiveAlignment = std::max(alignment, std::uint64_t {1});
     return matrixSize + ((effectiveAlignment - (matrixSize % effectiveAlignment)) % effectiveAlignment);
+}
+
+auto makeMeshInstanceData(const MeshInstance& instance, const Material& material, std::uint32_t materialIndex)
+    -> MeshInstanceData
+{
+    const auto normalMatrix = glm::transpose(glm::inverse(glm::mat3 {instance.modelMatrix}));
+    return {
+        .modelMatrix = instance.modelMatrix,
+        .normalColumns = {glm::vec4 {glm::column(normalMatrix, 0), 0.0F},
+                          glm::vec4 {glm::column(normalMatrix, 1), 0.0F},
+                          glm::vec4 {glm::column(normalMatrix, 2), 0.0F}},
+        .tint = instance.tint * material.baseColor,
+        .materialIndex = materialIndex
+    };
 }
 
 constexpr auto ambientIntensity = 0.06F;
@@ -175,6 +191,16 @@ auto FrameBuffers::descriptors(std::size_t index) const -> FrameBufferDescriptor
         .shadows = {.buffer = frame.shadowBuffer->getNative(),     .range = frame.shadowBufferCapacity  },
         .shadowView = {.buffer = frame.shadowViewBuffer->getNative(), .range = sizeof(glm::mat4)           }
     };
+}
+
+auto FrameBuffers::meshInstanceBuffer(std::size_t index) const -> vk::Buffer
+{
+    return _frames.at(index).meshInstanceBuffer->getNative();
+}
+
+auto FrameBuffers::meshInstanceOffset(std::size_t index, std::size_t drawIndex) const -> vk::DeviceSize
+{
+    return _frames.at(index).meshInstanceOffsets.at(drawIndex);
 }
 
 auto FrameBuffers::shadowViewOffset(std::uint32_t index) const noexcept -> std::uint32_t
@@ -319,6 +345,48 @@ auto FrameBuffers::writeMaterialRecords(FrameResources& frame, const RenderView&
     return frame.materialBuffer->writeMapped(0, std::as_bytes(std::span {_materialRecords}));
 }
 
+auto FrameBuffers::writeMeshInstanceRecords(FrameResources& frame, const RenderView& view) -> std::expected<void, Error>
+{
+    _meshInstanceRecords.clear();
+    frame.meshInstanceOffsets.clear();
+    frame.meshInstanceOffsets.reserve(view.meshes.size());
+    for (std::size_t drawIndex = 0; drawIndex < view.meshes.size(); ++drawIndex)
+    {
+        const auto& draw = view.meshes.at(drawIndex);
+        frame.meshInstanceOffsets.push_back(_meshInstanceRecords.size() * sizeof(MeshInstanceData));
+        if (draw.instances.empty() || draw.material.shaderProgram.isValid())
+        {
+            continue;
+        }
+        std::ranges::transform(draw.instances, std::back_inserter(_meshInstanceRecords), [&](const auto& instance) {
+            return makeMeshInstanceData(instance, draw.material, static_cast<std::uint32_t>(drawIndex));
+        });
+    }
+    return writeMeshInstanceBuffer(frame);
+}
+
+auto FrameBuffers::writeMeshInstanceBuffer(FrameResources& frame) -> std::expected<void, Error>
+{
+    if (_meshInstanceRecords.empty())
+    {
+        return {};
+    }
+    if (_meshInstanceRecords.size() > std::numeric_limits<vk::DeviceSize>::max() / sizeof(MeshInstanceData))
+    {
+        return std::unexpected {makeError(ErrorCode::ResourceExhausted, "Mesh instances exceed Vulkan buffer limits")};
+    }
+    const auto requiredCapacity = _meshInstanceRecords.size() * sizeof(MeshInstanceData);
+    if (auto allocated = ensureBufferCapacity(frame.meshInstanceBuffer,
+                                              frame.meshInstanceBufferCapacity,
+                                              requiredCapacity,
+                                              vk::BufferUsageFlagBits::eVertexBuffer);
+        !allocated)
+    {
+        return allocated;
+    }
+    return frame.meshInstanceBuffer->writeMapped(0, std::as_bytes(std::span {_meshInstanceRecords}));
+}
+
 auto FrameBuffers::writeLightRecords(FrameResources& frame, const RenderView& view, const ShadowAtlasPlan& plan)
     -> std::expected<void, Error>
 {
@@ -371,6 +439,9 @@ auto FrameBuffers::update(std::size_t index, const RenderView& view, const Shado
         })
         .and_then([&] {
             return writeMaterialRecords(frame, view);
+        })
+        .and_then([&] {
+            return writeMeshInstanceRecords(frame, view);
         })
         .and_then([&] {
             return writeLightRecords(frame, view, plan);

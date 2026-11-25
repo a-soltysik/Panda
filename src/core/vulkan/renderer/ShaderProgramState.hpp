@@ -1,7 +1,7 @@
 #pragma once
 
-#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <panda/rendering/ShaderProgram.hpp>
 #include <string>
@@ -46,6 +46,6 @@ struct ShaderProgram::State
 
 struct ShaderProgram::Identity
 {
-    std::atomic<std::shared_ptr<const State>> current;
+    std::shared_ptr<const State> current;
 };
 }

@@ -779,6 +779,39 @@ TEST_F(ShaderReflectionUnitTest, CopiesInterfaceVariableNamesLocationsAndFormats
     EXPECT_EQ(result->outputs.front().location, 2U);
 }
 
+TEST_F(ShaderReflectionUnitTest, CopiesMatrixColumnCountFromInterfaceVariable)
+{
+    auto variables = std::array<SpvReflectInterfaceVariable, 2> {};
+    auto& input = variables.front();
+    input.name = "instanceModelMatrix";
+    input.location = 5;
+    input.component = std::numeric_limits<std::uint32_t>::max();
+    input.format = SPV_REFLECT_FORMAT_R32G32B32A32_SFLOAT;
+    input.numeric.matrix.column_count = 4;
+    input.numeric.matrix.row_count = 4;
+    input.built_in = -1;
+    auto& output = variables.back();
+    output = input;
+    output.name = "worldPosition";
+    output.location = 0;
+
+    expectModuleCreated();
+    expectEntryPoint(SPV_REFLECT_SHADER_STAGE_VERTEX_BIT);
+    expectNoDescriptorsOrPushConstants();
+    expectNoSpecializationConstants();
+    expectOneInterfaceInputAndOutput(variables);
+
+    const auto result = reflectShader(shaderWords, ShaderStage::Vertex, "matrix interface");
+
+    ASSERT_TRUE(result) << result.error().message;
+    ASSERT_EQ(result->inputs.size(), 1U);
+    EXPECT_EQ(result->inputs.front(),
+              (ShaderInterfaceVariable {.name = "instanceModelMatrix",
+                                        .location = 5,
+                                        .format = ShaderInterfaceFormat::Float4,
+                                        .matrixColumns = 4}));
+}
+
 TEST_F(ShaderReflectionUnitTest, RejectsNonzeroInterfaceComponent)
 {
     auto input = SpvReflectInterfaceVariable {};
