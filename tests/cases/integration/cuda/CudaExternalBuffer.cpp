@@ -43,10 +43,6 @@ TEST(CudaExternalBufferIntegration, ImportsPandaOwnedBufferOnce)
     ASSERT_TRUE(externalBuffer) << externalBuffer.error().message;
 
     auto imported = session->importBuffer(std::move(*externalBuffer));
-    if (!imported && imported.error().code == panda::ErrorCode::Unsupported)
-    {
-        GTEST_SKIP() << imported.error().message;
-    }
     ASSERT_TRUE(imported) << imported.error().message;
     EXPECT_TRUE(imported->isValid());
     EXPECT_EQ(imported->getSize(), 1024);
