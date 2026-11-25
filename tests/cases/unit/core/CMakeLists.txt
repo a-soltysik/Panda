@@ -53,6 +53,7 @@ panda_add_test(panda_unit_core unit
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core"
     SOURCES Version.cpp DeviceSelection.cpp SwapchainGeneration.cpp OffscreenRendering.cpp
             SwapchainCreation.cpp ExternalTimelineValue.cpp RenderViewValidation.cpp ShadowAtlas.cpp ShadowView.cpp
+            VulkanMock.cpp
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock PandaTest::SubmissionQueueMock)
 
@@ -95,7 +96,8 @@ panda_add_test(panda_unit_external_buffer_interop unit
 
 panda_add_test(panda_unit_upload_batch unit
     SOURCES UploadBatch.cpp
-    LIBRARIES Panda::Panda)
+    LIBRARIES Panda::Panda
+    MOCKS PandaTest::VulkanMock)
 
 panda_add_test(panda_unit_environment_map unit
     INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/src/core"
