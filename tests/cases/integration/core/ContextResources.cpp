@@ -42,6 +42,7 @@
 #include "FakeHandle.hpp"
 #include "ResourceMappings.hpp"
 #include "ScopedMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
@@ -203,11 +204,10 @@ protected:
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFeatures2(physical, NotNull()))
             .WillOnce(testing::Action<decltype(vkGetPhysicalDeviceFeatures2)> {
                 [windowed](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
-                    auto* const vulkan12 = static_cast<VkPhysicalDeviceVulkan12Features*>(features->pNext);
-                    auto* const vulkan13 = static_cast<VkPhysicalDeviceVulkan13Features*>(vulkan12->pNext);
-                    vulkan12->timelineSemaphore = vk::True;
-                    vulkan13->dynamicRendering = vk::True;
-                    vulkan13->synchronization2 = vk::True;
+                    ASSERT_NE(features, nullptr);
+                    ASSERT_TRUE(panda::test::enableRequiredVulkanFeatures(*features));
+                    auto* const vulkan13 = static_cast<VkPhysicalDeviceVulkan13Features*>(
+                        static_cast<VkPhysicalDeviceVulkan12Features*>(features->pNext)->pNext);
                     if (windowed)
                     {
                         auto* const maintenance =
@@ -1395,14 +1395,18 @@ TEST_F(ContextResourcesIntegration, LiveBuffersRemainBoundAcrossEngineAndHandleM
 {
     expectHeadless();
     auto* const native = fakeHandle<VkBuffer>(40);
+    auto* const movedNative = fakeHandle<VkBuffer>(41);
     auto* const memory = fakeHandle<VkDeviceMemory>(50);
     expectBuffer(native);
+    expectBuffer(movedNative);
     expectBufferAllocation(memory);
     expectBinding(native, memory);
+    expectBinding(movedNative, memory);
     expectParentsDestroyed(true, false);
     auto created = panda::Engine::create();
     ASSERT_TRUE(created);
-    auto buffer = created->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
+    const auto& resourceManager = created->getResourceManager();
+    auto buffer = resourceManager.createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
     ASSERT_TRUE(buffer);
     auto context = std::move(*created);
     auto moved = std::move(*buffer);
@@ -1411,6 +1415,9 @@ TEST_F(ContextResourcesIntegration, LiveBuffersRemainBoundAcrossEngineAndHandleM
     EXPECT_TRUE(context.isValid());
     EXPECT_EQ(moved.getSize(), 65);
     moved.reset();
+    auto replacement = resourceManager.createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
+    ASSERT_TRUE(replacement);
+    replacement->reset();
 }
 
 TEST_F(ContextResourcesIntegration, FailedBufferCreationDoesNotAdoptUndefinedNativeOutput)

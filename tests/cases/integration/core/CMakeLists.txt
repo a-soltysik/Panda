@@ -23,7 +23,8 @@ panda_add_test(panda_integration_upload integration
 panda_add_test(panda_integration_context_resources integration
     VULKAN_INTERNAL
     SOURCES ContextResources.cpp
-    HEADERS "${PROJECT_SOURCE_DIR}/tests/support/mocks/panda/core/WindowSurfaceMock.hpp"
+    HEADERS "${PROJECT_SOURCE_DIR}/tests/support/VulkanTestSupport.hpp"
+            "${PROJECT_SOURCE_DIR}/tests/support/mocks/panda/core/WindowSurfaceMock.hpp"
     LIBRARIES Panda::Panda PandaTest::Support PandaTest::LogCapture
     MOCKS PandaTest::VulkanMock PandaTest::SwapchainGenerationMock)
 panda_add_shaders(panda_integration_context_resources
