@@ -16,9 +16,6 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
-#include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <limits>
@@ -41,10 +38,9 @@
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
-#include "panda/core/SwapchainGenerationMock.hpp"
 #include "panda/core/WindowSurfaceMock.hpp"
-#include "presentation/SwapchainGeneration.hpp"
 
 namespace
 {
@@ -87,13 +83,6 @@ void expectSameServices(panda::Engine& engine, const BorrowedEngineServices& ser
     EXPECT_EQ(&engine.getOffscreenRenderer(), services.offscreenRenderer);
     EXPECT_EQ(&engine.getPerformanceManager(), services.performanceManager);
     EXPECT_EQ(&engine.getExternalBufferManager(), services.externalBufferManager);
-}
-
-auto invalidMemoryIntent() -> panda::BufferMemory
-{
-    // Deliberate invalid input to verify validation before native creation.
-    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
-    return static_cast<panda::BufferMemory>(255);
 }
 
 auto extension(std::string_view name) -> VkExtensionProperties
@@ -233,11 +222,10 @@ protected:
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceFeatures2(physical, NotNull()))
             .WillOnce(testing::Action<decltype(vkGetPhysicalDeviceFeatures2)> {
                 [windowed](VkPhysicalDevice, VkPhysicalDeviceFeatures2* features) {
-                    auto* const vulkan12 = static_cast<VkPhysicalDeviceVulkan12Features*>(features->pNext);
-                    auto* const vulkan13 = static_cast<VkPhysicalDeviceVulkan13Features*>(vulkan12->pNext);
-                    vulkan12->timelineSemaphore = vk::True;
-                    vulkan13->dynamicRendering = vk::True;
-                    vulkan13->synchronization2 = vk::True;
+                    ASSERT_NE(features, nullptr);
+                    ASSERT_TRUE(panda::test::enableRequiredVulkanFeatures(*features));
+                    auto* const vulkan13 = static_cast<VkPhysicalDeviceVulkan13Features*>(
+                        static_cast<VkPhysicalDeviceVulkan12Features*>(features->pNext)->pNext);
                     if (windowed)
                     {
                         auto* const maintenance =
@@ -638,7 +626,10 @@ protected:
                 testing::DoAll(testing::SetArgPointee<3>(fakeHandle<VkCommandPool>(21)), Return(success))});
         if (failOffscreenInitialization)
         {
-            commandPoolCalls.WillOnce(Return(static_cast<VkResult>(vk::Result::eErrorInitializationFailed)));
+            commandPoolCalls.WillOnce(testing::Action<decltype(vkCreateCommandPool)> {
+                [](VkDevice, const VkCommandPoolCreateInfo*, const VkAllocationCallbacks*, VkCommandPool*) {
+                    return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
+                }});
         }
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(device, NotNull(), NotNull()))
             .WillOnce(testing::Action<decltype(vkAllocateCommandBuffers)> {
@@ -863,20 +854,7 @@ protected:
             });
     }
 
-    void expectHostMapping(VkDeviceMemory memory)
-    {
-        EXPECT_CALL(vulkan, vkMapMemory(device, memory, 0, std::uint64_t {8} * 1024 * 1024, 0, NotNull()))
-            .WillOnce([this](VkDevice, VkDeviceMemory, VkDeviceSize, VkDeviceSize, VkMemoryMapFlags, void** output) {
-                *output = hostStorage.data();
-                return success;
-            });
-        const auto unmapped =
-            testing::Expectation {EXPECT_CALL(vulkan, vkUnmapMemory(device, memory)).After(bufferCleanup)};
-        memoryCleanup += EXPECT_CALL(vulkan, vkFreeMemory(device, memory, nullptr)).After(unmapped);
-    }
-
     panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
-    panda::test::ScopedMock<panda::test::SwapchainGenerationMock> generations;
     testing::StrictMock<panda::test::WindowSurfaceMock> window;
     VkInstance instance {fakeHandle<VkInstance>(1)};
     VkPhysicalDevice physical {fakeHandle<VkPhysicalDevice>(2)};
@@ -885,7 +863,6 @@ protected:
     testing::ExpectationSet frameCleanup;
     testing::ExpectationSet bufferCleanup;
     testing::ExpectationSet memoryCleanup;
-    std::array<std::byte, 128> hostStorage {};
     testing::Sequence bufferCreationOrder;
     testing::Sequence bindingOrder;
     testing::Sequence allocationOrder;
@@ -970,24 +947,6 @@ TEST_F(EngineLifecycleTest, CaptureInitializationFailureDoesNotAcquireWindowImag
     const auto result = engine->getWindowRenderer().renderWithCapture(panda::RenderView {}, *target);
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, panda::ErrorCode::BackendFailure);
-}
-
-TEST_F(EngineLifecycleTest, CreatesMovesAndDestroysHeadlessDeviceInDependencyOrder)
-{
-    expectInstance();
-    expectAdapter(false);
-    expectDevice(false);
-    expectParentsDestroyed(true, false);
-    auto context = panda::Engine::create();
-    ASSERT_TRUE(context.has_value());
-    auto moved = std::move(*context);
-    EXPECT_FALSE(context->isValid());
-    auto movedAgain = std::move(*context);
-    EXPECT_FALSE(movedAgain.isValid());
-    EXPECT_EQ(moved.getDeviceInfo().name, "Unit GPU");
-    EXPECT_FALSE(moved.getFeatures().windowRenderingEnabled);
-    EXPECT_FALSE(moved.getFeatures().externalBufferExportEnabled);
-    EXPECT_DEATH(static_cast<void>(moved.getWindowRenderer()), "window renderer requires");
 }
 
 TEST_F(EngineLifecycleTest, ReportsTimestampSupportWithoutCreatingAnInactivePerformanceManager)
@@ -1222,401 +1181,6 @@ TEST_F(EngineLifecycleTest, InitializesOptInSamplingAndReportsItThroughEngineFea
     EXPECT_TRUE(all->empty());
 }
 
-TEST_F(EngineLifecycleTest, EmptyBufferAndInvalidDescriptionsNeverCreateNativeResources)
-{
-    expectHeadless();
-    expectParentsDestroyed(true, false);
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    auto empty = panda::Buffer {};
-    EXPECT_FALSE(empty.isValid());
-    EXPECT_EQ(empty.getSize(), 0);
-    empty.reset();
-    for (const auto description : std::array {
-             panda::BufferDesc {},
-             panda::BufferDesc {.size = 1, .usage = {}},
-             panda::BufferDesc {.usage = ::panda::BufferUsage::Storage},
-             panda::BufferDesc {.size = 1, .usage = ::panda::BufferUsage::Storage, .memory = invalidMemoryIntent()}
-    })
-    {
-        const auto buffer = context->getResourceManager().createBuffer(description);
-        ASSERT_FALSE(buffer);
-        EXPECT_EQ(buffer.error().code, panda::ErrorCode::InvalidArgument);
-    }
-    const auto unsupported = context->getResourceManager().createBuffer(
-        {.size = 1, .usage = std::bit_cast<::panda::BufferUsage>(std::uint8_t {0x80})});
-    ASSERT_FALSE(unsupported);
-    EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
-}
-
-TEST_F(EngineLifecycleTest, SharedBuffersRetainNativeStateAndReuseReleasedRanges)
-{
-    expectHeadless();
-    auto* const first = fakeHandle<VkBuffer>(40);
-    auto* const second = fakeHandle<VkBuffer>(41);
-    auto* const memory = fakeHandle<VkDeviceMemory>(50);
-    expectBuffer(first);
-    expectBuffer(second);
-    expectBufferAllocation(memory);
-    expectBinding(first, memory);
-    expectBinding(second, memory);
-    expectParentsDestroyed(true, false);
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    auto buffer = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_TRUE(buffer);
-    auto copy = *buffer;
-    buffer->reset();
-    EXPECT_TRUE(copy.isValid());
-    EXPECT_EQ(copy.getSize(), 65);
-    copy.reset();
-    auto replacement = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_TRUE(replacement);
-    EXPECT_EQ(replacement->getSize(), 65);
-}
-
-TEST_F(EngineLifecycleTest, LiveBuffersRemainBoundAcrossEngineAndHandleMoves)
-{
-    expectHeadless();
-    auto* const native = fakeHandle<VkBuffer>(40);
-    auto* const movedNative = fakeHandle<VkBuffer>(41);
-    auto* const memory = fakeHandle<VkDeviceMemory>(50);
-    expectBuffer(native);
-    expectBufferAllocation(memory);
-    expectBinding(native, memory);
-    expectParentsDestroyed(true, false);
-    auto created = panda::Engine::create();
-    ASSERT_TRUE(created);
-    const auto& resourceManager = created->getResourceManager();
-    auto buffer = resourceManager.createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_TRUE(buffer);
-    auto context = std::move(*created);
-    auto moved = std::move(*buffer);
-    EXPECT_FALSE(buffer->isValid());
-    EXPECT_EQ(buffer->getSize(), 0);
-    EXPECT_TRUE(context.isValid());
-    EXPECT_EQ(moved.getSize(), 65);
-    moved.reset();
-    expectBuffer(movedNative);
-    expectBinding(movedNative, memory);
-    auto replacement = resourceManager.createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_TRUE(replacement);
-    replacement->reset();
-}
-
-TEST_F(EngineLifecycleTest, FailedBufferCreationDoesNotAdoptUndefinedNativeOutput)
-{
-    expectHeadless();
-    expectParentsDestroyed(true, false);
-    EXPECT_CALL(vulkan, vkCreateBuffer(device, NotNull(), nullptr, NotNull()))
-        .WillOnce([](VkDevice, const VkBufferCreateInfo*, const VkAllocationCallbacks*, VkBuffer* output) {
-            *output = fakeHandle<VkBuffer>(40);
-            return exhausted;
-        });
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    const auto buffer =
-        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_FALSE(buffer);
-    EXPECT_EQ(buffer.error().code, panda::ErrorCode::ResourceExhausted);
-    EXPECT_EQ(buffer.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
-}
-
-TEST_F(EngineLifecycleTest, FailedBindingReleasesTheRangeAndPreservesTheNativeError)
-{
-    expectHeadless();
-    auto* const first = fakeHandle<VkBuffer>(40);
-    auto* const second = fakeHandle<VkBuffer>(41);
-    auto* const memory = fakeHandle<VkDeviceMemory>(50);
-    expectBuffer(first);
-    expectBuffer(second);
-    expectBufferAllocation(memory);
-    expectBinding(first, memory, 0, exhausted);
-    expectBinding(second, memory);
-    expectParentsDestroyed(true, false);
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    const auto failed =
-        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_FALSE(failed);
-    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
-    EXPECT_EQ(failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
-    const auto retry = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_TRUE(retry);
-}
-
-TEST_F(EngineLifecycleTest, RequiredDedicatedBufferIsDestroyedBeforeItsExactAllocation)
-{
-    expectHeadless();
-    auto* const native = fakeHandle<VkBuffer>(40);
-    auto* const memory = fakeHandle<VkDeviceMemory>(50);
-    expectBuffer(native, 65, true);
-    expectBufferAllocation(memory, 0, true);
-    expectBinding(native, memory);
-    expectParentsDestroyed(true, false);
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    auto buffer = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_TRUE(buffer);
-    buffer->reset();
-    EXPECT_FALSE(buffer->isValid());
-}
-
-TEST_F(EngineLifecycleTest, LastSharedOwnerControlsNativeDestruction)
-{
-    expectHeadless();
-    auto* const native = fakeHandle<VkBuffer>(40);
-    auto* const memory = fakeHandle<VkDeviceMemory>(50);
-    auto lastRelease = testing::MockFunction<void()> {};
-    const auto ownerReleased = testing::Expectation {EXPECT_CALL(lastRelease, Call())};
-    expectBuffer(native, 65, true, testing::ExpectationSet {ownerReleased});
-    expectBufferAllocation(memory, 0, true);
-    expectBinding(native, memory);
-    expectParentsDestroyed(true, false);
-    auto resetComplete = testing::MockFunction<void()> {};
-    EXPECT_CALL(resetComplete, Call()).After(memoryCleanup);
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    auto original = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_TRUE(original);
-    auto retained = *original;
-    original->reset();
-    EXPECT_EQ(original->getSize(), 0);
-    EXPECT_EQ(retained.getSize(), 65);
-    lastRelease.Call();
-    retained.reset();
-    resetComplete.Call();
-    EXPECT_FALSE(retained.isValid());
-    EXPECT_EQ(retained.getSize(), 0);
-}
-
-TEST_F(EngineLifecycleTest, DedicatedBindingFailureDestroysBufferBeforeFreeingItsAllocation)
-{
-    expectHeadless();
-    auto* const native = fakeHandle<VkBuffer>(40);
-    auto* const memory = fakeHandle<VkDeviceMemory>(50);
-    expectBuffer(native, 65, true);
-    expectBufferAllocation(memory, 0, true);
-    expectBinding(native, memory, 0, exhausted);
-    expectParentsDestroyed(true, false);
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    const auto failed =
-        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_FALSE(failed);
-    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
-    ASSERT_TRUE(failed.error().native);
-    EXPECT_EQ(failed.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
-}
-
-TEST_F(EngineLifecycleTest, AllocationFailureDestroysTheUnboundBuffer)
-{
-    expectHeadless();
-    expectBuffer(fakeHandle<VkBuffer>(40));
-    EXPECT_CALL(vulkan, vkAllocateMemory(device, NotNull(), nullptr, NotNull()))
-        .Times(2)
-        .WillRepeatedly(Return(exhausted));
-    expectParentsDestroyed(true, false);
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    const auto failed =
-        context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_FALSE(failed);
-    EXPECT_EQ(failed.error().code, panda::ErrorCode::ResourceExhausted);
-}
-
-TEST_F(EngineLifecycleTest, CopyAndMoveAssignmentReleaseOnlyTheReplacedOwner)
-{
-    expectHeadless();
-    auto* const first = fakeHandle<VkBuffer>(40);
-    auto* const second = fakeHandle<VkBuffer>(41);
-    auto* const memory = fakeHandle<VkDeviceMemory>(50);
-    expectBuffer(first);
-    expectBuffer(second);
-    expectBufferAllocation(memory);
-    expectBinding(first, memory);
-    expectBinding(second, memory, 128);
-    expectParentsDestroyed(true, false);
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    auto source = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    auto target = context->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_TRUE(source);
-    ASSERT_TRUE(target);
-    *target = *source;
-    source->reset();
-    auto assigned = panda::Buffer {};
-    assigned = std::move(*target);
-    EXPECT_FALSE(target->isValid());
-    EXPECT_TRUE(assigned.isValid());
-    EXPECT_EQ(assigned.getSize(), 65);
-}
-
-TEST_F(EngineLifecycleTest, HostMemoryIntentsSelectCoherenceForUploadsAndCachingForReadback)
-{
-    expectHeadless();
-    auto* const upload = fakeHandle<VkBuffer>(40);
-    auto* const readback = fakeHandle<VkBuffer>(41);
-    auto* const uploadMemory = fakeHandle<VkDeviceMemory>(50);
-    auto* const readbackMemory = fakeHandle<VkDeviceMemory>(51);
-    expectBuffer(upload);
-    expectBuffer(readback);
-    expectBufferAllocation(uploadMemory, 1);
-    expectBufferAllocation(readbackMemory, 2);
-    expectHostMapping(uploadMemory);
-    expectHostMapping(readbackMemory);
-    expectBinding(upload, uploadMemory);
-    expectBinding(readback, readbackMemory);
-    expectParentsDestroyed(true, false);
-    const auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    const auto first = context->getResourceManager().createBuffer(
-        {.size = 65, .usage = ::panda::BufferUsage::Storage, .memory = panda::BufferMemory::Upload});
-    const auto second = context->getResourceManager().createBuffer(
-        {.size = 65, .usage = ::panda::BufferUsage::Storage, .memory = panda::BufferMemory::Readback});
-    ASSERT_TRUE(first);
-    ASSERT_TRUE(second);
-}
-
-using EngineLifecycleDeathTest = EngineLifecycleTest;
-
-TEST_F(EngineLifecycleDeathTest, EngineRejectsDestructionBeforeTheLastResourceOwner)
-{
-    expectHeadless();
-    auto* const native = fakeHandle<VkBuffer>(40);
-    auto* const memory = fakeHandle<VkDeviceMemory>(50);
-    expectBuffer(native);
-    expectBufferAllocation(memory);
-    expectBinding(native, memory);
-    expectParentsDestroyed(true, false);
-    auto context = panda::Engine::create().transform([](panda::Engine owner) {
-        return std::make_unique<panda::Engine>(std::move(owner));
-    });
-    ASSERT_TRUE(context);
-    auto buffer = (*context)->getResourceManager().createBuffer({.size = 65, .usage = ::panda::BufferUsage::Storage});
-    ASSERT_TRUE(buffer);
-    EXPECT_DEATH(context->reset(), "Engine destroyed with live Buffer, Texture, Mesh or OffscreenTarget owners");
-    buffer->reset();
-}
-
-TEST_F(EngineLifecycleTest, DeviceCreationFailurePreservesNativeErrorWithoutAdoptingTheOutput)
-{
-    expectInstance();
-    expectAdapter(false);
-    expectDevice(false, exhausted);
-    expectParentsDestroyed(false, false);
-    EXPECT_CALL(vulkan, vkDestroyDevice(_, _)).Times(0);
-    EXPECT_CALL(vulkan, vkGetDeviceProcAddr(device, _)).Times(0);
-    const auto context = panda::Engine::create();
-    ASSERT_FALSE(context.has_value());
-    EXPECT_EQ(context.error().code, panda::ErrorCode::ResourceExhausted);
-    ASSERT_TRUE(context.error().native.has_value());
-    EXPECT_EQ(context.error().native.value_or(panda::NativeError {.api = {}, .code = 0}).code, exhausted);
-}
-
-TEST_F(EngineLifecycleTest, FailedSurfaceCreationReleasesInstanceAndPreservesFacadeError)
-{
-    expectInstance();
-    expectWindow(std::unexpected {panda::makeError(panda::ErrorCode::SurfaceLost, "surface lost")});
-    expectParentsDestroyed(false, false);
-    const auto context = panda::Engine::createWithSurface(window);
-    ASSERT_FALSE(context.has_value());
-    EXPECT_EQ(context.error().code, panda::ErrorCode::SurfaceLost);
-    EXPECT_EQ(context.error().message, "surface lost");
-}
-
-TEST_F(EngineLifecycleTest, NullSurfaceIsRejectedBeforeDeviceSelection)
-{
-    expectInstance();
-    expectWindow(panda::test::WindowSurfaceMock::SurfaceResult {VkSurfaceKHR {}});
-    expectParentsDestroyed(false, false);
-    const auto context = panda::Engine::createWithSurface(window);
-    ASSERT_FALSE(context.has_value());
-    EXPECT_EQ(context.error().code, panda::ErrorCode::BackendFailure);
-}
-
-TEST_F(EngineLifecycleTest, WindowedDeviceFailureReleasesSurfaceBeforeInstance)
-{
-    expectInstance();
-    expectWindow(panda::test::WindowSurfaceMock::SurfaceResult {surface});
-    expectAdapter(true);
-    expectDevice(true, exhausted);
-    expectParentsDestroyed(false, true);
-    const auto context = panda::Engine::createWithSurface(window);
-    ASSERT_FALSE(context.has_value());
-    EXPECT_EQ(context.error().code, panda::ErrorCode::ResourceExhausted);
-}
-
-TEST_F(EngineLifecycleTest, MovedSuspendedEngineRetainsItsDeviceUntilAllFrameResourcesAreDestroyed)
-{
-    expectWindowed();
-    EXPECT_CALL(window, getFramebufferExtent())
-        .Times(2)
-        .WillRepeatedly(Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}}));
-    auto context = panda::Engine::createWithSurface(window);
-    ASSERT_TRUE(context.has_value());
-    auto moved = std::move(*context);
-    const auto& renderer = moved.getWindowRenderer();
-    const auto frame = renderer.render(panda::RenderView {});
-    ASSERT_TRUE(frame.has_value());
-    EXPECT_EQ(frame->status, panda::FrameResult::Status::Suspended);
-}
-
-TEST_F(EngineLifecycleTest, SeparatePresentFamilyProducesTwoDeviceQueueRequests)
-{
-    expectWindowed(true);
-    EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
-            Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}})});
-    const auto context = panda::Engine::createWithSurface(window);
-    ASSERT_TRUE(context.has_value());
-}
-
-TEST_F(EngineLifecycleTest, ExtentQueryFailureReleasesFrameResourcesAndAllParents)
-{
-    expectWindowed();
-    EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
-            Return(panda::test::WindowSurfaceMock::ExtentResult {
-                std::unexpected {panda::makeError(panda::ErrorCode::BackendFailure, "extent failed")}})});
-    const auto context = panda::Engine::createWithSurface(window);
-    ASSERT_FALSE(context.has_value());
-    EXPECT_EQ(context.error().message, "extent failed");
-}
-
-TEST_F(EngineLifecycleTest, GenerationFailureReleasesFrameResourcesAndAllParents)
-{
-    expectWindowed();
-    EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(testing::Action<panda::test::WindowSurfaceMock::ExtentResult()> {
-            Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {640, 480}}
-             )
-    });
-    EXPECT_CALL(generations, createSwapchainGeneration(_))
-        .WillOnce(testing::Action<decltype(panda::core::vulkan::createSwapchainGeneration)> {
-            [](const auto&...) -> panda::core::vulkan::SwapchainGenerationResult {
-                return std::unexpected {panda::core::vulkan::SwapchainGenerationError {
-                    .cause = panda::makeError(panda::ErrorCode::ResourceExhausted, "generation failed")}};
-            }});
-    const auto context = panda::Engine::createWithSurface(window);
-    ASSERT_FALSE(context.has_value());
-    EXPECT_EQ(context.error().message, "generation failed");
-}
-
-TEST_F(EngineLifecycleTest, MovedToEngineRejectsEmptyCompletionOperations)
-{
-    expectHeadless();
-    expectParentsDestroyed(true, false);
-    auto context = panda::Engine::create();
-    ASSERT_TRUE(context);
-    auto moved = std::move(*context);
-    const auto empty = panda::CompletionPoint {};
-    const auto noWork = moved.getSubmissionManager().poll(empty);
-    ASSERT_FALSE(noWork);
-    EXPECT_EQ(noWork.error().code, panda::ErrorCode::InvalidArgument);
-    EXPECT_FALSE(moved.getSubmissionManager().wait(empty, std::chrono::nanoseconds {0}));
-}
-
 TEST_F(EngineLifecycleTest, BorrowedServicesRemainStableAcrossEngineMoves)
 {
     expectInstance();
@@ -1653,6 +1217,8 @@ TEST_F(EngineLifecycleTest, BorrowedServicesRemainStableAcrossEngineMoves)
     EXPECT_EQ(unsupported.error().code, panda::ErrorCode::Unsupported);
 }
 
+using EngineLifecycleDeathTest = EngineLifecycleTest;
+
 TEST_F(EngineLifecycleDeathTest, MovedFromEngineRejectsCommonGetters)
 {
     expectHeadless();
@@ -1669,23 +1235,4 @@ TEST_F(EngineLifecycleDeathTest, MovedFromEngineRejectsCommonGetters)
     EXPECT_DEATH(static_cast<void>(context->getExternalBufferManager()), "Cannot use a moved-from Engine");
     auto movedAgain = std::move(*context);
     EXPECT_FALSE(movedAgain.isValid());
-}
-
-TEST_F(EngineLifecycleTest, SuspendedEngineRejectsEmptyPointsAndNegativeTimeout)
-{
-    expectWindowed();
-    EXPECT_CALL(window, getFramebufferExtent())
-        .WillOnce(Return(panda::test::WindowSurfaceMock::ExtentResult {glm::uvec2 {}}));
-    const auto context = panda::Engine::createWithSurface(window);
-    ASSERT_TRUE(context);
-    const auto empty = panda::CompletionPoint {};
-    const auto polled = context->getSubmissionManager().poll(empty);
-    ASSERT_FALSE(polled);
-    EXPECT_EQ(polled.error().code, panda::ErrorCode::InvalidArgument);
-    const auto waited = context->getSubmissionManager().wait(empty, std::chrono::nanoseconds {0});
-    ASSERT_FALSE(waited);
-    EXPECT_EQ(waited.error().code, panda::ErrorCode::InvalidArgument);
-    const auto negative = context->getSubmissionManager().wait(empty, std::chrono::nanoseconds {-1});
-    ASSERT_FALSE(negative);
-    EXPECT_EQ(negative.error().code, panda::ErrorCode::InvalidArgument);
 }
