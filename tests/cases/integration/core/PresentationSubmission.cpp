@@ -34,7 +34,6 @@ using testing::_;
 using testing::NotNull;
 using testing::Return;
 using testing::Sequence;
-using testing::StrEq;
 
 auto isTimelineSemaphoreCreateInfo(const VkSemaphoreCreateInfo* info) -> bool
 {
@@ -201,26 +200,6 @@ protected:
 private:
     std::optional<panda::detail::SubmissionQueue> _submissions;
 };
-}
-
-TEST_F(PresentationSubmissionIntegration, ReportsUnavailableKhrReleaseFunction)
-{
-    expectQueueLookup();
-    EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesKHR"))).WillOnce(Return(nullptr));
-    const auto presentation = createPresentation();
-    ASSERT_FALSE(presentation.has_value());
-    EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
-    EXPECT_NE(presentation.error().message.find("VK_KHR_swapchain_maintenance1"), std::string::npos);
-}
-
-TEST_F(PresentationSubmissionIntegration, ReportsUnavailableExtReleaseFunction)
-{
-    expectQueueLookup();
-    EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesEXT"))).WillOnce(Return(nullptr));
-    const auto presentation = createPresentation(panda::core::vulkan::SwapchainMaintenance::Ext);
-    ASSERT_FALSE(presentation.has_value());
-    EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
-    EXPECT_NE(presentation.error().message.find("VK_EXT_swapchain_maintenance1"), std::string::npos);
 }
 
 TEST_F(PresentationSubmissionIntegration, FailedCommandPoolCreationReleasesOnlyTheCreatedSemaphore)
@@ -392,19 +371,6 @@ TEST_F(PresentationSubmissionIntegration, RetirementTimeoutDrainReleasesTheAcqui
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::Timeout);
     EXPECT_TRUE(presentation->get()->drain());
-}
-
-TEST_F(PresentationSubmissionIntegration, OutOfDateAcquireReturnsNoCompletionPoint)
-{
-    expectWindowFrame();
-    auto flow = Sequence {};
-    expectAcquiredImage(flow, vk::Result::eErrorOutOfDateKHR);
-    auto presentation = createPresentation();
-    ASSERT_TRUE(presentation);
-    const auto frame = presentation->get()->render(panda::RenderView {});
-    ASSERT_TRUE(frame);
-    EXPECT_EQ(frame->status, panda::FrameResult::Status::RecreatePending);
-    EXPECT_FALSE(frame->completion.isValid());
 }
 
 TEST_F(PresentationSubmissionIntegration, SuboptimalPresentReturnsTheCommittedCompletionPoint)

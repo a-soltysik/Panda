@@ -374,6 +374,18 @@ private:
     std::optional<panda::detail::SubmissionQueue> _submissions;
     std::unique_ptr<panda::detail::PerformanceManagerImpl> _performance;
 };
+
+struct ReleaseEntryPointCase
+{
+    panda::core::vulkan::SwapchainMaintenance maintenance;
+    const char* symbol;
+    const char* extension;
+    const char* name;
+};
+
+class ReleaseEntryPointTest : public PresentationTest, public testing::WithParamInterface<ReleaseEntryPointCase>
+{
+};
 }
 
 TEST(FrameResultMapping, ConvertsSupportedVulkanSampleCounts)
@@ -650,25 +662,31 @@ TEST_F(PresentationTest, PropagatesExecutionDrainTimeout)
     EXPECT_EQ(drained.error().code, panda::ErrorCode::Timeout);
 }
 
-TEST_F(PresentationTest, ReportsUnavailableKhrReleaseFunction)
+TEST_P(ReleaseEntryPointTest, ReportsUnavailableReleaseFunction)
 {
+    const auto& testCase = GetParam();
     expectQueueLookup();
-    EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesKHR"))).WillOnce(Return(nullptr));
-    const auto presentation = createPresentation();
+    EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq(testCase.symbol))).WillOnce(Return(nullptr));
+    const auto presentation = createPresentation(testCase.maintenance);
     ASSERT_FALSE(presentation.has_value());
     EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
-    EXPECT_NE(presentation.error().message.find("VK_KHR_swapchain_maintenance1"), std::string::npos);
+    EXPECT_NE(presentation.error().message.find(testCase.extension), std::string::npos);
 }
 
-TEST_F(PresentationTest, ReportsUnavailableExtReleaseFunction)
-{
-    expectQueueLookup();
-    EXPECT_CALL(vulkan, vkGetDeviceProcAddr(_, StrEq("vkReleaseSwapchainImagesEXT"))).WillOnce(Return(nullptr));
-    const auto presentation = createPresentation(panda::core::vulkan::SwapchainMaintenance::Ext);
-    ASSERT_FALSE(presentation.has_value());
-    EXPECT_EQ(presentation.error().code, panda::ErrorCode::Unsupported);
-    EXPECT_NE(presentation.error().message.find("VK_EXT_swapchain_maintenance1"), std::string::npos);
-}
+INSTANTIATE_TEST_SUITE_P(
+    MaintenanceExtensions,
+    ReleaseEntryPointTest,
+    testing::Values(ReleaseEntryPointCase {.maintenance = panda::core::vulkan::SwapchainMaintenance::Khr,
+                                           .symbol = "vkReleaseSwapchainImagesKHR",
+                                           .extension = "VK_KHR_swapchain_maintenance1",
+                                           .name = "Khr"},
+                    ReleaseEntryPointCase {.maintenance = panda::core::vulkan::SwapchainMaintenance::Ext,
+                                           .symbol = "vkReleaseSwapchainImagesEXT",
+                                           .extension = "VK_EXT_swapchain_maintenance1",
+                                           .name = "Ext"}),
+    [](const testing::TestParamInfo<ReleaseEntryPointCase>& testInfo) {
+        return testInfo.param.name;
+    });
 
 TEST_F(PresentationTest, PropagatesAcquireSemaphoreInitializationFailure)
 {
