@@ -167,8 +167,7 @@ endif()
 
 if(TARGET Panda::Cuda)
     panda_add_mock(panda_test_cuda_runtime_mock
-        REPLACES cudaGetDeviceCount
-        API_LIBRARY CUDA::cudart_static
+        REPLACES CUDA::cudart_static
         SOURCES external/cuda/CudaRuntimeStub.cpp
         HEADERS external/cuda/CudaRuntimeMock.hpp
         LIBRARIES PandaTest::MockHeaders)
