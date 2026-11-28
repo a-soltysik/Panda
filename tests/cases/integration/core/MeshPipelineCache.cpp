@@ -18,12 +18,10 @@
 #include <panda/rendering/RenderView.hpp>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <vector>
 
 #include "FakeHandle.hpp"
-#include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "renderer/ShaderReflection.hpp"
 
 namespace
@@ -91,15 +89,9 @@ auto builtinShaderDescriptorSchema() -> std::vector<ShaderDescriptor>
     return schema;
 }
 
-class MeshPipelineCacheTest : public testing::Test
+class MeshPipelineCacheTest : public panda::test::VulkanTestFixture
 {
 protected:
-    void TearDown() override
-    {
-        std::ignore = device.release();
-        std::ignore = instance.release();
-    }
-
     void expectShaderModules(std::size_t count)
     {
         EXPECT_CALL(vulkan, vkCreateShaderModule(deviceHandle, NotNull(), nullptr, NotNull()))
@@ -136,12 +128,6 @@ protected:
         EXPECT_CALL(vulkan, vkDestroyPipeline(deviceHandle, _, nullptr)).Times(static_cast<int>(count));
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
-    vk::raii::Device device {physical, deviceHandle};
     std::uintptr_t nextHandle {10};
 };
 }

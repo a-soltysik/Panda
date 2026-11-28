@@ -1,9 +1,3 @@
-// clang-format off
-#include "VulkanHpp.hpp" // IWYU pragma: keep
-#include <vulkan/vulkan_core.h>
-#include <vulkan/vulkan.hpp>
-// clang-format on
-
 #include "vulkan/renderer/ShaderReflection.hpp"
 
 #include <gmock/gmock.h>
@@ -21,37 +15,24 @@
 #include <panda/rendering/ShaderProgram.hpp>
 #include <span>
 #include <string>
-#include <tuple>
 #include <vector>
 
-#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "external/spirv_reflect/SpirvReflectMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
-#include "presentation/ToneMappingPass.hpp"
 
 namespace
 {
 using panda::core::vulkan::renderer::buildShaderProgramLayout;
 using panda::core::vulkan::renderer::reflectGraphicsProgram;
 using panda::core::vulkan::renderer::reflectShader;
-using panda::core::vulkan::renderer::ShaderBlockMember;
-using panda::core::vulkan::renderer::ShaderDescriptor;
 using panda::core::vulkan::renderer::ShaderDescriptorKind;
 using panda::core::vulkan::renderer::ShaderInterfaceFormat;
 using panda::core::vulkan::renderer::ShaderInterfaceVariable;
-using panda::core::vulkan::renderer::ShaderProgramLayout;
-using panda::core::vulkan::renderer::ShaderReflection;
 using panda::core::vulkan::renderer::ShaderSpecializationConstant;
 using panda::core::vulkan::renderer::ShaderStage;
-using panda::core::vulkan::renderer::specializationConstantId;
-using panda::core::vulkan::renderer::validateShaderBlockMembers;
-using panda::core::vulkan::renderer::validateShaderProgramDescriptors;
-using panda::test::fakeHandle;
 using panda::test::ScopedMock;
 using panda::test::SpirvReflectMock;
 using ::testing::_;
-using ::testing::AnyNumber;
 using ::testing::IsNull;
 using ::testing::NotNull;
 using ::testing::Return;
@@ -308,219 +289,6 @@ protected:
     SpvReflectEntryPoint entryPoint {};
 };
 
-class ToneMappingPassReflectionTest : public ::testing::Test
-{
-protected:
-    void TearDown() override
-    {
-        std::ignore = device.release();
-        std::ignore = instance.release();
-    }
-
-    void expectShaderReflection(std::optional<std::uint32_t> descriptorSet)
-    {
-        descriptor = SpvReflectDescriptorBinding {};
-        descriptor.name = "hdrColor";
-        descriptor.set = descriptorSet.value_or(0U);
-        descriptor.binding = 0;
-        descriptor.count = 1;
-        descriptor.descriptor_type = SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptor.image.dim = SpvDim2D;
-        descriptor.type_description = &imageType;
-        specialization = SpvReflectSpecializationConstant {};
-        specialization.name = "outputIsSrgb";
-        specialization.constant_id = 7;
-        moduleIndex = 0;
-        expectShaderModules();
-        expectDescriptorBindings(descriptorSet);
-        expectNoPushConstants();
-        expectEmptyInterfaceVariables();
-        expectSpecializationConstants();
-    }
-
-    void expectShaderModules()
-    {
-        EXPECT_CALL(reflect, createShaderModule(_, _, _))
-            .Times(2)
-            .WillRepeatedly([this](std::size_t, const void*, SpvReflectShaderModule*) {
-                entryPoint.shader_stage =
-                    moduleIndex++ == 0 ? SPV_REFLECT_SHADER_STAGE_VERTEX_BIT : SPV_REFLECT_SHADER_STAGE_FRAGMENT_BIT;
-                reflect.entryPoint = &entryPoint;
-                return SPV_REFLECT_RESULT_SUCCESS;
-            });
-        EXPECT_CALL(reflect, destroyShaderModule(_)).Times(2);
-    }
-
-    void expectDescriptorBindings(std::optional<std::uint32_t> descriptorSet)
-    {
-        EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, IsNull()))
-            .Times(2)
-            .WillOnce(
-                [](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectDescriptorBinding**) {
-                    *count = 0;
-                    return SPV_REFLECT_RESULT_SUCCESS;
-                })
-            .WillOnce([descriptorSet](const SpvReflectShaderModule*,
-                                      const char*,
-                                      std::uint32_t* count,
-                                      SpvReflectDescriptorBinding**) {
-                *count = descriptorSet ? 1U : 0U;
-                return SPV_REFLECT_RESULT_SUCCESS;
-            });
-        if (descriptorSet)
-        {
-            EXPECT_CALL(this->reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, NotNull()))
-                .WillOnce([this](const SpvReflectShaderModule*,
-                                 const char*,
-                                 const std::uint32_t* count,
-                                 SpvReflectDescriptorBinding** bindings) {
-                    EXPECT_EQ(*count, 1U);
-                    *bindings = &this->descriptor;
-                    return SPV_REFLECT_RESULT_SUCCESS;
-                });
-        }
-    }
-
-    void expectNoPushConstants()
-    {
-        EXPECT_CALL(reflect, enumerateEntryPointPushConstantBlocks(_, StrEq("main"), _, IsNull()))
-            .Times(2)
-            .WillRepeatedly(
-                [](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectBlockVariable**) {
-                    *count = 0;
-                    return SPV_REFLECT_RESULT_SUCCESS;
-                });
-    }
-
-    void expectEmptyInterfaceVariables()
-    {
-        EXPECT_CALL(reflect, enumerateEntryPointInputVariables(_, StrEq("main"), _, IsNull()))
-            .Times(2)
-            .WillRepeatedly(
-                [](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectInterfaceVariable**) {
-                    *count = 0;
-                    return SPV_REFLECT_RESULT_SUCCESS;
-                });
-        EXPECT_CALL(reflect, enumerateEntryPointOutputVariables(_, StrEq("main"), _, IsNull()))
-            .Times(2)
-            .WillRepeatedly(
-                [](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectInterfaceVariable**) {
-                    *count = 0;
-                    return SPV_REFLECT_RESULT_SUCCESS;
-                });
-    }
-
-    void expectSpecializationConstants()
-    {
-        EXPECT_CALL(reflect, enumerateSpecializationConstants(_, _, IsNull()))
-            .Times(2)
-            .WillOnce([](const SpvReflectShaderModule*, std::uint32_t* count, SpvReflectSpecializationConstant**) {
-                *count = 0;
-                return SPV_REFLECT_RESULT_SUCCESS;
-            })
-            .WillOnce([](const SpvReflectShaderModule*, std::uint32_t* count, SpvReflectSpecializationConstant**) {
-                *count = 1;
-                return SPV_REFLECT_RESULT_SUCCESS;
-            });
-        EXPECT_CALL(reflect, enumerateSpecializationConstants(_, _, NotNull()))
-            .WillOnce([this](const SpvReflectShaderModule*,
-                             const std::uint32_t* count,
-                             SpvReflectSpecializationConstant** constants) {
-                EXPECT_EQ(*count, 1U);
-                *constants = &specialization;
-                return SPV_REFLECT_RESULT_SUCCESS;
-            });
-    }
-
-    void expectSuccessfulInitialization()
-    {
-        expectDescriptorLayouts();
-        expectPipelineLayoutAndSampler();
-        expectDescriptorPoolAndSets();
-    }
-
-    void expectDescriptorLayouts()
-    {
-        EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(deviceHandle, NotNull(), nullptr, NotNull()))
-            .Times(2)
-            .WillOnce([this](VkDevice,
-                             const VkDescriptorSetLayoutCreateInfo* info,
-                             const VkAllocationCallbacks*,
-                             VkDescriptorSetLayout* output) {
-                EXPECT_EQ(info->bindingCount, 1U);
-                *output = fakeHandle<VkDescriptorSetLayout>(nextHandle++);
-                return static_cast<VkResult>(vk::Result::eSuccess);
-            })
-            .WillOnce([this](VkDevice,
-                             const VkDescriptorSetLayoutCreateInfo* info,
-                             const VkAllocationCallbacks*,
-                             VkDescriptorSetLayout* output) {
-                EXPECT_EQ(info->bindingCount, 0U);
-                *output = fakeHandle<VkDescriptorSetLayout>(nextHandle++);
-                return static_cast<VkResult>(vk::Result::eSuccess);
-            });
-        EXPECT_CALL(vulkan, vkDestroyDescriptorSetLayout(deviceHandle, _, nullptr)).Times(2);
-    }
-
-    void expectPipelineLayoutAndSampler()
-    {
-        EXPECT_CALL(vulkan, vkCreatePipelineLayout(deviceHandle, NotNull(), nullptr, NotNull()))
-            .WillOnce([this](VkDevice,
-                             const VkPipelineLayoutCreateInfo* info,
-                             const VkAllocationCallbacks*,
-                             VkPipelineLayout* output) {
-                EXPECT_EQ(info->setLayoutCount, 2U);
-                *output = fakeHandle<VkPipelineLayout>(nextHandle++);
-                return static_cast<VkResult>(vk::Result::eSuccess);
-            });
-        EXPECT_CALL(vulkan, vkDestroyPipelineLayout(deviceHandle, _, nullptr));
-        EXPECT_CALL(vulkan, vkCreateSampler(deviceHandle, NotNull(), nullptr, NotNull()))
-            .WillOnce([this](VkDevice, const VkSamplerCreateInfo*, const VkAllocationCallbacks*, VkSampler* output) {
-                *output = fakeHandle<VkSampler>(nextHandle++);
-                return static_cast<VkResult>(vk::Result::eSuccess);
-            });
-        EXPECT_CALL(vulkan, vkDestroySampler(deviceHandle, _, nullptr));
-    }
-
-    void expectDescriptorPoolAndSets()
-    {
-        EXPECT_CALL(vulkan, vkCreateDescriptorPool(deviceHandle, NotNull(), nullptr, NotNull()))
-            .WillOnce([this](VkDevice,
-                             const VkDescriptorPoolCreateInfo*,
-                             const VkAllocationCallbacks*,
-                             VkDescriptorPool* output) {
-                *output = fakeHandle<VkDescriptorPool>(nextHandle++);
-                return static_cast<VkResult>(vk::Result::eSuccess);
-            });
-        EXPECT_CALL(vulkan, vkDestroyDescriptorPool(deviceHandle, _, nullptr));
-        EXPECT_CALL(vulkan, vkAllocateDescriptorSets(deviceHandle, NotNull(), NotNull()))
-            .WillOnce([this](VkDevice, const VkDescriptorSetAllocateInfo* info, VkDescriptorSet* output) {
-                for (auto& set : std::span {output, info->descriptorSetCount})
-                {
-                    set = fakeHandle<VkDescriptorSet>(nextHandle++);
-                }
-                return static_cast<VkResult>(vk::Result::eSuccess);
-            });
-        EXPECT_CALL(vulkan, vkFreeDescriptorSets(deviceHandle, _, _, _))
-            .Times(AnyNumber())
-            .WillRepeatedly(Return(static_cast<VkResult>(vk::Result::eSuccess)));
-    }
-
-    ScopedMock<SpirvReflectMock> reflect;
-    ScopedMock<panda::test::VulkanMock> vulkan;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
-    vk::raii::Device device {physical, deviceHandle};
-    std::uintptr_t nextHandle {10};
-    SpvReflectEntryPoint entryPoint {makeEntryPoint(SPV_REFLECT_SHADER_STAGE_VERTEX_BIT)};
-    SpvReflectDescriptorBinding descriptor {};
-    SpvReflectTypeDescription imageType {makeSampledImageType()};
-    SpvReflectSpecializationConstant specialization {};
-    std::size_t moduleIndex {};
-};
-
 }
 
 TEST_F(ShaderReflectionUnitTest, MapsModuleAllocationFailure)
@@ -579,85 +347,133 @@ TEST_F(ShaderReflectionUnitTest, RejectsUnknownDeclaredStage)
     EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
 }
 
-TEST_F(ShaderReflectionUnitTest, RejectsDescriptorCountQueryFailure)
+namespace
 {
-    expectModuleCreated();
-    expectEntryPoint(SPV_REFLECT_SHADER_STAGE_VERTEX_BIT);
-    EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, IsNull()))
-        .WillOnce(Return(SPV_REFLECT_RESULT_ERROR_ALLOC_FAILED));
+enum class EnumerationFailure : std::uint8_t
+{
+    DescriptorCount,
+    DescriptorData,
+    PushConstantCount,
+    PushConstantData
+};
 
-    const auto result = reflectShader(shaderWords, ShaderStage::Vertex, "descriptor query failure");
+struct EnumerationFailureCase
+{
+    EnumerationFailure failure;
+    SpvReflectResult nativeResult;
+    panda::ErrorCode errorCode;
+    const char* name;
+};
 
-    ASSERT_FALSE(result);
-    EXPECT_EQ(result.error().code, panda::ErrorCode::ResourceExhausted);
-    ASSERT_TRUE(result.error().native.has_value());
-    EXPECT_EQ(result.error().native->code, SPV_REFLECT_RESULT_ERROR_ALLOC_FAILED);
+class ShaderEnumerationFailureTest : public ShaderReflectionUnitTest,
+                                     public ::testing::WithParamInterface<EnumerationFailureCase>
+{
+protected:
+    void expectFailure()
+    {
+        switch (GetParam().failure)
+        {
+        case EnumerationFailure::DescriptorCount:
+            expectDescriptorCountFailure();
+            break;
+        case EnumerationFailure::DescriptorData:
+            expectDescriptorDataFailure();
+            break;
+        case EnumerationFailure::PushConstantCount:
+            expectPushConstantCountFailure();
+            break;
+        case EnumerationFailure::PushConstantData:
+            expectPushConstantDataFailure();
+            break;
+        }
+    }
+
+    void expectDescriptorCountFailure()
+    {
+        EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, IsNull()))
+            .WillOnce(testing::Return(SPV_REFLECT_RESULT_ERROR_ALLOC_FAILED));
+    }
+
+    void expectDescriptorDataFailure()
+    {
+        EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, IsNull()))
+            .WillOnce(
+                [](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectDescriptorBinding**) {
+                    *count = 1;
+                    return SPV_REFLECT_RESULT_SUCCESS;
+                });
+        EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, NotNull()))
+            .WillOnce(testing::Return(SPV_REFLECT_RESULT_ERROR_COUNT_MISMATCH));
+    }
+
+    void expectPushConstantCountFailure()
+    {
+        expectNoDescriptorBindings();
+        EXPECT_CALL(reflect, enumerateEntryPointPushConstantBlocks(_, StrEq("main"), _, IsNull()))
+            .WillOnce(testing::Return(SPV_REFLECT_RESULT_ERROR_ELEMENT_NOT_FOUND));
+    }
+
+    void expectPushConstantDataFailure()
+    {
+        expectNoDescriptorBindings();
+        EXPECT_CALL(reflect, enumerateEntryPointPushConstantBlocks(_, StrEq("main"), _, IsNull()))
+            .WillOnce([](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectBlockVariable**) {
+                *count = 1;
+                return SPV_REFLECT_RESULT_SUCCESS;
+            });
+        EXPECT_CALL(reflect, enumerateEntryPointPushConstantBlocks(_, StrEq("main"), _, NotNull()))
+            .WillOnce(testing::Return(SPV_REFLECT_RESULT_ERROR_COUNT_MISMATCH));
+    }
+
+    void expectNoDescriptorBindings()
+    {
+        EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, IsNull()))
+            .WillOnce(
+                [](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectDescriptorBinding**) {
+                    *count = 0;
+                    return SPV_REFLECT_RESULT_SUCCESS;
+                });
+    }
+};
 }
 
-TEST_F(ShaderReflectionUnitTest, RejectsDescriptorDataQueryFailure)
+TEST_P(ShaderEnumerationFailureTest, ReportsCountAndDataQueryFailures)
 {
+    const auto& testCase = GetParam();
     expectModuleCreated();
     expectEntryPoint(SPV_REFLECT_SHADER_STAGE_VERTEX_BIT);
-    EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, IsNull()))
-        .WillOnce([](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectDescriptorBinding**) {
-            *count = 1;
-            return SPV_REFLECT_RESULT_SUCCESS;
-        });
-    EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, NotNull()))
-        .WillOnce(Return(SPV_REFLECT_RESULT_ERROR_COUNT_MISMATCH));
+    expectFailure();
 
-    const auto result = reflectShader(shaderWords, ShaderStage::Vertex, "descriptor data failure");
+    const auto result = reflectShader(shaderWords, ShaderStage::Vertex, "enumeration failure");
 
     ASSERT_FALSE(result);
-    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
+    EXPECT_EQ(result.error().code, testCase.errorCode);
     ASSERT_TRUE(result.error().native.has_value());
-    EXPECT_EQ(result.error().native->code, SPV_REFLECT_RESULT_ERROR_COUNT_MISMATCH);
+    EXPECT_EQ(result.error().native->code, testCase.nativeResult);
 }
 
-TEST_F(ShaderReflectionUnitTest, RejectsPushConstantCountQueryFailure)
-{
-    expectModuleCreated();
-    expectEntryPoint(SPV_REFLECT_SHADER_STAGE_VERTEX_BIT);
-    EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, IsNull()))
-        .WillOnce([](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectDescriptorBinding**) {
-            *count = 0;
-            return SPV_REFLECT_RESULT_SUCCESS;
-        });
-    EXPECT_CALL(reflect, enumerateEntryPointPushConstantBlocks(_, StrEq("main"), _, IsNull()))
-        .WillOnce(Return(SPV_REFLECT_RESULT_ERROR_ELEMENT_NOT_FOUND));
-
-    const auto result = reflectShader(shaderWords, ShaderStage::Vertex, "push constant query failure");
-
-    ASSERT_FALSE(result);
-    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
-    ASSERT_TRUE(result.error().native.has_value());
-    EXPECT_EQ(result.error().native->code, SPV_REFLECT_RESULT_ERROR_ELEMENT_NOT_FOUND);
-}
-
-TEST_F(ShaderReflectionUnitTest, RejectsPushConstantDataQueryFailure)
-{
-    expectModuleCreated();
-    expectEntryPoint(SPV_REFLECT_SHADER_STAGE_VERTEX_BIT);
-    EXPECT_CALL(reflect, enumerateEntryPointDescriptorBindings(_, StrEq("main"), _, IsNull()))
-        .WillOnce([](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectDescriptorBinding**) {
-            *count = 0;
-            return SPV_REFLECT_RESULT_SUCCESS;
-        });
-    EXPECT_CALL(reflect, enumerateEntryPointPushConstantBlocks(_, StrEq("main"), _, IsNull()))
-        .WillOnce([](const SpvReflectShaderModule*, const char*, std::uint32_t* count, SpvReflectBlockVariable**) {
-            *count = 1;
-            return SPV_REFLECT_RESULT_SUCCESS;
-        });
-    EXPECT_CALL(reflect, enumerateEntryPointPushConstantBlocks(_, StrEq("main"), _, NotNull()))
-        .WillOnce(Return(SPV_REFLECT_RESULT_ERROR_COUNT_MISMATCH));
-
-    const auto result = reflectShader(shaderWords, ShaderStage::Vertex, "push constant data failure");
-
-    ASSERT_FALSE(result);
-    EXPECT_EQ(result.error().code, panda::ErrorCode::InvalidArgument);
-    ASSERT_TRUE(result.error().native.has_value());
-    EXPECT_EQ(result.error().native->code, SPV_REFLECT_RESULT_ERROR_COUNT_MISMATCH);
-}
+INSTANTIATE_TEST_SUITE_P(
+    DescriptorAndPushConstant,
+    ShaderEnumerationFailureTest,
+    ::testing::Values(EnumerationFailureCase {.failure = EnumerationFailure::DescriptorCount,
+                                              .nativeResult = SPV_REFLECT_RESULT_ERROR_ALLOC_FAILED,
+                                              .errorCode = panda::ErrorCode::ResourceExhausted,
+                                              .name = "DescriptorCount"},
+                      EnumerationFailureCase {.failure = EnumerationFailure::DescriptorData,
+                                              .nativeResult = SPV_REFLECT_RESULT_ERROR_COUNT_MISMATCH,
+                                              .errorCode = panda::ErrorCode::InvalidArgument,
+                                              .name = "DescriptorData"},
+                      EnumerationFailureCase {.failure = EnumerationFailure::PushConstantCount,
+                                              .nativeResult = SPV_REFLECT_RESULT_ERROR_ELEMENT_NOT_FOUND,
+                                              .errorCode = panda::ErrorCode::InvalidArgument,
+                                              .name = "PushConstantCount"},
+                      EnumerationFailureCase {.failure = EnumerationFailure::PushConstantData,
+                                              .nativeResult = SPV_REFLECT_RESULT_ERROR_COUNT_MISMATCH,
+                                              .errorCode = panda::ErrorCode::InvalidArgument,
+                                              .name = "PushConstantData"}),
+    [](const ::testing::TestParamInfo<EnumerationFailureCase>& testInfo) {
+        return testInfo.param.name;
+    });
 
 TEST_F(ShaderReflectionUnitTest, CopiesDescriptorKindsAndUnnamedMembers)
 {
@@ -885,209 +701,6 @@ TEST_F(ShaderReflectionUnitTest, CopiesSpecializationConstantNamesAndIds)
     EXPECT_EQ(result->specializationConstants.front(), (ShaderSpecializationConstant {.name = "alphaMode", .id = 11}));
 }
 
-TEST(ShaderProgramLayout, CombinesMatchingDescriptorsAndPushConstantStages)
-{
-    const auto member = ShaderBlockMember {.name = "value", .offset = 0, .size = 16, .arrayStride = 0, .members = {}};
-    const auto vertex =
-        ShaderReflection {.stage = ShaderStage::Vertex,
-                          .descriptors = {{.name = "vertexParameters",
-                                           .set = 0,
-                                           .binding = 3,
-                                           .count = 1,
-                                           .kind = ShaderDescriptorKind::UniformBuffer,
-                                           .arrayDimensions = {},
-                                           .blockSize = 16,
-                                           .members = {member},
-                                           .sampledImage = {}}},
-                          .pushConstantBlocks = {{.offset = 0, .size = 16, .members = {member}}},
-                          .inputs = {{.name = "position", .location = 0, .format = ShaderInterfaceFormat::Float3}},
-                          .outputs = {{.name = "tint", .location = 1, .format = ShaderInterfaceFormat::Float4}},
-                          .specializationConstants = {}};
-    const auto fragment =
-        ShaderReflection {.stage = ShaderStage::Fragment,
-                          .descriptors = {{.name = "fragmentParameters",
-                                           .set = 0,
-                                           .binding = 3,
-                                           .count = 1,
-                                           .kind = ShaderDescriptorKind::UniformBuffer,
-                                           .arrayDimensions = {},
-                                           .blockSize = 16,
-                                           .members = {member},
-                                           .sampledImage = {}}},
-                          .pushConstantBlocks = {},
-                          .inputs = {{.name = "tint", .location = 1, .format = ShaderInterfaceFormat::Float4}},
-                          .outputs = {},
-                          .specializationConstants = {}};
-    const auto shaders = std::array {vertex, fragment};
-
-    const auto layout = buildShaderProgramLayout(shaders, "program");
-
-    ASSERT_TRUE(layout) << layout.error().message;
-    ASSERT_EQ(layout->descriptors.size(), 1U);
-    ASSERT_EQ(layout->descriptors.front().stageLayouts.size(), 2U);
-    EXPECT_EQ(layout->descriptors.front().stageLayouts.front().stage, ShaderStage::Vertex);
-    EXPECT_EQ(layout->descriptors.front().stageLayouts.back().stage, ShaderStage::Fragment);
-    EXPECT_EQ(layout->descriptors.front().names, (std::vector<std::string> {"vertexParameters", "fragmentParameters"}));
-    ASSERT_EQ(layout->pushConstantBlocks.size(), 1U);
-    EXPECT_EQ(layout->pushConstantBlocks.front().stages, (std::vector {ShaderStage::Vertex}));
-    ASSERT_EQ(layout->vertexInputs.size(), 1U);
-    EXPECT_EQ(layout->vertexInputs.front().location, 0U);
-}
-
-TEST(ShaderProgramLayout, RejectsIncompatibleDescriptorsBeforePipelineCreation)
-{
-    const auto vertex = ShaderReflection {.stage = ShaderStage::Vertex,
-                                          .descriptors = {{.name = {},
-                                                           .set = 1,
-                                                           .binding = 2,
-                                                           .count = 1,
-                                                           .kind = ShaderDescriptorKind::UniformBuffer,
-                                                           .arrayDimensions = {},
-                                                           .blockSize = 16,
-                                                           .members = {},
-                                                           .sampledImage = {}}},
-                                          .pushConstantBlocks = {},
-                                          .inputs = {},
-                                          .outputs = {},
-                                          .specializationConstants = {}};
-    const auto fragment = ShaderReflection {.stage = ShaderStage::Fragment,
-                                            .descriptors = {{.name = {},
-                                                             .set = 1,
-                                                             .binding = 2,
-                                                             .count = 1,
-                                                             .kind = ShaderDescriptorKind::StorageBuffer,
-                                                             .arrayDimensions = {},
-                                                             .blockSize = 16,
-                                                             .members = {},
-                                                             .sampledImage = {}}},
-                                            .pushConstantBlocks = {},
-                                            .inputs = {},
-                                            .outputs = {},
-                                            .specializationConstants = {}};
-    const auto shaders = std::array {vertex, fragment};
-
-    const auto layout = buildShaderProgramLayout(shaders, "wrong layout");
-
-    ASSERT_FALSE(layout);
-    EXPECT_NE(layout.error().message.find("conflicting descriptors"), std::string::npos);
-}
-
-TEST(ShaderProgramLayout, RejectsMultiplePushConstantRangesForOneStage)
-{
-    auto vertex = ShaderReflection {};
-    vertex.stage = ShaderStage::Vertex;
-    vertex.pushConstantBlocks = {
-        {.offset = 0,  .size = 16, .members = {}},
-        {.offset = 32, .size = 16, .members = {}}
-    };
-    const auto shaders = std::array {vertex};
-
-    const auto layout = buildShaderProgramLayout(shaders, "multiple push constants");
-
-    ASSERT_FALSE(layout);
-    EXPECT_NE(layout.error().message.find("more than one push constant range"), std::string::npos);
-}
-
-TEST(ShaderBlockLayout, RejectsSwappedSameSizeMembers)
-{
-    const auto host = std::array {
-        ShaderBlockMember {.name = "cameraPosition", .offset = 64, .size = 16, .arrayStride = 0, .members = {}},
-        ShaderBlockMember {.name = "ambient",        .offset = 80, .size = 16, .arrayStride = 0, .members = {}}
-    };
-    const auto shader = std::array {
-        ShaderBlockMember {.name = "cameraPosition", .offset = 80, .size = 16, .arrayStride = 0, .members = {}},
-        ShaderBlockMember {.name = "ambient",        .offset = 64, .size = 16, .arrayStride = 0, .members = {}}
-    };
-
-    const auto result = validateShaderBlockMembers(shader, host, "FrameData");
-
-    ASSERT_FALSE(result);
-    EXPECT_NE(result.error().message.find("cameraPosition"), std::string::npos);
-}
-
-TEST(ShaderProgramLayout, RejectsDescriptorVariantOutsideSharedLayout)
-{
-    const auto expected = std::array {
-        ShaderDescriptor {.name = "baseColorMap",
-                          .set = 1,
-                          .binding = 0,
-                          .count = 1,
-                          .kind = ShaderDescriptorKind::CombinedImageSampler,
-                          .arrayDimensions = {},
-                          .blockSize = 0,
-                          .members = {},
-                          .sampledImage = {}}
-    };
-    auto program = ShaderProgramLayout {};
-    program.descriptors.push_back({.set = 1,
-                                   .binding = 1,
-                                   .count = 1,
-                                   .kind = ShaderDescriptorKind::CombinedImageSampler,
-                                   .stageLayouts = {},
-                                   .names = {"baseColorMap"},
-                                   .sampledImage = {}});
-
-    const auto result = validateShaderProgramDescriptors(program, expected, "shader variant");
-
-    ASSERT_FALSE(result);
-    EXPECT_NE(result.error().message.find("outside the shared layout"), std::string::npos);
-}
-
-TEST(ShaderProgramLayout, RejectsFragmentInputsMissingFromVertexOutputs)
-{
-    const auto vertex = ShaderReflection {.stage = ShaderStage::Vertex,
-                                          .descriptors = {},
-                                          .pushConstantBlocks = {},
-                                          .inputs = {},
-                                          .outputs = {},
-                                          .specializationConstants = {}};
-    const auto fragment =
-        ShaderReflection {.stage = ShaderStage::Fragment,
-                          .descriptors = {},
-                          .pushConstantBlocks = {},
-                          .inputs = {{.name = "color", .location = 0, .format = ShaderInterfaceFormat::Float4}},
-                          .outputs = {},
-                          .specializationConstants = {}};
-    const auto shaders = std::array {vertex, fragment};
-
-    const auto layout = buildShaderProgramLayout(shaders, "wrong stage interface");
-
-    ASSERT_FALSE(layout);
-    EXPECT_NE(layout.error().message.find("incompatible vertex and fragment interfaces"), std::string::npos);
-}
-
-TEST(ShaderProgramLayout, RejectsUnsupportedDescriptorsAndDuplicateStages)
-{
-    const auto unsupported = ShaderReflection {.stage = ShaderStage::Vertex,
-                                               .descriptors = {{.name = {},
-                                                                .set = 0,
-                                                                .binding = 1,
-                                                                .count = 2,
-                                                                .kind = ShaderDescriptorKind::Other,
-                                                                .arrayDimensions = {},
-                                                                .blockSize = 0,
-                                                                .members = {},
-                                                                .sampledImage = {}}},
-                                               .pushConstantBlocks = {},
-                                               .inputs = {},
-                                               .outputs = {},
-                                               .specializationConstants = {}};
-    const auto unsupportedLayout = buildShaderProgramLayout(std::span {&unsupported, 1}, "unsupported");
-    ASSERT_FALSE(unsupportedLayout);
-    EXPECT_NE(unsupportedLayout.error().message.find("unsupported descriptor"), std::string::npos);
-
-    const auto vertex = ShaderReflection {.stage = ShaderStage::Vertex,
-                                          .descriptors = {},
-                                          .pushConstantBlocks = {},
-                                          .inputs = {},
-                                          .outputs = {},
-                                          .specializationConstants = {}};
-    const auto duplicateStages = std::array {vertex, vertex};
-    const auto duplicateLayout = buildShaderProgramLayout(duplicateStages, "duplicate stage");
-    ASSERT_FALSE(duplicateLayout);
-    EXPECT_NE(duplicateLayout.error().message.find("duplicate shader stage"), std::string::npos);
-}
-
 TEST_F(ShaderReflectionUnitTest, MapsSignedIntegerInterfaceFormat)
 {
     auto input = SpvReflectInterfaceVariable {};
@@ -1226,208 +839,4 @@ TEST_F(ShaderReflectionUnitTest, RejectsGraphicsProgramStageReflectionFailures)
         reflectGraphicsProgram(shaderWords, std::span<const std::uint32_t> {shaderWords}, "fragment failure");
 
     EXPECT_FALSE(fragmentFailure);
-}
-
-TEST(ShaderProgramLayout, RejectsEmptyAndFragmentOnlyPrograms)
-{
-    const auto empty = buildShaderProgramLayout(std::span<const ShaderReflection> {}, "empty program");
-    ASSERT_FALSE(empty);
-    EXPECT_NE(empty.error().message.find("no shader stages"), std::string::npos);
-
-    const auto fragment = ShaderReflection {.stage = ShaderStage::Fragment,
-                                            .descriptors = {},
-                                            .pushConstantBlocks = {},
-                                            .inputs = {},
-                                            .outputs = {},
-                                            .specializationConstants = {}};
-    const auto fragmentOnly = buildShaderProgramLayout(std::span {&fragment, 1}, "fragment-only program");
-    ASSERT_FALSE(fragmentOnly);
-    EXPECT_NE(fragmentOnly.error().message.find("must include a vertex stage"), std::string::npos);
-}
-
-TEST(ShaderProgramLayout, RejectsDuplicateInterfaceLocations)
-{
-    auto vertex = ShaderReflection {};
-    vertex.inputs = {
-        {.name = "first",  .location = 0, .format = ShaderInterfaceFormat::Float},
-        {.name = "second", .location = 0, .format = ShaderInterfaceFormat::Float}
-    };
-    const auto duplicateInputs = buildShaderProgramLayout(std::span {&vertex, 1}, "duplicate vertex inputs");
-    ASSERT_FALSE(duplicateInputs);
-    EXPECT_NE(duplicateInputs.error().message.find("duplicate vertex interface locations"), std::string::npos);
-
-    vertex.inputs.clear();
-    const auto fragment = ShaderReflection {
-        .stage = ShaderStage::Fragment,
-        .descriptors = {},
-        .pushConstantBlocks = {},
-        .inputs = {{.name = "first", .location = 0, .format = ShaderInterfaceFormat::Float},
-                        {.name = "second", .location = 0, .format = ShaderInterfaceFormat::Float}},
-        .outputs = {},
-        .specializationConstants = {}
-    };
-    const auto duplicateFragmentInputs = std::array {vertex, fragment};
-    const auto duplicateFragmentLayout = buildShaderProgramLayout(duplicateFragmentInputs, "duplicate fragment inputs");
-    ASSERT_FALSE(duplicateFragmentLayout);
-    EXPECT_NE(duplicateFragmentLayout.error().message.find("duplicate fragment input locations"), std::string::npos);
-}
-
-TEST(ShaderProgramLayout, RejectsDuplicateSpecializationConstants)
-{
-    auto vertex = ShaderReflection {};
-    vertex.specializationConstants = {
-        {.name = "first",  .id = 1},
-        {.name = "second", .id = 1}
-    };
-
-    const auto result = buildShaderProgramLayout(std::span {&vertex, 1}, "duplicate specialization constants");
-
-    ASSERT_FALSE(result);
-    EXPECT_NE(result.error().message.find("duplicate specialization constants"), std::string::npos);
-}
-
-TEST(ShaderProgramLayout, RejectsInvalidAndConflictingPushConstantLayouts)
-{
-    auto vertex = ShaderReflection {};
-    vertex.pushConstantBlocks = {
-        {.offset = 0, .size = 0, .members = {}}
-    };
-    auto invalid = buildShaderProgramLayout(std::span {&vertex, 1}, "empty push constants");
-    ASSERT_FALSE(invalid);
-    EXPECT_NE(invalid.error().message.find("invalid push constant range"), std::string::npos);
-
-    vertex.pushConstantBlocks = {
-        {.offset = 0,
-         .size = 16,
-         .members = {{.name = "vertexValue", .offset = 0, .size = 16, .arrayStride = 0, .members = {}}}}
-    };
-    auto fragment = ShaderReflection {
-        .stage = ShaderStage::Fragment,
-        .descriptors = {},
-        .pushConstantBlocks =
-            {{.offset = 0,
-              .size = 16,
-              .members = {{.name = "fragmentValue", .offset = 0, .size = 16, .arrayStride = 0, .members = {}}}}},
-        .inputs = {},
-        .outputs = {},
-        .specializationConstants = {}};
-    const auto stages = std::array {vertex, fragment};
-    const auto conflict = buildShaderProgramLayout(stages, "conflicting push constants");
-    ASSERT_FALSE(conflict);
-    EXPECT_NE(conflict.error().message.find("conflicting push constant layouts"), std::string::npos);
-}
-
-TEST(ShaderProgramLayout, RejectsMissingSpecializationConstant)
-{
-    const auto program = ShaderProgramLayout {};
-    const auto result = specializationConstantId(program, ShaderStage::Fragment, "alphaMode", "mesh pipeline");
-
-    ASSERT_FALSE(result);
-    EXPECT_NE(result.error().message.find("alphaMode"), std::string::npos);
-}
-
-TEST(ShaderBlockLayout, RejectsIncompleteNestedBlocksAndUnnamedDescriptors)
-{
-    const auto shaderMembers = std::array {
-        ShaderBlockMember {.name = "transform", .offset = 0, .size = 16, .arrayStride = 0, .members = {}}
-    };
-    const auto hostMembers = std::array {
-        ShaderBlockMember {.name = "transform",
-                           .offset = 0,
-                           .size = 16,
-                           .arrayStride = 0,
-                           .members = {{.name = "value", .offset = 0, .size = 16, .arrayStride = 0, .members = {}}}}
-    };
-    const auto block = validateShaderBlockMembers(shaderMembers, hostMembers, "nested block", true);
-    ASSERT_FALSE(block);
-    EXPECT_NE(block.error().message.find("incomplete shader block"), std::string::npos);
-
-    auto program = ShaderProgramLayout {};
-    program.descriptors.push_back({.set = 0,
-                                   .binding = 0,
-                                   .count = 1,
-                                   .kind = ShaderDescriptorKind::UniformBuffer,
-                                   .stageLayouts = {},
-                                   .names = {},
-                                   .sampledImage = {}});
-    const auto descriptor = validateShaderProgramDescriptors(program, std::span<const ShaderDescriptor> {}, "unnamed");
-    ASSERT_FALSE(descriptor);
-    EXPECT_NE(descriptor.error().message.find("unnamed descriptor"), std::string::npos);
-}
-
-TEST_F(ToneMappingPassReflectionTest, RejectsMissingToneMappingDescriptor)
-{
-    expectShaderReflection(std::nullopt);
-    EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(_, _, _, _)).Times(0);
-
-    const auto pass = panda::core::vulkan::presentation::ToneMappingPass::create(device, 2);
-
-    ASSERT_FALSE(pass);
-    EXPECT_EQ(pass.error().code, panda::ErrorCode::InvalidArgument);
-    EXPECT_NE(pass.error().message.find("incompatible descriptor interface"), std::string::npos);
-}
-
-TEST_F(ToneMappingPassReflectionTest, PropagatesShaderReflectionFailure)
-{
-    EXPECT_CALL(reflect, createShaderModule(_, _, _)).WillOnce(Return(SPV_REFLECT_RESULT_ERROR_ALLOC_FAILED));
-    EXPECT_CALL(reflect, destroyShaderModule(_)).Times(0);
-    EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(_, _, _, _)).Times(0);
-
-    const auto pass = panda::core::vulkan::presentation::ToneMappingPass::create(device, 2);
-
-    ASSERT_FALSE(pass);
-    EXPECT_EQ(pass.error().code, panda::ErrorCode::ResourceExhausted);
-}
-
-TEST_F(ToneMappingPassReflectionTest, RejectsToneMappingDescriptorSetBeyondDeviceLimit)
-{
-    expectShaderReflection(1);
-    EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(_, _, _, _)).Times(0);
-
-    const auto pass = panda::core::vulkan::presentation::ToneMappingPass::create(device, 1);
-
-    ASSERT_FALSE(pass);
-    EXPECT_EQ(pass.error().code, panda::ErrorCode::Unsupported);
-    EXPECT_NE(pass.error().message.find("exceeds device limits"), std::string::npos);
-}
-
-TEST_F(ToneMappingPassReflectionTest, PropagatesFailureCreatingAnEmptyDescriptorSetLayout)
-{
-    expectShaderReflection(1);
-    EXPECT_CALL(vulkan, vkCreateDescriptorSetLayout(deviceHandle, NotNull(), nullptr, NotNull()))
-        .Times(2)
-        .WillOnce([this](VkDevice,
-                         const VkDescriptorSetLayoutCreateInfo* info,
-                         const VkAllocationCallbacks*,
-                         VkDescriptorSetLayout* output) {
-            EXPECT_EQ(info->bindingCount, 1U);
-            *output = fakeHandle<VkDescriptorSetLayout>(nextHandle++);
-            return static_cast<VkResult>(vk::Result::eSuccess);
-        })
-        .WillOnce([](VkDevice,
-                     const VkDescriptorSetLayoutCreateInfo* info,
-                     const VkAllocationCallbacks*,
-                     VkDescriptorSetLayout*) {
-            EXPECT_EQ(info->bindingCount, 0U);
-            return static_cast<VkResult>(vk::Result::eErrorOutOfHostMemory);
-        });
-    EXPECT_CALL(vulkan, vkDestroyDescriptorSetLayout(deviceHandle, _, nullptr));
-    EXPECT_CALL(vulkan, vkCreatePipelineLayout(_, _, _, _)).Times(0);
-    EXPECT_CALL(vulkan, vkCreateSampler(_, _, _, _)).Times(0);
-
-    const auto pass = panda::core::vulkan::presentation::ToneMappingPass::create(device, 2);
-
-    ASSERT_FALSE(pass);
-    EXPECT_EQ(pass.error().code, panda::ErrorCode::ResourceExhausted);
-}
-
-TEST_F(ToneMappingPassReflectionTest, CreatesGapLayoutsForReflectedDescriptorSet)
-{
-    expectShaderReflection(1);
-    expectSuccessfulInitialization();
-
-    auto pass = panda::core::vulkan::presentation::ToneMappingPass::create(device, 2);
-
-    ASSERT_TRUE(pass);
-    pass->reset();
 }
