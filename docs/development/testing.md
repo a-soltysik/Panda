@@ -12,12 +12,11 @@ Tools suites follow their selected targets. Standard full-test, fast and quality
 presets explicitly enable Tools and Scene. CUDA remains selected
 explicitly with `PANDA_BUILD_CUDA` so ordinary CPU test configurations need no
 toolkit. Core owns both mesh upload and shape generation. Internal Base tests can
-run with `PANDA_BUILD_ENGINE=OFF`. The CUDA connection is a
-runnable example, not a CTest case. With CUDA selected, unit cases run the real `CudaAdapter.cpp` against a
-controlled `cudaGetDeviceCount` call, and an integration case calls the real
-CUDA Runtime through the public facade;
-the latter can run on a machine without a usable device. Select execution
-through CTest labels; building system tests does not require running them.
+run with `PANDA_BUILD_ENGINE=OFF`. The CUDA connection is a runnable example, not a CTest case. With CUDA
+selected, unit cases run the real adapter and interop code against a controlled
+CUDA Runtime mock. An integration case calls the real Runtime through the public
+facade and can run without a usable device. Select execution through CTest
+labels; building system tests does not require running them.
 
 ## Levels and execution
 
@@ -77,8 +76,9 @@ in test support. Swapchain configuration policy has separate CPU unit tests. The
 `Engine` executable substitutes the `SwapchainGeneration` archive member; its
 tests cannot create a real swapchain, while the `SwapchainGeneration` tests link
 that member unchanged.
-With CUDA enabled, `PandaTest::CudaRuntimeMock` replaces only the external
-`cudaGetDeviceCount` function while `CudaAdapter.cpp` remains real.
+With CUDA enabled, `PandaTest::CudaRuntimeMock` supplies replacements for the
+CUDA Runtime entry points Panda uses, while the adapter and interop code remain
+real.
 Tests list the production module explicitly alongside these
 helpers, so their real subject remains visible.
 

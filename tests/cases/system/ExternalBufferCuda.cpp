@@ -8,6 +8,7 @@
 #include <cstring>
 #include <expected>
 #include <limits>
+#include <panda/DeviceUuid.hpp>
 #include <panda/Engine.hpp>
 #include <panda/EngineOptions.hpp>
 #include <panda/base/Error.hpp>
@@ -27,6 +28,35 @@
 namespace
 {
 using panda::test::fakeHandle;
+
+void expectCudaDeviceAndStream(panda::test::CudaRuntimeMock& cudaRuntime,
+                               const panda::DeviceUuid& deviceUuid,
+                               cudaStream_t stream,
+                               int deviceSelectionCalls)
+{
+    auto properties = cudaDeviceProp {};
+    std::memcpy(std::span {properties.uuid.bytes}.data(), deviceUuid.data(), deviceUuid.size());
+    ON_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull())).WillByDefault([](auto* count) {
+        *count = 1;
+        return cudaSuccess;
+    });
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull())).Times(1);
+    ON_CALL(cudaRuntime, cudaGetDeviceProperties(testing::NotNull(), 0))
+        .WillByDefault([properties](auto* output, auto) {
+            *output = properties;
+            return cudaSuccess;
+        });
+    EXPECT_CALL(cudaRuntime, cudaGetDeviceProperties(testing::NotNull(), 0)).Times(1);
+    EXPECT_CALL(cudaRuntime, cudaSetDevice(0)).Times(deviceSelectionCalls).WillRepeatedly(testing::Return(cudaSuccess));
+    ON_CALL(cudaRuntime, cudaStreamCreateWithFlags(testing::NotNull(), cudaStreamNonBlocking))
+        .WillByDefault([stream](auto* output, auto) {
+            *output = stream;
+            return cudaSuccess;
+        });
+    EXPECT_CALL(cudaRuntime, cudaStreamCreateWithFlags(testing::NotNull(), cudaStreamNonBlocking)).Times(1);
+    ON_CALL(cudaRuntime, cudaStreamDestroy(stream)).WillByDefault(testing::Return(cudaSuccess));
+    EXPECT_CALL(cudaRuntime, cudaStreamDestroy(stream)).Times(1);
+}
 }
 
 TEST(ExternalBufferCudaSystem, ReleasesImportedMemoryWhenSemaphoreImportFails)
@@ -54,9 +84,8 @@ TEST(ExternalBufferCudaSystem, ReleasesImportedMemoryWhenSemaphoreImportFails)
 
     auto cudaRuntime = panda::test::ScopedMock<panda::test::CudaRuntimeMock> {};
     const auto deviceUuid = context->getDeviceInfo().deviceUuid;
-    auto properties = cudaDeviceProp {};
-    std::memcpy(std::span {properties.uuid.bytes}.data(), deviceUuid.data(), deviceUuid.size());
     auto* const stream = fakeHandle<cudaStream_t>(1);
+    expectCudaDeviceAndStream(cudaRuntime, deviceUuid, stream, 6);
     auto* const memory = fakeHandle<cudaExternalMemory_t>(2);
     auto* const devicePointer = fakeHandle<void*>(3);
     const auto semaphoreHandleValue = buffer->getSemaphoreHandle().get();
@@ -68,23 +97,6 @@ TEST(ExternalBufferCudaSystem, ReleasesImportedMemoryWhenSemaphoreImportFails)
     constexpr auto semaphoreHandleType = cudaExternalSemaphoreHandleTypeTimelineSemaphoreFd;
 #endif
 
-    ON_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull())).WillByDefault([](auto* count) {
-        *count = 1;
-        return cudaSuccess;
-    });
-    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull())).Times(1);
-    ON_CALL(cudaRuntime, cudaGetDeviceProperties(testing::NotNull(), 0)).WillByDefault([&](auto* output, auto) {
-        *output = properties;
-        return cudaSuccess;
-    });
-    EXPECT_CALL(cudaRuntime, cudaGetDeviceProperties(testing::NotNull(), 0)).Times(1);
-    EXPECT_CALL(cudaRuntime, cudaSetDevice(0)).Times(6).WillRepeatedly(testing::Return(cudaSuccess));
-    ON_CALL(cudaRuntime, cudaStreamCreateWithFlags(testing::NotNull(), cudaStreamNonBlocking))
-        .WillByDefault([&](auto* output, auto) {
-            *output = stream;
-            return cudaSuccess;
-        });
-    EXPECT_CALL(cudaRuntime, cudaStreamCreateWithFlags(testing::NotNull(), cudaStreamNonBlocking)).Times(1);
     ON_CALL(cudaRuntime, cudaImportExternalMemory(testing::NotNull(), testing::NotNull()))
         .WillByDefault([&](auto* output, const auto* descriptor) {
             EXPECT_EQ(descriptor->type, memoryHandleType);
@@ -113,7 +125,6 @@ TEST(ExternalBufferCudaSystem, ReleasesImportedMemoryWhenSemaphoreImportFails)
     ON_CALL(cudaRuntime, cudaStreamSynchronize(stream)).WillByDefault(testing::Return(cudaSuccess));
     ON_CALL(cudaRuntime, cudaFree(devicePointer)).WillByDefault(testing::Return(cudaSuccess));
     ON_CALL(cudaRuntime, cudaDestroyExternalMemory(memory)).WillByDefault(testing::Return(cudaSuccess));
-    ON_CALL(cudaRuntime, cudaStreamDestroy(stream)).WillByDefault(testing::Return(cudaSuccess));
     {
         const auto orderedCalls = testing::InSequence {};
         EXPECT_CALL(cudaRuntime, cudaImportExternalMemory(testing::NotNull(), testing::NotNull())).Times(1);
@@ -124,12 +135,14 @@ TEST(ExternalBufferCudaSystem, ReleasesImportedMemoryWhenSemaphoreImportFails)
         EXPECT_CALL(cudaRuntime, cudaFree(devicePointer)).Times(1);
         EXPECT_CALL(cudaRuntime, cudaDestroyExternalMemory(memory)).Times(1);
     }
-    EXPECT_CALL(cudaRuntime, cudaStreamDestroy(stream)).Times(1);
     auto session = panda::cuda::CudaSession::create(context->getDeviceInfo().deviceUuid);
     ASSERT_TRUE(session) << session.error().message;
     const auto imported = session->importBuffer(std::move(*buffer));
     ASSERT_FALSE(imported);
     EXPECT_EQ(imported.error().code, panda::ErrorCode::Unsupported);
+    ASSERT_TRUE(imported.error().native.has_value());
+    EXPECT_EQ(imported.error().native->api, "CUDA");
+    EXPECT_EQ(imported.error().native->code, cudaErrorNotSupported);
     EXPECT_TRUE(session->close());
 }
 
@@ -154,33 +167,10 @@ TEST(ExternalBufferCudaSystem, RejectsDeviceUuidMismatchBeforeNativeImport)
     auto cudaRuntime = panda::test::ScopedMock<panda::test::CudaRuntimeMock> {};
     auto mismatchedUuid = context->getDeviceInfo().deviceUuid;
     mismatchedUuid.front() ^= std::uint8_t {0xff};
-    auto properties = cudaDeviceProp {};
-    std::memcpy(std::span {properties.uuid.bytes}.data(), mismatchedUuid.data(), mismatchedUuid.size());
     auto* const stream = fakeHandle<cudaStream_t>(4);
-
-    ON_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull())).WillByDefault([](auto* count) {
-        *count = 1;
-        return cudaSuccess;
-    });
-    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull())).Times(1);
-    ON_CALL(cudaRuntime, cudaGetDeviceProperties(testing::NotNull(), 0)).WillByDefault([&](auto* output, auto) {
-        *output = properties;
-        return cudaSuccess;
-    });
-    EXPECT_CALL(cudaRuntime, cudaGetDeviceProperties(testing::NotNull(), 0)).Times(1);
-    ON_CALL(cudaRuntime, cudaSetDevice(0)).WillByDefault(testing::Return(cudaSuccess));
-    EXPECT_CALL(cudaRuntime, cudaSetDevice(0)).Times(2);
-    ON_CALL(cudaRuntime, cudaStreamCreateWithFlags(testing::NotNull(), cudaStreamNonBlocking))
-        .WillByDefault([&](auto* output, auto) {
-            *output = stream;
-            return cudaSuccess;
-        });
-    EXPECT_CALL(cudaRuntime, cudaStreamCreateWithFlags(testing::NotNull(), cudaStreamNonBlocking)).Times(1);
+    expectCudaDeviceAndStream(cudaRuntime, mismatchedUuid, stream, 2);
     EXPECT_CALL(cudaRuntime, cudaImportExternalMemory(testing::_, testing::_)).Times(0);
     EXPECT_CALL(cudaRuntime, cudaImportExternalSemaphore(testing::_, testing::_)).Times(0);
-    ON_CALL(cudaRuntime, cudaStreamDestroy(stream)).WillByDefault(testing::Return(cudaSuccess));
-    EXPECT_CALL(cudaRuntime, cudaStreamDestroy(stream)).Times(1);
-
     auto session = panda::cuda::CudaSession::create(mismatchedUuid);
     ASSERT_TRUE(session) << session.error().message;
     const auto imported = session->importBuffer(std::move(*buffer));
@@ -213,9 +203,8 @@ TEST(ExternalBufferCudaSystem, QueuesWorkBetweenTimelineWaitAndSignal)
 
     auto cudaRuntime = panda::test::ScopedMock<panda::test::CudaRuntimeMock> {};
     const auto deviceUuid = context->getDeviceInfo().deviceUuid;
-    auto properties = cudaDeviceProp {};
-    std::memcpy(std::span {properties.uuid.bytes}.data(), deviceUuid.data(), deviceUuid.size());
     auto* const stream = fakeHandle<cudaStream_t>(5);
+    expectCudaDeviceAndStream(cudaRuntime, deviceUuid, stream, 16);
     auto* const memory = fakeHandle<cudaExternalMemory_t>(6);
     auto* const semaphore = fakeHandle<cudaExternalSemaphore_t>(7);
     auto* const devicePointer = fakeHandle<void*>(8);
@@ -229,23 +218,6 @@ TEST(ExternalBufferCudaSystem, QueuesWorkBetweenTimelineWaitAndSignal)
     constexpr auto signalOrder = std::array {4, 7, 10, 13};
     constexpr auto signalResults = std::array {cudaSuccess, cudaSuccess, cudaSuccess, cudaErrorNotSupported};
     auto signalIndex = std::size_t {};
-    ON_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull())).WillByDefault([](auto* count) {
-        *count = 1;
-        return cudaSuccess;
-    });
-    EXPECT_CALL(cudaRuntime, cudaGetDeviceCount(testing::NotNull())).Times(1);
-    ON_CALL(cudaRuntime, cudaGetDeviceProperties(testing::NotNull(), 0)).WillByDefault([&](auto* output, auto) {
-        *output = properties;
-        return cudaSuccess;
-    });
-    EXPECT_CALL(cudaRuntime, cudaGetDeviceProperties(testing::NotNull(), 0)).Times(1);
-    EXPECT_CALL(cudaRuntime, cudaSetDevice(0)).Times(16).WillRepeatedly(testing::Return(cudaSuccess));
-    ON_CALL(cudaRuntime, cudaStreamCreateWithFlags(testing::NotNull(), cudaStreamNonBlocking))
-        .WillByDefault([&](auto* output, auto) {
-            *output = stream;
-            return cudaSuccess;
-        });
-    EXPECT_CALL(cudaRuntime, cudaStreamCreateWithFlags(testing::NotNull(), cudaStreamNonBlocking)).Times(1);
     ON_CALL(cudaRuntime, cudaImportExternalMemory(testing::NotNull(), testing::NotNull()))
         .WillByDefault([&](auto* output, const auto*) {
             *output = memory;
@@ -289,8 +261,6 @@ TEST(ExternalBufferCudaSystem, QueuesWorkBetweenTimelineWaitAndSignal)
     EXPECT_CALL(cudaRuntime, cudaFree(devicePointer)).Times(1);
     ON_CALL(cudaRuntime, cudaDestroyExternalMemory(memory)).WillByDefault(testing::Return(cudaSuccess));
     EXPECT_CALL(cudaRuntime, cudaDestroyExternalMemory(memory)).Times(1);
-    ON_CALL(cudaRuntime, cudaStreamDestroy(stream)).WillByDefault(testing::Return(cudaSuccess));
-    EXPECT_CALL(cudaRuntime, cudaStreamDestroy(stream)).Times(1);
 
     auto session = panda::cuda::CudaSession::create(context->getDeviceInfo().deviceUuid);
     ASSERT_TRUE(session) << session.error().message;
