@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <glm/ext/vector_uint2.hpp>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -25,7 +26,6 @@
 #include <panda/submission/CompletionPoint.hpp>
 #include <panda/submission/UploadBatch.hpp>
 #include <span>
-#include <tuple>
 #include <unordered_map>
 #include <vector>
 #include <vulkan/vulkan_format_traits.hpp>
@@ -33,7 +33,7 @@
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/MeshResource.hpp"
 #include "resources/TextureResource.hpp"
@@ -98,7 +98,7 @@ auto getImageCopyByteSize(const NativeImage& image, const VkBufferImageCopy& reg
     return ((blockRows - 1) * rowPitch) + rowBytes;
 }
 
-class BufferUploadIntegration : public testing::Test
+class BufferUploadIntegration : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
@@ -127,8 +127,7 @@ protected:
         EXPECT_TRUE(images.empty());
         EXPECT_TRUE(imageViews.empty());
         EXPECT_TRUE(memory.empty());
-        std::ignore = device.release();
-        std::ignore = instance.release();
+        panda::test::VulkanTestFixture::TearDown();
     }
 
     void configureProperties()
@@ -136,6 +135,11 @@ protected:
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* properties) {
+                if (properties == nullptr)
+                {
+                    ADD_FAILURE() << "Physical device memory properties output is null";
+                    return;
+                }
                 *properties = {};
                 properties->memoryHeapCount = 1;
                 properties->memoryHeaps[0] = {.size = 65536, .flags = 0};
@@ -145,11 +149,22 @@ protected:
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkPhysicalDevice, VkPhysicalDeviceProperties2* properties) {
+                if (properties == nullptr || properties->sType != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 ||
+                    properties->pNext == nullptr)
+                {
+                    ADD_FAILURE() << "Physical device properties output or pNext is invalid";
+                    return;
+                }
                 const auto* header = static_cast<const VkBaseOutStructure*>(properties->pNext);
                 if (header->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_PROPERTIES)
                 {
                     static_cast<VkPhysicalDeviceTimelineSemaphoreProperties*>(properties->pNext)
                         ->maxTimelineSemaphoreValueDifference = std::numeric_limits<std::uint64_t>::max();
+                    return;
+                }
+                if (header->sType != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES)
+                {
+                    ADD_FAILURE() << "Physical device properties pNext has an unexpected structure type";
                     return;
                 }
                 properties->properties.limits.maxMemoryAllocationCount = 16;
@@ -165,6 +180,11 @@ protected:
             .Times(testing::AnyNumber())
             .WillRepeatedly(
                 [this](VkDevice, const VkBufferCreateInfo* info, const VkAllocationCallbacks*, VkBuffer* output) {
+                    if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO)
+                    {
+                        ADD_FAILURE() << "Buffer create info or output is invalid";
+                        return VK_ERROR_INITIALIZATION_FAILED;
+                    }
                     ++bufferCreations;
                     *output = fakeHandle<VkBuffer>(nextId++);
                     const auto result = bufferCreations == failBufferCreationAt ? exhausted : bufferStatus;
@@ -178,6 +198,19 @@ protected:
             .Times(testing::AnyNumber())
             .WillRepeatedly(
                 [this](VkDevice, const VkBufferMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
+                    if (info == nullptr || output == nullptr ||
+                        info->sType != VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2 ||
+                        output->sType != VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 || output->pNext == nullptr)
+                    {
+                        ADD_FAILURE() << "Buffer memory requirements info or output chain is invalid";
+                        return;
+                    }
+                    const auto* dedicated = static_cast<const VkBaseOutStructure*>(output->pNext);
+                    if (dedicated->sType != VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS)
+                    {
+                        ADD_FAILURE() << "Buffer requirements pNext has an unexpected structure type";
+                        return;
+                    }
                     output->memoryRequirements = {.size = buffers.at(info->buffer).size,
                                                   .alignment = 64,
                                                   .memoryTypeBits = 1};
@@ -190,6 +223,12 @@ protected:
         EXPECT_CALL(vulkan, vkBindBufferMemory2(_, 1, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkDevice, std::uint32_t, const VkBindBufferMemoryInfo* info) {
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO ||
+                    !buffers.contains(info->buffer))
+                {
+                    ADD_FAILURE() << "Buffer bind info or buffer is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 buffers.at(info->buffer).memory = info->memory;
                 buffers.at(info->buffer).offset = info->memoryOffset;
                 return success;
@@ -205,10 +244,23 @@ protected:
     void configureImages()
     {
         configureImageFormatProperties();
+        configureImageCreation();
+        configureImageRequirements();
+        configureImageBinding();
+        configureImageDestruction();
+    }
+
+    void configureImageCreation()
+    {
         EXPECT_CALL(vulkan, vkCreateImage(_, NotNull(), nullptr, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly(
                 [this](VkDevice, const VkImageCreateInfo* info, const VkAllocationCallbacks*, VkImage* output) {
+                    if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO)
+                    {
+                        ADD_FAILURE() << "Image create info or output is invalid";
+                        return VK_ERROR_INITIALIZATION_FAILED;
+                    }
                     *output = fakeHandle<VkImage>(nextId++);
                     images.emplace(*output,
                                    NativeImage {.extent = info->extent,
@@ -216,26 +268,54 @@ protected:
                                                 .usage = info->usage});
                     return success;
                 });
+    }
+
+    void configureImageRequirements()
+    {
         EXPECT_CALL(vulkan, vkGetImageMemoryRequirements2(_, NotNull(), NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly(
                 [this](VkDevice, const VkImageMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
+                    if (info == nullptr || output == nullptr ||
+                        info->sType != VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2 ||
+                        output->sType != VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 || output->pNext == nullptr)
+                    {
+                        ADD_FAILURE() << "Image memory requirements info or output chain is invalid";
+                        return;
+                    }
+                    const auto* dedicatedHeader = static_cast<const VkBaseOutStructure*>(output->pNext);
+                    if (dedicatedHeader->sType != VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS)
+                    {
+                        ADD_FAILURE() << "Image requirements pNext has an unexpected structure type";
+                        return;
+                    }
                     output->memoryRequirements = {.size = 128, .alignment = 64, .memoryTypeBits = 1};
                     auto* requirements = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
-                    if (requirements != nullptr)
-                    {
-                        requirements->requiresDedicatedAllocation = VK_FALSE;
-                        requirements->prefersDedicatedAllocation = VK_FALSE;
-                    }
+                    requirements->requiresDedicatedAllocation = VK_FALSE;
+                    requirements->prefersDedicatedAllocation = VK_FALSE;
                     EXPECT_TRUE(images.contains(info->image));
                 });
+    }
+
+    void configureImageBinding()
+    {
         EXPECT_CALL(vulkan, vkBindImageMemory2(_, 1, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkDevice, std::uint32_t, const VkBindImageMemoryInfo* info) {
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO ||
+                    !images.contains(info->image))
+                {
+                    ADD_FAILURE() << "Image bind info or image is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 images.at(info->image).memory = info->memory;
                 images.at(info->image).offset = info->memoryOffset;
                 return success;
             });
+    }
+
+    void configureImageDestruction()
+    {
         EXPECT_CALL(vulkan, vkDestroyImage(_, _, nullptr))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkDevice, VkImage image, const VkAllocationCallbacks*) {
@@ -260,6 +340,11 @@ protected:
                                VkImageUsageFlags,
                                VkImageCreateFlags,
                                VkImageFormatProperties* output) {
+                if (output == nullptr)
+                {
+                    ADD_FAILURE() << "Image format properties output is null";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 *output = VkImageFormatProperties {};
                 output->maxExtent = {.width = std::numeric_limits<std::uint32_t>::max(),
                                      .height = std::numeric_limits<std::uint32_t>::max(),
@@ -274,6 +359,12 @@ protected:
             .Times(testing::AnyNumber())
             .WillRepeatedly(
                 [this](VkDevice, const VkImageViewCreateInfo* info, const VkAllocationCallbacks*, VkImageView* output) {
+                    if (info == nullptr || output == nullptr ||
+                        info->sType != VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO || !images.contains(info->image))
+                    {
+                        ADD_FAILURE() << "Image view create info or image is invalid";
+                        return VK_ERROR_INITIALIZATION_FAILED;
+                    }
                     EXPECT_TRUE(images.contains(info->image));
                     EXPECT_EQ(info->viewType, VK_IMAGE_VIEW_TYPE_2D);
                     auto* const view = fakeHandle<VkImageView>(nextId++);
@@ -297,6 +388,11 @@ protected:
                                    const VkMemoryAllocateInfo* info,
                                    const VkAllocationCallbacks*,
                                    VkDeviceMemory* output) {
+                if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO)
+                {
+                    ADD_FAILURE() << "Memory allocation info or output is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 *output = fakeHandle<VkDeviceMemory>(nextId++);
                 memory.emplace(*output, std::vector<std::byte>(static_cast<std::size_t>(info->allocationSize)));
                 return success;
@@ -309,6 +405,11 @@ protected:
                                    VkDeviceSize,
                                    VkMemoryMapFlags,
                                    void** output) {
+                if (output == nullptr || !memory.contains(allocation))
+                {
+                    ADD_FAILURE() << "Memory mapping output or allocation is invalid";
+                    return VK_ERROR_MEMORY_MAP_FAILED;
+                }
                 *output = memory.at(allocation).data();
                 return success;
             });
@@ -326,6 +427,11 @@ protected:
         EXPECT_CALL(vulkan, vkFlushMappedMemoryRanges(_, 1, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkDevice, std::uint32_t, const VkMappedMemoryRange* range) {
+                if (range == nullptr || range->sType != VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE)
+                {
+                    ADD_FAILURE() << "Mapped memory range is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 flushed.push_back(*range);
                 return flushed.size() == failFlushAt ? exhausted : flushStatus;
             });
@@ -339,6 +445,11 @@ protected:
                                    const VkCommandPoolCreateInfo* info,
                                    const VkAllocationCallbacks*,
                                    VkCommandPool* output) {
+                if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO)
+                {
+                    ADD_FAILURE() << "Command pool create info or output is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->queueFamilyIndex, 0);
                 *output = fakeHandle<VkCommandPool>(nextId++);
                 return poolStatus;
@@ -346,6 +457,12 @@ protected:
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkDevice, const VkCommandBufferAllocateInfo* info, VkCommandBuffer* output) {
+                if (info == nullptr || output == nullptr ||
+                    info->sType != VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO)
+                {
+                    ADD_FAILURE() << "Command buffer allocation info or output is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->commandBufferCount, 1);
                 *output = fakeHandle<VkCommandBuffer>(nextId++);
                 return allocationStatus;
@@ -357,7 +474,12 @@ protected:
     {
         EXPECT_CALL(vulkan, vkBeginCommandBuffer(_, NotNull()))
             .Times(testing::AnyNumber())
-            .WillRepeatedly([this](VkCommandBuffer, const VkCommandBufferBeginInfo*) {
+            .WillRepeatedly([this](VkCommandBuffer, const VkCommandBufferBeginInfo* info) {
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO)
+                {
+                    ADD_FAILURE() << "Command buffer begin info is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 return beginStatus;
             });
         EXPECT_CALL(vulkan, vkEndCommandBuffer(_)).Times(testing::AnyNumber()).WillRepeatedly([this](VkCommandBuffer) {
@@ -374,8 +496,6 @@ protected:
     void configureCopies()
     {
         configureBarriers();
-        configureBufferCopies();
-        configureTextureCopies();
     }
 
     void configureBarriers()
@@ -383,11 +503,25 @@ protected:
         EXPECT_CALL(vulkan, vkCmdPipelineBarrier2(_, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkCommandBuffer, const VkDependencyInfo* info) {
-                if (info->memoryBarrierCount != 0)
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_DEPENDENCY_INFO)
                 {
-                    ASSERT_EQ(info->memoryBarrierCount, 1);
-                    ASSERT_NE(info->pMemoryBarriers, nullptr);
+                    ADD_FAILURE() << "Dependency info is null or has an unexpected structure type";
+                    return;
+                }
+                if (info->memoryBarrierCount != 0 &&
+                    (info->memoryBarrierCount != 1 || info->pMemoryBarriers == nullptr))
+                {
+                    ADD_FAILURE() << "Memory barrier array is incomplete";
+                    return;
+                }
+                if (info->memoryBarrierCount == 1)
+                {
                     barriers.push_back(*info->pMemoryBarriers);
+                }
+                if (info->imageMemoryBarrierCount != 0 && info->pImageMemoryBarriers == nullptr)
+                {
+                    ADD_FAILURE() << "Image barrier array is null";
+                    return;
                 }
                 const auto imageDependencies =
                     std::span<const VkImageMemoryBarrier2> {info->pImageMemoryBarriers, info->imageMemoryBarrierCount};
@@ -395,19 +529,31 @@ protected:
             });
     }
 
-    void configureBufferCopies()
+    void expectBufferCopies(std::size_t count)
     {
         // Vulkan fixes these adjacent parameters as source and destination handles.
         // NOLINTBEGIN(bugprone-easily-swappable-parameters)
         EXPECT_CALL(vulkan, vkCmdCopyBuffer(_, _, _, 1, NotNull()))
-            .Times(testing::AnyNumber())
+            .Times(static_cast<int>(count))
             .WillRepeatedly([this](VkCommandBuffer,
                                    VkBuffer source,
                                    VkBuffer destination,
                                    std::uint32_t,
                                    const VkBufferCopy* region) {
+                if (region == nullptr || !buffers.contains(source) || !buffers.contains(destination))
+                {
+                    ADD_FAILURE() << "Buffer copy references a missing region or buffer";
+                    return;
+                }
                 EXPECT_TRUE(buffers.contains(destination));
                 const auto& view = buffers.at(source);
+                if (!memory.contains(view.memory) || view.offset > memory.at(view.memory).size() ||
+                    region->srcOffset > memory.at(view.memory).size() - view.offset ||
+                    region->size > memory.at(view.memory).size() - view.offset - region->srcOffset)
+                {
+                    ADD_FAILURE() << "Buffer copy source range is invalid";
+                    return;
+                }
                 const auto bytes =
                     std::span<const std::byte> {memory.at(view.memory)}.subspan(view.offset + region->srcOffset,
                                                                                 region->size);
@@ -422,19 +568,31 @@ protected:
         // NOLINTEND(bugprone-easily-swappable-parameters)
     }
 
-    void configureTextureCopies()
+    void expectTextureCopies(std::size_t count)
     {
         EXPECT_CALL(vulkan, vkCmdCopyBufferToImage(_, _, _, _, 1, NotNull()))
-            .Times(testing::AnyNumber())
+            .Times(static_cast<int>(count))
             .WillRepeatedly([this](VkCommandBuffer,
                                    VkBuffer source,
                                    VkImage destination,
                                    VkImageLayout layout,
                                    std::uint32_t,
                                    const VkBufferImageCopy* region) {
+                if (region == nullptr || !buffers.contains(source) || !images.contains(destination))
+                {
+                    ADD_FAILURE() << "Image copy references a missing region, source buffer, or image";
+                    return;
+                }
                 EXPECT_TRUE(images.contains(destination));
                 const auto& view = buffers.at(source);
                 const auto byteSize = getImageCopyByteSize(images.at(destination), *region);
+                if (!memory.contains(view.memory) || view.offset > memory.at(view.memory).size() ||
+                    region->bufferOffset > memory.at(view.memory).size() - view.offset ||
+                    byteSize > memory.at(view.memory).size() - view.offset - region->bufferOffset)
+                {
+                    ADD_FAILURE() << "Image copy source range is invalid";
+                    return;
+                }
                 const auto bytes =
                     std::span<const std::byte> {memory.at(view.memory)}.subspan(view.offset + region->bufferOffset,
                                                                                 byteSize);
@@ -454,10 +612,16 @@ protected:
             .Times(testing::AnyNumber())
             .WillRepeatedly(testing::SetArgPointee<3>(fakeHandle<VkQueue>(4)));
         EXPECT_CALL(vulkan, vkCreateSemaphore(_, NotNull(), nullptr, NotNull()))
-            .WillOnce([](VkDevice, const VkSemaphoreCreateInfo*, const VkAllocationCallbacks*, VkSemaphore* output) {
-                *output = fakeHandle<VkSemaphore>(5);
-                return success;
-            });
+            .WillOnce(
+                [](VkDevice, const VkSemaphoreCreateInfo* info, const VkAllocationCallbacks*, VkSemaphore* output) {
+                    if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO)
+                    {
+                        ADD_FAILURE() << "Semaphore create info or output is invalid";
+                        return VK_ERROR_INITIALIZATION_FAILED;
+                    }
+                    *output = fakeHandle<VkSemaphore>(5);
+                    return success;
+                });
         EXPECT_CALL(vulkan, vkDestroySemaphore(_, fakeHandle<VkSemaphore>(5), nullptr));
         configureSubmissionResults();
     }
@@ -484,31 +648,76 @@ protected:
 
     void configureSubmissionResults()
     {
-        EXPECT_CALL(vulkan, vkQueueSubmit2(_, 1, NotNull(), _))
-            .Times(testing::AnyNumber())
-            .WillRepeatedly([this](VkQueue, std::uint32_t, const VkSubmitInfo2* info, VkFence) {
-                EXPECT_EQ(info->commandBufferInfoCount, 1);
-                EXPECT_EQ(info->waitSemaphoreInfoCount, 0);
-                EXPECT_EQ(info->signalSemaphoreInfoCount, 1);
-                signals.push_back(info->pSignalSemaphoreInfos->value);
-                return submitStatus;
-            });
         EXPECT_CALL(vulkan, vkGetSemaphoreCounterValue(_, _, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkDevice, VkSemaphore, std::uint64_t* output) {
+                if (output == nullptr)
+                {
+                    ADD_FAILURE() << "Semaphore counter output is null";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 *output = completed;
                 return counterStatus;
             });
         EXPECT_CALL(vulkan, vkWaitSemaphores(_, NotNull(), _))
             .Times(testing::AnyNumber())
             .WillRepeatedly([this](VkDevice, const VkSemaphoreWaitInfo* info, std::uint64_t) {
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO ||
+                    info->semaphoreCount != 1 || info->pSemaphores == nullptr || info->pValues == nullptr)
+                {
+                    ADD_FAILURE() << "Semaphore wait info is incomplete";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 ++waits;
+                if (signals.empty())
+                {
+                    ADD_FAILURE() << "Wait requested without a submitted completion point";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
+                const auto semaphores = std::span {info->pSemaphores, info->semaphoreCount};
+                const auto values = std::span {info->pValues, info->semaphoreCount};
+                EXPECT_EQ(semaphores.front(), fakeHandle<VkSemaphore>(5));
+                EXPECT_EQ(values.front(), signals.back());
                 if (waitStatus == success)
                 {
                     completed = std::max(completed, *info->pValues);
                 }
                 return waitStatus;
             });
+    }
+
+    auto submitAction(std::uint64_t expectedValue)
+    {
+        return [this, expectedValue](VkQueue, std::uint32_t, const VkSubmitInfo2* info, VkFence) {
+            if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_SUBMIT_INFO_2 ||
+                info->commandBufferInfoCount != 1 || info->pCommandBufferInfos == nullptr ||
+                info->waitSemaphoreInfoCount != 0 || info->signalSemaphoreInfoCount != 1 ||
+                info->pSignalSemaphoreInfos == nullptr)
+            {
+                ADD_FAILURE() << "Upload submission info is incomplete";
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+            const auto& signal = std::span {info->pSignalSemaphoreInfos, info->signalSemaphoreInfoCount}.front();
+            if (signal.sType != VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO)
+            {
+                ADD_FAILURE() << "Upload signal has an unexpected structure type";
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+            EXPECT_EQ(signal.semaphore, fakeHandle<VkSemaphore>(5));
+            EXPECT_EQ(signal.stageMask, static_cast<VkPipelineStageFlags2>(vk::PipelineStageFlagBits2::eAllCommands));
+            EXPECT_EQ(signal.value, expectedValue);
+            signals.push_back(signal.value);
+            return submitStatus;
+        };
+    }
+
+    void expectSubmissionValues(std::initializer_list<std::uint64_t> values)
+    {
+        auto order = testing::Sequence {};
+        for (const auto value : values)
+        {
+            EXPECT_CALL(vulkan, vkQueueSubmit2(_, 1, NotNull(), _)).InSequence(order).WillOnce(submitAction(value));
+        }
     }
 
     auto destination(panda::BufferUsage usage = panda::BufferUsage::TransferDestination)
@@ -534,11 +743,6 @@ protected:
         return panda::expect(created, "Test texture could not be created");
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::unique_ptr<panda::core::vulkan::resources::MemoryPool> pool;
     std::unique_ptr<panda::detail::SubmissionQueue> submissions;
     std::unique_ptr<panda::core::vulkan::upload::UploadManager> uploads;
@@ -554,9 +758,9 @@ protected:
     std::vector<VkMappedMemoryRange> flushed;
     std::vector<std::uint64_t> signals;
     std::vector<char> destruction;
-    VkMemoryPropertyFlags memoryFlags {static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eDeviceLocal |
-                                                                          vk::MemoryPropertyFlagBits::eHostVisible |
-                                                                          vk::MemoryPropertyFlagBits::eHostCoherent)};
+    VkMemoryPropertyFlags memoryFlags {vk::MemoryPropertyFlagBits::eDeviceLocal |
+                                       vk::MemoryPropertyFlagBits::eHostVisible |
+                                       vk::MemoryPropertyFlagBits::eHostCoherent};
     VkDeviceSize maximumAllocationSize {4096};
     VkResult bufferStatus {success};
     VkResult flushStatus {success};
@@ -638,6 +842,8 @@ TEST_F(BufferUploadIntegration, WrongUsageAndForeignPoolAreRejected)
 
 TEST_F(BufferUploadIntegration, MeshWriteCopiesVertexAndIndexStorageInOrder)
 {
+    expectBufferCopies(2);
+    expectSubmissionValues({1});
     const auto mesh = panda::detail::MeshResource::create(
         device,
         *pool,
@@ -669,13 +875,19 @@ TEST_F(BufferUploadIntegration, MeshWriteCopiesVertexAndIndexStorageInOrder)
 
     ASSERT_EQ(copies.size(), 2);
     EXPECT_EQ(copies.front().destination, (*mesh)->getVertexBuffer()->getNative());
+    EXPECT_EQ(copies.front().sourceOffset, 0);
+    EXPECT_EQ(copies.front().offset, 0);
     EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {vertexBytes.begin(), vertexBytes.end()}));
     EXPECT_EQ(copies.back().destination, (*mesh)->getIndexBuffer()->getNative());
+    EXPECT_EQ(copies.back().sourceOffset, 12);
+    EXPECT_EQ(copies.back().offset, 0);
     EXPECT_EQ(copies.back().bytes, (std::vector<std::byte> {indexBytes.begin(), indexBytes.end()}));
 }
 
 TEST_F(BufferUploadIntegration, NonIndexedMeshWriteCopiesOnlyVertexStorage)
 {
+    expectBufferCopies(1);
+    expectSubmissionValues({1});
     const auto mesh = panda::detail::MeshResource::create(
         device,
         *pool,
@@ -702,6 +914,8 @@ TEST_F(BufferUploadIntegration, NonIndexedMeshWriteCopiesOnlyVertexStorage)
 
     ASSERT_EQ(copies.size(), 1);
     EXPECT_EQ(copies.front().destination, (*mesh)->getVertexBuffer()->getNative());
+    EXPECT_EQ(copies.front().sourceOffset, 0);
+    EXPECT_EQ(copies.front().offset, 0);
     EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {vertexBytes.begin(), vertexBytes.end()}));
 }
 
@@ -771,6 +985,8 @@ TEST_F(BufferUploadIntegration, InvalidMeshWriteQueuesNoPartialData)
 
 TEST_F(BufferUploadIntegration, SecondMeshStagingFailurePreservesOnlyEarlierBatchWrites)
 {
+    expectBufferCopies(1);
+    expectSubmissionValues({1});
     useNoncoherentMemory();
     auto target = destination();
     const auto mesh = panda::detail::MeshResource::create(
@@ -808,11 +1024,15 @@ TEST_F(BufferUploadIntegration, SecondMeshStagingFailurePreservesOnlyEarlierBatc
     EXPECT_TRUE(batch->submit());
     ASSERT_EQ(copies.size(), 1);
     EXPECT_EQ(copies.front().destination, target->getNative());
+    EXPECT_EQ(copies.front().sourceOffset, 0);
+    EXPECT_EQ(copies.front().offset, 0);
     EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
 }
 
 TEST_F(BufferUploadIntegration, FirstMeshStagingFailurePreservesOnlyEarlierBatchWrites)
 {
+    expectBufferCopies(1);
+    expectSubmissionValues({1});
     useNoncoherentMemory();
     auto target = destination();
     const auto mesh = panda::detail::MeshResource::create(
@@ -850,12 +1070,17 @@ TEST_F(BufferUploadIntegration, FirstMeshStagingFailurePreservesOnlyEarlierBatch
     ASSERT_TRUE(batch->submit());
     ASSERT_EQ(copies.size(), 1);
     EXPECT_EQ(copies.front().destination, target->getNative());
+    EXPECT_EQ(copies.front().sourceOffset, 0);
+    EXPECT_EQ(copies.front().offset, 0);
     EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
 }
 
 TEST_F(BufferUploadIntegration, WriteSnapshotsCallerBytesAndSubmissionRetainsBothBuffers)
 {
+    expectBufferCopies(1);
+    expectSubmissionValues({1});
     auto target = destination();
+    const auto nativeTarget = target->getNative();
     const auto weak = std::weak_ptr {target};
     auto bytes = payload;
     auto batch = uploads->createBatch();
@@ -866,6 +1091,8 @@ TEST_F(BufferUploadIntegration, WriteSnapshotsCallerBytesAndSubmissionRetainsBot
     ASSERT_TRUE(submitted);
     batch.reset();
     ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().destination, nativeTarget);
+    EXPECT_EQ(copies.front().sourceOffset, 0);
     EXPECT_EQ(copies.front().offset, 3);
     EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
     EXPECT_FALSE(weak.expired());
@@ -881,6 +1108,8 @@ TEST_F(BufferUploadIntegration, WriteSnapshotsCallerBytesAndSubmissionRetainsBot
 
 TEST_F(BufferUploadIntegration, OverlappingWritesAreRecordedInOrderWithDependencies)
 {
+    expectBufferCopies(2);
+    expectSubmissionValues({1});
     auto target = destination();
     auto batch = uploads->createBatch();
     ASSERT_TRUE(batch->write(target, 3, payload));
@@ -888,6 +1117,8 @@ TEST_F(BufferUploadIntegration, OverlappingWritesAreRecordedInOrderWithDependenc
     ASSERT_TRUE(batch->submit());
     ASSERT_EQ(copies.size(), 2);
     EXPECT_EQ(bufferCreations, 2);
+    EXPECT_EQ(copies.front().destination, target->getNative());
+    EXPECT_EQ(copies.back().destination, target->getNative());
     EXPECT_EQ(copies.front().sourceOffset, 0);
     EXPECT_EQ(copies.back().sourceOffset, payload.size());
     EXPECT_EQ(copies.front().offset, 3);
@@ -908,6 +1139,8 @@ TEST_F(BufferUploadIntegration, OverlappingWritesAreRecordedInOrderWithDependenc
 
 TEST_F(BufferUploadIntegration, TextureRegionSnapshotsPaddedRowsAndRetainsImageThroughCompletion)
 {
+    expectTextureCopies(1);
+    expectSubmissionValues({1});
     auto target = texture();
     const auto image = target->getNative();
     const auto weak = std::weak_ptr {target};
@@ -934,8 +1167,14 @@ TEST_F(BufferUploadIntegration, TextureRegionSnapshotsPaddedRowsAndRetainsImageT
     EXPECT_EQ(copy.region.bufferImageHeight, 0);
     EXPECT_EQ(copy.region.imageOffset.x, 2);
     EXPECT_EQ(copy.region.imageOffset.y, 1);
+    EXPECT_EQ(copy.region.imageOffset.z, 0);
     EXPECT_EQ(copy.region.imageExtent.width, 3);
     EXPECT_EQ(copy.region.imageExtent.height, 2);
+    EXPECT_EQ(copy.region.imageExtent.depth, 1);
+    EXPECT_EQ(copy.region.imageSubresource.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(copy.region.imageSubresource.mipLevel, 0);
+    EXPECT_EQ(copy.region.imageSubresource.baseArrayLayer, 0);
+    EXPECT_EQ(copy.region.imageSubresource.layerCount, 1);
     EXPECT_EQ(copy.bytes, expected);
     ASSERT_EQ(imageBarriers.size(), 2);
     EXPECT_EQ(imageBarriers.front().oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
@@ -950,6 +1189,9 @@ TEST_F(BufferUploadIntegration, TextureRegionSnapshotsPaddedRowsAndRetainsImageT
 
 TEST_F(BufferUploadIntegration, MultipleTextureRegionsAndBuffersKeepWriteOrderAndSingleTransitions)
 {
+    expectBufferCopies(1);
+    expectTextureCopies(2);
+    expectSubmissionValues({1});
     auto target = texture(glm::uvec2 {8, 4});
     auto buffer = destination();
     auto batch = uploads->createBatch();
@@ -976,6 +1218,20 @@ TEST_F(BufferUploadIntegration, MultipleTextureRegionsAndBuffersKeepWriteOrderAn
     EXPECT_EQ(imageCopies.at(1).bytes, right);
     EXPECT_EQ(imageCopies.at(0).region.imageOffset.x, 0);
     EXPECT_EQ(imageCopies.at(1).region.imageOffset.x, 4);
+    EXPECT_EQ(imageCopies.at(0).destination, target->getNative());
+    EXPECT_EQ(imageCopies.at(1).destination, target->getNative());
+    EXPECT_EQ(imageCopies.at(0).layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    EXPECT_EQ(imageCopies.at(1).layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    EXPECT_EQ(imageCopies.at(0).region.imageOffset.y, 0);
+    EXPECT_EQ(imageCopies.at(1).region.imageOffset.y, 0);
+    EXPECT_EQ(imageCopies.at(0).region.imageExtent.width, 4);
+    EXPECT_EQ(imageCopies.at(1).region.imageExtent.width, 4);
+    EXPECT_EQ(imageCopies.at(0).region.imageExtent.height, 4);
+    EXPECT_EQ(imageCopies.at(1).region.imageExtent.height, 4);
+    EXPECT_EQ(imageCopies.at(0).region.imageSubresource.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(imageCopies.at(1).region.imageSubresource.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(imageCopies.at(0).region.imageSubresource.mipLevel, 0);
+    EXPECT_EQ(imageCopies.at(1).region.imageSubresource.mipLevel, 0);
     EXPECT_EQ(imageBarriers.size(), 2);
     EXPECT_EQ(imageBarriers.front().oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
     EXPECT_EQ(imageBarriers.back().newLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -1036,6 +1292,8 @@ TEST_F(BufferUploadIntegration, TextureWritesRequireSupportedFormatAndBothUsageF
 
 TEST_F(BufferUploadIntegration, TextureReservationIsReleasedOnCancelAndCommittedOnSubmit)
 {
+    expectTextureCopies(1);
+    expectSubmissionValues({1});
     auto target = texture();
     const auto bytes = std::vector<std::byte>(std::size_t {8} * 6 * 4);
     auto cancelled = uploads->createBatch();
@@ -1051,6 +1309,17 @@ TEST_F(BufferUploadIntegration, TextureReservationIsReleasedOnCancelAndCommitted
     auto committed = uploads->createBatch();
     ASSERT_TRUE(committed->write(target, bytes, fullRegion));
     ASSERT_TRUE(committed->submit());
+    ASSERT_EQ(imageCopies.size(), 1);
+    EXPECT_EQ(imageCopies.front().destination, target->getNative());
+    EXPECT_EQ(imageCopies.front().layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    EXPECT_EQ(imageCopies.front().region.imageOffset.x, 0);
+    EXPECT_EQ(imageCopies.front().region.imageOffset.y, 0);
+    EXPECT_EQ(imageCopies.front().region.imageExtent.width, 8);
+    EXPECT_EQ(imageCopies.front().region.imageExtent.height, 6);
+    EXPECT_EQ(imageCopies.front().region.imageSubresource.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(imageCopies.front().region.imageSubresource.mipLevel, 0);
+    EXPECT_EQ(imageCopies.front().region.imageSubresource.baseArrayLayer, 0);
+    EXPECT_EQ(imageCopies.front().region.imageSubresource.layerCount, 1);
     auto later = uploads->createBatch();
     EXPECT_FALSE(later->write(target, bytes, fullRegion));
 }
@@ -1075,6 +1344,8 @@ TEST_F(BufferUploadIntegration, TextureReservationIsReleasedAfterStagingCreation
 
 TEST_F(BufferUploadIntegration, FailedLaterTextureWriteKeepsTheBatchReservation)
 {
+    expectTextureCopies(1);
+    expectSubmissionValues({1});
     useNoncoherentMemory();
     auto target = texture();
     const auto bytes = std::array {std::byte {1}, std::byte {2}, std::byte {3}, std::byte {4}};
@@ -1097,11 +1368,23 @@ TEST_F(BufferUploadIntegration, FailedLaterTextureWriteKeepsTheBatchReservation)
     flushStatus = success;
     ASSERT_TRUE(batch->submit());
     ASSERT_EQ(imageCopies.size(), 1);
+    EXPECT_EQ(imageCopies.front().destination, target->getNative());
+    EXPECT_EQ(imageCopies.front().layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    EXPECT_EQ(imageCopies.front().region.imageOffset.x, 0);
+    EXPECT_EQ(imageCopies.front().region.imageOffset.y, 0);
+    EXPECT_EQ(imageCopies.front().region.imageExtent.width, 1);
+    EXPECT_EQ(imageCopies.front().region.imageExtent.height, 1);
+    EXPECT_EQ(imageCopies.front().region.imageSubresource.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(imageCopies.front().region.imageSubresource.mipLevel, 0);
+    EXPECT_EQ(imageCopies.front().region.imageSubresource.baseArrayLayer, 0);
+    EXPECT_EQ(imageCopies.front().region.imageSubresource.layerCount, 1);
     EXPECT_EQ(imageCopies.front().bytes, (std::vector<std::byte> {bytes.begin(), bytes.end()}));
 }
 
 TEST_F(BufferUploadIntegration, SingleRowPitchUsesTheUnsignedVulkanRowLengthRange)
 {
+    expectTextureCopies(1);
+    expectSubmissionValues({1});
     auto target = texture();
     auto batch = uploads->createBatch();
     const auto bytes = std::array<std::byte, 4> {};
@@ -1114,6 +1397,12 @@ TEST_F(BufferUploadIntegration, SingleRowPitchUsesTheUnsignedVulkanRowLengthRang
     ASSERT_TRUE(batch->write(target, bytes, region));
     ASSERT_TRUE(batch->submit());
     ASSERT_EQ(imageCopies.size(), 1);
+    EXPECT_EQ(imageCopies.front().destination, target->getNative());
+    EXPECT_EQ(imageCopies.front().layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    EXPECT_EQ(imageCopies.front().region.imageOffset.x, 0);
+    EXPECT_EQ(imageCopies.front().region.imageOffset.y, 0);
+    EXPECT_EQ(imageCopies.front().region.imageExtent.width, 1);
+    EXPECT_EQ(imageCopies.front().region.imageExtent.height, 1);
     EXPECT_EQ(imageCopies.front().region.bufferRowLength, std::uint32_t {1} << 29U);
 }
 
@@ -1159,6 +1448,8 @@ TEST_F(BufferUploadIntegration, CancelledBatchReleasesStagingWithoutSubmitting)
 
 TEST_F(BufferUploadIntegration, FailedStagingCreationKeepsEarlierWrites)
 {
+    expectBufferCopies(1);
+    expectSubmissionValues({1});
     auto target = destinationWithSize(3000);
     const auto bytes = std::vector<std::byte>(3000, std::byte {0x5a});
     auto batch = uploads->createBatch();
@@ -1170,12 +1461,17 @@ TEST_F(BufferUploadIntegration, FailedStagingCreationKeepsEarlierWrites)
     bufferStatus = success;
     ASSERT_TRUE(batch->submit());
     ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().destination, target->getNative());
+    EXPECT_EQ(copies.front().sourceOffset, 0);
     EXPECT_EQ(copies.front().offset, 0);
     EXPECT_EQ(copies.front().bytes, bytes);
 }
 
 TEST_F(BufferUploadIntegration, TextureAlignmentPastALargePageStartsANewPage)
 {
+    expectBufferCopies(1);
+    expectTextureCopies(1);
+    expectSubmissionValues({1});
     useLargerAllocations();
     auto buffer = destinationWithSize(5001);
     auto target = texture(glm::uvec2 {1, 1}, panda::PixelFormat::Rgba8Unorm);
@@ -1192,6 +1488,8 @@ TEST_F(BufferUploadIntegration, TextureAlignmentPastALargePageStartsANewPage)
     ASSERT_TRUE(batch->submit());
 
     ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().destination, buffer->getNative());
+    EXPECT_EQ(copies.front().offset, 0);
     EXPECT_EQ(copies.front().sourceOffset, 0);
     EXPECT_EQ(copies.front().bytes, bufferBytes);
     ASSERT_EQ(imageCopies.size(), 1);
@@ -1221,6 +1519,8 @@ TEST_F(BufferUploadIntegration, MappedStagingWritesValidateAndUseTheRequestedOff
 
 TEST_F(BufferUploadIntegration, StagingPageGrowsForWritesThatDoNotFit)
 {
+    expectBufferCopies(2);
+    expectSubmissionValues({1});
     auto firstTarget = destinationWithSize(3000);
     auto secondTarget = destinationWithSize(3000);
     const auto firstBytes = std::vector<std::byte>(3000, std::byte {0x11});
@@ -1233,6 +1533,10 @@ TEST_F(BufferUploadIntegration, StagingPageGrowsForWritesThatDoNotFit)
 
     ASSERT_EQ(copies.size(), 2);
     EXPECT_EQ(bufferCreations, 4);
+    EXPECT_EQ(copies.at(0).destination, firstTarget->getNative());
+    EXPECT_EQ(copies.at(1).destination, secondTarget->getNative());
+    EXPECT_EQ(copies.at(0).offset, 0);
+    EXPECT_EQ(copies.at(1).offset, 0);
     EXPECT_EQ(copies.at(0).sourceOffset, 0);
     EXPECT_EQ(copies.at(1).sourceOffset, 0);
     EXPECT_EQ(copies.at(0).bytes, firstBytes);
@@ -1242,6 +1546,8 @@ TEST_F(BufferUploadIntegration, StagingPageGrowsForWritesThatDoNotFit)
 
 TEST_F(BufferUploadIntegration, NoncoherentStagingFlushesWholeAtomsAndFailedFlushPublishesNoWrite)
 {
+    expectBufferCopies(1);
+    expectSubmissionValues({1});
     useNoncoherentMemory();
     auto target = destination();
     auto batch = uploads->createBatch();
@@ -1254,11 +1560,17 @@ TEST_F(BufferUploadIntegration, NoncoherentStagingFlushesWholeAtomsAndFailedFlus
     EXPECT_EQ(flushed.back().offset % 64, 0);
     EXPECT_EQ(flushed.back().size, 64);
     ASSERT_TRUE(batch->submit());
+    ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().destination, target->getNative());
+    EXPECT_EQ(copies.front().offset, 3);
+    EXPECT_EQ(copies.front().bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
     EXPECT_EQ(uploads->getStats().pendingStagingBytes, 4096);
 }
 
 TEST_F(BufferUploadIntegration, FailedFlushWhileReusingPageLeavesItsCursorAndEarlierWritesIntact)
 {
+    expectBufferCopies(2);
+    expectSubmissionValues({1});
     useNoncoherentMemory();
     auto target = destination();
     auto batch = uploads->createBatch();
@@ -1273,6 +1585,10 @@ TEST_F(BufferUploadIntegration, FailedFlushWhileReusingPageLeavesItsCursorAndEar
     ASSERT_TRUE(batch->submit());
 
     ASSERT_EQ(copies.size(), 2);
+    EXPECT_EQ(copies.at(0).destination, target->getNative());
+    EXPECT_EQ(copies.at(1).destination, target->getNative());
+    EXPECT_EQ(copies.at(0).offset, 0);
+    EXPECT_EQ(copies.at(1).offset, 32);
     EXPECT_EQ(copies.at(0).sourceOffset, 0);
     EXPECT_EQ(copies.at(1).sourceOffset, payload.size());
     EXPECT_EQ(copies.at(0).bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
@@ -1281,6 +1597,8 @@ TEST_F(BufferUploadIntegration, FailedFlushWhileReusingPageLeavesItsCursorAndEar
 
 TEST_F(BufferUploadIntegration, CommandPreparationFailuresLeaveBatchAvailableForRetry)
 {
+    expectBufferCopies(2);
+    expectSubmissionValues({1});
     auto target = destination();
     auto batch = uploads->createBatch();
     ASSERT_TRUE(batch->write(target, 0, payload));
@@ -1296,10 +1614,17 @@ TEST_F(BufferUploadIntegration, CommandPreparationFailuresLeaveBatchAvailableFor
     }
     EXPECT_TRUE(signals.empty());
     ASSERT_TRUE(batch->submit());
+    ASSERT_EQ(copies.size(), 2);
+    EXPECT_EQ(copies.at(0).destination, target->getNative());
+    EXPECT_EQ(copies.at(1).destination, target->getNative());
+    EXPECT_EQ(copies.at(0).offset, 0);
+    EXPECT_EQ(copies.at(1).offset, 0);
 }
 
 TEST_F(BufferUploadIntegration, FailedSubmitReusesCandidateAndLeavesOriginalStagingAlive)
 {
+    expectBufferCopies(2);
+    expectSubmissionValues({1, 1});
     auto target = destination();
     auto batch = uploads->createBatch();
     ASSERT_TRUE(batch->write(target, 0, payload));
@@ -1309,16 +1634,28 @@ TEST_F(BufferUploadIntegration, FailedSubmitReusesCandidateAndLeavesOriginalStag
     EXPECT_EQ(buffers.size(), 2);
     submitStatus = success;
     ASSERT_TRUE(batch->submit());
+    ASSERT_EQ(copies.size(), 2);
+    EXPECT_EQ(copies.at(0).destination, target->getNative());
+    EXPECT_EQ(copies.at(1).destination, target->getNative());
+    EXPECT_EQ(copies.at(0).offset, 0);
+    EXPECT_EQ(copies.at(1).offset, 0);
+    EXPECT_EQ(copies.at(0).bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
+    EXPECT_EQ(copies.at(1).bytes, (std::vector<std::byte> {payload.begin(), payload.end()}));
     EXPECT_EQ(signals, (std::vector<std::uint64_t> {1, 1}));
 }
 
 TEST_F(BufferUploadIntegration, TimeoutAndFailedCounterKeepResourcesUntilCompletionIsConfirmed)
 {
+    expectBufferCopies(1);
+    expectSubmissionValues({1});
     auto target = destination();
     auto batch = uploads->createBatch();
     ASSERT_TRUE(batch->write(target, 0, payload));
     const auto point = batch->submit();
     ASSERT_TRUE(point);
+    ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().destination, target->getNative());
+    EXPECT_EQ(copies.front().offset, 0);
     waitStatus = static_cast<VkResult>(vk::Result::eTimeout);
     EXPECT_FALSE(uploads->drain(0));
     EXPECT_EQ(uploads->getStats().pendingBatches, 1);
@@ -1334,6 +1671,8 @@ TEST_F(BufferUploadIntegration, TimeoutAndFailedCounterKeepResourcesUntilComplet
 
 TEST_F(BufferUploadIntegration, CollectionReleasesOnlyTheCompletedPrefixAndReportsPeakStaging)
 {
+    expectBufferCopies(2);
+    expectSubmissionValues({1, 2});
     auto target = destination();
     auto first = uploads->createBatch();
     ASSERT_TRUE(first->write(target, 0, payload));
@@ -1341,6 +1680,12 @@ TEST_F(BufferUploadIntegration, CollectionReleasesOnlyTheCompletedPrefixAndRepor
     auto second = uploads->createBatch();
     ASSERT_TRUE(second->write(target, 32, payload));
     ASSERT_TRUE(second->submit());
+    ASSERT_EQ(copies.size(), 2);
+    EXPECT_EQ(copies.at(0).destination, target->getNative());
+    EXPECT_EQ(copies.at(1).destination, target->getNative());
+    EXPECT_EQ(copies.at(0).offset, 0);
+    EXPECT_EQ(copies.at(1).offset, 32);
+    EXPECT_EQ(signals, (std::vector<std::uint64_t> {1, 2}));
     EXPECT_EQ(uploads->getStats().pendingBatches, 2);
     EXPECT_EQ(uploads->getStats().peakStagingBytes, 8192);
     completed = 1;
@@ -1356,6 +1701,8 @@ TEST_F(BufferUploadIntegration, CollectionReleasesOnlyTheCompletedPrefixAndRepor
 
 TEST_F(BufferUploadIntegration, DeviceLostSubmitDoesNotRetryTheDriver)
 {
+    expectBufferCopies(1);
+    expectSubmissionValues({1});
     auto target = destination();
     auto batch = uploads->createBatch();
     ASSERT_TRUE(batch->write(target, 0, payload));
@@ -1363,6 +1710,9 @@ TEST_F(BufferUploadIntegration, DeviceLostSubmitDoesNotRetryTheDriver)
     const auto failed = batch->submit();
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, panda::ErrorCode::DeviceLost);
+    ASSERT_EQ(copies.size(), 1);
+    EXPECT_EQ(copies.front().destination, target->getNative());
+    EXPECT_EQ(copies.front().offset, 0);
     const auto creations = bufferCreations;
     EXPECT_FALSE(batch->write(target, 32, payload));
     EXPECT_EQ(bufferCreations, creations);

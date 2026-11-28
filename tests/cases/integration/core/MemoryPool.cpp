@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "resources/memory/MemoryPool.hpp"
@@ -14,13 +13,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <panda/base/Error.hpp>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "FakeHandle.hpp"
-#include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "resources/memory/MemoryAllocation.hpp"
 #include "resources/memory/RangeAllocator.hpp"
 
@@ -62,7 +59,7 @@ void verifyAllocateInfo(const VkMemoryAllocateInfo& info, std::uint64_t size, st
     EXPECT_EQ(resource->image, VkImage {});
 }
 
-class MemoryPoolTest : public testing::Test
+class MemoryPoolTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
@@ -111,12 +108,6 @@ protected:
             });
     }
 
-    void TearDown() override
-    {
-        std::ignore = device.release();
-        std::ignore = instance.release();
-    }
-
     void configureTwoHeaps()
     {
         heapSize = 1024;
@@ -154,11 +145,6 @@ protected:
         return testing::Expectation {EXPECT_CALL(vulkan, vkFreeMemory(_, memory, nullptr)).After(unmapped)};
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::uint64_t heapSize {256 * mebibyte};
     std::uint64_t maximumSize {256 * mebibyte};
     std::uint32_t maximumCount {16};

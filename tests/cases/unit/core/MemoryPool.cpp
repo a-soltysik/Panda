@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "resources/memory/MemoryPool.hpp"
@@ -14,12 +13,10 @@
 #include <expected>
 #include <memory>
 #include <panda/base/Error.hpp>
-#include <tuple>
-#include <utility>
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "panda/core/MemoryBlockMock.hpp"
 #include "resources/memory/RangeAllocator.hpp"
 
@@ -46,7 +43,7 @@ auto requestFor(std::uint64_t size = 64) -> MemoryRequest
     };
 }
 
-class MemoryPoolTest : public testing::Test
+class MemoryPoolTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
@@ -75,25 +72,13 @@ protected:
         pool = MemoryPool::create(physical, device);
     }
 
-    void TearDown() override
-    {
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
-    }
-
     void createOrdinaryBlock(std::uint64_t size, MemoryRange range)
     {
         EXPECT_CALL(blocks, create(_, _, size, 0)).WillOnce(Return(panda::Result<void> {}));
         EXPECT_CALL(blocks, allocate(_, testing::_, testing::_)).WillOnce(Return(range));
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::MemoryBlockMock> blocks;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     VkPhysicalDeviceMemoryProperties memoryProperties {};
     std::unique_ptr<MemoryPool> pool;
 };

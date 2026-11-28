@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "TextureResource.hpp"
@@ -13,11 +12,10 @@
 #include <cstdint>
 #include <memory>
 #include <panda/base/Error.hpp>
-#include <tuple>
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "resources/memory/MemoryPool.hpp"
 
 namespace
@@ -58,7 +56,7 @@ void verifyViewInfo(const VkImageViewCreateInfo& info, VkImage image, vk::Format
     verifyViewRange(info, aspect);
 }
 
-class TextureResourceTest : public testing::Test
+class TextureResourceTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
@@ -66,6 +64,11 @@ protected:
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(physicalHandle, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
+                if (output == nullptr)
+                {
+                    ADD_FAILURE() << "Memory properties output is null";
+                    return;
+                }
                 *output = VkPhysicalDeviceMemoryProperties {};
                 output->memoryTypeCount = 1;
                 output->memoryTypes[0] = {
@@ -77,6 +80,18 @@ protected:
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(physicalHandle, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                if (output == nullptr || output->sType != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 ||
+                    output->pNext == nullptr)
+                {
+                    ADD_FAILURE() << "Device properties output or pNext is invalid";
+                    return;
+                }
+                const auto* header = static_cast<const VkBaseOutStructure*>(output->pNext);
+                if (header->sType != VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES)
+                {
+                    ADD_FAILURE() << "Device properties pNext has an unexpected structure type";
+                    return;
+                }
                 output->properties.limits.maxMemoryAllocationCount = 16;
                 output->properties.limits.nonCoherentAtomSize = 1;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
@@ -84,13 +99,6 @@ protected:
                 maintenance->maxMemoryAllocationSize = mebibyte;
             });
         pool = MemoryPool::create(physical, device);
-    }
-
-    void TearDown() override
-    {
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
     }
 
     void expectImageCreation(VkImage image, vk::Format format, vk::ImageUsageFlags usage)
@@ -111,6 +119,11 @@ protected:
                          VkImageUsageFlags,
                          VkImageCreateFlags,
                          VkImageFormatProperties* output) {
+                if (output == nullptr)
+                {
+                    ADD_FAILURE() << "Image format properties output is null";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 *output = VkImageFormatProperties {};
                 output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
                 return success;
@@ -119,6 +132,11 @@ protected:
             .InSequence(creationOrder)
             .WillOnce([image,
                        format](VkDevice, const VkImageCreateInfo* info, const VkAllocationCallbacks*, VkImage* output) {
+                if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO)
+                {
+                    ADD_FAILURE() << "Image create info or output is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->imageType, VK_IMAGE_TYPE_2D);
                 EXPECT_EQ(info->format, static_cast<VkFormat>(format));
                 EXPECT_EQ(info->extent.depth, 1U);
@@ -135,6 +153,19 @@ protected:
         EXPECT_CALL(vulkan, vkGetImageMemoryRequirements2(deviceHandle, NotNull(), NotNull()))
             .InSequence(creationOrder)
             .WillOnce([image](VkDevice, const VkImageMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2 ||
+                    output == nullptr || output->sType != VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 ||
+                    output->pNext == nullptr)
+                {
+                    ADD_FAILURE() << "Image requirements info or output chain is invalid";
+                    return;
+                }
+                const auto* header = static_cast<const VkBaseOutStructure*>(output->pNext);
+                if (header->sType != VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS)
+                {
+                    ADD_FAILURE() << "Image requirements pNext has an unexpected structure type";
+                    return;
+                }
                 EXPECT_EQ(info->image, image);
                 output->memoryRequirements = {.size = 128, .alignment = 16, .memoryTypeBits = 1};
                 auto* dedicated = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
@@ -151,11 +182,22 @@ protected:
                                       const VkMemoryAllocateInfo* info,
                                       const VkAllocationCallbacks*,
                                       VkDeviceMemory* output) {
+                if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO)
+                {
+                    ADD_FAILURE() << "Memory allocation info or output is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->allocationSize, 128U);
                 EXPECT_NE(info->pNext, nullptr);
                 if (info->pNext == nullptr)
                 {
                     return static_cast<VkResult>(vk::Result::eErrorInitializationFailed);
+                }
+                const auto* header = static_cast<const VkBaseOutStructure*>(info->pNext);
+                if (header->sType != VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO)
+                {
+                    ADD_FAILURE() << "Dedicated allocation pNext has an unexpected structure type";
+                    return VK_ERROR_INITIALIZATION_FAILED;
                 }
                 const auto* dedicated = static_cast<const VkMemoryDedicatedAllocateInfo*>(info->pNext);
                 EXPECT_EQ(dedicated->image, image);
@@ -169,6 +211,11 @@ protected:
         EXPECT_CALL(vulkan, vkBindImageMemory2(deviceHandle, 1, NotNull()))
             .InSequence(creationOrder)
             .WillOnce([image, memory](VkDevice, std::uint32_t, const VkBindImageMemoryInfo* info) {
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO)
+                {
+                    ADD_FAILURE() << "Image bind info is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->image, image);
                 EXPECT_EQ(info->memory, memory);
                 EXPECT_EQ(info->memoryOffset, 0U);
@@ -185,6 +232,11 @@ protected:
                                                             const VkImageViewCreateInfo* info,
                                                             const VkAllocationCallbacks*,
                                                             VkImageView* output) {
+                if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO)
+                {
+                    ADD_FAILURE() << "Image view info or output is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 verifyViewInfo(*info, image, format, aspect);
                 *output = view;
                 return result;
@@ -205,13 +257,6 @@ protected:
         expectViewCreation(image, view, format, aspect, viewResult);
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    VkPhysicalDevice physicalHandle {fakeHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
-    vk::raii::PhysicalDevice physical {instance, physicalHandle};
-    vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     testing::Sequence creationOrder;
 };

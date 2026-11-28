@@ -27,7 +27,6 @@
 #include <panda/resources/Buffer.hpp>
 #include <panda/submission/CompletionPoint.hpp>
 #include <span>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -35,6 +34,7 @@
 #include "Math.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
+#include "VulkanTestSupport.hpp"
 #include "external/vulkan/VulkanMock.hpp"
 #include "panda/core/BufferResourceMock.hpp"
 #include "panda/core/SubmissionQueueMock.hpp"
@@ -71,7 +71,7 @@ using testing::NotNull;
 using testing::Ref;
 using testing::Return;
 
-class FrameBindingsTest : public testing::Test
+class FrameBindingsTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
@@ -157,14 +157,6 @@ protected:
                 properties->sampleCounts = allSampleCounts;
                 return static_cast<VkResult>(vk::Result::eSuccess);
             });
-    }
-
-    void TearDown() override
-    {
-        queue.reset();
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
     }
 
     auto createBindings(std::uint32_t maxLights = panda::EngineOptions::defaultMaxLights)
@@ -411,15 +403,9 @@ protected:
         EXPECT_CALL(vulkan, vkUpdateDescriptorSets(_, _, _, _, _)).Times(AnyNumber());
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::BufferResourceMock> buffers;
     panda::test::ScopedMock<panda::test::SubmissionQueueMock> submissions;
     panda::test::ScopedMock<panda::test::TextureResourceMock> textures;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
-    vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::optional<panda::detail::SubmissionQueue> queue;
     std::uintptr_t nextHandle {10};

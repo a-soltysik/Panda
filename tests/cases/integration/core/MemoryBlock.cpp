@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "resources/memory/MemoryBlock.hpp"
@@ -15,11 +14,9 @@
 #include <cstdint>
 #include <limits>
 #include <panda/base/Error.hpp>
-#include <tuple>
 
 #include "FakeHandle.hpp"
-#include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "resources/memory/RangeAllocator.hpp"
 
 namespace
@@ -34,15 +31,9 @@ using testing::Return;
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
 constexpr auto exhausted = static_cast<VkResult>(vk::Result::eErrorOutOfDeviceMemory);
 
-class MemoryBlockTest : public testing::Test
+class MemoryBlockTest : public panda::test::VulkanTestFixture
 {
 protected:
-    void TearDown() override
-    {
-        std::ignore = device.release();
-        std::ignore = instance.release();
-    }
-
     void expectMemoryTypes(vk::MemoryPropertyFlags flags)
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
@@ -105,11 +96,6 @@ protected:
             });
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     VkDeviceMemory memory {fakeHandle<VkDeviceMemory>(4)};
     std::array<std::byte, 1024> storage {};
 };
