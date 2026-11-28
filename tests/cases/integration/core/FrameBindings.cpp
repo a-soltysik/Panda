@@ -386,6 +386,11 @@ protected:
             });
     }
 
+    void allowDescriptorUpdates()
+    {
+        EXPECT_CALL(vulkan, vkUpdateDescriptorSets(_, _, _, _, _)).Times(AnyNumber());
+    }
+
     void installSamplerDefaults()
     {
         EXPECT_CALL(vulkan, vkCreateSampler(_, NotNull(), _, NotNull()))
@@ -400,7 +405,6 @@ protected:
         EXPECT_CALL(vulkan, vkDestroyDescriptorPool(_, _, _)).Times(AnyNumber());
         EXPECT_CALL(vulkan, vkFreeDescriptorSets(_, _, _, _)).Times(AnyNumber());
         EXPECT_CALL(vulkan, vkDestroySampler(_, _, _)).Times(AnyNumber());
-        EXPECT_CALL(vulkan, vkUpdateDescriptorSets(_, _, _, _, _)).Times(AnyNumber());
     }
 
     panda::test::ScopedMock<panda::test::BufferResourceMock> buffers;
@@ -553,6 +557,7 @@ TEST_F(FrameBindingsTest, ToneMappingPipelinePropagatesShaderAndPipelineFailures
 
 TEST_F(FrameBindingsTest, ToneMappingSetsInputsAndCachesSrgbPipelineVariants)
 {
+    allowDescriptorUpdates();
     auto pass = createToneMappingPass();
     ASSERT_TRUE(pass);
     const auto first = vk::ImageView {fakeHandle<VkImageView>(1001)};
@@ -600,6 +605,7 @@ TEST_F(FrameBindingsTest, ToneMappingSetsInputsAndCachesSrgbPipelineVariants)
 
 TEST_F(FrameBindingsTest, FrameExecutionPropagatesToneMappingInitializationFailure)
 {
+    allowDescriptorUpdates();
     expectMeshRendererTextures();
     auto execution = createFrameExecution();
     ASSERT_TRUE(execution);
@@ -629,6 +635,7 @@ TEST_F(FrameBindingsTest, FrameExecutionPropagatesToneMappingInitializationFailu
 
 TEST_F(FrameBindingsTest, FrameExecutionPropagatesToneMappingPipelineFailure)
 {
+    allowDescriptorUpdates();
     expectMeshRendererTextures();
     auto execution = createFrameExecution();
     ASSERT_TRUE(execution);
@@ -645,6 +652,7 @@ TEST_F(FrameBindingsTest, FrameExecutionPropagatesToneMappingPipelineFailure)
 
 TEST_F(FrameBindingsTest, FrameExecutionPropagatesResizeAndRecordingFailures)
 {
+    allowDescriptorUpdates();
     expectMeshRendererTextures();
     auto execution = createFrameExecution();
     ASSERT_TRUE(execution);
@@ -708,13 +716,38 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
                                const VkWriteDescriptorSet* descriptorWrites,
                                std::uint32_t,
                                const VkCopyDescriptorSet*) {
-            const auto writeSpan = std::span {descriptorWrites, writeCount};
-            const auto imageWrite = std::ranges::find_if(writeSpan, [](const auto& write) {
-                return write.pImageInfo != nullptr;
-            });
-            ASSERT_NE(imageWrite, writeSpan.end());
-            EXPECT_EQ(imageWrite->pImageInfo->imageView, static_cast<VkImageView>(shadowView));
-            EXPECT_EQ(imageWrite->pImageInfo->imageLayout, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
+            const auto descriptorWriteSpan = std::span {descriptorWrites, writeCount};
+            ASSERT_EQ(descriptorWriteSpan.size(), 6U);
+            auto* const frameSet = descriptorWriteSpan.front().dstSet;
+            constexpr auto expectedTypes = std::array {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                                       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                                       VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                       VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                       VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                       VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC};
+            auto index = std::size_t {};
+            for (const auto& write : descriptorWriteSpan)
+            {
+                EXPECT_EQ(write.dstSet, frameSet);
+                EXPECT_EQ(write.dstBinding, index);
+                EXPECT_EQ(write.descriptorCount, 1U);
+                EXPECT_EQ(write.descriptorType, expectedTypes.at(index));
+                ++index;
+            }
+            auto write = descriptorWriteSpan.begin();
+            ASSERT_NE(write->pBufferInfo, nullptr);
+            EXPECT_EQ(write->pBufferInfo->offset, 0U);
+            EXPECT_GT(write->pBufferInfo->range, 0U);
+            ++write;
+            ASSERT_NE(write->pImageInfo, nullptr);
+            EXPECT_EQ(write->pImageInfo->imageView, static_cast<VkImageView>(shadowView));
+            EXPECT_EQ(write->pImageInfo->imageLayout, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
+            for (++write; write != descriptorWriteSpan.end(); ++write)
+            {
+                ASSERT_NE(write->pBufferInfo, nullptr);
+                EXPECT_EQ(write->pBufferInfo->offset, 0U);
+                EXPECT_GT(write->pBufferInfo->range, 0U);
+            }
         });
     EXPECT_CALL(vulkan, vkUpdateDescriptorSets(deviceHandle, 5, NotNull(), 0, nullptr))
         .WillOnce([shadowView](VkDevice,
@@ -722,12 +755,23 @@ TEST_F(FrameBindingsTest, PacksMaterialValuesAndWritesFallbackTextureDescriptors
                                const VkWriteDescriptorSet* descriptorWrites,
                                std::uint32_t,
                                const VkCopyDescriptorSet*) {
-            for (const auto& write : std::span {descriptorWrites, writeCount})
+            const auto descriptorWriteSpan = std::span {descriptorWrites, writeCount};
+            ASSERT_EQ(descriptorWriteSpan.size(), 5U);
+            auto* const textureSet = descriptorWriteSpan.front().dstSet;
+            constexpr auto expectedBindings = std::array {0U, 1U, 2U, 3U, 4U};
+            auto index = std::size_t {};
+            for (const auto& write : descriptorWriteSpan)
             {
-                EXPECT_NE(write.pImageInfo, nullptr);
+                EXPECT_EQ(write.dstSet, textureSet);
+                EXPECT_EQ(write.dstBinding, expectedBindings.at(index++));
+                EXPECT_EQ(write.descriptorCount, 1U);
+                EXPECT_EQ(write.descriptorType, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+                ASSERT_NE(write.pImageInfo, nullptr);
+                EXPECT_NE(write.pImageInfo->sampler, VK_NULL_HANDLE);
                 EXPECT_EQ(write.pImageInfo->imageView, static_cast<VkImageView>(shadowView));
                 EXPECT_EQ(write.pImageInfo->imageLayout, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
             }
+            EXPECT_NE(textureSet, VK_NULL_HANDLE);
         });
 
     const auto updated = bindings->updateFrame(0, view, shadowView);
@@ -775,6 +819,7 @@ TEST_F(FrameBindingsTest, CapsAnisotropyAndFallsBackWhenTheFeatureIsUnavailable)
 
 TEST_F(FrameBindingsTest, MaterialBufferGrowthFailureCanBeRetried)
 {
+    allowDescriptorUpdates();
     auto created = createBindings();
     ASSERT_TRUE(created);
     auto bindings = std::move(*created);
@@ -800,6 +845,7 @@ TEST_F(FrameBindingsTest, MaterialBufferGrowthFailureCanBeRetried)
 
 TEST_F(FrameBindingsTest, WritesAllDirectionalLightsToTheStorageBuffer)
 {
+    allowDescriptorUpdates();
     auto created = createBindings();
     ASSERT_TRUE(created);
     auto bindings = std::move(*created);
@@ -845,6 +891,7 @@ TEST_F(FrameBindingsTest, WritesAllDirectionalLightsToTheStorageBuffer)
 
 TEST_F(FrameBindingsTest, PacksPointAndSpotLightsWithoutImplicitShadows)
 {
+    allowDescriptorUpdates();
     auto created = createBindings();
     ASSERT_TRUE(created);
     auto bindings = std::move(*created);
@@ -898,6 +945,7 @@ TEST_F(FrameBindingsTest, PacksPointAndSpotLightsWithoutImplicitShadows)
 
 TEST_F(FrameBindingsTest, PacksOnlyExplicitShadowsAndAllocatesSixPointFaces)
 {
+    allowDescriptorUpdates();
     auto created = createBindings();
     ASSERT_TRUE(created);
     auto bindings = std::move(*created);
@@ -936,6 +984,7 @@ TEST_F(FrameBindingsTest, PacksOnlyExplicitShadowsAndAllocatesSixPointFaces)
 
 TEST_F(FrameBindingsTest, LightBufferGrowthFailureCanBeRetried)
 {
+    allowDescriptorUpdates();
     auto created = createBindings();
     ASSERT_TRUE(created);
     auto bindings = std::move(*created);
@@ -974,6 +1023,7 @@ TEST_F(FrameBindingsTest, RejectsLightCountAboveConfiguredBudget)
 
 TEST_F(FrameBindingsTest, TextureDescriptorPoolGrowthFailureCanBeRetried)
 {
+    allowDescriptorUpdates();
     auto created = createBindings();
     ASSERT_TRUE(created);
     auto bindings = std::move(*created);
@@ -1205,6 +1255,7 @@ TEST_F(FrameBindingsTest, PropagatesMaterialWriteFailures)
 
 TEST_F(FrameBindingsTest, UpdatesEmptyViewWithoutWritingMaterialRecords)
 {
+    allowDescriptorUpdates();
     auto bindings = createBindings();
     ASSERT_TRUE(bindings);
     EXPECT_CALL(buffers, writeMapped(_, 0, _)).Times(1);
@@ -1216,6 +1267,7 @@ TEST_F(FrameBindingsTest, UpdatesEmptyViewWithoutWritingMaterialRecords)
 
 TEST_F(FrameBindingsTest, UpdatesUnlitViewWithZeroLightBudget)
 {
+    allowDescriptorUpdates();
     auto bindings = createBindings(0);
     ASSERT_TRUE(bindings);
     auto view = makeView(1);
@@ -1338,6 +1390,7 @@ TEST_F(FrameBindingsTest, PropagatesUniformAndMaterialBufferCreationFailures)
 
 TEST_F(FrameBindingsTest, TextureDescriptorAllocationFailureCanBeRetried)
 {
+    allowDescriptorUpdates();
     auto bindings = createBindings();
     ASSERT_TRUE(bindings);
     EXPECT_CALL(vulkan, vkAllocateDescriptorSets(deviceHandle, NotNull(), NotNull()))
@@ -1538,6 +1591,7 @@ TEST_F(FrameBindingsTest, OneSampleColorPassUsesTheHdrResolveTarget)
 
 TEST_F(FrameBindingsTest, RecordsEveryPointFaceWithItsOwnDynamicShadowViewOffset)
 {
+    allowDescriptorUpdates();
     auto renderer = createMeshRenderer();
     ASSERT_TRUE(renderer);
     auto view = panda::RenderView {};
