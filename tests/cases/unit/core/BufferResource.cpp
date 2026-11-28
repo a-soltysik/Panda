@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "BufferResource.hpp"
@@ -19,13 +18,11 @@
 #include <panda/base/Error.hpp>
 #include <panda/resources/Buffer.hpp>
 #include <span>
-#include <tuple>
-#include <utility>
 
 #include "FakeHandle.hpp"
 #include "ResourceMappings.hpp"
 #include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "panda/core/MemoryAllocationMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"
 #include "resources/memory/MemoryPool.hpp"
@@ -55,13 +52,14 @@ auto unsupportedBufferUsage() -> panda::BufferUsage
     return std::bit_cast<panda::BufferUsage>(std::uint8_t {0x80});
 }
 
-class BufferResourceTest : public testing::Test
+class BufferResourceTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
+                ASSERT_NE(output, nullptr);
                 output->memoryTypeCount = 1;
                 output->memoryTypes[0] = {
                     .propertyFlags = static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eDeviceLocal),
@@ -71,6 +69,11 @@ protected:
             });
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                ASSERT_NE(output, nullptr);
+                ASSERT_EQ(output->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
+                ASSERT_NE(output->pNext, nullptr);
+                const auto* header = static_cast<const VkBaseOutStructure*>(output->pNext);
+                ASSERT_EQ(header->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES);
                 output->properties.limits.maxMemoryAllocationCount = 8;
                 output->properties.limits.nonCoherentAtomSize = 64;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
@@ -81,13 +84,6 @@ protected:
         pool = MemoryPool::create(physical, device);
     }
 
-    void TearDown() override
-    {
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
-    }
-
     void expectBufferCreated(VkBuffer buffer, std::uint64_t size = 80, VkResult createResult = success)
     {
         EXPECT_CALL(vulkan, vkCreateBuffer(deviceHandle, NotNull(), nullptr, NotNull()))
@@ -95,6 +91,11 @@ protected:
                                                    const VkBufferCreateInfo* info,
                                                    const VkAllocationCallbacks*,
                                                    VkBuffer* output) {
+                if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO)
+                {
+                    ADD_FAILURE() << "Buffer creation info or output is null";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->size, size);
                 EXPECT_EQ(info->usage, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
                 EXPECT_EQ(info->sharingMode, VK_SHARING_MODE_EXCLUSIVE);
@@ -110,6 +111,19 @@ protected:
     {
         EXPECT_CALL(vulkan, vkGetBufferMemoryRequirements2(deviceHandle, NotNull(), NotNull()))
             .WillOnce([buffer](VkDevice, const VkBufferMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2 ||
+                    output == nullptr || output->sType != VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 ||
+                    output->pNext == nullptr)
+                {
+                    ADD_FAILURE() << "Buffer requirements info or output chain is null";
+                    return;
+                }
+                const auto* header = static_cast<const VkBaseOutStructure*>(output->pNext);
+                if (header->sType != VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS)
+                {
+                    ADD_FAILURE() << "Buffer requirements chain has an unexpected structure type";
+                    return;
+                }
                 EXPECT_EQ(info->buffer, buffer);
                 output->memoryRequirements = {.size = 128, .alignment = 64, .memoryTypeBits = 1};
                 auto* dedicated = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
@@ -118,14 +132,8 @@ protected:
             });
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::MemoryPoolMock> poolMock;
     panda::test::ScopedMock<panda::test::MemoryAllocationMock> allocationMock;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
-    vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::array<std::byte, 128> mapped {};
 };
@@ -220,6 +228,11 @@ TEST_F(BufferResourceTest, DestroysTheBufferBeforeReleasingItsAllocationAfterBin
     EXPECT_CALL(vulkan, vkBindBufferMemory2(deviceHandle, 1, NotNull()))
         .InSequence(cleanup)
         .WillOnce([](VkDevice, std::uint32_t, const VkBindBufferMemoryInfo* info) {
+            if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO)
+            {
+                ADD_FAILURE() << "Buffer bind info is invalid";
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
             EXPECT_EQ(info->buffer, fakeHandle<VkBuffer>(20));
             EXPECT_EQ(info->memory, fakeHandle<VkDeviceMemory>(21));
             EXPECT_EQ(info->memoryOffset, 64);

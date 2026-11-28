@@ -23,7 +23,7 @@
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "panda/core/TextureResourceMock.hpp"
 #include "panda/resources/Texture.hpp"
 #include "resources/TextureResource.hpp"
@@ -39,7 +39,7 @@ using testing::_;
 using testing::AnyNumber;
 using testing::NotNull;
 
-class RenderAttachmentsTest : public testing::Test
+class RenderAttachmentsTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
@@ -191,13 +191,6 @@ protected:
             });
     }
 
-    void TearDown() override
-    {
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
-    }
-
     auto createAttachments(vk::Extent2D extent = {.width = 64, .height = 64},
                            vk::Format format = vk::Format::eR8G8B8A8Unorm,
                            std::size_t frameCount = 1)
@@ -211,13 +204,7 @@ protected:
                                           .frameCount = frameCount});
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::TextureResourceMock> textures;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
-    vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::vector<vk::ImageUsageFlags> createdUsages;
     std::map<const TextureResource*, VkImage> images;

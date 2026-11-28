@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "upload/UploadBatchImpl.hpp"
@@ -27,12 +26,10 @@
 #include <utility>
 #include <vector>
 
-#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "panda/core/BufferResourceMock.hpp"
-#include "panda/core/MemoryAllocationMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"
 #include "panda/core/MeshLayoutMock.hpp"
 #include "panda/core/MeshResourceMock.hpp"
@@ -61,7 +58,6 @@ using panda::detail::BufferResource;
 using panda::detail::MeshResource;
 using panda::detail::TextureResource;
 using panda::detail::UploadBatchImpl;
-using panda::test::fakeHandle;
 using testing::_;
 using testing::NotNull;
 using testing::Ref;
@@ -82,7 +78,7 @@ auto textureDescription() -> panda::TextureDesc
     };
 }
 
-class UploadBatchImplTest : public testing::Test
+class UploadBatchImplTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
@@ -92,6 +88,7 @@ protected:
 
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* properties) {
+                ASSERT_NE(properties, nullptr);
                 properties->memoryTypeCount = 1;
                 properties->memoryTypes[0] = {
                     .propertyFlags = static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eDeviceLocal),
@@ -101,6 +98,11 @@ protected:
             });
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* properties) {
+                ASSERT_NE(properties, nullptr);
+                ASSERT_EQ(properties->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
+                ASSERT_NE(properties->pNext, nullptr);
+                const auto* header = static_cast<const VkBaseOutStructure*>(properties->pNext);
+                ASSERT_EQ(header->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES);
                 properties->properties.limits.maxMemoryAllocationCount = 8;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(properties->pNext);
                 ASSERT_NE(maintenance, nullptr);
@@ -112,15 +114,6 @@ protected:
         manager = std::make_unique<UploadManager>(device, *pool, *submissions, 0);
 
         ON_CALL(buffers, getSize(_)).WillByDefault(Return(4096));
-    }
-
-    void TearDown() override
-    {
-        manager.reset();
-        submissions.reset();
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
     }
 
     auto makeBatch() -> std::unique_ptr<UploadBatchImpl>
@@ -186,8 +179,6 @@ protected:
         return created ? std::move(*created) : nullptr;
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
-    panda::test::ScopedMock<panda::test::MemoryAllocationMock> allocations;
     panda::test::ScopedMock<panda::test::MemoryPoolMock> poolMock;
     panda::test::ScopedMock<panda::test::SubmissionQueueMock> submission;
     panda::test::ScopedMock<panda::test::UploadManagerMock> managerMock;
@@ -195,10 +186,6 @@ protected:
     panda::test::ScopedMock<panda::test::TextureResourceMock> textures;
     panda::test::ScopedMock<panda::test::MeshResourceMock> meshes;
     panda::test::ScopedMock<panda::test::MeshLayoutMock> layouts;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::unique_ptr<MemoryPool> pool;
     std::unique_ptr<panda::detail::SubmissionQueue> submissions;
     std::unique_ptr<UploadManager> manager;

@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "MeshResource.hpp"
@@ -16,14 +15,10 @@
 #include <optional>
 #include <panda/base/Error.hpp>
 #include <panda/resources/Mesh.hpp>
-#include <tuple>
-#include <utility>
 
-#include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "panda/core/BufferResourceMock.hpp"
-#include "panda/core/MemoryAllocationMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"
 #include "panda/core/MeshLayoutMock.hpp"
 #include "resources/BufferResource.hpp"
@@ -33,7 +28,6 @@ namespace
 {
 using panda::core::vulkan::resources::MemoryPool;
 using panda::detail::MeshResource;
-using panda::test::fakeHandle;
 using panda::test::MeshLayoutPlan;
 using testing::_;
 using testing::NotNull;
@@ -50,13 +44,14 @@ auto description(bool indexed = true) -> panda::MeshDesc
             .attributes = {}};
 }
 
-class MeshResourceTest : public testing::Test
+class MeshResourceTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
+                ASSERT_NE(output, nullptr);
                 output->memoryTypeCount = 1;
                 output->memoryTypes[0] = {
                     .propertyFlags = static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eDeviceLocal),
@@ -66,6 +61,11 @@ protected:
             });
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                ASSERT_NE(output, nullptr);
+                ASSERT_EQ(output->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
+                ASSERT_NE(output->pNext, nullptr);
+                const auto* header = static_cast<const VkBaseOutStructure*>(output->pNext);
+                ASSERT_EQ(header->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES);
                 output->properties.limits.maxMemoryAllocationCount = 8;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
                 ASSERT_NE(maintenance, nullptr);
@@ -73,13 +73,6 @@ protected:
             });
         EXPECT_CALL(poolMock, destroy(_));
         pool = MemoryPool::create(physical, device);
-    }
-
-    void TearDown() override
-    {
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
     }
 
     void expectLayout(const panda::MeshDesc& mesh, std::uint64_t vertexSize, std::uint64_t indexSize)
@@ -93,15 +86,9 @@ protected:
                 panda::Result<MeshLayoutPlan> {MeshLayoutPlan {.vertexSize = vertexSize, .indexSize = indexSize}}));
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::MemoryPoolMock> poolMock;
-    panda::test::ScopedMock<panda::test::MemoryAllocationMock> allocationMock;
     panda::test::ScopedMock<panda::test::BufferResourceMock> buffers;
     panda::test::ScopedMock<panda::test::MeshLayoutMock> layoutMock;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::unique_ptr<MemoryPool> pool;
 };
 }

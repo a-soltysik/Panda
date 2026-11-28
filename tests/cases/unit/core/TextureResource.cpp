@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "TextureResource.hpp"
@@ -19,13 +18,12 @@
 #include <panda/diagnostics/Assert.hpp>
 #include <panda/resources/PixelFormat.hpp>
 #include <panda/resources/Texture.hpp>
-#include <tuple>
 #include <utility>
 
 #include "FakeHandle.hpp"
 #include "ResourceMappings.hpp"
 #include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "panda/core/MemoryAllocationMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"
 #include "resources/memory/MemoryPool.hpp"
@@ -83,13 +81,36 @@ auto unsupportedAddressMode() -> panda::TextureAddressMode
     return std::bit_cast<panda::TextureAddressMode>(std::uint8_t {0xff});
 }
 
-class TextureResourceTest : public testing::Test
+auto validImageCreateInfo(const VkImageCreateInfo* info, const VkImage* output) -> bool
+{
+    return info != nullptr && output != nullptr && info->sType == VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+}
+
+void writeImageOnSuccess(VkResult result, VkImage image, VkImage* output)
+{
+    if (result == success)
+    {
+        *output = image;
+    }
+}
+
+class TextureResourceTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
     {
+        configureMemoryProperties();
+        configurePhysicalProperties();
+        configureImageFormatProperties();
+        EXPECT_CALL(poolMock, destroy(_));
+        pool = MemoryPool::create(physical, device);
+    }
+
+    void configureMemoryProperties()
+    {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* output) {
+                ASSERT_NE(output, nullptr);
                 output->memoryTypeCount = 1;
                 output->memoryTypes[0] = {
                     .propertyFlags = static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eDeviceLocal),
@@ -97,8 +118,17 @@ protected:
                 output->memoryHeapCount = 1;
                 output->memoryHeaps[0] = {.size = 4096, .flags = 0};
             });
+    }
+
+    void configurePhysicalProperties()
+    {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* output) {
+                ASSERT_NE(output, nullptr);
+                ASSERT_EQ(output->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
+                ASSERT_NE(output->pNext, nullptr);
+                const auto* header = static_cast<const VkBaseOutStructure*>(output->pNext);
+                ASSERT_EQ(header->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES);
                 output->properties.limits.maxMemoryAllocationCount = 8;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(output->pNext);
                 ASSERT_NE(maintenance, nullptr);
@@ -107,8 +137,13 @@ protected:
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties(_, NotNull()))
             .Times(testing::AnyNumber())
             .WillRepeatedly([](VkPhysicalDevice, VkPhysicalDeviceProperties* output) {
+                ASSERT_NE(output, nullptr);
                 output->limits.maxImageArrayLayers = 2;
             });
+    }
+
+    void configureImageFormatProperties()
+    {
         EXPECT_CALL(
             vulkan,
             vkGetPhysicalDeviceImageFormatProperties(_, _, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, _, 0, NotNull()))
@@ -120,20 +155,16 @@ protected:
                                VkImageUsageFlags,
                                VkImageCreateFlags,
                                VkImageFormatProperties* output) {
+                if (output == nullptr)
+                {
+                    ADD_FAILURE() << "Image format properties output is null";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 *output = VkImageFormatProperties {};
                 output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
                 output->maxArrayLayers = 2;
                 return success;
             });
-        EXPECT_CALL(poolMock, destroy(_));
-        pool = MemoryPool::create(physical, device);
-    }
-
-    void TearDown() override
-    {
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
     }
 
     void expectImage(VkImage image,
@@ -146,6 +177,11 @@ protected:
                                                      const VkImageCreateInfo* info,
                                                      const VkAllocationCallbacks*,
                                                      VkImage* output) {
+                if (!validImageCreateInfo(info, output))
+                {
+                    ADD_FAILURE() << "Image creation info or output is null";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->imageType, VK_IMAGE_TYPE_2D);
                 EXPECT_EQ(info->format, static_cast<VkFormat>(desc.format));
                 EXPECT_EQ(info->extent.width, desc.extent.width);
@@ -153,10 +189,7 @@ protected:
                 EXPECT_EQ(info->extent.depth, 1);
                 EXPECT_EQ(info->samples, static_cast<VkSampleCountFlagBits>(samples));
                 EXPECT_EQ(info->usage, static_cast<VkImageUsageFlags>(desc.usage));
-                if (result == success)
-                {
-                    *output = image;
-                }
+                writeImageOnSuccess(result, image, output);
                 return result;
             });
     }
@@ -178,6 +211,19 @@ protected:
     {
         EXPECT_CALL(vulkan, vkGetImageMemoryRequirements2(deviceHandle, NotNull(), NotNull()))
             .WillOnce([image](VkDevice, const VkImageMemoryRequirementsInfo2* info, VkMemoryRequirements2* output) {
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2 ||
+                    output == nullptr || output->sType != VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 ||
+                    output->pNext == nullptr)
+                {
+                    ADD_FAILURE() << "Image requirements info or output chain is null";
+                    return;
+                }
+                const auto* header = static_cast<const VkBaseOutStructure*>(output->pNext);
+                if (header->sType != VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS)
+                {
+                    ADD_FAILURE() << "Image requirements chain has an unexpected structure type";
+                    return;
+                }
                 EXPECT_EQ(info->image, image);
                 output->memoryRequirements = {.size = 128, .alignment = 64, .memoryTypeBits = 1};
                 auto* dedicated = static_cast<VkMemoryDedicatedRequirements*>(output->pNext);
@@ -190,6 +236,11 @@ protected:
     {
         EXPECT_CALL(vulkan, vkBindImageMemory2(deviceHandle, 1, NotNull()))
             .WillOnce([image, memory, result](VkDevice, std::uint32_t, const VkBindImageMemoryInfo* info) {
+                if (info == nullptr || info->sType != VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO)
+                {
+                    ADD_FAILURE() << "Image bind info is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->image, image);
                 EXPECT_EQ(info->memory, memory);
                 EXPECT_EQ(info->memoryOffset, 32);
@@ -207,6 +258,11 @@ protected:
                                                     const VkImageViewCreateInfo* info,
                                                     const VkAllocationCallbacks*,
                                                     VkImageView* output) {
+                if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO)
+                {
+                    ADD_FAILURE() << "Image view info or output is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->image, image);
                 EXPECT_EQ(info->viewType, VK_IMAGE_VIEW_TYPE_2D);
                 EXPECT_EQ(info->subresourceRange.aspectMask, aspect);
@@ -226,6 +282,11 @@ protected:
                                  const VkImageViewCreateInfo* info,
                                  const VkAllocationCallbacks*,
                                  VkImageView* output) {
+                if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO)
+                {
+                    ADD_FAILURE() << "Array view info or output is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->image, expected.image);
                 EXPECT_EQ(info->viewType, expected.type);
                 EXPECT_EQ(info->subresourceRange.baseArrayLayer, expected.baseLayer);
@@ -269,14 +330,8 @@ protected:
         expectBoundImage(image, nativeDescription, samples);
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::MemoryPoolMock> poolMock;
     panda::test::ScopedMock<panda::test::MemoryAllocationMock> allocationMock;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
-    vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
 };
 }
@@ -427,6 +482,11 @@ TEST_F(TextureResourceTest, RejectsExtentBeyondDeviceLimitBeforeCreatingImage)
                      VkImageUsageFlags,
                      VkImageCreateFlags,
                      VkImageFormatProperties* output) {
+            if (output == nullptr)
+            {
+                ADD_FAILURE() << "Image format properties output is null";
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
             *output = VkImageFormatProperties {};
             output->maxExtent = {.width = 31, .height = 16, .depth = 1};
             return success;
@@ -459,6 +519,11 @@ TEST_F(TextureResourceTest, RejectsCubemapWhenDeviceCannotSupportSixArrayLayers)
                      VkImageUsageFlags,
                      VkImageCreateFlags,
                      VkImageFormatProperties* output) {
+            if (output == nullptr)
+            {
+                ADD_FAILURE() << "Image format properties output is null";
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
             *output = VkImageFormatProperties {};
             output->maxExtent = {.width = 4096, .height = 4096, .depth = 1};
             output->maxMipLevels = 16;

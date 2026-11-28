@@ -33,7 +33,7 @@
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
 #include "SubmissionQueue.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "panda/core/BufferResourceMock.hpp"
 #include "panda/core/SubmissionQueueMock.hpp"
 #include "resources/BufferResource.hpp"
@@ -128,7 +128,7 @@ void expectTransferBarrier(const VkDependencyInfo* info, VkBuffer buffer, bool r
     expectBarrierRange(barrier, buffer);
 }
 
-class ExternalBufferInteropTest : public testing::Test
+class ExternalBufferInteropTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
@@ -161,15 +161,6 @@ protected:
         EXPECT_CALL(submissionQueueMock, construct(Ref(device), 0));
         submissions = std::make_unique<SubmissionQueue>(device, 0);
         uploads = std::make_unique<UploadManager>(device, *pool, *submissions, 0);
-    }
-
-    void TearDown() override
-    {
-        uploads.reset();
-        submissions.reset();
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
     }
 
     auto makeEngine(bool semaphoreExport = true) -> ExternalBufferInterop
@@ -367,15 +358,8 @@ protected:
             .WillOnce(Return(panda::Result<std::uint64_t> {2}));
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::BufferResourceMock> bufferResourceMock;
     panda::test::ScopedMock<panda::test::SubmissionQueueMock> submissionQueueMock;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    VkPhysicalDevice physicalHandle {fakeHandle<VkPhysicalDevice>(2)};
-    vk::raii::PhysicalDevice physical {instance, physicalHandle};
-    VkDevice deviceHandle {fakeHandle<VkDevice>(3)};
-    vk::raii::Device device {physical, deviceHandle};
     std::unique_ptr<MemoryPool> pool;
     std::unique_ptr<SubmissionQueue> submissions;
     std::unique_ptr<UploadManager> uploads;

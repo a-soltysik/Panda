@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "resources/memory/MemoryBlock.hpp"
@@ -16,12 +15,10 @@
 #include <expected>
 #include <panda/base/Error.hpp>
 #include <span>
-#include <tuple>
-#include <utility>
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "panda/core/RangeAllocatorMock.hpp"
 #include "resources/memory/RangeAllocator.hpp"
 
@@ -36,15 +33,9 @@ using testing::Return;
 
 constexpr auto success = static_cast<VkResult>(vk::Result::eSuccess);
 
-class MemoryBlockTest : public testing::Test
+class MemoryBlockTest : public panda::test::VulkanTestFixture
 {
 protected:
-    void TearDown() override
-    {
-        std::ignore = device.release();
-        std::ignore = instance.release();
-    }
-
     void expectDeviceProperties(vk::MemoryPropertyFlags flags, std::uint64_t size, std::uint64_t atomSize = 64)
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
@@ -83,12 +74,7 @@ protected:
         EXPECT_CALL(allocator, getCapacity()).WillRepeatedly(Return(size));
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
     panda::test::ScopedMock<panda::test::RangeAllocatorMock> allocator;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     VkDeviceMemory memory {fakeHandle<VkDeviceMemory>(4)};
 };
 }

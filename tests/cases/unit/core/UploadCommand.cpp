@@ -1,7 +1,6 @@
 // clang-format off
 #include "VulkanHpp.hpp" // IWYU pragma: keep
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_raii.hpp>
 // clang-format on
 
 #include "upload/UploadCommand.hpp"
@@ -20,11 +19,9 @@
 
 #include "FakeHandle.hpp"
 #include "ScopedMock.hpp"
-#include "external/vulkan/VulkanMock.hpp"
+#include "VulkanTestSupport.hpp"
 #include "panda/core/BufferResourceMock.hpp"
-#include "panda/core/MemoryAllocationMock.hpp"
 #include "panda/core/MemoryPoolMock.hpp"
-#include "panda/core/TextureResourceMock.hpp"
 #include "resources/BufferResource.hpp"
 #include "resources/memory/MemoryPool.hpp"
 #include "upload/UploadOperation.hpp"
@@ -42,13 +39,14 @@ using testing::NotNull;
 using testing::Ref;
 using testing::Return;
 
-class UploadCommandTest : public testing::Test
+class UploadCommandTest : public panda::test::VulkanTestFixture
 {
 protected:
     void SetUp() override
     {
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceMemoryProperties(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceMemoryProperties* properties) {
+                ASSERT_NE(properties, nullptr);
                 properties->memoryTypeCount = 1;
                 properties->memoryTypes[0] = {
                     .propertyFlags = static_cast<VkMemoryPropertyFlags>(vk::MemoryPropertyFlagBits::eDeviceLocal),
@@ -58,6 +56,11 @@ protected:
             });
         EXPECT_CALL(vulkan, vkGetPhysicalDeviceProperties2(_, NotNull()))
             .WillOnce([](VkPhysicalDevice, VkPhysicalDeviceProperties2* properties) {
+                ASSERT_NE(properties, nullptr);
+                ASSERT_EQ(properties->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
+                ASSERT_NE(properties->pNext, nullptr);
+                const auto* header = static_cast<const VkBaseOutStructure*>(properties->pNext);
+                ASSERT_EQ(header->sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES);
                 properties->properties.limits.maxMemoryAllocationCount = 8;
                 auto* maintenance = static_cast<VkPhysicalDeviceMaintenance3Properties*>(properties->pNext);
                 ASSERT_NE(maintenance, nullptr);
@@ -65,13 +68,6 @@ protected:
             });
         EXPECT_CALL(poolMock, destroy(_));
         pool = MemoryPool::create(physical, device);
-    }
-
-    void TearDown() override
-    {
-        pool.reset();
-        std::ignore = device.release();
-        std::ignore = instance.release();
     }
 
     auto makeBuffer(std::uint64_t size) -> std::shared_ptr<BufferResource>
@@ -96,6 +92,11 @@ protected:
                                    const VkCommandPoolCreateInfo* info,
                                    const VkAllocationCallbacks*,
                                    VkCommandPool* output) {
+                if (info == nullptr || output == nullptr || info->sType != VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO)
+                {
+                    ADD_FAILURE() << "Command pool create info or output is invalid";
+                    return VK_ERROR_INITIALIZATION_FAILED;
+                }
                 EXPECT_EQ(info->flags, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
                 EXPECT_EQ(info->queueFamilyIndex, 5);
                 *output = poolHandle;
@@ -110,6 +111,12 @@ protected:
         EXPECT_CALL(vulkan, vkAllocateCommandBuffers(_, NotNull(), NotNull()))
             .WillOnce(
                 [command, poolHandle](VkDevice, const VkCommandBufferAllocateInfo* info, VkCommandBuffer* output) {
+                    if (info == nullptr || output == nullptr ||
+                        info->sType != VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO)
+                    {
+                        ADD_FAILURE() << "Command buffer allocation info or output is invalid";
+                        return VK_ERROR_INITIALIZATION_FAILED;
+                    }
                     EXPECT_EQ(info->commandPool, poolHandle);
                     EXPECT_EQ(info->level, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
                     EXPECT_EQ(info->commandBufferCount, 1);
@@ -119,15 +126,8 @@ protected:
         return command;
     }
 
-    panda::test::ScopedMock<panda::test::VulkanMock> vulkan;
-    panda::test::ScopedMock<panda::test::MemoryAllocationMock> allocationMock;
     panda::test::ScopedMock<panda::test::MemoryPoolMock> poolMock;
     panda::test::ScopedMock<panda::test::BufferResourceMock> buffers;
-    panda::test::ScopedMock<panda::test::TextureResourceMock> textures;
-    vk::raii::Context loader {vkGetInstanceProcAddr};
-    vk::raii::Instance instance {loader, fakeHandle<VkInstance>(1)};
-    vk::raii::PhysicalDevice physical {instance, fakeHandle<VkPhysicalDevice>(2)};
-    vk::raii::Device device {physical, fakeHandle<VkDevice>(3)};
     std::unique_ptr<MemoryPool> pool;
 };
 }
